@@ -25,6 +25,38 @@ from .regulatory_tables import (
 )
 
 
+PSM_COLUMNS = [
+    "item_no",
+    "substance_name",
+    "cas_text",
+    "cas_list",
+    "match_type",
+    "manufacture_handling_threshold_kg",
+    "storage_threshold_kg",
+    "legal_quantity_text",
+    "source_key",
+    "source_title",
+    "effective_date",
+    "issue_number",
+    "source_pdf_sha256",
+]
+
+CAP3_COLUMNS = [
+    "item_no",
+    "substance_name",
+    "cas_text",
+    "cas_list",
+    "content_threshold_pct",
+    "lowest_quantity_ton",
+    "lower_quantity_ton",
+    "upper_quantity_ton",
+    "source_key",
+    "source_title",
+    "effective_date",
+    "issue_number",
+]
+
+
 def _numeric_row_count(rows: list[list[Any]]) -> int:
     return sum(1 for row in rows if row and _int_no(row[0]) is not None)
 
@@ -141,7 +173,10 @@ def build_psm_annex13_candidate() -> CandidateResult:
             }
         )
 
-    df = pd.DataFrame(records)
+    # Keep the schema even when zero rows are extracted.  pandas writes a
+    # header-only CSV instead of a 0-byte file, so the Streamlit preview can
+    # safely read VALIDATION_FAILED results without raising EmptyDataError.
+    df = pd.DataFrame(records, columns=PSM_COLUMNS)
     if not df.empty:
         df.drop_duplicates(subset=["item_no"], keep="first", inplace=True)
         df.sort_values("item_no", inplace=True)
@@ -263,7 +298,10 @@ def build_cap_accident_quantity_candidate() -> CandidateResult:
             }
         )
 
-    df = pd.DataFrame(records)
+    # Same fail-closed behavior as the PSM extractor: an unsuccessful parse
+    # remains readable as an empty, header-only candidate rather than crashing
+    # the administration page.
+    df = pd.DataFrame(records, columns=CAP3_COLUMNS)
     if not df.empty:
         df.drop_duplicates(subset=["item_no"], keep="first", inplace=True)
         df.sort_values("item_no", inplace=True)
