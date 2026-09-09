@@ -1,0 +1,16 @@
+{
+  "CAP_QTY": {
+    "dataset": "화사계 규정수량",
+    "approved_file": "data/regulatory/cap_quantity_APPROVED.csv",
+    "verified_complete": false,
+    "source_key": "CAP_QTY",
+    "note": "공식 최신 별표를 전수 검토하고 source_hash를 확인한 뒤에만 true로 변경"
+  },
+  "PSM_APP13": {
+    "dataset": "PSM 별표 13",
+    "approved_file": "data/regulatory/psm_appendix13_APPROVED.csv",
+    "verified_complete": false,
+    "source_key": "PSM_DECREE",
+    "note": "산업안전보건법 시행령 별표 13 전체 행과 비고/농도조건을 검토한 뒤에만 true로 변경"
+  }
+}
