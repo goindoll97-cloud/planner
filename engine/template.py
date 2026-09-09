@@ -22,6 +22,18 @@ def _style_header(ws, cells: str) -> None:
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
 
+def _write_row(ws, row_index: int, values: list[str]) -> None:
+    """Write a row safely with openpyxl.
+
+    openpyxl does not support assigning a nested list directly to a multi-cell
+    range such as ``ws["A3:E3"] = [[...]]``.  Each cell must be written
+    individually (or via ``append``).  This helper keeps all template sheets
+    consistent and avoids tuple-assignment errors.
+    """
+    for col_index, value in enumerate(values, start=1):
+        ws.cell(row=row_index, column=col_index, value=value)
+
+
 def build_minimal_input_workbook() -> bytes:
     """Return the company-facing minimal intake workbook as XLSX bytes."""
     wb = Workbook()
@@ -32,7 +44,7 @@ def build_minimal_input_workbook() -> bytes:
     ws["A1"] = "1. 사업장 기본정보 — 노란색 칸만 입력"
     ws["A1"].fill = TITLE_FILL
     ws["A1"].font = WHITE_FONT
-    ws["A3:E3"] = [["항목", "입력값", "필수", "프로그램 활용", "설명"]]
+    _write_row(ws, 3, ["항목", "입력값", "필수", "프로그램 활용", "설명"])
     _style_header(ws, "A3:E3")
 
     rows = [
@@ -46,8 +58,7 @@ def build_minimal_input_workbook() -> bytes:
         ["현재 목적", "신규 사전진단", "Y", "공통", "신규 사전진단 / 변경검토 / 재제출검토"],
     ]
     for r_idx, row in enumerate(rows, start=4):
-        for c_idx, value in enumerate(row, start=1):
-            ws.cell(r_idx, c_idx, value)
+        _write_row(ws, r_idx, row)
         ws.cell(r_idx, 2).fill = INPUT_FILL
 
     yn = DataValidation(type="list", formula1='"Y,N,모름"', allow_blank=True)
@@ -75,8 +86,7 @@ def build_minimal_input_workbook() -> bytes:
         "No.", "제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태",
         "최대 제조·사용량", "최대 저장량", "수량 단위", "최대 동시보유량(알면 입력)", "비고",
     ]
-    for col, value in enumerate(headers, 1):
-        ws2.cell(3, col, value)
+    _write_row(ws2, 3, headers)
     _style_header(ws2, "A3:K3")
     for r in range(4, 104):
         ws2.cell(r, 1, r - 3)
@@ -99,8 +109,7 @@ def build_minimal_input_workbook() -> bytes:
     ws3["A1"].fill = TITLE_FILL
     ws3["A1"].font = WHITE_FONT
     headers3 = ["자료", "보유 여부", "프로그램 활용 시점", "왜 확인하는가", "비고"]
-    for col, value in enumerate(headers3, 1):
-        ws3.cell(3, col, value)
+    _write_row(ws3, 3, headers3)
     _style_header(ws3, "A3:E3")
     docs = [
         ["공정안전보고서(PSM)", "모름", "1차 판정 후", "기존 공정안전자료 재활용 가능성 확인", ""],
@@ -109,8 +118,7 @@ def build_minimal_input_workbook() -> bytes:
         ["위해관리계획서", "모름", "화사계 대상 판정 후", "기존 비상대응 정보 재활용 가능성 확인", ""],
     ]
     for r_idx, row in enumerate(docs, 4):
-        for c_idx, value in enumerate(row, 1):
-            ws3.cell(r_idx, c_idx, value)
+        _write_row(ws3, r_idx, row)
         ws3.cell(r_idx, 2).fill = INPUT_FILL
     yn2 = DataValidation(type="list", formula1='"Y,N,모름"')
     ws3.add_data_validation(yn2)
