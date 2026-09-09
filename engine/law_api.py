@@ -72,6 +72,17 @@ def _normalized_title(value: Any) -> str:
     return re.sub(r"\s+", "", _clean(value))
 
 
+def _normalize_appendix_no(value: Any) -> str:
+    """Normalize appendix numbers such as '13', '013', '[별표 13]' to '13'."""
+    digits = re.sub(r"\D", "", _clean(value))
+    if not digits:
+        return ""
+    try:
+        return str(int(digits))
+    except ValueError:
+        return digits
+
+
 def _safe_error(exc: Exception, credential: str) -> str:
     text = f"{type(exc).__name__}: {exc}"
     if credential:
@@ -189,7 +200,12 @@ def search_current_source(title: str, target: str, timeout: int = 45) -> dict[st
 
 
 def fetch_source_payload(search_result: dict[str, Any], target: str, timeout: int = 90) -> dict[str, Any]:
-    """Fetch the full official JSON for one previously resolved current source."""
+    """Fetch the full official JSON for one previously resolved current source.
+
+    For statutes/decrees, ``BD=ON`` is explicitly requested so the Open API
+    includes appendix metadata (별표단위).  This is required for PSM 시행령
+    별표 13 monitoring; a plain law body response can omit the appendix block.
+    """
     if search_result.get("api_status") != "FOUND":
         raise ValueError("현행 법령 검색이 성공한 자료만 본문을 조회할 수 있습니다.")
     credential, _ = get_api_credential()
@@ -200,6 +216,7 @@ def fetch_source_payload(search_result: dict[str, Any], target: str, timeout: in
     params: dict[str, Any] = {"OC": credential, "target": target, "type": "JSON"}
     if target == "law":
         params["MST"] = serial
+        params["BD"] = "ON"
     elif target == "admrul":
         params["ID"] = serial
     else:
@@ -220,8 +237,8 @@ def extract_attachments(payload: Any) -> list[dict[str, str]]:
         if not pdf_path and not hwp_path:
             continue
         item = {
-            "appendix_no": _clean(record.get("별표번호")),
-            "appendix_branch": _clean(record.get("별표가지번호")),
+            "appendix_no": _normalize_appendix_no(record.get("별표번호")),
+            "appendix_branch": _normalize_appendix_no(record.get("별표가지번호")),
             "appendix_kind": _clean(record.get("별표구분")),
             "appendix_title": _clean(record.get("별표제목")),
             "pdf_url": urljoin(LAW_BASE_URL, pdf_path) if pdf_path else "",
