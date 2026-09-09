@@ -200,7 +200,7 @@ def _psm_records_from_word_coordinates(
     """Fallback for Annex 13 PDFs whose rows are visually separated but have no row rules.
 
     In the current official PDF, pdfplumber can see one large four-column table on
-    a page instead of one extracted row per legal item.  Word coordinates retain
+    a page instead of one extracted row per legal item. Word coordinates retain
     each item's vertical position, so item-number positions are used as row
     anchors and the three content columns are reconstructed by x-position.
     """
@@ -226,9 +226,6 @@ def _psm_records_from_word_coordinates(
             qty_x = _header_x(words, "규정량")
             header_bottom = _header_top(words)
 
-            # Header detection can fail when Korean punctuation is split into
-            # several PDF words.  The fallbacks are conservative A4 column
-            # fractions and are reported in diagnostics for review.
             width = float(page.width)
             if name_x is None:
                 name_x = width * 0.13
@@ -292,7 +289,6 @@ def _psm_records_from_word_coordinates(
                 qty_text = _word_text(qty_words)
                 records.append(_psm_record(source, source_hash, no, name, cas_text, qty_text))
 
-    # Deduplicate any repeated page-boundary item and keep the most complete row.
     best: dict[int, dict[str, Any]] = {}
     for record in records:
         no = int(record["item_no"])
@@ -391,11 +387,11 @@ def build_psm_annex13_candidate() -> CandidateResult:
         **word_diag,
     }
 
-    # The current official Annex 13 contains items 1-51.  If an amendment
-    # changes that range, the law monitor will already flag the PDF/version;
-    # this extractor deliberately fails closed until the parser is reviewed.
-    current_range_ok = bool(numbers and numbers[0] == 1 and numbers[-1] == 51 and len(numbers) == 51)
-    checks["current_official_range_1_to_51"] = current_range_ok
+    # Current official 산업안전보건법 시행령 별표 13 contains items 1-34.
+    # A later amendment changes the monitored PDF/version first; until this
+    # parser is reviewed for that amendment, the extractor fails closed.
+    current_range_ok = bool(numbers and numbers[0] == 1 and numbers[-1] == 34 and len(numbers) == 34)
+    checks["current_official_range_1_to_34"] = current_range_ok
     validation_ok = (
         current_range_ok
         and consecutive
