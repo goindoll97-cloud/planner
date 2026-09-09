@@ -145,6 +145,11 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
         for row in law_rows
         if row.get("observation_valid") and row.get("monitor_status") == "BASELINE_UNAPPROVED"
     ]
+    migration_keys = [
+        str(row.get("key"))
+        for row in law_rows
+        if row.get("observation_valid") and row.get("monitor_status") == "BASELINE_MIGRATION_REQUIRED"
+    ]
     update_keys = [
         str(row.get("key"))
         for row in law_rows
@@ -188,11 +193,40 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
             st.session_state.pop("diagnosis", None)
             st.rerun()
 
+    if migration_keys:
+        st.divider()
+        st.markdown("**감시 로직 업데이트에 따른 기준선 재등록**")
+        st.warning(
+            "이 항목들은 법령의 시행일·발령정보가 바뀐 것이 아니라, 프로그램의 PDF 추출·번호 정규화 방식이 개선되어 "
+            "기존 해시 목록과 비교 형식이 달라진 자료입니다. 실제 법령 개정으로 표시하지 않습니다. "
+            "현재 공식본을 다시 감시 기준선으로 저장하면 됩니다."
+        )
+        migration_selected = st.multiselect(
+            "새 감시 방식으로 기준선을 재등록할 자료",
+            options=migration_keys,
+            default=migration_keys,
+            key="migration_baseline_selection",
+        )
+        migration_confirmed = st.checkbox(
+            "공식 시행일·발령정보가 동일하고, 이번 표시는 감시 로직 변경에 따른 것임을 확인합니다.",
+            key="migration_baseline_confirm",
+        )
+        if st.button(
+            "선택 자료의 감시 기준선 재등록",
+            disabled=not (migration_selected and migration_confirmed),
+            use_container_width=True,
+        ):
+            result = approve_latest_observation(migration_selected)
+            st.success(f"감시 기준선 {result.get('approved', 0)}개를 현재 추출 방식으로 다시 등록했습니다.")
+            cached_law_monitor.clear()
+            st.session_state.pop("diagnosis", None)
+            st.rerun()
+
     if update_keys:
         st.divider()
         st.markdown("**개정자료 재반영 승인(관리자 전용)**")
         st.error(
-            "아래 항목은 최초 등록이 아니라 기존 감시 기준선과 실제로 달라진 자료입니다. "
+            "아래 항목은 공식 시행일·발령정보 또는 동일한 감시 로직에서의 PDF 해시가 기존 기준선과 달라진 자료입니다. "
             "관련 최신 법령/PDF를 규제DB·RAG·판정규칙에 반영하고 검토하기 전에는 승인하면 안 됩니다."
         )
         changed_selected = st.multiselect(
@@ -220,6 +254,11 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
         st.warning(
             "최초 감시 기준선 미등록 자료: " + ", ".join(baseline_keys)
             + ". 현재 공식 PDF는 data/runtime/law_pending 아래에 해시값을 붙여 보관됩니다."
+        )
+    if migration_keys:
+        st.warning(
+            "감시 로직 변경으로 기준선 재등록 필요: " + ", ".join(migration_keys)
+            + ". 이는 그 자체로 실제 법령 개정을 의미하지 않습니다."
         )
     if update_keys:
         st.error(
