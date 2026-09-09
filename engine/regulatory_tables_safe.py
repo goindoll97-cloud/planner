@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
+import pdfplumber
 
 from .regulatory_tables import (
     CANDIDATE_DIR,
@@ -66,13 +68,7 @@ def _candidate_tables(
     required_header_tokens: Iterable[str],
     min_cols: int,
 ) -> list[dict[str, Any]]:
-    """Return all page tables belonging to the same legal list.
-
-    Legal appendices usually repeat the header on each page, but some PDF
-    generators omit it after page one. We therefore first locate a definite
-    header match and then include other table fragments that have the same
-    minimum column count and at least two numbered legal rows.
-    """
+    """Return table fragments that appear to belong to the same legal list."""
     tokens = [_norm_header(v) for v in required_header_tokens]
     definite: list[dict[str, Any]] = []
     for item in tables:
@@ -103,7 +99,6 @@ def _collect_legal_rows(items: list[dict[str, Any]], min_cols: int) -> list[list
     all_rows: list[list[str]] = []
     for item in items:
         all_rows.extend(_merge_continuation_rows(item["rows"], min_cols))
-    # The same row can be repeated at page boundaries; item number is the legal key.
     dedup: dict[int, list[str]] = {}
     for row in all_rows:
         no = _int_no(row[0]) if row else None
@@ -113,6 +108,217 @@ def _collect_legal_rows(items: list[dict[str, Any]], min_cols: int) -> list[list
         if existing is None or sum(len(v) for v in row) > sum(len(v) for v in existing):
             dedup[no] = row
     return [dedup[key] for key in sorted(dedup)]
+
+
+def _source_hash_for_path(source: dict[str, Any], path: Path) -> str:
+    hashes = source.get("attachment_hashes", {}) or {}
+    if len(hashes) == 1:
+        return str(next(iter(hashes.values())))
+    stem = path.stem.split("__", 1)[0]
+    for key, digest in hashes.items():
+        if re.sub(r"\s+", "", str(key)) in re.sub(r"\s+", "", stem):
+            return str(digest)
+    return ""
+
+
+def _psm_record(
+    source: dict[str, Any],
+    source_hash: str,
+    no: int,
+    name: str,
+    cas_text: str,
+    qty_text: str,
+) -> dict[str, Any]:
+    mfg_qty, storage_qty = _parse_psm_quantity(qty_text)
+    cas_list = CAS_RE.findall(cas_text)
+    return {
+        "item_no": no,
+        "substance_name": _clean(name),
+        "cas_text": _clean(cas_text),
+        "cas_list": "|".join(cas_list),
+        "match_type": "PROPERTY" if not cas_list else "CAS",
+        "manufacture_handling_threshold_kg": mfg_qty,
+        "storage_threshold_kg": storage_qty,
+        "legal_quantity_text": _clean(qty_text),
+        "source_key": "PSM_DECREE",
+        "source_title": source.get("title", "산업안전보건법 시행령"),
+        "effective_date": source.get("effective_date", ""),
+        "issue_number": source.get("issue_number", ""),
+        "source_pdf_sha256": source_hash,
+    }
+
+
+def _psm_records_from_table_rows(
+    items: list[dict[str, Any]],
+    source: dict[str, Any],
+    source_hash: str,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for cells in _collect_legal_rows(items, 4):
+        no = _int_no(cells[0])
+        if no is None:
+            continue
+        name = _clean(cells[1]) if len(cells) > 1 else ""
+        cas_text = _clean(cells[2]) if len(cells) > 2 else ""
+        qty_text = _clean(" ".join(cells[3:])) if len(cells) > 3 else ""
+        records.append(_psm_record(source, source_hash, no, name, cas_text, qty_text))
+    return records
+
+
+def _word_text(words: list[dict[str, Any]]) -> str:
+    ordered = sorted(words, key=lambda w: (round(float(w.get("top", 0)), 1), float(w.get("x0", 0))))
+    return _clean(" ".join(str(w.get("text", "")) for w in ordered))
+
+
+def _header_x(words: list[dict[str, Any]], token: str) -> float | None:
+    wanted = _norm_header(token)
+    matches = [
+        float(w.get("x0", 0))
+        for w in words
+        if wanted and wanted in _norm_header(w.get("text", ""))
+    ]
+    return min(matches) if matches else None
+
+
+def _header_top(words: list[dict[str, Any]]) -> float | None:
+    hits = [
+        float(w.get("bottom", w.get("top", 0)))
+        for w in words
+        if any(
+            token in _norm_header(w.get("text", ""))
+            for token in ("유해위험물질", "cas", "규정량")
+        )
+    ]
+    return max(hits) if hits else None
+
+
+def _psm_records_from_word_coordinates(
+    path: Path,
+    source: dict[str, Any],
+    source_hash: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Fallback for Annex 13 PDFs whose rows are visually separated but have no row rules.
+
+    In the current official PDF, pdfplumber can see one large four-column table on
+    a page instead of one extracted row per legal item.  Word coordinates retain
+    each item's vertical position, so item-number positions are used as row
+    anchors and the three content columns are reconstructed by x-position.
+    """
+    records: list[dict[str, Any]] = []
+    page_diagnostics: list[dict[str, Any]] = []
+
+    with pdfplumber.open(path) as pdf:
+        for page_no, page in enumerate(pdf.pages, 1):
+            try:
+                words = page.extract_words(
+                    x_tolerance=1.5,
+                    y_tolerance=2.5,
+                    keep_blank_chars=False,
+                    use_text_flow=False,
+                ) or []
+            except Exception:
+                words = []
+            if not words:
+                continue
+
+            name_x = _header_x(words, "유해위험물질")
+            cas_x = _header_x(words, "CAS")
+            qty_x = _header_x(words, "규정량")
+            header_bottom = _header_top(words)
+
+            # Header detection can fail when Korean punctuation is split into
+            # several PDF words.  The fallbacks are conservative A4 column
+            # fractions and are reported in diagnostics for review.
+            width = float(page.width)
+            if name_x is None:
+                name_x = width * 0.13
+            if cas_x is None:
+                cas_x = width * 0.49
+            if qty_x is None:
+                qty_x = width * 0.68
+            if header_bottom is None:
+                header_bottom = float(page.height) * 0.10
+
+            number_words: list[tuple[int, dict[str, Any]]] = []
+            for w in words:
+                text = str(w.get("text", "")).strip()
+                if not re.fullmatch(r"\d{1,2}", text):
+                    continue
+                no = int(text)
+                if not 1 <= no <= 99:
+                    continue
+                x0 = float(w.get("x0", 0))
+                top = float(w.get("top", 0))
+                if x0 >= name_x or top <= header_bottom:
+                    continue
+                number_words.append((no, w))
+
+            number_words.sort(key=lambda item: float(item[1].get("top", 0)))
+            page_diagnostics.append(
+                {
+                    "page": page_no,
+                    "number_candidates": [no for no, _ in number_words],
+                    "name_x": round(name_x, 1),
+                    "cas_x": round(cas_x, 1),
+                    "qty_x": round(qty_x, 1),
+                }
+            )
+            if not number_words:
+                continue
+
+            for idx, (no, anchor) in enumerate(number_words):
+                top = float(anchor.get("top", 0)) - 1.5
+                if idx + 1 < len(number_words):
+                    bottom = float(number_words[idx + 1][1].get("top", 0)) - 1.5
+                else:
+                    bottom = float(page.height) - 28.0
+
+                row_words = [
+                    w
+                    for w in words
+                    if top <= float(w.get("top", 0)) < bottom
+                    and float(w.get("x0", 0)) >= name_x - 3
+                ]
+                name_words = [w for w in row_words if float(w.get("x0", 0)) < cas_x - 3]
+                cas_words = [
+                    w
+                    for w in row_words
+                    if cas_x - 3 <= float(w.get("x0", 0)) < qty_x - 3
+                ]
+                qty_words = [w for w in row_words if float(w.get("x0", 0)) >= qty_x - 3]
+
+                name = _word_text(name_words)
+                cas_text = _word_text(cas_words)
+                qty_text = _word_text(qty_words)
+                records.append(_psm_record(source, source_hash, no, name, cas_text, qty_text))
+
+    # Deduplicate any repeated page-boundary item and keep the most complete row.
+    best: dict[int, dict[str, Any]] = {}
+    for record in records:
+        no = int(record["item_no"])
+        score = sum(len(str(record.get(k, ""))) for k in ("substance_name", "cas_text", "legal_quantity_text"))
+        existing = best.get(no)
+        old_score = -1 if existing is None else sum(
+            len(str(existing.get(k, ""))) for k in ("substance_name", "cas_text", "legal_quantity_text")
+        )
+        if score > old_score:
+            best[no] = record
+    return [best[k] for k in sorted(best)], {"word_pages": page_diagnostics}
+
+
+def _score_psm_records(records: list[dict[str, Any]]) -> tuple[int, int, int]:
+    if not records:
+        return (0, 0, 0)
+    numbers = sorted({int(r["item_no"]) for r in records})
+    complete_qty = sum(
+        1
+        for r in records
+        if r.get("manufacture_handling_threshold_kg") is not None
+        and r.get("storage_threshold_kg") is not None
+    )
+    named = sum(1 for r in records if _clean(r.get("substance_name")))
+    consecutive = int(numbers and numbers[0] == 1 and numbers == list(range(1, numbers[-1] + 1)))
+    return (consecutive, complete_qty, named)
 
 
 def build_psm_annex13_candidate() -> CandidateResult:
@@ -133,49 +339,18 @@ def build_psm_annex13_candidate() -> CandidateResult:
 
     tables = _tables_from_pdf(path)
     items = _candidate_tables(tables, ["유해위험물질", "cas", "규정량"], 4)
-    if not items:
-        return CandidateResult(
-            key="PSM_ANNEX13",
-            status="TABLE_NOT_RECOGNIZED",
-            row_count=0,
-            source_file=str(path.relative_to(PROJECT_ROOT)),
-            candidate_file="",
-            messages=["별표 13에서 유해·위험물질/CAS/규정량 표를 자동 인식하지 못했습니다."],
-            checks={"tables_found": len(tables)},
-        )
+    source_hash = _source_hash_for_path(source, path)
 
-    legal_rows = _collect_legal_rows(items, 4)
-    records: list[dict[str, Any]] = []
-    for cells in legal_rows:
-        no = _int_no(cells[0])
-        if no is None:
-            continue
-        name = _clean(cells[1]) if len(cells) > 1 else ""
-        cas_text = _clean(cells[2]) if len(cells) > 2 else ""
-        qty_text = _clean(" ".join(cells[3:])) if len(cells) > 3 else ""
-        mfg_qty, storage_qty = _parse_psm_quantity(qty_text)
-        cas_list = CAS_RE.findall(cas_text)
-        records.append(
-            {
-                "item_no": no,
-                "substance_name": name,
-                "cas_text": cas_text,
-                "cas_list": "|".join(cas_list),
-                "match_type": "PROPERTY" if not cas_list else "CAS",
-                "manufacture_handling_threshold_kg": mfg_qty,
-                "storage_threshold_kg": storage_qty,
-                "legal_quantity_text": qty_text,
-                "source_key": "PSM_DECREE",
-                "source_title": source.get("title", "산업안전보건법 시행령"),
-                "effective_date": source.get("effective_date", ""),
-                "issue_number": source.get("issue_number", ""),
-                "source_pdf_sha256": next(iter((source.get("attachment_hashes") or {}).values()), ""),
-            }
-        )
+    table_records = _psm_records_from_table_rows(items, source, source_hash) if items else []
+    word_records, word_diag = _psm_records_from_word_coordinates(path, source, source_hash)
 
-    # Keep the schema even when zero rows are extracted.  pandas writes a
-    # header-only CSV instead of a 0-byte file, so the Streamlit preview can
-    # safely read VALIDATION_FAILED results without raising EmptyDataError.
+    if _score_psm_records(word_records) > _score_psm_records(table_records):
+        records = word_records
+        parser_mode = "WORD_COORDINATE_FALLBACK"
+    else:
+        records = table_records
+        parser_mode = "TABLE_ROWS"
+
     df = pd.DataFrame(records, columns=PSM_COLUMNS)
     if not df.empty:
         df.drop_duplicates(subset=["item_no"], keep="first", inplace=True)
@@ -200,9 +375,11 @@ def build_psm_annex13_candidate() -> CandidateResult:
         and df.loc[df["item_no"] == 2, "substance_name"].astype(str).str.contains("인화성").any()
     )
     checks = {
+        "parser_mode": parser_mode,
         "pdf_tables_found": len(tables),
         "table_fragments_used": len(items),
-        "pages_used": sorted({int(item["page"]) for item in items}),
+        "table_parser_rows": len(table_records),
+        "word_coordinate_rows": len(word_records),
         "rows": len(df),
         "first_item": numbers[0] if numbers else None,
         "last_item": numbers[-1] if numbers else None,
@@ -211,10 +388,16 @@ def build_psm_annex13_candidate() -> CandidateResult:
         "item_numbers_consecutive_from_1": consecutive,
         "property_rows": property_rows,
         "items_1_and_2_look_like_flammability_rows": item1_ok and item2_ok,
+        **word_diag,
     }
 
+    # The current official Annex 13 contains items 1-51.  If an amendment
+    # changes that range, the law monitor will already flag the PDF/version;
+    # this extractor deliberately fails closed until the parser is reviewed.
+    current_range_ok = bool(numbers and numbers[0] == 1 and numbers[-1] == 51 and len(numbers) == 51)
+    checks["current_official_range_1_to_51"] = current_range_ok
     validation_ok = (
-        len(df) >= 10
+        current_range_ok
         and consecutive
         and not missing_name
         and not missing_qty
@@ -225,7 +408,7 @@ def build_psm_annex13_candidate() -> CandidateResult:
     messages = [
         "자동추출 후보를 만들었습니다. 공식 별표 13과 첫 행·마지막 행·행수·규정량을 확인한 뒤에만 승인하세요."
         if validation_ok
-        else "자동추출 품질검사를 통과하지 못했습니다. 승인하지 말고 추출 페이지/행수를 확인하세요."
+        else "자동추출 품질검사를 통과하지 못했습니다. 승인하지 말고 parser_mode, 행수와 누락값을 확인하세요."
     ]
 
     CANDIDATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -241,7 +424,13 @@ def build_psm_annex13_candidate() -> CandidateResult:
         messages=messages,
         checks=checks,
     )
-    _write_json(meta_path, {"created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), "result": asdict(result)})
+    _write_json(
+        meta_path,
+        {
+            "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "result": asdict(result),
+        },
+    )
     return result
 
 
@@ -298,9 +487,6 @@ def build_cap_accident_quantity_candidate() -> CandidateResult:
             }
         )
 
-    # Same fail-closed behavior as the PSM extractor: an unsuccessful parse
-    # remains readable as an empty, header-only candidate rather than crashing
-    # the administration page.
     df = pd.DataFrame(records, columns=CAP3_COLUMNS)
     if not df.empty:
         df.drop_duplicates(subset=["item_no"], keep="first", inplace=True)
@@ -316,7 +502,6 @@ def build_cap_accident_quantity_candidate() -> CandidateResult:
     checks = {
         "pdf_tables_found": len(tables),
         "table_fragments_used": len(items),
-        "pages_used": sorted({int(item["page"]) for item in items}),
         "rows": len(df),
         "first_item": numbers[0] if numbers else None,
         "last_item": numbers[-1] if numbers else None,
@@ -344,5 +529,11 @@ def build_cap_accident_quantity_candidate() -> CandidateResult:
         messages=messages,
         checks=checks,
     )
-    _write_json(meta_path, {"created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), "result": asdict(result)})
+    _write_json(
+        meta_path,
+        {
+            "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "result": asdict(result),
+        },
+    )
     return result
