@@ -12,6 +12,13 @@ from engine.law_monitor import (
     run_law_monitor,
     source_rows,
 )
+from engine.regulatory_tables import (
+    approve_candidate,
+    approved_db_status,
+    build_cap_accident_quantity_candidate,
+    build_psm_annex13_candidate,
+    candidate_preview,
+)
 from engine.template import build_minimal_input_workbook
 
 
@@ -80,7 +87,7 @@ if uploaded is not None:
             st.dataframe(inventory_preview(intake), hide_index=True, use_container_width=True)
 
         st.header("3. 1차 사전진단")
-        st.caption("법령·별표 최신성부터 확인한 뒤 입력자료 검증과 규제 판정 게이트를 적용합니다.")
+        st.caption("법령·별표 최신성부터 확인한 뒤 입력자료 검증과 승인된 규제DB의 결정규칙을 적용합니다.")
         if st.button("사전진단 실행", type="primary", use_container_width=True):
             st.session_state["diagnosis"] = run_preliminary_diagnosis(
                 intake,
@@ -103,6 +110,26 @@ if diagnosis is not None:
     for message in diagnosis.messages:
         st.warning(message)
 
+    if diagnosis.psm_details:
+        with st.expander("PSM 규정량 기준 초과 근거", expanded=True):
+            hit_df = pd.DataFrame(diagnosis.psm_details).rename(
+                columns={
+                    "row_no": "입력행",
+                    "product_name": "제품명",
+                    "cas": "CAS",
+                    "legal_item_no": "별표13 번호",
+                    "legal_substance": "법정 물질명",
+                    "quantity_kind": "수량구분",
+                    "quantity_kg": "입력량(kg)",
+                    "threshold_kg": "규정량(kg)",
+                    "ratio": "규정량 대비",
+                    "basis": "법적근거",
+                }
+            )
+            if "규정량 대비" in hit_df.columns:
+                hit_df["규정량 대비"] = pd.to_numeric(hit_df["규정량 대비"], errors="coerce").round(3)
+            st.dataframe(hit_df, hide_index=True, use_container_width=True)
+
     questions = followup_questions(diagnosis)
     if questions:
         st.session_state.step = 4
@@ -111,7 +138,7 @@ if diagnosis is not None:
         for idx, question in enumerate(questions, 1):
             st.write(f"{idx}. {question}")
     else:
-        st.info("회사 입력자료의 기본 형식 검증은 통과했습니다. 다음 단계에서 검증된 화사계·PSM 규칙 DB를 연결합니다.")
+        st.info("현재 연결된 검증 규칙 범위에서 추가 질문이 없습니다.")
 
 with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=False):
     st.caption("일반 사용자가 입력하는 영역이 아닙니다. 법제처 API 현행본과 프로그램의 감시 기준선을 비교합니다.")
@@ -273,6 +300,79 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
 
     with st.expander("감시대상 registry"):
         st.dataframe(pd.DataFrame(source_rows()), hide_index=True, use_container_width=True)
+
+with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
+    st.caption(
+        "법령 감시로 받은 최신 공식 PDF를 표 형태로 구조화합니다. 자동추출 결과는 즉시 판정에 쓰지 않고, "
+        "후보표 → 관리자 검토 → 승인 DB의 3단계를 거칩니다."
+    )
+
+    st.markdown("**현재 승인 DB 상태**")
+    db_status = approved_db_status().copy()
+    if not db_status.empty:
+        db_status["상태"] = db_status["approved"].map({True: "승인됨", False: "미승인"})
+        st.dataframe(
+            db_status[["key", "상태", "rows", "file"]].rename(columns={"rows": "행수", "file": "파일"}),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    c1, c2 = st.columns(2)
+    if c1.button("PSM 별표 13 후보 추출", use_container_width=True):
+        with st.spinner("현행 산업안전보건법 시행령 별표 13을 구조화하고 있습니다..."):
+            st.session_state["psm_candidate_result"] = build_psm_annex13_candidate()
+        st.rerun()
+    if c2.button("화사계 사고대비물질 규정수량 후보 추출", use_container_width=True):
+        with st.spinner("현행 유해화학물질 규정수량 고시 별표 3을 구조화하고 있습니다..."):
+            st.session_state["cap3_candidate_result"] = build_cap_accident_quantity_candidate()
+        st.rerun()
+
+    for session_key, db_key, title in (
+        ("psm_candidate_result", "PSM_ANNEX13", "PSM 시행령 별표 13"),
+        ("cap3_candidate_result", "CAP_QTY_APP3", "화사계 규정수량 별표 3(사고대비물질)"),
+    ):
+        result = st.session_state.get(session_key)
+        if result is None:
+            continue
+        st.divider()
+        st.markdown(f"**{title} 자동추출 결과**")
+        m1, m2 = st.columns(2)
+        m1.metric("상태", result.status)
+        m2.metric("추출 행수", f"{result.row_count:,}")
+        st.caption(f"원본: {result.source_file or '-'}")
+        for message in result.messages:
+            if result.status == "REVIEW_REQUIRED":
+                st.info(message)
+            else:
+                st.warning(message)
+        if result.checks:
+            st.json(result.checks)
+        preview = candidate_preview(db_key)
+        if not preview.empty:
+            st.dataframe(preview, hide_index=True, use_container_width=True, height=420)
+
+        can_approve = result.status == "REVIEW_REQUIRED" and not preview.empty
+        confirmed = st.checkbox(
+            "공식 PDF와 자동추출 표의 물질명·CAS·규정량 및 행수를 확인했습니다.",
+            key=f"approve_confirm_{db_key}",
+            disabled=not can_approve,
+        )
+        if st.button(
+            f"{title} 후보를 판정용 승인 DB로 저장",
+            key=f"approve_button_{db_key}",
+            disabled=not (can_approve and confirmed),
+            use_container_width=True,
+        ):
+            approval = approve_candidate(db_key)
+            st.success(approval.get("message", "승인 DB 저장 완료"))
+            st.session_state.pop("diagnosis", None)
+            st.rerun()
+
+    st.warning(
+        "PSM 별표 13 승인 후에는 exact CAS·수량 기준의 PSM 사전판정이 활성화됩니다. "
+        "인화성 가스/액체, 대상업종 특수조건, 시행령 제43조제2항 제외설비는 추가 질문으로 남깁니다. "
+        "화사계는 별표 1~4와 면제·작성수준 규칙을 모두 검증하기 전까지 최종 1군/2군 판정을 활성화하지 않습니다."
+    )
 
 st.divider()
 st.caption("원칙: 최신 법령·별표 미반영, 필수자료 누락, 규제물질 식별 불확실 시 비대상으로 추정하지 않고 판정보류합니다.")
