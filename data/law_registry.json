@@ -1,0 +1,89 @@
+[
+  {
+    "key": "CAP_ACT",
+    "regime": "화사계",
+    "title": "화학물질관리법",
+    "target": "law",
+    "attachment_required": false
+  },
+  {
+    "key": "CAP_DECREE",
+    "regime": "화사계",
+    "title": "화학물질관리법 시행령",
+    "target": "law",
+    "attachment_required": false
+  },
+  {
+    "key": "CAP_RULE",
+    "regime": "화사계",
+    "title": "화학물질관리법 시행규칙",
+    "target": "law",
+    "attachment_required": false
+  },
+  {
+    "key": "CAP_DRAFT",
+    "regime": "화사계",
+    "title": "화학사고예방관리계획서 작성 등에 관한 규정",
+    "target": "admrul",
+    "attachment_required": true,
+    "attachment_selector": {"mode": "all"}
+  },
+  {
+    "key": "CAP_REVIEW",
+    "regime": "화사계",
+    "title": "화학사고예방관리계획서 검토 등에 관한 규정",
+    "target": "admrul",
+    "attachment_required": true,
+    "attachment_selector": {"mode": "all"}
+  },
+  {
+    "key": "CAP_QTY",
+    "regime": "화사계",
+    "title": "유해화학물질의 규정수량에 관한 규정",
+    "target": "admrul",
+    "attachment_required": true,
+    "attachment_selector": {"mode": "all"}
+  },
+  {
+    "key": "CAP_IMPL",
+    "regime": "화사계",
+    "title": "화학사고예방관리계획서 이행 등에 관한 규정",
+    "target": "admrul",
+    "attachment_required": true,
+    "attachment_selector": {"mode": "all"}
+  },
+  {
+    "key": "PSM_ACT",
+    "regime": "PSM",
+    "title": "산업안전보건법",
+    "target": "law",
+    "attachment_required": false
+  },
+  {
+    "key": "PSM_DECREE",
+    "regime": "PSM",
+    "title": "산업안전보건법 시행령",
+    "target": "law",
+    "attachment_required": true,
+    "attachment_selector": {
+      "mode": "match",
+      "appendix_no": "13",
+      "title_contains": "유해"
+    }
+  },
+  {
+    "key": "PSM_RULE",
+    "regime": "PSM",
+    "title": "산업안전보건법 시행규칙",
+    "target": "law",
+    "attachment_required": false
+  },
+  {
+    "key": "PSM_NOTICE",
+    "regime": "PSM",
+    "title": "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정",
+    "target": "admrul",
+    "attachment_required": true,
+    "attachment_selector": {"mode": "all"}
+  }
+]
