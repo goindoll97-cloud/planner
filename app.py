@@ -40,7 +40,7 @@ with st.sidebar:
         st.caption("법제처 API 연결정보: 설정됨")
     else:
         st.caption("법제처 API 연결정보: LAW_OC 미설정")
-    st.caption("최신 공식본과 프로그램 반영본이 일치하지 않으면 확정판정을 하지 않습니다.")
+    st.caption("최신 공식본과 프로그램 감시 기준선이 일치하지 않으면 확정판정을 하지 않습니다.")
 
 if "step" not in st.session_state:
     st.session_state.step = 1
@@ -114,7 +114,7 @@ if diagnosis is not None:
         st.info("회사 입력자료의 기본 형식 검증은 통과했습니다. 다음 단계에서 검증된 화사계·PSM 규칙 DB를 연결합니다.")
 
 with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=False):
-    st.caption("일반 사용자가 입력하는 영역이 아닙니다. 법제처 API 현행본과 프로그램에 승인된 기준선을 비교합니다.")
+    st.caption("일반 사용자가 입력하는 영역이 아닙니다. 법제처 API 현행본과 프로그램의 감시 기준선을 비교합니다.")
 
     if api_credential["status"] != "READY":
         st.warning("LAW_OC가 설정되지 않았습니다. 프로젝트 루트의 .env 또는 운영체제 환경변수에 LAW_OC를 설정하세요.")
@@ -135,46 +135,101 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
         )
     st.dataframe(pd.DataFrame(display_rows), hide_index=True, use_container_width=True)
 
-    c1, c2 = st.columns(2)
-    if c1.button("최신 법령·PDF 다시 확인", use_container_width=True):
+    if st.button("최신 법령·PDF 다시 확인", use_container_width=True):
         cached_law_monitor.clear()
         st.session_state.pop("diagnosis", None)
         st.rerun()
 
-    valid_keys = [str(row.get("key")) for row in law_rows if row.get("observation_valid")]
-    changed_keys = [
+    baseline_keys = [
         str(row.get("key"))
         for row in law_rows
-        if row.get("observation_valid") and row.get("monitor_status") != "CURRENT"
+        if row.get("observation_valid") and row.get("monitor_status") == "BASELINE_UNAPPROVED"
+    ]
+    update_keys = [
+        str(row.get("key"))
+        for row in law_rows
+        if row.get("observation_valid") and row.get("monitor_status") == "UPDATE_PENDING"
+    ]
+    unverified_keys = [
+        str(row.get("key"))
+        for row in law_rows
+        if row.get("monitor_status") == "UNVERIFIED"
     ]
 
-    st.divider()
-    st.markdown("**기준선 승인(관리자 전용)**")
-    st.warning(
-        "이 버튼은 단순히 경고를 없애는 버튼이 아닙니다. 해당 최신 법령/PDF를 실제로 프로그램의 규제DB·학습/RAG 자료에 반영하고 검토한 뒤에만 승인해야 합니다."
-    )
-    selected_keys = st.multiselect(
-        "반영·검토를 완료한 자료만 선택",
-        options=valid_keys,
-        default=[],
-        help="변경이 감지된 자료는 새 PDF 재반영이 끝난 뒤 선택하세요.",
-    )
-    confirmed = st.checkbox("선택한 공식 법령/PDF의 프로그램 반영과 검토를 완료했음을 확인합니다.")
-    if c2.button(
-        "선택 자료를 최신 기준선으로 승인",
-        disabled=not (selected_keys and confirmed),
-        use_container_width=True,
-    ):
-        result = approve_latest_observation(selected_keys)
-        st.success(result.get("message", "기준선 저장 완료"))
-        cached_law_monitor.clear()
-        st.session_state.pop("diagnosis", None)
-        st.rerun()
+    if baseline_keys:
+        st.divider()
+        st.markdown("**최초 감시 기준선 등록**")
+        st.info(
+            "처음 실행할 때는 비교할 과거 해시가 없기 때문에 정상적으로 '최초 기준선 승인 필요'가 표시됩니다. "
+            "아래 작업은 현재 법제처 공식본의 시행정보와 PDF 해시를 '변경 감시용 기준선'으로 저장하는 절차입니다. "
+            "규제DB/RAG 반영 완료를 의미하지 않습니다."
+        )
+        initial_selected = st.multiselect(
+            "최초 기준선으로 등록할 공식 자료",
+            options=baseline_keys,
+            default=baseline_keys,
+            key="initial_baseline_selection",
+        )
+        initial_confirmed = st.checkbox(
+            "현재 조회된 법제처 공식본을 최초 변경감시 기준선으로 등록합니다.",
+            key="initial_baseline_confirm",
+        )
+        if st.button(
+            "선택 자료를 최초 감시 기준선으로 등록",
+            disabled=not (initial_selected and initial_confirmed),
+            use_container_width=True,
+        ):
+            result = approve_latest_observation(initial_selected)
+            st.success(
+                f"최초 감시 기준선 {result.get('approved', 0)}개를 등록했습니다. "
+                "이 작업만으로 화사계·PSM 규칙 DB가 구축되거나 법적 판정이 활성화되는 것은 아닙니다."
+            )
+            cached_law_monitor.clear()
+            st.session_state.pop("diagnosis", None)
+            st.rerun()
 
-    if changed_keys:
+    if update_keys:
+        st.divider()
+        st.markdown("**개정자료 재반영 승인(관리자 전용)**")
         st.error(
-            "변경 또는 최초 기준선 미승인 자료: " + ", ".join(changed_keys)
-            + ". 관련 PDF는 data/runtime/law_pending 아래에 해시값을 붙여 저장됩니다."
+            "아래 항목은 최초 등록이 아니라 기존 감시 기준선과 실제로 달라진 자료입니다. "
+            "관련 최신 법령/PDF를 규제DB·RAG·판정규칙에 반영하고 검토하기 전에는 승인하면 안 됩니다."
+        )
+        changed_selected = st.multiselect(
+            "재반영·검토를 완료한 자료만 선택",
+            options=update_keys,
+            default=[],
+            key="changed_baseline_selection",
+        )
+        changed_confirmed = st.checkbox(
+            "선택한 개정 법령/PDF의 프로그램 반영과 검토를 완료했습니다.",
+            key="changed_baseline_confirm",
+        )
+        if st.button(
+            "재반영 완료 자료를 최신 기준선으로 승인",
+            disabled=not (changed_selected and changed_confirmed),
+            use_container_width=True,
+        ):
+            result = approve_latest_observation(changed_selected)
+            st.success(result.get("message", "기준선 저장 완료"))
+            cached_law_monitor.clear()
+            st.session_state.pop("diagnosis", None)
+            st.rerun()
+
+    if baseline_keys:
+        st.warning(
+            "최초 감시 기준선 미등록 자료: " + ", ".join(baseline_keys)
+            + ". 현재 공식 PDF는 data/runtime/law_pending 아래에 해시값을 붙여 보관됩니다."
+        )
+    if update_keys:
+        st.error(
+            "실제 변경 감지 자료: " + ", ".join(update_keys)
+            + ". 최신 PDF 재반영·검토가 끝날 때까지 관련 판정은 보류됩니다."
+        )
+    if unverified_keys:
+        st.error(
+            "공식 최신본 확인 실패/별표 확인 필요: " + ", ".join(unverified_keys)
+            + ". 이 자료는 기준선 등록 대상에서도 제외됩니다."
         )
 
     with st.expander("감시대상 registry"):
