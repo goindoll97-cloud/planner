@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -21,6 +23,60 @@ from engine.template import build_minimal_input_workbook
 
 
 st.set_page_config(page_title="화학안전 계획서 작성 지원", page_icon="🧪", layout="wide")
+
+# Interactive st.dataframe grids can be GPU-heavy on some Windows/Chrome setups
+# and may show scroll after-images.  Small administrative tables are rendered as
+# plain HTML instead; candidate previews are also limited to a compact sample.
+st.markdown(
+    """
+    <style>
+    html, body, [data-testid="stAppViewContainer"] { scroll-behavior: auto !important; }
+    .planner-table-wrap {
+        width: 100%; overflow-x: auto; overflow-y: visible;
+        border: 1px solid rgba(128,128,128,.25); border-radius: 6px;
+        margin: .25rem 0 .75rem 0;
+    }
+    table.planner-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+    table.planner-table th, table.planner-table td {
+        border-bottom: 1px solid rgba(128,128,128,.20);
+        padding: .38rem .48rem; text-align: left; vertical-align: top;
+        white-space: normal;
+    }
+    table.planner-table th { font-weight: 650; background: rgba(128,128,128,.08); }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def _static_table(df: pd.DataFrame, max_rows: int = 30) -> None:
+    if df is None or df.empty:
+        st.caption("표시할 행이 없습니다.")
+        return
+    shown = df.head(max_rows).copy()
+    html = shown.to_html(index=False, escape=True, border=0, classes="planner-table")
+    st.markdown(f'<div class="planner-table-wrap">{html}</div>', unsafe_allow_html=True)
+    if len(df) > max_rows:
+        st.caption(f"화면 성능을 위해 {len(df):,}행 중 앞 {max_rows:,}행만 표시합니다.")
+
+
+def _candidate_sample(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or len(df) <= 24:
+        return df
+    head = df.head(18).copy()
+    tail = df.tail(6).copy()
+    return pd.concat([head, tail], ignore_index=True)
+
+
+def _checks_frame(checks: dict[str, object]) -> pd.DataFrame:
+    rows = []
+    for key, value in checks.items():
+        if isinstance(value, (dict, list, tuple)):
+            display = json.dumps(value, ensure_ascii=False)
+        else:
+            display = value
+        rows.append({"검사항목": key, "값": display})
+    return pd.DataFrame(rows)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -82,7 +138,7 @@ if uploaded is not None:
         c3.metric("업종/생산품", str(intake.business.get("업종 또는 주요 생산품") or "미입력"))
 
         with st.expander("업로드 내용 미리보기"):
-            st.dataframe(inventory_preview(intake), hide_index=True, use_container_width=True)
+            _static_table(inventory_preview(intake), max_rows=30)
 
         st.header("3. 1차 사전진단")
         st.caption("법령·별표 최신성부터 확인한 뒤 입력자료 검증과 승인된 규제DB의 결정규칙을 적용합니다.")
@@ -126,7 +182,7 @@ if diagnosis is not None:
             )
             if "규정량 대비" in hit_df.columns:
                 hit_df["규정량 대비"] = pd.to_numeric(hit_df["규정량 대비"], errors="coerce").round(3)
-            st.dataframe(hit_df, hide_index=True, use_container_width=True)
+            _static_table(hit_df, max_rows=30)
 
     questions = followup_questions(diagnosis)
     if questions:
@@ -158,7 +214,7 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
                 "변경/경고": " / ".join(str(value) for value in reasons),
             }
         )
-    st.dataframe(pd.DataFrame(display_rows), hide_index=True, use_container_width=True)
+    _static_table(pd.DataFrame(display_rows), max_rows=30)
 
     if st.button("최신 법령·PDF 다시 확인", use_container_width=True):
         cached_law_monitor.clear()
@@ -297,7 +353,7 @@ with st.expander("관리자용: 법령·별표 PDF 변경 감시", expanded=Fals
         )
 
     with st.expander("감시대상 registry"):
-        st.dataframe(pd.DataFrame(source_rows()), hide_index=True, use_container_width=True)
+        _static_table(pd.DataFrame(source_rows()), max_rows=30)
 
 with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
     st.caption(
@@ -309,10 +365,9 @@ with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
     db_status = approved_db_status().copy()
     if not db_status.empty:
         db_status["상태"] = db_status["approved"].map({True: "승인됨", False: "미승인"})
-        st.dataframe(
+        _static_table(
             db_status[["key", "상태", "rows", "file"]].rename(columns={"rows": "행수", "file": "파일"}),
-            hide_index=True,
-            use_container_width=True,
+            max_rows=20,
         )
 
     c1, c2 = st.columns(2)
@@ -343,11 +398,18 @@ with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
                 st.info(message)
             else:
                 st.warning(message)
+
         if result.checks:
-            st.json(result.checks)
+            with st.expander("추출 품질검사 상세", expanded=True):
+                _static_table(_checks_frame(result.checks), max_rows=50)
+
         preview = candidate_preview(db_key)
         if not preview.empty:
-            st.dataframe(preview, hide_index=True, use_container_width=True, height=420)
+            with st.expander("후보표 미리보기", expanded=False):
+                sample = _candidate_sample(preview)
+                _static_table(sample, max_rows=30)
+                if len(preview) > len(sample):
+                    st.caption(f"전체 후보는 {len(preview):,}행이며 화면에는 앞 18행과 마지막 6행만 표시합니다.")
 
         can_approve = result.status == "REVIEW_REQUIRED" and not preview.empty
         confirmed = st.checkbox(
