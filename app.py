@@ -12,12 +12,10 @@ from engine.law_monitor import (
     run_law_monitor,
     source_rows,
 )
-from engine.regulatory_tables import (
-    approve_candidate,
-    approved_db_status,
+from engine.regulatory_tables import approve_candidate, approved_db_status, candidate_preview
+from engine.regulatory_tables_safe import (
     build_cap_accident_quantity_candidate,
     build_psm_annex13_candidate,
-    candidate_preview,
 )
 from engine.template import build_minimal_input_workbook
 
@@ -319,11 +317,11 @@ with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
 
     c1, c2 = st.columns(2)
     if c1.button("PSM 별표 13 후보 추출", use_container_width=True):
-        with st.spinner("현행 산업안전보건법 시행령 별표 13을 구조화하고 있습니다..."):
+        with st.spinner("현행 산업안전보건법 시행령 별표 13 전체 페이지를 구조화하고 있습니다..."):
             st.session_state["psm_candidate_result"] = build_psm_annex13_candidate()
         st.rerun()
     if c2.button("화사계 사고대비물질 규정수량 후보 추출", use_container_width=True):
-        with st.spinner("현행 유해화학물질 규정수량 고시 별표 3을 구조화하고 있습니다..."):
+        with st.spinner("현행 유해화학물질 규정수량 고시 별표 3 전체 페이지를 구조화하고 있습니다..."):
             st.session_state["cap3_candidate_result"] = build_cap_accident_quantity_candidate()
         st.rerun()
 
@@ -353,7 +351,7 @@ with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
 
         can_approve = result.status == "REVIEW_REQUIRED" and not preview.empty
         confirmed = st.checkbox(
-            "공식 PDF와 자동추출 표의 물질명·CAS·규정량 및 행수를 확인했습니다.",
+            "공식 PDF와 자동추출 표의 물질명·CAS·규정량 및 첫/마지막 행을 확인했습니다.",
             key=f"approve_confirm_{db_key}",
             disabled=not can_approve,
         )
