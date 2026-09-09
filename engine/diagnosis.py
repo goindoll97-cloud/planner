@@ -15,36 +15,53 @@ class PreliminaryDiagnosis:
     messages: list[str]
 
 
+def _rows_for_regime(
+    rows: list[dict[str, object]] | None,
+    regime: str,
+) -> list[dict[str, object]]:
+    return [row for row in (rows or []) if str(row.get("regime", "")) == regime]
+
+
 def run_preliminary_diagnosis(
     intake: IntakeData,
     law_status_rows: list[dict[str, object]] | None = None,
 ) -> PreliminaryDiagnosis:
-    """Run only the gates that are safe before validated regulatory DBs are connected.
+    """Run safe input/latest-law gates before the validated rule DBs are connected.
 
-    v0.1 intentionally does NOT infer CAP group or PSM applicability from general
-    knowledge. The next implementation stage will plug verified regulatory tables
-    and deterministic rules into this function.
+    CAP and PSM law freshness are gated independently. A PSM-only law/PDF update
+    therefore does not unnecessarily block the CAP branch, and vice versa.
     """
     missing = validate_intake(intake)
-    sync = overall_sync_gate(law_status_rows)
+    all_sync = overall_sync_gate(law_status_rows)
+    cap_sync = overall_sync_gate(_rows_for_regime(law_status_rows, "화사계"))
+    psm_sync = overall_sync_gate(_rows_for_regime(law_status_rows, "PSM"))
     messages: list[str] = []
 
     if missing:
         messages.append("필수 입력값이 부족하여 규제 대상 여부를 확정하지 않습니다.")
-    if sync["decision"] == "HOLD":
-        messages.append(sync["message"])
 
-    if missing or sync["decision"] == "HOLD":
+    if cap_sync["decision"] == "HOLD":
+        messages.append(f"화사계 법령 게이트: {cap_sync['message']}")
+    if psm_sync["decision"] == "HOLD":
+        messages.append(f"PSM 법령 게이트: {psm_sync['message']}")
+
+    if missing or cap_sync["decision"] == "HOLD":
         cap = "판정보류"
+    else:
+        cap = "규제DB 연결 대기"
+
+    if missing or psm_sync["decision"] == "HOLD":
         psm = "판정보류"
     else:
-        # This branch will be replaced by verified CAP/PSM rule engines.
-        cap = "규제DB 연결 대기"
         psm = "규제DB 연결 대기"
-        messages.append("입력자료는 준비되었으나 화사계·PSM 검증 규칙 DB가 아직 연결되지 않았습니다.")
+
+    if not missing and cap == "규제DB 연결 대기":
+        messages.append("화사계 최신성·입력 게이트는 통과했으며, 다음 단계에서 검증된 화사계 규정수량/면제 규칙 DB를 연결합니다.")
+    if not missing and psm == "규제DB 연결 대기":
+        messages.append("PSM 최신성·입력 게이트는 통과했으며, 다음 단계에서 검증된 PSM 별표 13/대상업종 규칙 DB를 연결합니다.")
 
     return PreliminaryDiagnosis(
-        law_status=sync["label"],
+        law_status=all_sync["label"],
         cap_result=cap,
         psm_result=psm,
         missing_items=missing,
