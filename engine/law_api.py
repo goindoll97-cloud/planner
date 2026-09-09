@@ -98,6 +98,17 @@ def _date_key(value: Any) -> int:
         return 0
 
 
+def _is_deleted_attachment(title: str) -> bool:
+    """Return True for official placeholder appendices/forms whose content is deleted.
+
+    The Open API may expose current attachment records such as ``<삭제>`` or
+    ``삭제``.  Those PDFs are not operative regulatory content and must not be
+    hashed as if they were active annexes.
+    """
+    normalized = re.sub(r"[\s<>\[\]{}()]+", "", _clean(title))
+    return normalized in {"삭제", "폐지"} or normalized.startswith("삭제")
+
+
 def search_current_source(title: str, target: str, timeout: int = 45) -> dict[str, Any]:
     """Find the exact current law/administrative-rule record by official title."""
     credential, source = get_api_credential()
@@ -228,26 +239,54 @@ def fetch_source_payload(search_result: dict[str, Any], target: str, timeout: in
 
 
 def extract_attachments(payload: Any) -> list[dict[str, str]]:
-    """Extract official appendix/form links from law/admrul JSON payloads."""
+    """Extract active official appendix/form links from law/admrul JSON payloads.
+
+    Deleted placeholder records are ignored.  Duplicate records that point to
+    the same official PDF/HWP URL are also collapsed so the same attachment is
+    not downloaded twice merely because the API returned two metadata shapes.
+    """
     found: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str, str]] = set()
+    seen_urls: set[tuple[str, str]] = set()
+    seen_meta: set[tuple[str, str, str, str, str]] = set()
+
     for record in _recursive_dicts(payload):
         pdf_path = _clean(record.get("별표서식PDF파일링크"))
         hwp_path = _clean(record.get("별표서식파일링크"))
         if not pdf_path and not hwp_path:
             continue
+
+        title = _clean(record.get("별표제목"))
+        if _is_deleted_attachment(title):
+            continue
+
+        pdf_url = urljoin(LAW_BASE_URL, pdf_path) if pdf_path else ""
+        hwp_url = urljoin(LAW_BASE_URL, hwp_path) if hwp_path else ""
+        url_signature = (pdf_url, hwp_url)
+        if url_signature != ("", "") and url_signature in seen_urls:
+            continue
+
         item = {
             "appendix_no": _normalize_appendix_no(record.get("별표번호")),
             "appendix_branch": _normalize_appendix_no(record.get("별표가지번호")),
             "appendix_kind": _clean(record.get("별표구분")),
-            "appendix_title": _clean(record.get("별표제목")),
-            "pdf_url": urljoin(LAW_BASE_URL, pdf_path) if pdf_path else "",
-            "hwp_url": urljoin(LAW_BASE_URL, hwp_path) if hwp_path else "",
+            "appendix_title": title,
+            "pdf_url": pdf_url,
+            "hwp_url": hwp_url,
         }
-        signature = (item["appendix_no"], item["appendix_title"], item["pdf_url"], item["hwp_url"])
-        if signature not in seen:
-            seen.add(signature)
-            found.append(item)
+        meta_signature = (
+            item["appendix_kind"],
+            item["appendix_no"],
+            item["appendix_branch"],
+            item["appendix_title"],
+            item["pdf_url"] or item["hwp_url"],
+        )
+        if meta_signature in seen_meta:
+            continue
+
+        if url_signature != ("", ""):
+            seen_urls.add(url_signature)
+        seen_meta.add(meta_signature)
+        found.append(item)
     return found
 
 
