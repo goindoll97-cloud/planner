@@ -25,7 +25,7 @@ from engine.template import build_minimal_input_workbook
 st.set_page_config(page_title="화학안전 계획서 작성 지원", page_icon="🧪", layout="wide")
 
 # Interactive st.dataframe grids can be GPU-heavy on some Windows/Chrome setups
-# and may show scroll after-images.  Small administrative tables are rendered as
+# and may show scroll after-images. Small administrative tables are rendered as
 # plain HTML instead; candidate previews are also limited to a compact sample.
 st.markdown(
     """
@@ -164,25 +164,65 @@ if diagnosis is not None:
     for message in diagnosis.messages:
         st.warning(message)
 
+    if diagnosis.psm_r_value is not None:
+        st.subheader("PSM 별표 13 규정량 합산")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("현재 확인된 합산값 R", f"{diagnosis.psm_r_value:.4f}")
+        r2.metric("R 기준", "1 이상" if diagnosis.psm_r_value >= 1.0 else "1 미만")
+        r3.metric("산정 완결성", "완전" if diagnosis.psm_r_complete else "추가확인 필요")
+        st.caption(
+            "별표 13 비고 제7호 방식으로 각 유해·위험물질의 제조·취급 C/T와 저장 C/T 중 큰 값을 구한 뒤 합산합니다. "
+            "R이 1 이상이면 규정량 기준의 PSM 대상 트리거가 됩니다."
+        )
+
+    if diagnosis.psm_ratio_details:
+        with st.expander("PSM 물질별 C/T 및 R 기여도", expanded=True):
+            ratio_df = pd.DataFrame(diagnosis.psm_ratio_details).rename(
+                columns={
+                    "legal_item_no": "별표13 번호",
+                    "legal_substance": "법정 물질명",
+                    "source_rows": "회사 입력행",
+                    "cas_values": "CAS",
+                    "manufacture_handling_kg": "제조·취급 환산량(kg)",
+                    "storage_kg": "저장 환산량(kg)",
+                    "manufacture_handling_threshold_kg": "제조·취급 규정량(kg)",
+                    "storage_threshold_kg": "저장 규정량(kg)",
+                    "manufacture_handling_ratio": "제조·취급 C/T",
+                    "storage_ratio": "저장 C/T",
+                    "controlling_ratio": "R 기여값",
+                    "controlling_basis": "선택 기준",
+                    "quantity_basis": "함량·환산 근거",
+                }
+            )
+            for col in ["제조·취급 C/T", "저장 C/T", "R 기여값"]:
+                if col in ratio_df.columns:
+                    ratio_df[col] = pd.to_numeric(ratio_df[col], errors="coerce").round(4)
+            _static_table(ratio_df, max_rows=60)
+
     if diagnosis.psm_details:
-        with st.expander("PSM 규정량 기준 초과 근거", expanded=True):
+        with st.expander("PSM 개별 물질 규정량 이상 항목", expanded=False):
             hit_df = pd.DataFrame(diagnosis.psm_details).rename(
                 columns={
-                    "row_no": "입력행",
+                    "row_no": "대표 입력행",
                     "product_name": "제품명",
                     "cas": "CAS",
                     "legal_item_no": "별표13 번호",
                     "legal_substance": "법정 물질명",
-                    "quantity_kind": "수량구분",
-                    "quantity_kg": "입력량(kg)",
+                    "quantity_kind": "최대비율 수량구분",
+                    "quantity_kg": "환산량(kg)",
                     "threshold_kg": "규정량(kg)",
-                    "ratio": "규정량 대비",
+                    "ratio": "C/T",
                     "basis": "법적근거",
                 }
             )
-            if "규정량 대비" in hit_df.columns:
-                hit_df["규정량 대비"] = pd.to_numeric(hit_df["규정량 대비"], errors="coerce").round(3)
+            if "C/T" in hit_df.columns:
+                hit_df["C/T"] = pd.to_numeric(hit_df["C/T"], errors="coerce").round(4)
             _static_table(hit_df, max_rows=30)
+
+    if diagnosis.psm_blockers:
+        with st.expander("PSM 판정 보류/추가확인 사유", expanded=False):
+            for blocker in diagnosis.psm_blockers:
+                st.write(f"• {blocker}")
 
     questions = followup_questions(diagnosis)
     if questions:
@@ -429,8 +469,8 @@ with st.expander("관리자용: 규정수량 구조화 DB", expanded=False):
             st.rerun()
 
     st.warning(
-        "PSM 별표 13 승인 후에는 exact CAS·수량 기준의 PSM 사전판정이 활성화됩니다. "
-        "인화성 가스/액체, 대상업종 특수조건, 시행령 제43조제2항 제외설비는 추가 질문으로 남깁니다. "
+        "PSM 별표 13 승인 후에는 exact CAS, 함량/순도 환산, 제조·취급/저장 규정량 비교와 다물질 합산 R의 사전판정이 활성화됩니다. "
+        "인화성 가스/액체, 별도 성분조건, 대상업종 특수조건, 시행령 제43조제2항 제외설비는 필요한 경우 추가 질문으로 남깁니다. "
         "화사계는 별표 1~4와 면제·작성수준 규칙을 모두 검증하기 전까지 최종 1군/2군 판정을 활성화하지 않습니다."
     )
 
