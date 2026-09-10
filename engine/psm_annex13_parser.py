@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import statistics
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +17,6 @@ from .regulatory_tables import (
     CandidateResult,
     _clean,
     _pick_pdf,
-    _tables_from_pdf,
     _write_json,
     observed_source,
 )
@@ -38,11 +38,10 @@ PSM_COLUMNS = [
     "source_pdf_sha256",
 ]
 
-CURRENT_ITEM_COUNT = 34
-
-
-def _norm(value: Any) -> str:
-    return re.sub(r"[^0-9A-Za-z가-힣%]", "", _clean(value)).lower()
+# Current monitored 산업안전보건법 시행령 별표 13 has items 1-51.
+# If the official PDF/version changes, the law monitor blocks use until this
+# parser and its anchors are reviewed against the amended appendix.
+CURRENT_ITEM_COUNT = 51
 
 
 def _source_hash_for_path(source: dict[str, Any], path: Path) -> str:
@@ -64,41 +63,22 @@ def _word_text(words: list[dict[str, Any]]) -> str:
     return _clean(" ".join(str(w.get("text", "")) for w in ordered))
 
 
-def _header_bottom(words: list[dict[str, Any]]) -> float:
-    hits = [
-        float(w.get("bottom", w.get("top", 0)))
-        for w in words
-        if any(token in _norm(w.get("text", "")) for token in ("유해위험물질", "cas", "규정량"))
-    ]
-    return max(hits) if hits else 0.0
-
-
-def _name_header_x(words: list[dict[str, Any]], width: float) -> float:
-    hits = [
-        float(w.get("x0", 0))
-        for w in words
-        if "유해위험물질" in _norm(w.get("text", ""))
-    ]
-    return min(hits) if hits else width * 0.12
-
-
 def _parse_quantity_text(text: str, item_no: int) -> tuple[float | None, float | None, str]:
-    """Parse one Annex 13 quantity cell/segment.
+    """Parse one Annex 13 quantity cell.
 
-    Items 1-2 have separate manufacture/handling and storage values. Items 3-34
-    have one value applying to manufacture/handling/storage. Only the quantity
-    segment is passed to this function so percentages in substance names do not
-    contaminate the numeric parse.
+    Items 1-2 have separate manufacture/handling and storage thresholds.
+    Items 3-51 have one threshold applying to manufacture/handling/storage.
+    The caller passes only the quantity column, so CAS numbers and percentage
+    values in substance names cannot contaminate the numeric parse.
     """
     raw = _clean(text)
-    compact = raw.replace(",", "")
-    nums = [float(v) for v in re.findall(r"\d+(?:\.\d+)?", compact)]
-    if not nums:
-        return None, None, raw
+    nums = [float(v) for v in re.findall(r"\d+(?:\.\d+)?", raw.replace(",", ""))]
     if item_no in (1, 2):
         if len(nums) < 2:
             return None, None, raw
         return nums[0], nums[1], raw
+    if not nums:
+        return None, None, raw
     return nums[0], nums[0], raw
 
 
@@ -129,46 +109,82 @@ def _make_record(
     }
 
 
-def _semantic_row_parse(row_text: str, item_no: int) -> tuple[str, str, str]:
-    text = _clean(row_text)
-    text = re.sub(rf"^\s*{item_no}\s+", "", text, count=1)
-    cas_list = CAS_RE.findall(text)
-    cas_text = ", ".join(cas_list)
-
-    qty_match = re.search(r"제\s*조", text)
-    qty_pos = qty_match.start() if qty_match else -1
-    qty_text = text[qty_pos:] if qty_pos >= 0 else ""
-
-    if cas_list:
-        first_pos = text.find(cas_list[0])
-        name = text[:first_pos] if first_pos >= 0 else text
-    elif qty_pos >= 0:
-        name = text[:qty_pos]
-    else:
-        name = text
-
-    name = re.sub(r"\s*[-–—]\s*$", "", name).strip()
-    name = re.sub(r"^[-–—]\s*", "", name).strip()
-    return _clean(name), cas_text, qty_text
+def _note_top(words: list[dict[str, Any]], page_height: float) -> float:
+    """Return the start of the '비고' block so legal notes are not parsed as rows."""
+    hits = [
+        float(w.get("top", page_height))
+        for w in words
+        if str(w.get("text", "")).strip() == "비고"
+    ]
+    return min(hits) if hits else page_height - 20.0
 
 
-def _coordinate_rows(
+def _table_quantity_markers(
+    words: list[dict[str, Any]],
+    note_top: float,
+) -> list[dict[str, Any]]:
+    """Use the repeated '제조...' text in the quantity column as row anchors.
+
+    The official PDF has vertical column rules but no horizontal row rules.
+    Item numbers can sit below the first visual line on wrapped rows (e.g. 23,
+    42), whereas every legal row starts with one quantity phrase in the right
+    column. This marker is therefore a more reliable row boundary than the item
+    number's y coordinate.
+    """
+    markers = [
+        w
+        for w in words
+        if "제조" in str(w.get("text", ""))
+        and float(w.get("x0", 0)) > 300.0
+        and float(w.get("top", 0)) < note_top
+    ]
+    return sorted(markers, key=lambda w: float(w.get("top", 0)))
+
+
+def _infer_column_boundaries(
+    page_payloads: list[tuple[Any, list[dict[str, Any]], float, list[dict[str, Any]]]]
+) -> tuple[float, float, float]:
+    """Infer stable name/CAS/quantity column boundaries from the official PDF."""
+    cas_x: list[float] = []
+    qty_x: list[float] = []
+    number_x: list[float] = []
+
+    for _, words, note_top, markers in page_payloads:
+        qty_x.extend(float(w.get("x0", 0)) for w in markers)
+        for w in words:
+            top = float(w.get("top", 0))
+            if top >= note_top:
+                continue
+            text = str(w.get("text", "")).strip()
+            if CAS_RE.search(text):
+                cas_x.append(float(w.get("x0", 0)))
+            if re.fullmatch(r"\d{1,2}", text):
+                x0 = float(w.get("x0", 0))
+                if x0 < 100.0:
+                    number_x.append(x0)
+
+    # These fallbacks correspond only to coarse column regions. Current-version
+    # anchors below must still pass before approval is enabled.
+    name_start = (max(number_x) + 5.0) if number_x else 82.0
+    cas_start = (statistics.median(cas_x) - 12.0) if cas_x else 270.0
+    qty_start = (statistics.median(qty_x) - 8.0) if qty_x else 343.0
+    return name_start, cas_start, qty_start
+
+
+def _column_marker_rows(
     path: Path,
     source: dict[str, Any],
     source_hash: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Reconstruct rows from item-number y positions.
-
-    This parser is retained as an independent fallback. It can fail on rows where
-    the quantity text is vertically offset relative to the item number, so the
-    column-stack parser below is preferred whenever it reconstructs a cleaner
-    official table.
-    """
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, float]]:
+    """Parse Annex 13 using quantity-column row markers and x-column separation."""
     records: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
 
     with pdfplumber.open(path) as pdf:
-        for page_no, page in enumerate(pdf.pages, 1):
+        page_payloads: list[
+            tuple[Any, list[dict[str, Any]], float, list[dict[str, Any]]]
+        ] = []
+        for page in pdf.pages:
             try:
                 words = page.extract_words(
                     x_tolerance=1.5,
@@ -178,302 +194,213 @@ def _coordinate_rows(
                 ) or []
             except Exception:
                 words = []
-            if not words:
+            note_top = _note_top(words, float(page.height))
+            markers = _table_quantity_markers(words, note_top)
+            page_payloads.append((page, words, note_top, markers))
+
+        name_start, cas_start, qty_start = _infer_column_boundaries(page_payloads)
+        expected = 1
+
+        for page_no, (page, words, note_top, markers) in enumerate(page_payloads, 1):
+            accepted_on_page: list[int] = []
+            marker_rows: list[dict[str, Any]] = []
+
+            if expected > CURRENT_ITEM_COUNT:
+                diagnostics.append(
+                    {
+                        "page": page_no,
+                        "quantity_markers_before_notes": len(markers),
+                        "accepted_items": [],
+                        "note_top": round(note_top, 1),
+                    }
+                )
                 continue
 
-            width = float(page.width)
-            header_bottom = _header_bottom(words)
-            name_x = _name_header_x(words, width)
+            for idx, marker in enumerate(markers):
+                if expected > CURRENT_ITEM_COUNT:
+                    break
 
-            anchors: list[tuple[int, dict[str, Any]]] = []
-            for word in words:
-                token = str(word.get("text", "")).strip()
-                if not re.fullmatch(r"\d{1,2}", token):
-                    continue
-                no = int(token)
-                if not 1 <= no <= CURRENT_ITEM_COUNT:
-                    continue
-                x0 = float(word.get("x0", 0))
-                top = float(word.get("top", 0))
-                if x0 >= name_x or top <= header_bottom:
-                    continue
-                anchors.append((no, word))
+                top = float(marker.get("top", 0)) - 2.0
+                bottom = (
+                    float(markers[idx + 1].get("top", 0)) - 2.0
+                    if idx + 1 < len(markers)
+                    else note_top
+                )
+                row_words = [
+                    w
+                    for w in words
+                    if top <= float(w.get("top", 0)) < bottom
+                ]
 
-            by_no: dict[int, dict[str, Any]] = {}
-            for no, word in anchors:
-                old = by_no.get(no)
-                if old is None or float(word.get("x0", 0)) < float(old.get("x0", 0)):
-                    by_no[no] = word
-            anchors = sorted(by_no.items(), key=lambda p: float(p[1].get("top", 0)))
+                left_numbers = [
+                    int(str(w.get("text", "")).strip())
+                    for w in row_words
+                    if float(w.get("x0", 0)) < name_start
+                    and re.fullmatch(r"\d{1,2}", str(w.get("text", "")).strip())
+                ]
+
+                # The monitored current PDF must expose the next exact legal item
+                # number inside each quantity-marker band. Do not guess if absent.
+                if expected not in left_numbers:
+                    marker_rows.append(
+                        {
+                            "expected_item": expected,
+                            "found_left_numbers": left_numbers,
+                            "top": round(top, 1),
+                            "bottom": round(bottom, 1),
+                            "accepted": False,
+                        }
+                    )
+                    continue
+
+                name_words = [
+                    w
+                    for w in row_words
+                    if name_start <= float(w.get("x0", 0)) < cas_start
+                ]
+                cas_words = [
+                    w
+                    for w in row_words
+                    if cas_start <= float(w.get("x0", 0)) < qty_start
+                ]
+                qty_words = [
+                    w for w in row_words if float(w.get("x0", 0)) >= qty_start
+                ]
+
+                name = _word_text(name_words)
+                cas_text = _word_text(cas_words)
+                qty_text = _word_text(qty_words)
+                records.append(
+                    _make_record(
+                        source,
+                        source_hash,
+                        expected,
+                        name,
+                        cas_text,
+                        qty_text,
+                    )
+                )
+                accepted_on_page.append(expected)
+                marker_rows.append(
+                    {
+                        "expected_item": expected,
+                        "found_left_numbers": left_numbers,
+                        "top": round(top, 1),
+                        "bottom": round(bottom, 1),
+                        "accepted": True,
+                    }
+                )
+                expected += 1
 
             diagnostics.append(
                 {
                     "page": page_no,
-                    "number_candidates": [no for no, _ in anchors],
-                    "header_bottom": round(header_bottom, 1),
-                    "name_header_x": round(name_x, 1),
+                    "quantity_markers_before_notes": len(markers),
+                    "accepted_items": accepted_on_page,
+                    "note_top": round(note_top, 1),
+                    "marker_rows": marker_rows,
                 }
             )
-            if not anchors:
-                continue
 
-            # Use midpoint row boundaries rather than the next item's top edge.
-            # This reduces cross-row leakage when quantity text is centered a few
-            # points above/below the item-number glyph.
-            centers = [
-                (float(word.get("top", 0)) + float(word.get("bottom", word.get("top", 0)))) / 2.0
-                for _, word in anchors
-            ]
-            bounds: list[tuple[float, float]] = []
-            for idx, center in enumerate(centers):
-                upper = header_bottom if idx == 0 else (centers[idx - 1] + center) / 2.0
-                lower = float(page.height) - 28.0 if idx + 1 == len(centers) else (center + centers[idx + 1]) / 2.0
-                bounds.append((upper, lower))
-
-            for (no, anchor), (top, bottom) in zip(anchors, bounds):
-                row_words = []
-                for w in words:
-                    w_center = (
-                        float(w.get("top", 0))
-                        + float(w.get("bottom", w.get("top", 0)))
-                    ) / 2.0
-                    if top <= w_center < bottom and float(w.get("x0", 0)) >= float(anchor.get("x0", 0)) - 2:
-                        row_words.append(w)
-                row_text = _word_text(row_words)
-                name, cas_text, qty_text = _semantic_row_parse(row_text, no)
-                records.append(_make_record(source, source_hash, no, name, cas_text, qty_text))
-
-    best: dict[int, dict[str, Any]] = {}
-    for record in records:
-        no = int(record["item_no"])
-        score = _record_score(record)
-        if no not in best or score > _record_score(best[no]):
-            best[no] = record
-    return [best[k] for k in sorted(best)], diagnostics
-
-
-def _cell_lines(value: Any) -> list[str]:
-    if value is None:
-        return []
-    text = str(value).replace("\r", "\n")
-    lines = []
-    for raw in text.split("\n"):
-        cleaned = _clean(raw)
-        if cleaned:
-            lines.append(cleaned)
-    return lines
-
-
-def _number_entries(text: str) -> list[int]:
-    values: list[int] = []
-    for line in _cell_lines(text):
-        for token in re.findall(r"(?<!\d)(\d{1,2})(?!\d)", line):
-            value = int(token)
-            if 1 <= value <= CURRENT_ITEM_COUNT:
-                values.append(value)
-    # Preserve order while removing duplicates caused by repeated headers.
-    return list(dict.fromkeys(values))
-
-
-def _name_entries(text: str) -> list[str]:
-    lines = [line for line in _cell_lines(text) if "유해" not in _norm(line) or "위험물질" not in _norm(line)]
-    out: list[str] = []
-    buf = ""
-    paren_balance = 0
-    for line in lines:
-        if not buf:
-            buf = line
-        else:
-            buf = f"{buf} {line}".strip()
-        paren_balance += line.count("(") - line.count(")")
-        if paren_balance <= 0:
-            out.append(_clean(buf))
-            buf = ""
-            paren_balance = 0
-    if buf:
-        out.append(_clean(buf))
-    return out
-
-
-def _cas_entries(text: str) -> list[str]:
-    lines = [line for line in _cell_lines(text) if "cas" not in _norm(line)]
-    out: list[str] = []
-    buf = ""
-    for line in lines:
-        stripped = line.strip()
-        if stripped in {"-", "–", "—"}:
-            if buf:
-                found = CAS_RE.findall(buf)
-                if found:
-                    out.append(", ".join(found))
-                buf = ""
-            out.append("")
-            continue
-        found = CAS_RE.findall(stripped)
-        if not found:
-            continue
-        buf = f"{buf} {stripped}".strip() if buf else stripped
-        if not stripped.rstrip().endswith(","):
-            combined = CAS_RE.findall(buf)
-            if combined:
-                out.append(", ".join(combined))
-            buf = ""
-    if buf:
-        combined = CAS_RE.findall(buf)
-        if combined:
-            out.append(", ".join(combined))
-    return out
-
-
-def _quantity_entries(text: str) -> list[str]:
-    """Split a stacked quantity column by the repeated legal marker '제조'."""
-    raw = str(text or "").replace("\r", "\n")
-    # PDF glyph extraction can insert spaces inside '제조'. Use a lookahead so
-    # each occurrence starts a new legal quantity entry and wrapped lines remain
-    # attached to the same item.
-    parts = re.split(r"(?=제\s*조)", raw)
-    return [_clean(part) for part in parts if re.search(r"제\s*조", part)]
-
-
-def _stacked_table_records(
-    path: Path,
-    source: dict[str, Any],
-    source_hash: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Parse the official PDF when pdfplumber returns one tall cell per column.
-
-    Some law.go.kr PDFs have vertical column rules but no horizontal row rules.
-    pdfplumber therefore returns a table whose first data cell contains
-    '1\n2\n...\n34', the second contains all substance names, and so on. This
-    method intentionally parses those four independent column stacks instead of
-    pretending they are normal row objects.
-    """
-    tables = _tables_from_pdf(path)
-    candidates: list[tuple[tuple[int, int, int, int], list[dict[str, Any]], dict[str, Any]]] = []
-
-    for table_index, item in enumerate(tables, 1):
-        rows = item.get("rows", []) or []
-        max_cols = max((len(row or []) for row in rows), default=0)
-        if max_cols < 4:
-            continue
-
-        # Try every consecutive four-column window. This tolerates a leading
-        # blank artifact column introduced by PDF table detection.
-        for start_col in range(0, max_cols - 3):
-            columns: list[str] = []
-            for col in range(start_col, start_col + 4):
-                pieces = []
-                for row in rows:
-                    if col < len(row or []) and row[col] is not None:
-                        pieces.append(str(row[col]))
-                columns.append("\n".join(pieces))
-
-            nums = _number_entries(columns[0])
-            if nums != list(range(1, CURRENT_ITEM_COUNT + 1)):
-                continue
-
-            names = _name_entries(columns[1])
-            cases = _cas_entries(columns[2])
-            quantities = _quantity_entries(columns[3])
-
-            diagnostics = {
-                "table_index": table_index,
-                "page": item.get("page"),
-                "start_col": start_col,
-                "number_count": len(nums),
-                "name_count": len(names),
-                "cas_count": len(cases),
-                "quantity_count": len(quantities),
-            }
-
-            if not (
-                len(names) == CURRENT_ITEM_COUNT
-                and len(cases) == CURRENT_ITEM_COUNT
-                and len(quantities) == CURRENT_ITEM_COUNT
-            ):
-                candidates.append(((0, len(quantities), len(cases), len(names)), [], diagnostics))
-                continue
-
-            records = [
-                _make_record(source, source_hash, no, names[idx], cases[idx], quantities[idx])
-                for idx, no in enumerate(nums)
-            ]
-            complete = sum(
-                1
-                for r in records
-                if r.get("manufacture_handling_threshold_kg") is not None
-                and r.get("storage_threshold_kg") is not None
-            )
-            anchors = _anchor_score(records)
-            score = (anchors, complete, len(records), 1)
-            candidates.append((score, records, diagnostics))
-
-    if not candidates:
-        return [], []
-    candidates.sort(key=lambda value: value[0], reverse=True)
-    best_score, best_records, best_diag = candidates[0]
-    best_diag = {**best_diag, "score": list(best_score)}
-    return best_records, [best_diag]
-
-
-def _record_score(record: dict[str, Any]) -> int:
     return (
-        1000 * int(record.get("manufacture_handling_threshold_kg") is not None)
-        + 1000 * int(record.get("storage_threshold_kg") is not None)
-        + 100 * int(bool(record.get("cas_text")) or int(record.get("item_no", 0)) in (1, 2))
-        + len(str(record.get("substance_name", "")))
+        records,
+        diagnostics,
+        {
+            "name_start_x": round(name_start, 1),
+            "cas_start_x": round(cas_start, 1),
+            "quantity_start_x": round(qty_start, 1),
+        },
     )
 
 
-def _anchor_score(records: list[dict[str, Any]]) -> int:
-    by_no = {int(r["item_no"]): r for r in records}
-    score = 0
-    row1 = by_no.get(1, {})
-    row2 = by_no.get(2, {})
-    row23 = by_no.get(23, {})
-    row34 = by_no.get(34, {})
-    if re.search(r"인화성\s*가스", str(row1.get("substance_name", ""))):
-        score += 1
-    if row1.get("manufacture_handling_threshold_kg") == 5000 and row1.get("storage_threshold_kg") == 200000:
-        score += 2
-    if re.search(r"인화성\s*액체", str(row2.get("substance_name", ""))):
-        score += 1
-    if row2.get("manufacture_handling_threshold_kg") == 5000 and row2.get("storage_threshold_kg") == 200000:
-        score += 2
-    if "8014-95-7" in str(row23.get("cas_text", "")) and row23.get("manufacture_handling_threshold_kg") == 20000:
-        score += 2
-    if "10294-34-5" in str(row34.get("cas_text", "")) and row34.get("manufacture_handling_threshold_kg") == 10000:
-        score += 2
-    return score
+def _row(df: pd.DataFrame, no: int) -> pd.Series | None:
+    part = df[df["item_no"].eq(no)]
+    return None if part.empty else part.iloc[0]
 
 
-def _choose_records(
-    stacked: list[dict[str, Any]],
-    coordinate: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
-    def score(records: list[dict[str, Any]]) -> tuple[int, int, int, int]:
-        if not records:
-            return (0, 0, 0, 0)
-        nums = sorted({int(r["item_no"]) for r in records})
-        complete = sum(
-            1
-            for r in records
-            if r.get("manufacture_handling_threshold_kg") is not None
-            and r.get("storage_threshold_kg") is not None
-        )
-        exact_range = int(nums == list(range(1, CURRENT_ITEM_COUNT + 1)))
-        return (_anchor_score(records), exact_range, complete, len(records))
+def _value(row: pd.Series | None, column: str) -> Any:
+    return None if row is None else row.get(column)
 
-    stacked_score = score(stacked)
-    coordinate_score = score(coordinate)
-    if stacked_score > coordinate_score:
-        return stacked, "COLUMN_STACK_TABLE_PARSER", {
-            "column_stack_score": list(stacked_score),
-            "coordinate_score": list(coordinate_score),
-        }
-    return coordinate, "SEMANTIC_WORD_ROW_PARSER", {
-        "column_stack_score": list(stacked_score),
-        "coordinate_score": list(coordinate_score),
+
+def _quantity_is(row: pd.Series | None, mfg: float, storage: float | None = None) -> bool:
+    if row is None:
+        return False
+    actual_mfg = pd.to_numeric(
+        pd.Series([row.get("manufacture_handling_threshold_kg")]), errors="coerce"
+    ).iloc[0]
+    actual_storage = pd.to_numeric(
+        pd.Series([row.get("storage_threshold_kg")]), errors="coerce"
+    ).iloc[0]
+    wanted_storage = mfg if storage is None else storage
+    return bool(actual_mfg == mfg and actual_storage == wanted_storage)
+
+
+def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
+    r1 = _row(df, 1)
+    r2 = _row(df, 2)
+    r23 = _row(df, 23)
+    r25 = _row(df, 25)
+    r34 = _row(df, 34)
+    r35 = _row(df, 35)
+    r37 = _row(df, 37)
+    r42 = _row(df, 42)
+    r48 = _row(df, 48)
+    r51 = _row(df, 51)
+
+    return {
+        "item1_name_ok": bool(
+            r1 is not None
+            and re.search(r"인화성\s*가스", str(_value(r1, "substance_name") or ""))
+        ),
+        "item1_quantity_ok": _quantity_is(r1, 5000, 200000),
+        "item2_name_ok": bool(
+            r2 is not None
+            and re.search(r"인화성\s*액체", str(_value(r2, "substance_name") or ""))
+        ),
+        "item2_quantity_ok": _quantity_is(r2, 5000, 200000),
+        "item23_ok": bool(
+            r23 is not None
+            and "8014-95-7" in str(_value(r23, "cas_text") or "")
+            and _quantity_is(r23, 20000)
+        ),
+        "item25_multi_cas_ok": bool(
+            r25 is not None
+            and str(_value(r25, "cas_list") or "").split("|")
+            == ["91-08-7", "584-84-9", "26471-62-5"]
+            and _quantity_is(r25, 2000)
+        ),
+        "item34_ok": bool(
+            r34 is not None
+            and "10294-34-5" in str(_value(r34, "cas_text") or "")
+            and _quantity_is(r34, 10000)
+        ),
+        "item35_page2_ok": bool(
+            r35 is not None
+            and "1338-23-4" in str(_value(r35, "cas_text") or "")
+            and _quantity_is(r35, 10000)
+        ),
+        "item37_multi_cas_ok": bool(
+            r37 is not None
+            and str(_value(r37, "cas_list") or "").split("|")
+            == ["88-74-4", "99-09-2", "100-01-6", "29757-24-2"]
+            and _quantity_is(r37, 2500)
+        ),
+        "item42_wrapped_name_ok": bool(
+            r42 is not None
+            and "12.6%" in str(_value(r42, "substance_name") or "")
+            and "9004-70-0" in str(_value(r42, "cas_text") or "")
+            and _quantity_is(r42, 100000)
+        ),
+        "item48_ok": bool(
+            r48 is not None
+            and "7664-39-3" in str(_value(r48, "cas_text") or "")
+            and _quantity_is(r48, 10000)
+        ),
+        "item51_ok": bool(
+            r51 is not None
+            and "1336-21-6" in str(_value(r51, "cas_text") or "")
+            and _quantity_is(r51, 50000)
+        ),
     }
 
 
@@ -481,10 +408,11 @@ def _validation_details(df: pd.DataFrame) -> tuple[list[str], list[int]]:
     reasons: list[str] = []
     problem_items: set[int] = set()
     numbers = df["item_no"].astype(int).tolist() if not df.empty else []
+    expected = list(range(1, CURRENT_ITEM_COUNT + 1))
 
-    if numbers != list(range(1, CURRENT_ITEM_COUNT + 1)):
-        reasons.append("번호가 1~34 전체 연속으로 추출되지 않음")
-        problem_items.update(sorted(set(range(1, CURRENT_ITEM_COUNT + 1)) - set(numbers)))
+    if numbers != expected:
+        reasons.append("번호가 1~51 전체 연속으로 추출되지 않음")
+        problem_items.update(sorted(set(expected) - set(numbers)))
 
     if not df.empty:
         bad_name = df[df["substance_name"].astype(str).str.strip().eq("")]
@@ -500,56 +428,22 @@ def _validation_details(df: pd.DataFrame) -> tuple[list[str], list[int]]:
             reasons.append(f"규정량 해석 실패 {len(bad_qty)}행")
             problem_items.update(bad_qty["item_no"].astype(int).tolist())
 
+        cas_required = df[df["item_no"].astype(int).between(3, CURRENT_ITEM_COUNT)]
+        bad_cas = cas_required[cas_required["cas_list"].astype(str).str.strip().eq("")]
+        if not bad_cas.empty:
+            reasons.append(f"CAS 누락 {len(bad_cas)}행")
+            problem_items.update(bad_cas["item_no"].astype(int).tolist())
+
     return reasons, sorted(problem_items)
-
-
-def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
-    if df.empty:
-        return {
-            "item1_name_ok": False,
-            "item1_quantity_ok": False,
-            "item2_name_ok": False,
-            "item2_quantity_ok": False,
-            "item23_cas_ok": False,
-            "item23_quantity_ok": False,
-            "item34_cas_ok": False,
-            "item34_quantity_ok": False,
-        }
-
-    def row(no: int) -> pd.DataFrame:
-        return df[df["item_no"].eq(no)]
-
-    r1, r2, r23, r34 = row(1), row(2), row(23), row(34)
-    return {
-        "item1_name_ok": bool(r1["substance_name"].astype(str).str.contains("인화성\s*가스", regex=True).any()),
-        "item1_quantity_ok": bool(
-            (pd.to_numeric(r1["manufacture_handling_threshold_kg"], errors="coerce") == 5000).any()
-            and (pd.to_numeric(r1["storage_threshold_kg"], errors="coerce") == 200000).any()
-        ),
-        "item2_name_ok": bool(r2["substance_name"].astype(str).str.contains("인화성\s*액체", regex=True).any()),
-        "item2_quantity_ok": bool(
-            (pd.to_numeric(r2["manufacture_handling_threshold_kg"], errors="coerce") == 5000).any()
-            and (pd.to_numeric(r2["storage_threshold_kg"], errors="coerce") == 200000).any()
-        ),
-        "item23_cas_ok": bool(r23["cas_text"].astype(str).str.contains("8014-95-7", regex=False).any()),
-        "item23_quantity_ok": bool(
-            (pd.to_numeric(r23["manufacture_handling_threshold_kg"], errors="coerce") == 20000).any()
-        ),
-        "item34_cas_ok": bool(r34["cas_text"].astype(str).str.contains("10294-34-5", regex=False).any()),
-        "item34_quantity_ok": bool(
-            (pd.to_numeric(r34["manufacture_handling_threshold_kg"], errors="coerce") == 10000).any()
-        ),
-    }
 
 
 def _debug_rows(df: pd.DataFrame, item_numbers: list[int]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for no in item_numbers:
-        part = df[df["item_no"].eq(no)]
-        if part.empty:
+        row = _row(df, no)
+        if row is None:
             out.append({"item_no": no, "missing": True})
             continue
-        row = part.iloc[0]
         out.append(
             {
                 "item_no": no,
@@ -580,9 +474,7 @@ def build_psm_annex13_candidate() -> CandidateResult:
         )
 
     source_hash = _source_hash_for_path(source, path)
-    stacked_records, stacked_diag = _stacked_table_records(path, source, source_hash)
-    coordinate_records, coordinate_diag = _coordinate_rows(path, source, source_hash)
-    records, parser_mode, parser_scores = _choose_records(stacked_records, coordinate_records)
+    records, page_diag, boundaries = _column_marker_rows(path, source, source_hash)
 
     df = pd.DataFrame(records, columns=PSM_COLUMNS)
     if not df.empty:
@@ -591,6 +483,11 @@ def build_psm_annex13_candidate() -> CandidateResult:
         df.reset_index(drop=True, inplace=True)
 
     failure_reasons, problem_items = _validation_details(df)
+    anchor_checks = _anchor_checks(df)
+    for key, ok in anchor_checks.items():
+        if not ok:
+            failure_reasons.append(f"현재 공식본 앵커 검사 실패: {key}")
+
     numbers = df["item_no"].astype(int).tolist() if not df.empty else []
     missing_name = int(df["substance_name"].astype(str).str.strip().eq("").sum()) if not df.empty else 0
     missing_quantity = int(
@@ -599,44 +496,45 @@ def build_psm_annex13_candidate() -> CandidateResult:
             | df["storage_threshold_kg"].isna()
         ).sum()
     ) if not df.empty else 0
-
-    anchor_checks = _anchor_checks(df)
-    for key, ok in anchor_checks.items():
-        if not ok:
-            failure_reasons.append(f"현재 공식본 앵커 검사 실패: {key}")
-            match = re.match(r"item(\d+)_", key)
-            if match:
-                problem_items = sorted(set(problem_items) | {int(match.group(1))})
+    missing_cas = int(
+        df[
+            df["item_no"].astype(int).between(3, CURRENT_ITEM_COUNT)
+            & df["cas_list"].astype(str).str.strip().eq("")
+        ].shape[0]
+    ) if not df.empty else 0
 
     validation_ok = (
         numbers == list(range(1, CURRENT_ITEM_COUNT + 1))
         and missing_name == 0
         and missing_quantity == 0
+        and missing_cas == 0
         and all(anchor_checks.values())
     )
 
-    diagnostic_items = sorted(set(problem_items) | {1, 2, 23, 34})
+    diagnostics_items = sorted(
+        set(problem_items) | {1, 2, 23, 25, 34, 35, 37, 42, 48, 51}
+    )
     checks = {
-        "parser_mode": parser_mode,
-        **parser_scores,
+        "parser_mode": "QUANTITY_MARKER_COLUMN_PARSER",
         "rows": len(df),
         "first_item": numbers[0] if numbers else None,
         "last_item": numbers[-1] if numbers else None,
         "missing_name": missing_name,
         "missing_quantity": missing_quantity,
-        "item_numbers_exactly_1_to_34": numbers == list(range(1, CURRENT_ITEM_COUNT + 1)),
+        "missing_cas_items_3_to_51": missing_cas,
+        "item_numbers_exactly_1_to_51": numbers == list(range(1, CURRENT_ITEM_COUNT + 1)),
         "problem_items": problem_items,
         "failure_reasons": list(dict.fromkeys(failure_reasons)),
         **anchor_checks,
-        "diagnostic_rows": _debug_rows(df, diagnostic_items),
-        "column_stack_diagnostics": stacked_diag,
-        "word_pages": coordinate_diag,
+        "column_boundaries": boundaries,
+        "diagnostic_rows": _debug_rows(df, diagnostics_items),
+        "page_diagnostics": page_diag,
     }
 
     status = "REVIEW_REQUIRED" if validation_ok else "VALIDATION_FAILED"
     if validation_ok:
         messages = [
-            "34개 항목을 모두 추출했고 현재 공식본 핵심 앵커 검사를 통과했습니다. 공식 별표 13과 후보표를 최종 대조한 뒤 승인하세요."
+            "51개 항목을 모두 추출했고 현재 공식본 핵심 앵커 검사를 통과했습니다. 공식 별표 13과 후보표를 최종 대조한 뒤 승인하세요."
         ]
     else:
         reason_text = "; ".join(list(dict.fromkeys(failure_reasons))) or "원인 미확인"
@@ -646,6 +544,7 @@ def build_psm_annex13_candidate() -> CandidateResult:
     csv_path = CANDIDATE_DIR / "psm_annex13_candidate.csv"
     meta_path = CANDIDATE_DIR / "psm_annex13_candidate.meta.json"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
     result = CandidateResult(
         key="PSM_ANNEX13",
         status=status,
