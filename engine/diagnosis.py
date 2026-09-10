@@ -16,6 +16,10 @@ class PreliminaryDiagnosis:
     messages: list[str]
     dynamic_questions: list[str] = field(default_factory=list)
     psm_details: list[dict[str, object]] = field(default_factory=list)
+    psm_ratio_details: list[dict[str, object]] = field(default_factory=list)
+    psm_blockers: list[str] = field(default_factory=list)
+    psm_r_value: float | None = None
+    psm_r_complete: bool = False
 
 
 def _rows_for_regime(
@@ -43,6 +47,10 @@ def run_preliminary_diagnosis(
     messages: list[str] = []
     dynamic_questions: list[str] = []
     psm_details: list[dict[str, object]] = []
+    psm_ratio_details: list[dict[str, object]] = []
+    psm_blockers: list[str] = []
+    psm_r_value: float | None = None
+    psm_r_complete = False
 
     if missing:
         messages.append("필수 입력값이 부족하여 규제 대상 여부를 확정하지 않습니다.")
@@ -72,6 +80,10 @@ def run_preliminary_diagnosis(
         messages.extend(psm_assessment.messages)
         dynamic_questions.extend(psm_assessment.questions)
         psm_details = [asdict(hit) for hit in psm_assessment.hits]
+        psm_ratio_details = [asdict(line) for line in psm_assessment.ratio_lines]
+        psm_blockers = list(psm_assessment.blockers)
+        psm_r_value = psm_assessment.r_value
+        psm_r_complete = psm_assessment.r_complete
 
     return PreliminaryDiagnosis(
         law_status=all_sync["label"],
@@ -81,6 +93,10 @@ def run_preliminary_diagnosis(
         messages=list(dict.fromkeys(messages)),
         dynamic_questions=list(dict.fromkeys(dynamic_questions)),
         psm_details=psm_details,
+        psm_ratio_details=psm_ratio_details,
+        psm_blockers=psm_blockers,
+        psm_r_value=psm_r_value,
+        psm_r_complete=psm_r_complete,
     )
 
 
