@@ -9,6 +9,7 @@ from engine.cap_engine import assess_cap
 from engine.cap_holding import app4_db_ready, build_cap_facility_workbook
 from engine.cap_holding_screen import screen_facility_stage
 from engine.cap_quick_holding import compare_confirmed_declared_holding
+from engine.consulting_guidance import get_guide
 from engine.inventory import inventory_preview, read_intake_workbook, validate_intake
 from engine.psm_engine import PSM_EXCLUSION_QUESTIONS, assess_psm
 
@@ -32,28 +33,11 @@ st.markdown(
 )
 
 
+_psm_exclusion_guide = get_guide("PSM_EXCLUDED_FACILITY")
 EXCLUSION_LABELS = [
     "해당 없음",
-    "원자력 설비",
-    "군사시설",
-    "사업장 내 직접 사용을 위한 난방용 연료의 저장·사용설비",
-    "도매·소매시설",
-    "차량 등의 운송설비",
-    "LPG 충전·저장시설",
-    "도시가스 공급시설",
-    "기타 고용노동부 고시 제외설비",
+    *list(_psm_exclusion_guide.what_to_check if _psm_exclusion_guide else ()),
     "모름",
-]
-
-PSM_EXCLUSION_GUIDE = [
-    "① 원자력 설비",
-    "② 군사시설",
-    "③ 사업장 내 직접 사용을 위한 난방용 연료의 저장·사용설비",
-    "④ 도매·소매시설",
-    "⑤ 차량 등의 운송설비",
-    "⑥ 「액화석유가스의 안전관리 및 사업법」에 따른 LPG 충전·저장시설",
-    "⑦ 「도시가스사업법」에 따른 가스공급시설",
-    "⑧ 그 밖에 고용노동부장관이 피해 정도가 크지 않다고 인정하여 고시하는 설비",
 ]
 
 
@@ -108,6 +92,44 @@ def _cap_direct_preview(intake, legal_hits: list[dict[str, object]]) -> pd.DataF
             }
         )
     return pd.DataFrame(rows)
+
+
+def _render_guide(key: str, *, show_title: bool = True, compact: bool = False) -> None:
+    """Render one legal question as a small consulting card.
+
+    Rule-engine terms stay behind the scenes. The card explains the business
+    meaning first, then what to check, then the legal hierarchy. Delegated
+    provisions are shown down to the verified current notice when available.
+    """
+    guide = get_guide(key)
+    if guide is None:
+        return
+    with st.container(border=True):
+        if show_title:
+            st.markdown(f"**{guide.title}**")
+        if guide.why_needed:
+            st.write(f"**왜 확인하나요?** {guide.why_needed}")
+        st.write(guide.plain_language)
+        if guide.what_to_check and not compact:
+            st.markdown("**회사에서 확인할 것**")
+            for value in guide.what_to_check:
+                st.write(f"• {value}")
+        if guide.example:
+            st.write(f"**예시** {guide.example}")
+        if guide.legal_basis:
+            st.info(f"법적 근거: {guide.legal_basis}")
+        if guide.legal_hierarchy:
+            st.markdown("**법령이 다른 규정에 기준을 맡긴 경우**")
+            for value in guide.legal_hierarchy:
+                st.write(f"• {value}")
+        if guide.resolved_detail:
+            st.success(guide.resolved_detail)
+        if guide.source_status:
+            st.caption(f"근거 확인상태: {guide.source_status}")
+        if guide.decision_effect and not compact:
+            st.write(f"**이 답변이 판정에 미치는 영향** {guide.decision_effect}")
+        if guide.if_unknown:
+            st.caption(guide.if_unknown)
 
 
 st.title(f"{PSM_FULL} · {CAP_FULL} 사전진단")
@@ -216,26 +238,20 @@ st.markdown(f"## 2. {PSM_FULL} — 수량기준 다음에 제외조건 확인")
 if psm.r_value is not None:
     st.write(
         f"**R = {psm.r_value:.4f} ({psm.r_value * 100:.0f}%)** 입니다. "
-        "R은 별표 13의 물질별 보유량을 각 규정량으로 나눈 비율을 합산한 값입니다. "
-        "**R이 1.0 이상이면 수량기준을 충족할 가능성이 있다는 뜻이며, 이것만으로 최종 PSM 대상이 확정되지는 않습니다.**"
+        "이 값은 PSM 수량기준을 먼저 확인하기 위한 값이며, 이것만으로 최종 PSM 대상이 확정되지는 않습니다."
     )
+    with st.expander("R이 무엇인지 · 법적 근거 보기", expanded=False):
+        _render_guide("PSM_R_RATIO", compact=True)
 
 exclusion_questions = [q for q in psm.questions if _is_psm_exclusion_question(q)]
 other_psm_questions = [q for q in psm.questions if not _is_psm_exclusion_question(q)]
 if exclusion_questions:
-    st.markdown("#### 질문 1. 업로드한 화학물질을 실제로 제조·사용·저장하는 공정·설비가 아래 PSM 제외유형 중 하나에 해당합니까?")
+    st.markdown("#### 질문 1. 업로드한 화학물질을 실제로 제조·사용·저장하는 공정·설비가 PSM 제외설비에 해당합니까?")
     st.write(
-        "여기서 '관련 공정·설비'는 아직 특정 설비명을 입력했다는 뜻이 아닙니다. "
-        "이번 Excel에 적은 화학물질을 실제로 제조·사용·저장하는 반응기, 저장탱크, 공급설비 등을 뜻합니다."
+        "아래에는 단순히 '그 밖에 고시하는 설비'라고만 쓰지 않고, 현행 하위 고시에서 구체화된 내용까지 함께 표시합니다. "
+        "회사의 실제 설비와 가장 가까운 항목을 선택하고, 판단하기 어렵다면 '모름'을 선택하세요."
     )
-    with st.container(border=True):
-        st.markdown("**법에서 정한 PSM 제외설비는 다음과 같습니다.**")
-        for item in PSM_EXCLUSION_GUIDE:
-            st.write(item)
-        st.info(
-            "법적 근거: 「산업안전보건법 시행령」 제43조제2항. "
-            "위 유형인지 모르겠다면 추정하지 말고 '모름'을 선택하세요."
-        )
+    _render_guide("PSM_EXCLUDED_FACILITY", show_title=False)
     exclusion = st.selectbox(
         "PSM 제외설비 선택",
         ["선택하세요", *EXCLUSION_LABELS],
@@ -244,14 +260,21 @@ if exclusion_questions:
     )
     if exclusion == "해당 없음" and psm.r_value is not None and psm.r_value >= 1:
         st.success("현재 입력 기준으로 PSM 수량기준 대상 후보입니다. 이후 실제 대상 공정·설비 범위를 확인해야 최종 판단할 수 있습니다.")
+    elif exclusion == "비상발전기용 경유의 저장탱크 및 사용설비":
+        st.info(
+            "이 항목은 시행령의 '그 밖에 고용노동부장관이 고시하는 설비'를 현행 고시 제2조의2에서 구체화한 항목입니다. "
+            "실제 설비가 비상발전기용 경유 저장·사용설비인지 확인한 뒤 제외범위를 적용합니다."
+        )
     elif exclusion not in {"선택하세요", "해당 없음", "모름"}:
-        st.warning("선택한 제외유형이 이번 물질과 관련된 공정·설비 전체에 실제로 적용되는지 증빙 확인이 필요합니다.")
+        st.warning("선택한 제외유형이 이번 물질과 관련된 공정·설비에 실제로 적용되는지 증빙 확인이 필요합니다.")
     elif exclusion == "모름":
         st.warning("제외설비 여부가 확인될 때까지 PSM은 판정보류입니다.")
+        _render_guide("DECISION_HOLD", compact=True)
 
 if other_psm_questions:
-    with st.expander(f"PSM에서 추가로 확인할 수 있는 항목 {len(other_psm_questions)}개", expanded=False):
-        st.caption("CAS 목록만으로 판단할 수 없는 물성조건이나 특수조건이 있을 때만 필요한 질문입니다.")
+    st.markdown("#### 추가로 확인해야 하는 PSM 특수조건")
+    _render_guide("PSM_SPECIAL_CONDITION", show_title=False, compact=True)
+    with st.expander(f"실제 확인 질문 {len(other_psm_questions)}개", expanded=False):
         for question in other_psm_questions:
             st.write(f"• {question}")
 
@@ -270,38 +293,26 @@ if not cap_screen.ready:
         st.caption(blocker)
 elif not cap_screen.row_numbers:
     st.info(
-        "별표 2·3의 직접 물질목록에서는 바로 확인된 대상이 없습니다. "
+        "물질별 직접 규정수량 목록에서는 바로 결론이 나지 않았습니다. "
         "아래 SDS 유해성 분류 또는 포괄 규제범위 확인이 필요한 물질이 있는지 계속 확인합니다."
     )
 else:
     st.info(
         f"업로드한 물질 중 **{len(cap_screen.row_numbers)}개가 {CAP_FULL}의 물질별 규정수량 기준에 직접 연결**되었습니다. "
-        f"그래서 {CAP_FULL}에서는 이 물질이 사업장 안에 한 순간 최대 얼마까지 존재할 수 있는지 확인해 하위·상위 규정수량과 비교해야 합니다."
+        f"따라서 이 물질이 사업장 안에 한 순간 최대 얼마까지 존재할 수 있는지 확인해 규정수량과 비교해야 합니다."
     )
     _table(_cap_direct_preview(intake, cap_screen.legal_hits), 30)
 
     if not app4_db_ready():
         st.error("최대보유량 계산기준 DB가 준비되지 않았습니다. 일반 사용자가 처리할 항목이 아니므로 관리자 확인이 필요합니다.")
     elif cap_screen.blockers:
-        st.warning("물질의 상태나 특수조건을 먼저 확인해야 최대보유량 비교를 계속할 수 있습니다.")
+        st.warning("같은 물질이라도 상태나 농도 같은 특수조건에 따라 적용할 규정수량이 달라질 수 있습니다.")
+        _render_guide("CAP_SPECIAL_CONDITION", show_title=False, compact=True)
         for blocker in cap_screen.blockers:
             st.write(f"• {blocker}")
     else:
-        st.markdown("#### 질문 2. 회사 Excel의 '최대 동시보유량' 값은 아래 의미의 '사업장 최대보유량'으로 계산한 값입니까?")
-        with st.container(border=True):
-            st.markdown("**사업장 최대보유량이란?**")
-            st.write(
-                "같은 유해화학물질이 사업장 안의 여러 시설에 있을 수 있습니다. "
-                "최대보유량은 그 물질을 취급하는 **모든 제조·사용·보관·저장시설에서 어느 한 순간 최대로 체류할 수 있는 양을 합한 값**입니다."
-            )
-            st.write(
-                "예를 들어 동일 물질이 동시에 저장탱크에 200 kg, 공정설비에 50 kg, 보관시설에 100 kg까지 존재할 수 있다면 "
-                "개념적으로는 이 세 곳을 함께 고려해야 합니다. 실제 법정 값은 시설유형별 산정방법을 적용하여 계산합니다."
-            )
-            st.info(
-                "법적 근거: 「유해화학물질의 규정수량에 관한 규정」 제2조제2호에서 최대보유량을 정의하고, "
-                "제4조 및 별표 4에서 시설유형별 산정방법을 정하고 있습니다."
-            )
+        st.markdown("#### 질문 2. 회사 Excel의 '최대 동시보유량' 값은 법에서 말하는 '사업장 최대보유량'으로 계산한 값입니까?")
+        _render_guide("CAP_MAX_HOLDING", show_title=False)
         holding_choice = st.radio(
             "최대 동시보유량 산정방식 확인",
             ["선택하세요", "예, 법정 산정방식으로 계산한 값입니다", "아니오, 단순 재고량 또는 임의값입니다", "잘 모르겠습니다"],
@@ -327,10 +338,6 @@ else:
             st.warning(
                 "현재 값으로는 법적 최대보유량을 확정하지 않습니다. 정확한 계산이 필요하므로 해당 물질이 실제로 들어 있는 시설정보만 추가로 확인합니다."
             )
-            st.write(
-                "아래 입력서는 모든 회사가 반드시 작성하는 두 번째 양식이 아닙니다. "
-                "**현재 Excel의 최대 동시보유량이 법정 계산방식인지 모를 때만 사용하는 보완용 입력서**입니다."
-            )
             template = build_cap_facility_workbook(intake, cap_screen.row_numbers)
             st.download_button(
                 "최대보유량 계산용 시설정보 입력서 다운로드",
@@ -339,29 +346,25 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch",
             )
-            st.write(
-                "이 입력서는 「유해화학물질의 규정수량에 관한 규정」 제4조 및 별표 4의 최대보유량 산정방법을 적용하기 위한 보완자료입니다. "
-                "시설별 설계용량·비중·보관량 등 실제 필요한 항목만 작성합니다."
+            st.caption(
+                "모든 회사가 반드시 작성하는 두 번째 양식이 아닙니다. 현재 입력값이 법정 최대보유량인지 확인할 수 없을 때만 사용하는 보완자료입니다."
             )
+            if holding_choice == "잘 모르겠습니다":
+                _render_guide("DECISION_HOLD", compact=True)
 
 if cap.app1_required_rows:
     st.markdown("## 4. 왜 SDS 확인이 필요한 물질이 있나요?")
     st.warning(
-        f"별표 2·3의 CAS 직접목록으로 결론이 끝나지 않은 물질이 {len(cap.app1_required_rows)}개 있습니다. "
+        f"물질별 직접목록으로 결론이 끝나지 않은 물질이 {len(cap.app1_required_rows)}개 있습니다. "
         f"이 물질들을 곧바로 {CAP_FULL} 비대상으로 처리할 수는 없습니다."
     )
-    st.write(
-        "**이유는 별표 1이 '물질명 목록'이 아니라 SDS 제2항의 유해성·위험성 분류를 기준으로 적용되는 표이기 때문입니다.** "
-        "따라서 별표 2·3에서 직접 찾지 못한 물질은 SDS 제2항에 기재된 급성독성·인화성·수생환경 유해성 등의 분류를 확인해야 별표 1 적용 여부를 판단할 수 있습니다."
-    )
+    _render_guide("CAP_APP1_SDS", show_title=False)
     app1_df = pd.DataFrame(cap.app1_required_rows).rename(
         columns={"row_no": "목록행번호", "product_name": "제품명", "cas": "CAS No."}
     )
     _table(app1_df, 40)
-    st.info(
-        "법적 근거: 「유해화학물질의 규정수량에 관한 규정」 제3조제1호 및 별표 1. "
-        "현재 버전에서는 SDS 제2항 분류 입력 단계가 아직 간편 화면에 연결되지 않았으므로, 위 물질은 확인이 끝날 때까지 판정보류로 유지합니다. "
-        "물질명이나 CAS만 보고 프로그램이 임의로 유해성 분류를 추정하지 않습니다."
+    st.caption(
+        "현재 버전에서는 SDS 제2항 분류 입력 단계가 아직 간편 화면에 연결되지 않았으므로, 위 물질은 확인이 끝날 때까지 판정보류로 유지합니다."
     )
 
 if cap.scope_candidates:
@@ -370,12 +373,14 @@ if cap.scope_candidates:
         f"염류·화합물군·반응생성물 등 CAS 하나만으로 확정할 수 없는 규제범위 후보가 {len(cap.scope_candidates)}건 있습니다. "
         "이 경우도 자동으로 비대상 처리하지 않고 확인이 끝날 때까지 판정보류합니다."
     )
+    _render_guide("CAP_BROAD_SCOPE", show_title=False, compact=True)
 
 st.divider()
 st.markdown("### 이 화면에서 기억할 것")
 st.write(
     f"**{PSM_FULL}와 {CAP_FULL}는 동시에 해당될 수 있습니다.** "
-    "지금 화면은 회사 Excel 한 번으로 각각의 가능성을 선별하고, 최종판정에 꼭 필요한 추가정보만 순서대로 요청하는 화면입니다. "
-    "신입사원이 용어를 몰라도 답할 수 있도록 질문 바로 아래에 뜻, 예시, 법적 근거를 함께 표시합니다."
+    "이 화면은 회사 Excel 한 번으로 각각의 가능성을 선별하고, 최종판정에 꼭 필요한 추가정보만 순서대로 요청합니다. "
+    "법령 용어를 이미 안다고 가정하지 않고 질문마다 뜻·확인자료·예시·법적 근거를 함께 보여주며, "
+    "상위 법령이 고시에 기준을 맡긴 경우에는 확인된 하위 규정의 실제 내용까지 안내합니다."
 )
 st.caption("규정DB 추출·승인, 별표 PDF 보관, 법령 최신성 확인은 관리자 영역에서 처리하며 일반 회사 사용 흐름에는 넣지 않습니다.")
