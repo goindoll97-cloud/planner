@@ -207,11 +207,17 @@ def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
     def row(item_no: int, hazard_seq: int = 1) -> pd.DataFrame:
         return df[(df["item_no"].eq(item_no)) & (df["hazard_seq"].eq(hazard_seq))]
 
+    def special_row(item_no: int, category: str) -> pd.DataFrame:
+        return df[
+            df["item_no"].eq(item_no)
+            & df["hazard_category"].astype(str).str.strip().eq(category)
+        ]
+
     r1 = row(1)
     r4 = row(4)
     r10 = row(10)
-    r282 = row(282, 2)
-    r557 = row(557, 2)
+    r282 = special_row(282, "용액")
+    r557 = special_row(557, "용액")
     r587 = row(587)
     r1108 = row(1108)
     r1557 = row(1557)
@@ -231,10 +237,18 @@ def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
             not r10.empty and r10.iloc[0]["direct_cas"] == "" and r10.iloc[0]["scope_type"] == "COMPOUND_GROUP"
         ),
         "item282_solution_variant": bool(
-            not r282.empty and r282.iloc[0]["hazard_category"] == "용액" and pd.isna(r282.iloc[0]["content_threshold_pct"])
+            not r282.empty
+            and pd.isna(r282.iloc[0]["content_threshold_pct"])
+            and float(r282.iloc[0]["lowest_quantity_ton"]) == 0.5
+            and float(r282.iloc[0]["lower_quantity_ton"]) == 20
+            and float(r282.iloc[0]["upper_quantity_ton"]) == 400
         ),
         "item557_solution_variant": bool(
-            not r557.empty and r557.iloc[0]["hazard_category"] == "용액" and pd.isna(r557.iloc[0]["content_threshold_pct"])
+            not r557.empty
+            and pd.isna(r557.iloc[0]["content_threshold_pct"])
+            and float(r557.iloc[0]["lowest_quantity_ton"]) == 0.1
+            and float(r557.iloc[0]["lower_quantity_ton"]) == 4
+            and float(r557.iloc[0]["upper_quantity_ton"]) == 20
         ),
         "item587_embedded_parent_cas": bool(
             not r587.empty and "7803-49-8" in str(r587.iloc[0]["all_cas_in_row"])
