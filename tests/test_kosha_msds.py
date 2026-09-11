@@ -16,7 +16,10 @@ class KOSHAMSDSParsingTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["chem_id"], "001008")
 
-    def test_section2_parser_extracts_only_classification_tokens(self):
+    def test_section2_parser_collects_detail_text(self):
+        # chemdetail02 is already scoped to MSDS Section 2.  The adapter keeps
+        # all detail text and the APP1 matcher later accepts only explicit
+        # hazard-group + category statements.
         xml = """
         <response><header><resultCode>00</resultCode></header><body><items>
           <item><msdsItemNameKor>가. 유해성·위험성 분류</msdsItemNameKor><itemDetail>급성 독성(흡입) : 구분 1|인화성 액체 : 구분 2</itemDetail></item>
@@ -24,7 +27,10 @@ class KOSHAMSDSParsingTests(unittest.TestCase):
         </items></body></response>
         """
         result = parse_section2_xml(xml)
-        self.assertEqual(result, ["급성 독성(흡입) : 구분 1", "인화성 액체 : 구분 2"])
+        self.assertEqual(
+            result,
+            ["급성 독성(흡입) : 구분 1", "인화성 액체 : 구분 2", "열로부터 멀리하시오"],
+        )
 
     def test_exact_normalized_group_and_category_match(self):
         options = [
@@ -32,19 +38,19 @@ class KOSHAMSDSParsingTests(unittest.TestCase):
             SDSApp1Option("인화성 액체||2", "물리적 위험성", "인화성 액체", 2, 5.0, 200.0),
         ]
         matched, unmatched = match_app1_options(
-            ["급성 독성(흡입) : 구분 1", "인화성 액체 : 구분 2"],
+            ["급성 독성(흡입) : 구분 1", "인화성 액체 : 구분 2", "열로부터 멀리하시오"],
             options,
         )
         self.assertEqual(set(matched), {"급성독성 (흡입)||1", "인화성 액체||2"})
         self.assertEqual(unmatched, [])
 
-    def test_no_category_means_no_inference(self):
+    def test_no_category_is_ignored_not_inferred(self):
         options = [
             SDSApp1Option("급성독성 (흡입)||1", "급성 유해성", "급성독성 (흡입)", 1, 1.0, 20.0),
         ]
         matched, unmatched = match_app1_options(["급성 독성(흡입)"], options)
         self.assertEqual(matched, [])
-        self.assertEqual(unmatched, ["급성 독성(흡입)"])
+        self.assertEqual(unmatched, [])
 
 
 if __name__ == "__main__":
