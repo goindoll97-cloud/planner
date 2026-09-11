@@ -95,12 +95,7 @@ def _cap_direct_preview(intake, legal_hits: list[dict[str, object]]) -> pd.DataF
 
 
 def _render_guide(key: str, *, show_title: bool = True, compact: bool = False) -> None:
-    """Render one legal question as a small consulting card.
-
-    Rule-engine terms stay behind the scenes. The card explains the business
-    meaning first, then what to check, then the legal hierarchy. Delegated
-    provisions are shown down to the verified current notice when available.
-    """
+    """Render one legal question as a consulting card."""
     guide = get_guide(key)
     if guide is None:
         return
@@ -130,6 +125,18 @@ def _render_guide(key: str, *, show_title: bool = True, compact: bool = False) -
             st.write(f"**이 답변이 판정에 미치는 영향** {guide.decision_effect}")
         if guide.if_unknown:
             st.caption(guide.if_unknown)
+
+
+def _status_card(title: str, status: str, *, value: str = "", explanation: str = "") -> None:
+    """Long screening states should wrap instead of being truncated by st.metric."""
+    with st.container(border=True):
+        st.markdown(f"### {title}")
+        st.caption("현재 단계")
+        st.markdown(f"#### {status}")
+        if value:
+            st.markdown(f"**{value}**")
+        if explanation:
+            st.write(explanation)
 
 
 st.title(f"{PSM_FULL} · {CAP_FULL} 사전진단")
@@ -188,46 +195,52 @@ if (
 ):
     quick_cap = compare_confirmed_declared_holding(intake, cap_screen.legal_hits)
 
+# Build readable summary text before rendering. st.metric truncates long values,
+# so the summary uses normal wrapping containers instead.
+if psm.r_value is None:
+    psm_status = _cap_text(psm.label)
+    psm_value = ""
+    psm_explanation = "규정량 비율 계산에 필요한 정보가 더 필요합니다."
+elif psm.r_value >= 1:
+    psm_value = f"R = {psm.r_value:.4f}"
+    if psm_exclusion_choice == "해당 없음":
+        psm_status = "수량기준 충족 후보"
+        psm_explanation = "수량기준은 충족했지만 최종 PSM 대상 확정 전 단계입니다."
+    elif psm_exclusion_choice not in {"선택하세요", "모름"}:
+        psm_status = "제외조건 검토 필요"
+        psm_explanation = "수량기준은 충족했지만 선택한 제외조건의 실제 적용범위를 확인해야 합니다."
+    else:
+        psm_status = "수량기준 충족 · 제외조건 확인 필요"
+        psm_explanation = "R이 1.0 이상이라는 이유만으로 PSM 대상이 최종 확정되는 것은 아닙니다."
+else:
+    psm_status = "현재 확인된 수량기준은 100% 미만"
+    psm_value = f"R = {psm.r_value:.4f}"
+    psm_explanation = "다른 적용조건이나 미확인 정보가 있으면 추가 검토합니다."
+
+if quick_cap is not None:
+    cap_status = _cap_text(quick_cap.label)
+    if quick_cap.status == "LOWER_CANDIDATE":
+        cap_explanation = "하위 규정수량 이상이 확인된 단계입니다. 면제조건 등을 확인한 뒤 2군 여부를 판단합니다."
+    elif quick_cap.status == "UPPER_CANDIDATE":
+        cap_explanation = "상위 규정수량 이상이 확인된 단계입니다. 주요취급시설 여부 등을 확인한 뒤 1군 여부를 판단합니다."
+    else:
+        cap_explanation = "최대보유량과 규정수량 비교 결과를 확인한 상태입니다."
+elif cap_screen.ready and cap_screen.row_numbers:
+    cap_status = "규정수량 대상물질 확인 · 최대보유량 확인 필요"
+    cap_explanation = "대상물질은 찾았지만 법정 방식의 사업장 최대보유량을 아직 확인하지 않았습니다."
+elif cap.app1_required_rows:
+    cap_status = "SDS 유해성 분류 확인 필요"
+    cap_explanation = "물질명/CAS 직접목록만으로 비대상을 확정할 수 없는 물질이 있습니다."
+else:
+    cap_status = _cap_text(cap.label)
+    cap_explanation = "현재 입력정보를 기준으로 확인된 단계입니다."
+
 st.markdown("## 1. 지금까지의 결과를 한눈에 보기")
-left, right = st.columns(2)
-
+left, right = st.columns(2, gap="large")
 with left:
-    st.markdown(f"### {PSM_FULL}")
-    if psm.r_value is None:
-        st.metric("현재 단계", psm.label)
-        st.caption("규정량 비율 계산에 필요한 정보가 더 필요합니다.")
-    elif psm.r_value >= 1:
-        if psm_exclusion_choice == "해당 없음":
-            st.metric("현재 단계", "수량기준 충족 후보", f"R = {psm.r_value:.4f}")
-            st.caption("수량기준은 충족했지만 최종 PSM 대상 확정 전 단계입니다.")
-        elif psm_exclusion_choice not in {"선택하세요", "모름"}:
-            st.metric("현재 단계", "제외조건 검토 필요", f"R = {psm.r_value:.4f}")
-            st.caption("수량기준은 충족했지만 선택한 제외조건의 실제 적용범위를 확인해야 합니다.")
-        else:
-            st.metric("현재 단계", "수량기준 충족 · 제외조건 확인 필요", f"R = {psm.r_value:.4f}")
-            st.caption("R이 1.0 이상이라는 이유만으로 PSM 대상이 최종 확정되는 것은 아닙니다.")
-    else:
-        st.metric("현재 단계", "현재 확인된 수량기준은 100% 미만", f"R = {psm.r_value:.4f}")
-        st.caption("다른 적용조건이나 미확인 정보가 있으면 추가 검토합니다.")
-
+    _status_card(PSM_FULL, psm_status, value=psm_value, explanation=psm_explanation)
 with right:
-    st.markdown(f"### {CAP_FULL}")
-    if quick_cap is not None:
-        st.metric("현재 단계", _cap_text(quick_cap.label))
-        if quick_cap.status == "LOWER_CANDIDATE":
-            st.caption("하위 규정수량 이상이 확인된 단계입니다. 면제조건 등을 확인한 뒤 2군 여부를 판단합니다.")
-        elif quick_cap.status == "UPPER_CANDIDATE":
-            st.caption("상위 규정수량 이상이 확인된 단계입니다. 주요취급시설 여부 등을 확인한 뒤 1군 여부를 판단합니다.")
-        else:
-            st.caption("최대보유량과 규정수량 비교 결과를 확인한 상태입니다.")
-    elif cap_screen.ready and cap_screen.row_numbers:
-        st.metric("현재 단계", "규정수량 대상물질 확인 · 최대보유량 확인 필요")
-        st.caption("대상물질은 찾았지만 법정 방식의 사업장 최대보유량을 아직 확인하지 않았습니다.")
-    elif cap.app1_required_rows:
-        st.metric("현재 단계", "SDS 유해성 분류 확인 필요")
-        st.caption("물질명/CAS 직접목록만으로 비대상을 확정할 수 없는 물질이 있습니다.")
-    else:
-        st.metric("현재 단계", _cap_text(cap.label))
+    _status_card(CAP_FULL, cap_status, explanation=cap_explanation)
 
 st.info(
     f"따라서 화면에 {PSM_FULL} 가능성과 {CAP_FULL} 가능성이 함께 표시되는 것은 오류가 아닙니다. "
