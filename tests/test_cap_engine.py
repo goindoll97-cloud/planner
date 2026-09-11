@@ -57,15 +57,16 @@ class CAPEngineTests(unittest.TestCase):
 
     def test_lower_band_from_max_simultaneous_holding(self):
         result = cap_engine.assess_cap(self._intake(holding_kg=300.0))
-        self.assertEqual(result.status, "APP3_LOWER_CANDIDATE")
+        self.assertEqual(result.status, "LOWER_CANDIDATE")
         self.assertEqual(len(result.hits), 1)
         self.assertEqual(result.hits[0].quantity_band, "하위 이상·상위 미만")
         self.assertAlmostEqual(result.hits[0].max_holding_ton, 0.3)
 
     def test_below_content_threshold_is_not_counted(self):
         result = cap_engine.assess_cap(self._intake(holding_kg=300.0, pct=5.0))
-        self.assertEqual(result.status, "APP3_NO_CONFIRMED_MATCH")
+        self.assertEqual(result.status, "NO_CONFIRMED_MATCH_PARTIAL")
         self.assertEqual(result.hits, [])
+        self.assertTrue(result.partial_only)
 
     def test_missing_max_holding_creates_followup(self):
         intake = self._intake()
