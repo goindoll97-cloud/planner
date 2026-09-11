@@ -16,6 +16,7 @@ from engine.regulatory_tables_safe import (
     build_cap_accident_quantity_candidate,
     build_cap_appendix1_candidate,
     build_cap_appendix2_candidate,
+    build_cap_appendix4_candidate,
     build_psm_annex13_candidate,
 )
 
@@ -146,7 +147,7 @@ if not archive_df.empty:
                     st.warning(str(opened.get("message", "폴더를 열지 못했습니다.")))
 
 st.markdown("### 공식 별표 추출")
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 
 if c1.button("PSM 별표 13 추출", width="stretch"):
     with st.status("PSM 별표 13 추출 중...", expanded=True) as box:
@@ -155,7 +156,7 @@ if c1.button("PSM 별표 13 추출", width="stretch"):
         box.update(label="PSM 별표 13 추출 완료", state="complete", expanded=False)
     st.rerun()
 
-if c2.button("화사계 별표 1 추출", type="primary", width="stretch"):
+if c2.button("화사계 별표 1 추출", width="stretch"):
     with st.status("화사계 별표 1 유해·위험성 그룹표 추출 중...", expanded=True) as box:
         result = build_cap_appendix1_candidate()
         st.session_state["regdb_cap1"] = result
@@ -176,11 +177,19 @@ if c4.button("화사계 별표 3 추출", width="stretch"):
         box.update(label="화사계 별표 3 추출 완료", state="complete", expanded=False)
     st.rerun()
 
+if c5.button("화사계 별표 4 추출", type="primary", width="stretch"):
+    with st.status("화사계 별표 4 최대보유량 산정 규칙 추출 중...", expanded=True) as box:
+        result = build_cap_appendix4_candidate()
+        st.session_state["regdb_cap4"] = result
+        box.update(label="화사계 별표 4 추출 완료", state="complete", expanded=False)
+    st.rerun()
+
 entries = (
-    ("regdb_psm", "PSM_ANNEX13", "PSM 시행령 별표 13", "화사계 별표 1·2·3 및 별표 4 검증"),
-    ("regdb_cap1", "CAP_QTY_APP1", "화사계 별표 1 유해·위험성 그룹", "별표 4 최대보유량 산정 규칙 구축"),
-    ("regdb_cap2", "CAP_QTY_APP2", "화사계 별표 2 인체·생태유해성", "별표 1 또는 별표 4 구축"),
-    ("regdb_cap3", "CAP_QTY_APP3", "화사계 별표 3 사고대비물질", "별표 1 또는 별표 4 구축"),
+    ("regdb_psm", "PSM_ANNEX13", "PSM 시행령 별표 13", "화사계 별표 1·2·3·4 검증"),
+    ("regdb_cap1", "CAP_QTY_APP1", "화사계 별표 1 유해·위험성 그룹", "별표 4 최대보유량 산정 규칙 검증"),
+    ("regdb_cap2", "CAP_QTY_APP2", "화사계 별표 2 인체·생태유해성", "별표 4 최대보유량 산정 규칙 검증"),
+    ("regdb_cap3", "CAP_QTY_APP3", "화사계 별표 3 사고대비물질", "별표 4 최대보유량 산정 규칙 검증"),
+    ("regdb_cap4", "CAP_QTY_APP4", "화사계 별표 4 최대보유량 산정 방법", "시설정보 최소입력 모델 및 최대보유량 계산엔진 구축"),
 )
 
 for session_key, db_key, title, next_step in entries:
@@ -220,6 +229,11 @@ for session_key, db_key, title, next_step in entries:
             "공식 별표 2와 행수·물질명·CAS·함량기준·규정수량을 확인했고, "
             "CAS 없는 포괄범위·삭제행·용액 특수행이 보존된 것을 확인했습니다."
         )
+    elif db_key == "CAP_QTY_APP4":
+        confirm_text = (
+            "공식 별표 4와 최대보유량 총합 원칙, 제조·사용시설, 저장탱크, 보관시설, "
+            "단순혼합·반응·다중성상·기상물질·혼합물 관련 산정 문구를 확인했습니다."
+        )
     else:
         confirm_text = "공식 PDF와 후보표의 행수·물질명·규정수량 및 핵심 행을 확인했습니다."
 
@@ -244,6 +258,6 @@ st.divider()
 st.info(
     "화사계 규정수량 우선순위는 사고대비물질 별표 3 → 인체·생태유해성 물질별 별표 2 → "
     "그 밖의 유해화학물질에 대한 유해·위험성 그룹 별표 1 순으로 적용합니다. "
-    "별표 1은 CAS 매칭표가 아니라 SDS 유해성·위험성 분류표로 별도 관리합니다."
+    "규정수량을 고른 뒤 실제 비교수량은 별표 4의 시설유형별 최대보유량 산정방법으로 계산해야 합니다."
 )
 st.caption("최신법령 미반영, 자동검증 실패, 범위 불확실 시 승인 또는 비대상 확정을 하지 않습니다.")
