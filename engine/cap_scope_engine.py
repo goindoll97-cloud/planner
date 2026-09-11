@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-"""Minimal CAP identity coverage beyond Appendix 3.
+"""Conservative CAP identity coverage for current-law Appendix 2.
 
 Only the parts needed for CAP/PSM are retained from the earlier project:
-- exact CAS rows from approved current-law tables;
+- exact CAS rows from approved current-law Appendix 2;
 - broad legal scopes that do not end at one CAS;
 - explicit exclusions and component-CAS candidates;
 - fail-closed review when scope membership is uncertain.
 
-No PubChem, RDKit, LLM matching, restricted/prohibited-substance modules, or
-research validation framework is imported here.
+Appendix 1 is deliberately NOT loaded here. It is a GHS hazard-group table,
+not a CAS identity table, and is handled by its own group-rule path.
 """
 
 from dataclasses import dataclass, field
@@ -27,7 +27,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APPROVED_DIR = PROJECT_ROOT / "data" / "regulatory" / "approved"
 
 APPROVED_SCOPE_FILES = {
-    "CAP_QTY_APP1": APPROVED_DIR / "cap_qty_app1.csv",
     "CAP_QTY_APP2": APPROVED_DIR / "cap_qty_app2.csv",
 }
 
@@ -124,7 +123,7 @@ def _load_one(path: Path) -> pd.DataFrame:
 
 
 def load_approved_scope_tables() -> tuple[dict[str, pd.DataFrame], list[str]]:
-    """Load only reviewed current-law Appendix 1/2 tables."""
+    """Load the reviewed current-law Appendix 2 identity/scope table."""
     loaded: dict[str, pd.DataFrame] = {}
     missing: list[str] = []
     for key, path in APPROVED_SCOPE_FILES.items():
@@ -169,7 +168,7 @@ def screen_cap_direct_from_tables(
     intake: IntakeData,
     tables: dict[str, pd.DataFrame],
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
-    """Compare exact CAS rows from approved Appendix 1/2 tables.
+    """Compare exact CAS rows from approved Appendix 2.
 
     This does not infer chemical family membership. It only uses CAS values that
     the reviewed parser explicitly marked as ``direct_cas``.
@@ -194,9 +193,6 @@ def screen_cap_direct_from_tables(
             if matched.empty:
                 continue
 
-            # The current Appendix 2 contains special '용액' rows for some CAS.
-            # Until that condition is answered, using either the base or solution
-            # quantities automatically would be unsafe.
             if "hazard_category" in matched.columns and matched["hazard_category"].astype(str).eq("용액").any():
                 product = _clean(item.get("제품명")) or cas
                 questions.append(
@@ -224,7 +220,7 @@ def screen_cap_direct_from_tables(
                             f"화학물질 목록 {row_no}행({cas})의 함량(%)을 확인해 주세요. "
                             f"별표 기준은 {threshold:g}% 이상입니다."
                         )
-                        blockers.append(f"별표 1·2 직접 CAS 매칭물질 함량 미확인: {row_no}행")
+                        blockers.append(f"별표 2 직접 CAS 매칭물질 함량 미확인: {row_no}행")
                         continue
                     if pct < threshold:
                         continue
@@ -278,13 +274,13 @@ def assess_cap_scope(intake: IntakeData) -> CAPScopeScreen:
 
     if missing:
         messages.append(
-            "화사계 별표 1·2의 물질범위 검증이 아직 완성되지 않아, 일부 CAS 미매칭만으로 비대상을 확정하지 않습니다."
+            "화사계 별표 2 물질범위 DB가 아직 승인되지 않아, CAS 미매칭만으로 비대상을 확정하지 않습니다."
         )
     if not direct_hits.empty:
-        messages.append(f"화사계 별표 1·2의 승인된 직접 CAS 규칙에서 {len(direct_hits)}개 적용행을 확인했습니다.")
+        messages.append(f"화사계 별표 2의 승인된 직접 CAS 규칙에서 {len(direct_hits)}개 적용행을 확인했습니다.")
     if not candidates.empty:
         messages.append(
-            f"CAS 하나로 특정되지 않는 화사계 규제범위 후보 {len(candidates)}건을 찾았습니다. "
+            f"CAS 하나로 특정되지 않는 화사계 별표 2 규제범위 후보 {len(candidates)}건을 찾았습니다. "
             "이 후보는 이름 유사성만으로 자동확정하지 않고 범위 포함 여부를 확인합니다."
         )
 
