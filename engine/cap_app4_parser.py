@@ -98,8 +98,18 @@ def _find_span(text: str, start_pattern: str, end_pattern: str | None = None) ->
 
 
 def _section_after(text: str, section_pattern: str, next_section_pattern: str | None) -> str:
-    section = _find_span(text, section_pattern, next_section_pattern)
-    return section
+    return _find_span(text, section_pattern, next_section_pattern)
+
+
+def _clause_marker(marker: str) -> str:
+    """Match a legal subclause marker, not an ordinary Korean sentence ending.
+
+    PDF text is flattened to one line. A naive pattern such as ``다\.`` also
+    matches the last syllable of ``산정한다.`` and can truncate the preceding
+    subclause. Requiring a non-word/Korean boundary before the marker keeps
+    actual ``가./나./다.`` clause markers distinct from sentence endings.
+    """
+    return rf"(?<![0-9A-Za-z가-힣]){re.escape(marker)}\.\s*"
 
 
 def _parse_core_rules(text: str) -> list[dict[str, str]]:
@@ -117,7 +127,11 @@ def _parse_core_rules(text: str) -> list[dict[str, str]]:
     def sub(section: str, marker: str, next_marker: str | None) -> str:
         if not section:
             return ""
-        return _find_span(section, rf"{marker}\.\s*", rf"{next_marker}\.\s*" if next_marker else None)
+        return _find_span(
+            section,
+            _clause_marker(marker),
+            _clause_marker(next_marker) if next_marker else None,
+        )
 
     rows = [
         {"rule_id": "1", "section": "1", "subclause": "", "facility_type": "전체", "rule_type": "TOTAL_MAX_HOLDING", "rule_text": sec1},
