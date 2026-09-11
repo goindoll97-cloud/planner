@@ -87,8 +87,6 @@ def _num(value: Any) -> float | None:
 def _cas_values(*values: Any) -> list[str]:
     found: list[str] = []
     for value in values:
-        # PDF line wrapping can split the final checksum digit, e.g.
-        # '1651163-79-\n9'. Compact whitespace before matching CAS tokens.
         compact = re.sub(r"\s+", "", _clean(value))
         found.extend(CAS_RE.findall(compact))
     return list(dict.fromkeys(found))
@@ -117,19 +115,18 @@ def _extract_tables(path: Path) -> list[dict[str, Any]]:
     return out
 
 
-def _direct_cas_for_scope(scope_type: str, cas_values: list[str], name: str) -> list[str]:
-    """Return CAS values that can safely serve as exact identity.
-
-    A reaction mixture/product can list component CAS numbers while the regulated
-    object is the mixture itself. Those component CAS values are evidence for a
-    broad-scope candidate, not direct identity of the legal row.
-    """
+def _direct_cas_for_scope(scope_type: str, cas_values: list[str]) -> list[str]:
+    """Keep component CAS out of the exact-identity path for reaction mixtures."""
     if scope_type in {"REACTION_PRODUCT", "MIXTURE"}:
         return []
     return cas_values
 
 
-def _build_records(tables: list[dict[str, Any]], source: dict[str, Any], source_hash: str) -> tuple[list[dict[str, Any]], list[str]]:
+def _build_records(
+    tables: list[dict[str, Any]],
+    source: dict[str, Any],
+    source_hash: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
     records: list[dict[str, Any]] = []
     failures: list[str] = []
 
@@ -172,7 +169,7 @@ def _build_records(tables: list[dict[str, Any]], source: dict[str, Any], source_
                 scope_type = "DIRECT_CAS" if tentative_scope == "NAME_OR_UVCB" else tentative_scope
             else:
                 scope_type = classify_scope_type(name, "", name)
-            direct_cas = _direct_cas_for_scope(scope_type, listed_cas, name)
+            direct_cas = _direct_cas_for_scope(scope_type, listed_cas)
 
             records.append(
                 {
@@ -213,6 +210,8 @@ def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
     r1 = row(1)
     r4 = row(4)
     r10 = row(10)
+    r282 = row(282, 2)
+    r557 = row(557, 2)
     r587 = row(587)
     r1108 = row(1108)
     r1557 = row(1557)
@@ -230,6 +229,12 @@ def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
         ),
         "item10_casless_compound_group": bool(
             not r10.empty and r10.iloc[0]["direct_cas"] == "" and r10.iloc[0]["scope_type"] == "COMPOUND_GROUP"
+        ),
+        "item282_solution_variant": bool(
+            not r282.empty and r282.iloc[0]["hazard_category"] == "용액" and pd.isna(r282.iloc[0]["content_threshold_pct"])
+        ),
+        "item557_solution_variant": bool(
+            not r557.empty and r557.iloc[0]["hazard_category"] == "용액" and pd.isna(r557.iloc[0]["content_threshold_pct"])
         ),
         "item587_embedded_parent_cas": bool(
             not r587.empty and "7803-49-8" in str(r587.iloc[0]["all_cas_in_row"])
@@ -273,13 +278,13 @@ def build_cap_appendix2_candidate() -> CandidateResult:
     broad_base = int(base["scope_type"].astype(str).ne("DIRECT_CAS").sum()) if not base.empty else 0
 
     active = df[df["active"].astype(bool)] if not df.empty else df
-    # For active hazard rows, content/lowest/lower are required except 저확산,
-    # whose content criterion may be blank by design. Upper may legally be '-'.
-    active_non_diff = active[~active["hazard_category"].astype(str).str.contains("저확산", na=False)]
+    # 저확산 and 용액 are legal special rows whose concentration cell can be blank.
+    special = active["hazard_category"].astype(str).str.contains("저확산|용액", regex=True, na=False)
+    active_general = active[~special]
     missing_required = 0
-    if not active_non_diff.empty:
+    if not active_general.empty:
         missing_required = int(
-            active_non_diff[["content_threshold_pct", "lowest_quantity_ton", "lower_quantity_ton"]]
+            active_general[["content_threshold_pct", "lowest_quantity_ton", "lower_quantity_ton"]]
             .isna().any(axis=1).sum()
         )
 
@@ -302,7 +307,7 @@ def build_cap_appendix2_candidate() -> CandidateResult:
         "pages": len(tables),
         "base_items": len(base),
         "hazard_records": len(df),
-        "casless_base_items": casless_base,
+        "casless_or_nondirect_base_items": casless_base,
         "broad_scope_base_items": broad_base,
         "deleted_base_items": deleted_base,
         "first_item": item_numbers[0] if item_numbers else None,
@@ -322,7 +327,7 @@ def build_cap_appendix2_candidate() -> CandidateResult:
         messages.append("자동추출 품질검사를 통과하지 못했습니다. 승인하지 말고 실패항목을 확인하세요.")
     else:
         messages.append(
-            "특히 CAS가 '-'인 염류·화합물군·반응생성물 행이 빠지지 않았는지, 삭제행이 비활성으로 보존됐는지 확인 후 승인하세요."
+            "CAS가 '-'인 염류·화합물군뿐 아니라 반응혼합물의 구성성분 CAS, 삭제행, 용액 특수행까지 보존했습니다. 공식 PDF와 확인 후 승인하세요."
         )
 
     CANDIDATE_DIR.mkdir(parents=True, exist_ok=True)
