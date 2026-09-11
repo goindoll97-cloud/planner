@@ -2,12 +2,18 @@ from __future__ import annotations
 
 """Plain-language consulting guidance used by company-facing screens.
 
-The rule engine decides applicability.  This module does not decide legal
-applicability; it explains *why* a fact is being requested, what the term means,
+The rule engine decides applicability. This module does not decide legal
+applicability; it explains why a fact is being requested, what the term means,
 what the user can look at inside the company, and where the legal basis lives.
 
 Company-facing UI should prefer this guidance over exposing raw rule-engine
 terms such as APP1/APP2/APP3/APP4 or internal status codes.
+
+Important UX rule: when a statute or decree delegates a concrete criterion to a
+ministerial notice, guidance should follow that delegation to the current
+approved notice whenever possible. If the delegated rule has not been verified,
+the UI must show the exact delegated source to check rather than inventing an
+answer.
 """
 
 from dataclasses import dataclass, field
@@ -22,6 +28,9 @@ class ConsultingGuide:
     what_to_check: tuple[str, ...] = field(default_factory=tuple)
     example: str = ""
     legal_basis: str = ""
+    legal_hierarchy: tuple[str, ...] = field(default_factory=tuple)
+    resolved_detail: str = ""
+    source_status: str = ""
     if_unknown: str = "모르면 추정하지 말고 '모름' 또는 '확인 필요'로 두어 판정을 보류합니다."
     decision_effect: str = ""
 
@@ -42,6 +51,10 @@ GUIDES: dict[str, ConsultingGuide] = {
         ),
         example="R=1.20이면 현재 확인된 수량기준 합계가 기준의 120%라는 뜻입니다. 다만 이것만으로 최종 PSM 대상이 확정되는 것은 아닙니다.",
         legal_basis="「산업안전보건법 시행령」 제43조 및 별표 13(규정량·합산 관련 비고 포함)",
+        legal_hierarchy=(
+            "상위 근거: 「산업안전보건법」 제44조",
+            "세부 대상·규정량: 「산업안전보건법 시행령」 제43조 및 별표 13",
+        ),
         decision_effect="R이 기준 이상이면 업종·제외설비·특수조건 등 다음 법적 조건을 계속 확인합니다.",
     ),
     "PSM_EXCLUDED_FACILITY": ConsultingGuide(
@@ -58,12 +71,41 @@ GUIDES: dict[str, ConsultingGuide] = {
             "사업장 내 직접 사용을 위한 난방용 연료의 저장·사용설비",
             "도매·소매시설",
             "차량 등의 운송설비",
-            "LPG 충전·저장시설",
-            "도시가스 공급시설",
-            "그 밖에 고용노동부장관이 고시하는 제외설비",
+            "「액화석유가스의 안전관리 및 사업법」에 따른 LPG 충전·저장시설",
+            "「도시가스사업법」에 따른 가스공급시설",
+            "비상발전기용 경유의 저장탱크 및 사용설비",
+        ),
+        example=(
+            "예를 들어 비상발전기를 돌리기 위해 따로 설치한 경유 저장탱크와 그 사용설비는 시행령의 '그 밖에 고시하는 설비'를 "
+            "구체화한 현행 고시상 적용제외 설비입니다."
         ),
         legal_basis="「산업안전보건법 시행령」 제43조제2항",
-        decision_effect="해당한다고 답해도 즉시 제외 확정하지 않고, 선택한 제외유형이 실제 관련 공정·설비 범위 전체에 적용되는지 확인합니다.",
+        legal_hierarchy=(
+            "상위 규정: 「산업안전보건법 시행령」 제43조제2항제8호 — 고용노동부장관이 피해 정도가 크지 않다고 인정하여 고시하는 설비",
+            "구체화 규정: 「공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정」 제2조의2",
+        ),
+        resolved_detail=(
+            "현행 고용노동부고시 제2025-30호 제2조의2는 시행령 제43조제2항제8호의 설비를 "
+            "'비상발전기용 경유의 저장탱크 및 사용설비'로 구체화하고 있습니다."
+        ),
+        source_status="현행 공식 행정규칙 확인",
+        decision_effect="해당한다고 답해도 즉시 제외 확정하지 않고, 선택한 제외유형이 실제 관련 공정·설비 범위에 적용되는지 확인합니다.",
+    ),
+    "PSM_SPECIAL_CONDITION": ConsultingGuide(
+        key="PSM_SPECIAL_CONDITION",
+        title="왜 물성이나 별도 성분조건을 추가로 확인하나요?",
+        plain_language=(
+            "PSM 별표 13에는 CAS 번호만 같다고 자동으로 적용할 수 없는 항목이 있습니다. "
+            "인화성 가스·인화성 액체처럼 물성으로 정해지는 항목이나, 특정 성분함량 조건이 붙은 항목은 회사 자료를 추가로 확인해야 합니다."
+        ),
+        why_needed="CAS 일치만으로 법정 항목을 잘못 적용하거나 제외하는 것을 막기 위해 필요합니다.",
+        what_to_check=(
+            "SDS의 물리적·화학적 특성 및 인화점",
+            "제품의 실제 성분함량 또는 순도",
+            "공정조건에서의 상태와 취급조건",
+        ),
+        legal_basis="「산업안전보건법 시행령」 별표 13의 해당 물질 행 및 비고",
+        decision_effect="조건이 확인된 물질만 해당 별표 13 항목의 규정량 계산에 반영합니다.",
     ),
     "CAP_MAX_HOLDING": ConsultingGuide(
         key="CAP_MAX_HOLDING",
@@ -84,7 +126,27 @@ GUIDES: dict[str, ConsultingGuide] = {
             "실제 법정값은 시설유형별 산정방법을 적용합니다."
         ),
         legal_basis="「유해화학물질의 규정수량에 관한 규정」 제2조제2호, 제4조 및 별표 4",
+        legal_hierarchy=(
+            "정의: 「유해화학물질의 규정수량에 관한 규정」 제2조제2호",
+            "시설유형별 계산방법: 같은 규정 제4조 및 별표 4",
+        ),
         decision_effect="확인된 최대보유량을 해당 물질의 하위·상위 규정수량과 비교해 비대상/하위기준/상위기준 검토로 진행합니다.",
+    ),
+    "CAP_SPECIAL_CONDITION": ConsultingGuide(
+        key="CAP_SPECIAL_CONDITION",
+        title="왜 물질의 상태나 특수조건을 확인하나요?",
+        plain_language=(
+            "화학사고예방관리계획서 규정수량표에는 같은 물질이라도 농도나 상온·상압 상태 등에 따라 다른 규정수량을 적용하는 경우가 있습니다. "
+            "따라서 CAS 번호만으로 임의 선택하지 않고 실제 상태를 확인합니다."
+        ),
+        why_needed="잘못된 규정수량을 적용하지 않기 위해 필요합니다.",
+        what_to_check=(
+            "SDS의 성상·물리적 상태",
+            "제품 농도 또는 함량",
+            "상온·상압에서 액체인지 여부 등 해당 특수조건",
+        ),
+        legal_basis="「유해화학물질의 규정수량에 관한 규정」 제3조 및 별표 2·별표 3의 해당 항목",
+        decision_effect="특수조건이 확인되면 해당 조건에 맞는 규정수량 행으로 최대보유량을 비교합니다.",
     ),
     "CAP_APP1_SDS": ConsultingGuide(
         key="CAP_APP1_SDS",
@@ -100,7 +162,11 @@ GUIDES: dict[str, ConsultingGuide] = {
             "인화성 등 물리·화학적 위험성 분류",
             "수생환경 유해성 분류",
         ),
-        legal_basis="「유해화학물질의 규정수량에 관한 규정」 제3조 및 별표 1",
+        legal_basis="「유해화학물질의 규정수량에 관한 규정」 제3조제1호 및 별표 1",
+        legal_hierarchy=(
+            "적용 구조: 「유해화학물질의 규정수량에 관한 규정」 제3조",
+            "유해성·위험성 그룹별 규정수량: 같은 규정 별표 1",
+        ),
         decision_effect="SDS 분류가 확인되면 별표 1의 해당 유해성 그룹·구분과 규정수량을 연결합니다.",
     ),
     "CAP_BROAD_SCOPE": ConsultingGuide(
@@ -117,6 +183,7 @@ GUIDES: dict[str, ConsultingGuide] = {
             "혼합물·반응생성물 여부",
             "법정 항목에 명시된 포함·제외조건",
         ),
+        legal_basis="해당 규정수량 별표의 물질명·범위·비고",
         decision_effect="범위 포함 여부가 확인되기 전까지는 판정보류로 유지합니다.",
     ),
     "DECISION_HOLD": ConsultingGuide(
