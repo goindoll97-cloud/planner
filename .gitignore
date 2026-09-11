@@ -6,4 +6,5 @@ venv/
 .streamlit/secrets.toml
 outputs/
 data/runtime/
+data/legal_archive/
 *.log
