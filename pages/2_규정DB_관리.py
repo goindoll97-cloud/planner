@@ -17,11 +17,39 @@ from engine.regulatory_tables_safe import (
 st.set_page_config(page_title="규정수량 DB 관리", page_icon="🗂️", layout="wide")
 
 
+def _display_cell(value: object) -> object:
+    """Return an Arrow-safe value for Streamlit admin tables.
+
+    Pandas object columns can contain mixed bool/int/str/list values. PyArrow
+    may infer the first value as string and then fail when a later row is an
+    integer. Admin tables are display-only, so mixed object values are rendered
+    as text while genuine numeric columns remain numeric.
+    """
+    if isinstance(value, (dict, list, tuple, set)):
+        serializable = list(value) if isinstance(value, set) else value
+        return json.dumps(serializable, ensure_ascii=False)
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value)
+
+
+def _arrow_safe_frame(df: pd.DataFrame) -> pd.DataFrame:
+    safe = df.copy()
+    for column in safe.columns:
+        if safe[column].dtype == object:
+            safe[column] = safe[column].map(_display_cell)
+    return safe
+
+
 def _table(df: pd.DataFrame, max_rows: int = 40) -> None:
     if df is None or df.empty:
         st.caption("표시할 내용이 없습니다.")
         return
-    st.dataframe(df.head(max_rows), use_container_width=True, hide_index=True)
+    shown = _arrow_safe_frame(df.head(max_rows))
+    st.dataframe(shown, width="stretch", hide_index=True)
     if len(df) > max_rows:
         st.caption(f"전체 {len(df):,}행 중 앞 {max_rows:,}행만 표시합니다.")
 
@@ -29,9 +57,11 @@ def _table(df: pd.DataFrame, max_rows: int = 40) -> None:
 def _checks_frame(checks: dict[str, object]) -> pd.DataFrame:
     rows = []
     for key, value in checks.items():
-        display = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list, tuple)) else value
-        rows.append({"검사항목": key, "값": display})
-    return pd.DataFrame(rows)
+        # The '값' column deliberately uses one homogeneous display type.
+        # This prevents ArrowTypeError when ints/bools/strings coexist.
+        display = _display_cell(value)
+        rows.append({"검사항목": str(key), "값": display})
+    return pd.DataFrame(rows, columns=["검사항목", "값"])
 
 
 def _show_persistent_notice() -> None:
@@ -61,28 +91,28 @@ if not status_df.empty:
 st.markdown("### 공식 별표 추출")
 c1, c2, c3, c4 = st.columns(4)
 
-if c1.button("PSM 별표 13 추출", use_container_width=True):
+if c1.button("PSM 별표 13 추출", width="stretch"):
     with st.status("PSM 별표 13 추출 중...", expanded=True) as box:
         result = build_psm_annex13_candidate()
         st.session_state["regdb_psm"] = result
         box.update(label="PSM 별표 13 추출 완료", state="complete", expanded=False)
     st.rerun()
 
-if c2.button("화사계 별표 1 추출", type="primary", use_container_width=True):
+if c2.button("화사계 별표 1 추출", type="primary", width="stretch"):
     with st.status("화사계 별표 1 유해·위험성 그룹표 추출 중...", expanded=True) as box:
         result = build_cap_appendix1_candidate()
         st.session_state["regdb_cap1"] = result
         box.update(label="화사계 별표 1 추출 완료", state="complete", expanded=False)
     st.rerun()
 
-if c3.button("화사계 별표 2 추출", use_container_width=True):
+if c3.button("화사계 별표 2 추출", width="stretch"):
     with st.status("화사계 별표 2 물질별 규정수량 추출 중...", expanded=True) as box:
         result = build_cap_appendix2_candidate()
         st.session_state["regdb_cap2"] = result
         box.update(label="화사계 별표 2 추출 완료", state="complete", expanded=False)
     st.rerun()
 
-if c4.button("화사계 별표 3 추출", use_container_width=True):
+if c4.button("화사계 별표 3 추출", width="stretch"):
     with st.status("화사계 별표 3 사고대비물질 추출 중...", expanded=True) as box:
         result = build_cap_accident_quantity_candidate()
         st.session_state["regdb_cap3"] = result
@@ -141,7 +171,7 @@ for session_key, db_key, title, next_step in entries:
         f"{title} 승인 DB로 저장",
         key=f"regdb_approve_{db_key}",
         disabled=not (can_approve and confirmed),
-        use_container_width=True,
+        width="stretch",
     ):
         approval = approve_candidate(db_key)
         st.session_state["regdb_notice"] = {
