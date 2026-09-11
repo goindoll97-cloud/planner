@@ -9,6 +9,7 @@ from engine.cap_engine import assess_cap
 from engine.cap_holding import app4_db_ready, build_cap_facility_workbook
 from engine.cap_holding_screen import screen_facility_stage
 from engine.cap_quick_holding import compare_confirmed_declared_holding
+from engine.cap_sds_app1 import app1_sds_options, assess_sds_app1_row
 from engine.consulting_guidance import get_guide
 from engine.inventory import inventory_preview, read_intake_workbook, validate_intake
 from engine.psm_engine import PSM_EXCLUSION_QUESTIONS, assess_psm
@@ -23,7 +24,8 @@ st.markdown(
     <style>
     .block-container { max-width: 1120px; }
     div[data-testid="stSelectbox"] label p,
-    div[data-testid="stRadio"] label p {
+    div[data-testid="stRadio"] label p,
+    div[data-testid="stMultiSelect"] label p {
         font-size: 1.05rem !important;
         font-weight: 650 !important;
     }
@@ -95,7 +97,6 @@ def _cap_direct_preview(intake, legal_hits: list[dict[str, object]]) -> pd.DataF
 
 
 def _render_guide(key: str, *, show_title: bool = True, compact: bool = False) -> None:
-    """Render one legal question as a consulting card."""
     guide = get_guide(key)
     if guide is None:
         return
@@ -128,7 +129,6 @@ def _render_guide(key: str, *, show_title: bool = True, compact: bool = False) -
 
 
 def _status_card(title: str, status: str, *, value: str = "", explanation: str = "") -> None:
-    """Long screening states should wrap instead of being truncated by st.metric."""
     with st.container(border=True):
         st.markdown(f"### {title}")
         st.caption("현재 단계")
@@ -137,6 +137,10 @@ def _status_card(title: str, status: str, *, value: str = "", explanation: str =
             st.markdown(f"**{value}**")
         if explanation:
             st.write(explanation)
+
+
+def _sds_state_key(row_no: int, suffix: str) -> str:
+    return f"sds_app1_{int(row_no)}_{suffix}"
 
 
 st.title(f"{PSM_FULL} · {CAP_FULL} 사전진단")
@@ -182,6 +186,8 @@ with st.expander("업로드한 내용 확인", expanded=False):
 psm = assess_psm(intake)
 cap = assess_cap(intake)
 cap_screen = screen_facility_stage(intake)
+app1_options = app1_sds_options()
+app1_option_map = {option.key: option for option in app1_options}
 
 psm_exclusion_choice = str(st.session_state.get("simple_psm_exclusion", "선택하세요"))
 cap_holding_choice = str(st.session_state.get("simple_cap_holding_basis", "선택하세요"))
@@ -195,8 +201,29 @@ if (
 ):
     quick_cap = compare_confirmed_declared_holding(intake, cap_screen.legal_hits)
 
-# Build readable summary text before rendering. st.metric truncates long values,
-# so the summary uses normal wrapping containers instead.
+# Rebuild any SDS Appendix-1 answers already stored in Streamlit session state so
+# the summary card updates immediately after a user's selection.
+app1_session_results = []
+for fallback in cap.app1_required_rows:
+    row_no = int(fallback.get("row_no") or 0)
+    selected = st.session_state.get(_sds_state_key(row_no, "classes"), []) or []
+    verified_none = bool(st.session_state.get(_sds_state_key(row_no, "none"), False))
+    row_holding = str(st.session_state.get(_sds_state_key(row_no, "holding"), "선택하세요"))
+    holding_confirmed = (
+        cap_holding_choice == "예, 법정 산정방식으로 계산한 값입니다"
+        or row_holding == "예, 법정 최대보유량입니다"
+    )
+    app1_session_results.append(
+        assess_sds_app1_row(
+            intake,
+            row_no,
+            selected,
+            verified_no_app1_class=verified_none,
+            holding_confirmed=holding_confirmed,
+        )
+    )
+
+# Summary text.
 if psm.r_value is None:
     psm_status = _cap_text(psm.label)
     psm_value = ""
@@ -217,14 +244,26 @@ else:
     psm_value = f"R = {psm.r_value:.4f}"
     psm_explanation = "다른 적용조건이나 미확인 정보가 있으면 추가 검토합니다."
 
-if quick_cap is not None:
-    cap_status = _cap_text(quick_cap.label)
-    if quick_cap.status == "LOWER_CANDIDATE":
-        cap_explanation = "하위 규정수량 이상이 확인된 단계입니다. 면제조건 등을 확인한 뒤 2군 여부를 판단합니다."
-    elif quick_cap.status == "UPPER_CANDIDATE":
-        cap_explanation = "상위 규정수량 이상이 확인된 단계입니다. 주요취급시설 여부 등을 확인한 뒤 1군 여부를 판단합니다."
+app1_unresolved = [r for r in app1_session_results if r.status in {"HOLD", "DB_NOT_READY"}]
+app1_upper = any(r.status == "UPPER_CANDIDATE" for r in app1_session_results)
+app1_lower = any(r.status == "LOWER_CANDIDATE" for r in app1_session_results)
+
+if cap.scope_candidates:
+    cap_status = "물질범위 추가 확인 필요"
+    cap_explanation = "CAS 하나만으로 확정할 수 없는 규제범위 후보가 있어 확인 전까지 판정보류합니다."
+elif app1_unresolved:
+    cap_status = "SDS 또는 최대보유량 추가 확인 필요"
+    cap_explanation = "직접목록으로 결론이 끝나지 않은 물질의 SDS 제2항 분류를 아래에서 확인해야 합니다."
+elif quick_cap is not None or app1_upper or app1_lower:
+    if (quick_cap is not None and quick_cap.status == "UPPER_CANDIDATE") or app1_upper:
+        cap_status = "상위 규정수량 이상 후보 포함"
+        cap_explanation = "상위 규정수량 이상인 물질이 확인되었습니다. 이후 면제조건과 주요취급시설 여부를 확인해야 합니다."
+    elif (quick_cap is not None and quick_cap.status == "LOWER_CANDIDATE") or app1_lower:
+        cap_status = "하위 규정수량 이상 후보 포함"
+        cap_explanation = "하위 규정수량 이상인 물질이 확인되었습니다. 이후 면제조건 등을 확인해 작성대상 여부를 확정합니다."
     else:
-        cap_explanation = "최대보유량과 규정수량 비교 결과를 확인한 상태입니다."
+        cap_status = "확인된 규정수량 비교 완료"
+        cap_explanation = "현재까지 확인된 물질의 규정수량 비교를 완료했습니다."
 elif cap_screen.ready and cap_screen.row_numbers:
     cap_status = "규정수량 대상물질 확인 · 최대보유량 확인 필요"
     cap_explanation = "대상물질은 찾았지만 법정 방식의 사업장 최대보유량을 아직 확인하지 않았습니다."
@@ -299,7 +338,7 @@ with st.expander("PSM 계산 근거 보기 · 검토자용", expanded=False):
         for blocker in psm.blockers:
             st.write(f"• {blocker}")
 
-st.markdown(f"## 3. {CAP_FULL} — 왜 최대보유량을 확인하나요?")
+st.markdown(f"## 3. {CAP_FULL} — 물질기준과 최대보유량 확인")
 if not cap_screen.ready:
     st.error("시스템의 규정수량 DB가 준비되지 않았습니다. 일반 사용자가 해결할 항목이 아니므로 관리자에게 확인이 필요합니다.")
     for blocker in cap_screen.blockers:
@@ -312,7 +351,7 @@ elif not cap_screen.row_numbers:
 else:
     st.info(
         f"업로드한 물질 중 **{len(cap_screen.row_numbers)}개가 {CAP_FULL}의 물질별 규정수량 기준에 직접 연결**되었습니다. "
-        f"따라서 이 물질이 사업장 안에 한 순간 최대 얼마까지 존재할 수 있는지 확인해 규정수량과 비교해야 합니다."
+        "이 물질은 사업장 최대보유량을 규정수량과 비교해야 합니다."
     )
     _table(_cap_direct_preview(intake, cap_screen.legal_hits), 30)
 
@@ -324,7 +363,8 @@ else:
         for blocker in cap_screen.blockers:
             st.write(f"• {blocker}")
     else:
-        st.markdown("#### 질문 2. 회사 Excel의 '최대 동시보유량' 값은 법에서 말하는 '사업장 최대보유량'으로 계산한 값입니까?")
+        st.markdown("#### 질문 2. 회사 Excel의 '최대 동시보유량' 값들은 법에서 말하는 '사업장 최대보유량'으로 계산한 값입니까?")
+        st.caption("'예'를 선택하면 이 확인은 아래 SDS 검토 후 별표 1이 적용되는 물질에도 동일하게 사용합니다.")
         _render_guide("CAP_MAX_HOLDING", show_title=False)
         holding_choice = st.radio(
             "최대 동시보유량 산정방식 확인",
@@ -366,19 +406,114 @@ else:
                 _render_guide("DECISION_HOLD", compact=True)
 
 if cap.app1_required_rows:
-    st.markdown("## 4. 왜 SDS 확인이 필요한 물질이 있나요?")
+    st.markdown("## 4. SDS 제2항 확인 — 별표 1 적용 여부 판단")
     st.warning(
         f"물질별 직접목록으로 결론이 끝나지 않은 물질이 {len(cap.app1_required_rows)}개 있습니다. "
-        f"이 물질들을 곧바로 {CAP_FULL} 비대상으로 처리할 수는 없습니다."
+        "이 물질은 SDS 제2항의 유해성·위험성 분류를 확인해야 별표 1 적용 여부와 규정수량을 결정할 수 있습니다."
     )
     _render_guide("CAP_APP1_SDS", show_title=False)
-    app1_df = pd.DataFrame(cap.app1_required_rows).rename(
-        columns={"row_no": "목록행번호", "product_name": "제품명", "cas": "CAS No."}
-    )
-    _table(app1_df, 40)
-    st.caption(
-        "현재 버전에서는 SDS 제2항 분류 입력 단계가 아직 간편 화면에 연결되지 않았으므로, 위 물질은 확인이 끝날 때까지 판정보류로 유지합니다."
-    )
+
+    if not app1_options:
+        st.error("별표 1 승인 DB가 준비되지 않아 SDS 분류 선택단계를 시작할 수 없습니다. 관리자에게 확인해 주세요.")
+    else:
+        st.info(
+            "SDS 제2항의 '유해성·위험성'에 실제 기재된 분류만 선택하세요. "
+            "물질명이나 CAS 번호만 보고 추정하지 않습니다. 여러 분류가 동시에 기재되어 있으면 모두 선택합니다."
+        )
+        for fallback in cap.app1_required_rows:
+            row_no = int(fallback.get("row_no") or 0)
+            product = str(fallback.get("product_name") or fallback.get("cas") or f"목록 {row_no}행")
+            cas = str(fallback.get("cas") or "")
+            item = intake.chemicals.iloc[row_no - 1] if 0 < row_no <= len(intake.chemicals) else None
+            current_holding = item.get("최대 동시보유량(알면 입력)") if item is not None else ""
+            current_unit = item.get("수량 단위") if item is not None else ""
+
+            with st.container(border=True):
+                st.markdown(f"### {product}")
+                st.caption(f"CAS No. {cas or '미확인'} · 회사 입력 최대 동시보유량: {current_holding} {current_unit}")
+                st.markdown("**1) SDS 제2항에 기재된 유해성·위험성 분류를 모두 선택하세요.**")
+                selected = st.multiselect(
+                    "SDS 유해성·위험성 분류",
+                    options=[option.key for option in app1_options],
+                    format_func=lambda key: app1_option_map[key].label,
+                    key=_sds_state_key(row_no, "classes"),
+                    placeholder="SDS 제2항의 분류를 검색해서 선택하세요",
+                    label_visibility="collapsed",
+                )
+                verified_none = st.checkbox(
+                    "SDS 제2항을 확인했으며, 위 별표 1 유해성·위험성 분류에 해당하는 항목이 없습니다.",
+                    key=_sds_state_key(row_no, "none"),
+                )
+
+                row_holding_choice = "선택하세요"
+                if selected and cap_holding_choice != "예, 법정 산정방식으로 계산한 값입니다":
+                    st.markdown("**2) 이 물질의 회사 입력 '최대 동시보유량'이 법정 사업장 최대보유량입니까?**")
+                    st.caption(
+                        "위에서 전체 최대보유량을 이미 '예'로 확인했다면 다시 묻지 않습니다. "
+                        "여기서는 이 물질에 대해서만 확인합니다."
+                    )
+                    row_holding_choice = st.radio(
+                        "이 물질 최대보유량 확인",
+                        ["선택하세요", "예, 법정 최대보유량입니다", "아니오", "잘 모르겠습니다"],
+                        key=_sds_state_key(row_no, "holding"),
+                        label_visibility="collapsed",
+                    )
+
+                holding_confirmed = (
+                    cap_holding_choice == "예, 법정 산정방식으로 계산한 값입니다"
+                    or row_holding_choice == "예, 법정 최대보유량입니다"
+                )
+                result = assess_sds_app1_row(
+                    intake,
+                    row_no,
+                    selected,
+                    verified_no_app1_class=verified_none,
+                    holding_confirmed=holding_confirmed,
+                )
+
+                if result.status == "NOT_APP1":
+                    st.success("SDS 확인 결과: 이 물질은 현재 별표 1 유해성·위험성 그룹에는 해당하지 않습니다.")
+                elif result.status == "UPPER_CANDIDATE":
+                    st.success(
+                        f"SDS 확인 결과 별표 1이 적용되며, 최대보유량 {result.max_holding_ton:g} ton은 "
+                        f"상위 규정수량 {result.upper_quantity_ton:g} ton 이상입니다."
+                    )
+                elif result.status == "LOWER_CANDIDATE":
+                    upper_text = "-" if result.upper_quantity_ton is None else f"{result.upper_quantity_ton:g} ton"
+                    st.success(
+                        f"SDS 확인 결과 별표 1이 적용됩니다. 최대보유량 {result.max_holding_ton:g} ton, "
+                        f"하위 규정수량 {result.lower_quantity_ton:g} ton, 상위 규정수량 {upper_text}입니다."
+                    )
+                elif result.status == "BELOW_LOWER":
+                    st.info(
+                        f"SDS 확인 결과 별표 1은 적용되지만, 현재 확인된 최대보유량 {result.max_holding_ton:g} ton은 "
+                        f"하위 규정수량 {result.lower_quantity_ton:g} ton 미만입니다."
+                    )
+                elif result.status in {"HOLD", "DB_NOT_READY"}:
+                    st.warning(result.label)
+                    for blocker in result.blockers:
+                        st.write(f"• {blocker}")
+
+                if result.matched_rules:
+                    with st.expander("선택한 SDS 분류와 적용 규정수량 보기", expanded=False):
+                        detail_rows = []
+                        for rule in result.matched_rules:
+                            detail_rows.append(
+                                {
+                                    "분류체계": rule.get("classification_system", ""),
+                                    "유해성 그룹": rule.get("hazard_group", ""),
+                                    "구분": rule.get("category_no", ""),
+                                    "하위 규정수량(ton)": rule.get("lower_quantity_ton", ""),
+                                    "상위 규정수량(ton)": rule.get("upper_quantity_ton", ""),
+                                }
+                            )
+                        _table(pd.DataFrame(detail_rows), 50)
+
+                if selected and row_holding_choice in {"아니오", "잘 모르겠습니다"}:
+                    st.caption(
+                        "SDS 분류에 따른 별표 1 규정수량은 확인됐지만 최대보유량이 확정되지 않아 수량비교는 판정보류합니다. "
+                        "필요하면 해당 물질의 시설정보를 기준으로 최대보유량을 다시 산정해야 합니다."
+                    )
 
 if cap.scope_candidates:
     st.markdown("## 5. CAS만으로 확정할 수 없는 물질범위")
@@ -393,7 +528,7 @@ st.markdown("### 이 화면에서 기억할 것")
 st.write(
     f"**{PSM_FULL}와 {CAP_FULL}는 동시에 해당될 수 있습니다.** "
     "이 화면은 회사 Excel 한 번으로 각각의 가능성을 선별하고, 최종판정에 꼭 필요한 추가정보만 순서대로 요청합니다. "
-    "법령 용어를 이미 안다고 가정하지 않고 질문마다 뜻·확인자료·예시·법적 근거를 함께 보여주며, "
-    "상위 법령이 고시에 기준을 맡긴 경우에는 확인된 하위 규정의 실제 내용까지 안내합니다."
+    "SDS가 필요한 물질은 이제 제2항의 유해성·위험성 분류를 직접 선택하면 별표 1 규정수량까지 이어서 비교합니다. "
+    "다만 화학사고예방관리계획서의 최종 작성대상 확정에는 규정수량 비교 뒤 면제조건과 1군·2군 판단단계가 추가로 필요합니다."
 )
 st.caption("규정DB 추출·승인, 별표 PDF 보관, 법령 최신성 확인은 관리자 영역에서 처리하며 일반 회사 사용 흐름에는 넣지 않습니다.")
