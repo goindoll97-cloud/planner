@@ -131,6 +131,28 @@ def _ratio_line_options(diagnosis) -> tuple[list[str], dict[str, float]]:
     return labels, ratio_by_label
 
 
+def _result_payload(
+    *,
+    status: str,
+    message: str,
+    next_step: str,
+    adjusted_r: float,
+    exclusion_status: str,
+    tone: str = "info",
+    can_continue: bool = False,
+) -> dict[str, object]:
+    return {
+        "status": status,
+        "tone": tone,
+        "message": message,
+        "next": next_step,
+        "adjusted_r": adjusted_r,
+        "quantity_status": "충족" if adjusted_r >= 1.0 else "기준 미만",
+        "exclusion_status": exclusion_status,
+        "can_continue": can_continue,
+    }
+
+
 def _evaluate_followup(
     diagnosis,
     exclusion_choice: str,
@@ -144,108 +166,192 @@ def _evaluate_followup(
 
     unresolved_other = [q for q, answer in other_answers.items() if answer in {"", "모름", "선택하세요"}]
     if unresolved_other:
-        return {
-            "status": "판정보류",
-            "tone": "info",
-            "message": f"추가정보 {len(unresolved_other)}개가 아직 확정되지 않았습니다.",
-            "next": "모르는 항목은 관련 SDS·설비자료를 확인한 뒤 다시 답변해 주세요.",
-            "adjusted_r": adjusted_r,
-        }
+        return _result_payload(
+            status="판정보류",
+            message=f"추가정보 {len(unresolved_other)}개가 아직 확정되지 않았습니다.",
+            next_step="모르는 항목은 관련 SDS·설비자료를 확인한 뒤 다시 답변해 주세요.",
+            adjusted_r=adjusted_r,
+            exclusion_status="추가정보 미확인",
+        )
 
     if exclusion_choice in {"선택하세요", "잘 모르겠음"}:
-        return {
-            "status": "판정보류",
-            "tone": "info",
-            "message": "PSM 제외설비 해당 여부를 확정하지 못했습니다.",
-            "next": "선택한 설비가 시행령 제43조제2항의 제외범위에 해당하는지 확인이 필요합니다.",
-            "adjusted_r": adjusted_r,
-        }
+        return _result_payload(
+            status="판정보류",
+            message="수량기준은 계산됐지만 PSM 제외설비 해당 여부를 아직 확정하지 못했습니다.",
+            next_step="제외설비 해당 여부를 확인한 뒤 다시 답변하면 사전판정을 계속할 수 있습니다.",
+            adjusted_r=adjusted_r,
+            exclusion_status="미확인",
+        )
 
     if exclusion_choice != "해당 없음":
         if exclusion_scope in {None, "선택하세요", "모름"}:
-            return {
-                "status": "판정보류",
-                "tone": "info",
-                "message": f"'{exclusion_choice}'를 선택했지만 그 제외범위가 판정대상 설비 전체에 적용되는지 확인이 필요합니다.",
-                "next": "해당 제외유형이 이번 판정대상 설비 전체를 포함하는지 확인해 주세요.",
-                "adjusted_r": adjusted_r,
-            }
+            return _result_payload(
+                status="판정보류",
+                message=f"'{exclusion_choice}'를 선택했지만 그 제외범위가 판정대상 설비 전체에 적용되는지 확인이 필요합니다.",
+                next_step="해당 제외유형이 이번 판정대상 설비 전체를 포함하는지 확인해 주세요.",
+                adjusted_r=adjusted_r,
+                exclusion_status=f"{exclusion_choice} · 범위 미확인",
+            )
         if exclusion_scope == "예":
-            return {
-                "status": "PSM 제외 후보",
-                "tone": "success",
-                "message": f"현재 답변 기준으로 '{exclusion_choice}' 제외조건이 판정대상 설비 전체에 적용되는 것으로 입력되었습니다.",
-                "next": "다음 단계는 해당 제외조항과 실제 설비 범위를 증빙자료로 확인하는 것입니다. 확인 전에는 법적 비대상으로 확정하지 않습니다.",
-                "adjusted_r": adjusted_r,
-            }
+            return _result_payload(
+                status="PSM 제외 후보",
+                message=f"현재 답변 기준으로 '{exclusion_choice}' 제외조건이 판정대상 설비 전체에 적용되는 것으로 입력되었습니다.",
+                next_step="해당 제외조항과 실제 설비 범위를 증빙자료로 확인해야 합니다. 확인 전에는 법적 비대상으로 확정하지 않습니다.",
+                adjusted_r=adjusted_r,
+                exclusion_status=f"{exclusion_choice} 해당 후보",
+                tone="success",
+            )
 
-    if gas_choice == "모름" or gas_choice == "선택하세요":
-        return {
-            "status": "판정보류",
-            "tone": "info",
-            "message": "가스 전문 저장·판매시설 예외 적용 여부를 확인하지 못했습니다.",
-            "next": "해당 가스가 전문 저장·판매시설 내부의 가스인지 확인해 주세요.",
-            "adjusted_r": adjusted_r,
-        }
+    exclusion_status = "해당 없음"
+
+    if gas_choice in {"모름", "선택하세요"}:
+        return _result_payload(
+            status="판정보류",
+            message="일반 제외설비는 정리됐지만 가스 전문 저장·판매시설 예외 적용 여부를 확인하지 못했습니다.",
+            next_step="해당 가스가 전문 저장·판매시설 내부의 가스인지 확인해 주세요.",
+            adjusted_r=adjusted_r,
+            exclusion_status="일반 제외설비 없음 · 가스 예외 미확인",
+        )
 
     if gas_choice == "예":
         if not gas_selected:
-            return {
-                "status": "판정보류",
-                "tone": "info",
-                "message": "가스 전문 저장·판매시설에 해당한다고 답했지만 제외할 가스 물질이 선택되지 않았습니다.",
-                "next": "아래 목록에서 실제로 그 시설에 있는 가스 물질만 선택해 주세요.",
-                "adjusted_r": adjusted_r,
-            }
+            return _result_payload(
+                status="판정보류",
+                message="가스 전문 저장·판매시설에 해당한다고 답했지만 제외할 가스 물질이 선택되지 않았습니다.",
+                next_step="목록에서 실제로 그 시설에 있는 가스 물질만 선택해 주세요.",
+                adjusted_r=adjusted_r,
+                exclusion_status="가스 예외 물질 미선택",
+            )
         adjusted_r = max(0.0, adjusted_r - sum(ratio_by_label.get(label, 0.0) for label in gas_selected))
+        exclusion_status = "가스 전문 저장·판매시설 예외 반영"
         if adjusted_r < 1.0:
-            return {
-                "status": "PSM 재검토 필요",
-                "tone": "info",
-                "message": f"선택한 가스 물질을 제외하면 현재 확인된 합산 규정량 비율은 {adjusted_r * 100:.0f}%로 100% 미만입니다.",
-                "next": "수량기준이 달라졌으므로 인화성 가스·액체, 대상업종 등 남은 PSM 조건을 다시 확인해야 합니다.",
-                "adjusted_r": adjusted_r,
-            }
+            return _result_payload(
+                status="PSM 재검토 필요",
+                message=f"선택한 가스 물질을 제외하면 합산 규정량 비율이 {adjusted_r * 100:.0f}%로 100% 미만입니다.",
+                next_step="수량기준 외 대상업종·인화성 가스/액체 등 남은 PSM 적용조건을 다시 확인해야 합니다.",
+                adjusted_r=adjusted_r,
+                exclusion_status=exclusion_status,
+            )
 
     if adjusted_r >= 1.0:
-        return {
-            "status": "PSM 대상 후보",
-            "tone": "success",
-            "message": f"추가답변을 반영해도 합산 규정량 비율이 {adjusted_r * 100:.0f}%로 기준 100% 이상입니다.",
-            "next": "다음 단계는 실제 PSM 대상설비 범위와 제출요건을 확인하는 것입니다.",
-            "adjusted_r": adjusted_r,
-        }
+        return _result_payload(
+            status="PSM 대상 후보",
+            message=f"수량기준을 충족하고, 현재 확인된 제외조건을 반영해도 합산 규정량 비율이 {adjusted_r * 100:.0f}%로 기준 100% 이상입니다.",
+            next_step="아래 '다음 단계 · PSM 대상설비 범위 확인' 버튼을 눌러 실제 대상 공정·설비 범위를 정리하세요.",
+            adjusted_r=adjusted_r,
+            exclusion_status=exclusion_status,
+            tone="success",
+            can_continue=True,
+        )
 
-    return {
-        "status": "PSM 추가검토 필요",
-        "tone": "info",
-        "message": f"현재 확인된 합산 규정량 비율은 {adjusted_r * 100:.0f}%로 100% 미만입니다.",
-        "next": "대상업종·인화성 가스/액체 등 다른 PSM 적용조건을 확인한 뒤 최종 판단합니다.",
-        "adjusted_r": adjusted_r,
-    }
+    return _result_payload(
+        status="PSM 추가검토 필요",
+        message=f"현재 확인된 합산 규정량 비율은 {adjusted_r * 100:.0f}%로 100% 미만입니다.",
+        next_step="대상업종·인화성 가스/액체 등 다른 PSM 적용조건을 확인한 뒤 최종 판단합니다.",
+        adjusted_r=adjusted_r,
+        exclusion_status=exclusion_status,
+    )
 
 
 def _render_followup_result(result: dict[str, object]) -> None:
-    st.subheader("PSM 추가확인 결과")
+    st.subheader("5. PSM 사전판정 결과")
+    adjusted_r = float(result.get("adjusted_r") or 0.0)
+    quantity_status = str(result.get("quantity_status", "미확인"))
+    exclusion_status = str(result.get("exclusion_status", "미확인"))
     status = str(result.get("status", "판정보류"))
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("① 수량기준", f"{quantity_status} · {adjusted_r * 100:.0f}%")
+    c2.metric("② 제외조건", exclusion_status)
+    c3.metric("③ 현재 결론", status)
+
+    st.caption("판정 순서: 수량기준 확인 → 제외조건 확인 → 현재 결론. 수량이 100% 이상이어도 제외조건이 미확인이면 결론은 '판정보류'가 됩니다.")
+
     message = str(result.get("message", ""))
     next_step = str(result.get("next", ""))
     tone = str(result.get("tone", "info"))
-    body = f"**{status}**\n\n{message}"
     if tone == "success":
-        st.success(body)
+        st.success(message)
     else:
-        st.info(body)
+        st.info(message)
     if next_step:
         st.markdown(f"**다음 단계:** {next_step}")
-    if result.get("adjusted_r") is not None:
-        st.caption(f"추가답변 반영 후 확인된 합산 규정량 비율: {float(result['adjusted_r']) * 100:.0f}%")
+
+    if bool(result.get("can_continue")):
+        if st.button("다음 단계 · PSM 대상설비 범위 확인", type="primary", use_container_width=True, key="open_psm_scope_stage"):
+            st.session_state["psm_scope_open"] = True
+            st.session_state.step = 6
+            st.rerun()
+    elif status == "판정보류":
+        st.warning("현재는 다음 작성단계로 넘어가지 않습니다. 위의 미확인 항목을 먼저 확인한 뒤 추가확인 결과를 다시 생성하세요.")
+    elif status == "PSM 제외 후보":
+        st.info("PSM 작성단계로 바로 넘어가지 않고, 선택한 제외조항과 실제 설비 범위의 증빙 확인이 먼저 필요합니다.")
+
+
+def _render_psm_scope_stage() -> None:
+    if not st.session_state.get("psm_scope_open"):
+        return
+
+    st.divider()
+    st.subheader("6. PSM 대상설비 범위 확인")
+    st.write("사전판정에서 PSM 대상 후보가 확인된 뒤에는, 실제로 어떤 공정·설비가 PSM 작성범위에 들어가는지 정리합니다.")
+    st.caption("이 단계에서는 탱크 세부사양이나 P&ID 전체를 한꺼번에 요구하지 않습니다. 우선 대상 공정·설비의 범위와 사업 진행유형만 확인합니다.")
+
+    saved = st.session_state.get("psm_scope", {})
+    with st.form("psm_scope_form", clear_on_submit=False):
+        process_scope = st.text_area(
+            "대상 공정·설비명",
+            value=str(saved.get("process_scope", "")),
+            placeholder="예: 반응공정 R-101, 포스겐 공급설비, 원료 저장탱크 T-201",
+            help="이번 PSM 검토에 포함될 것으로 예상되는 공정·설비명을 아는 범위에서 적으세요.",
+        )
+        change_type_options = ["선택하세요", "신규 설치", "이전", "주요 구조변경", "기존설비 적용성 검토"]
+        old_change = str(saved.get("change_type", "선택하세요"))
+        change_index = change_type_options.index(old_change) if old_change in change_type_options else 0
+        change_type = st.selectbox("사업 진행유형", change_type_options, index=change_index)
+        planned_date = st.text_input(
+            "설치·이전·변경 예정일 (해당 시)",
+            value=str(saved.get("planned_date", "")),
+            placeholder="예: 2026-11-30 / 일정 미정이면 비워도 됨",
+        )
+        available_docs = st.multiselect(
+            "현재 보유한 자료 (선택)",
+            ["공정설명서", "설비목록", "SDS", "PFD", "P&ID", "물질수지", "운전절차", "위험성평가자료", "비상조치자료"],
+            default=list(saved.get("available_docs", [])),
+        )
+        scope_submitted = st.form_submit_button("대상설비 범위 저장", type="primary", use_container_width=True)
+
+    if scope_submitted:
+        if not process_scope.strip():
+            st.warning("대상 공정·설비명을 최소 1개 이상 입력해 주세요.")
+        elif change_type == "선택하세요":
+            st.warning("사업 진행유형을 선택해 주세요.")
+        else:
+            st.session_state["psm_scope"] = {
+                "process_scope": process_scope.strip(),
+                "change_type": change_type,
+                "planned_date": planned_date.strip(),
+                "available_docs": available_docs,
+            }
+            st.success("대상 공정·설비 범위를 저장했습니다.")
+
+    if st.session_state.get("psm_scope"):
+        scope = st.session_state["psm_scope"]
+        st.markdown("**다음에 준비할 것**")
+        st.write(
+            "이제 저장한 대상 공정·설비를 기준으로 필요한 PSM 작성자료를 단계적으로 요청하면 됩니다. "
+            "다음 개발 단계에서는 공정안전자료 → 공정위험성평가 → 안전운전계획 → 비상조치계획 순으로, "
+            "이미 보유한 자료는 재활용하고 부족한 자료만 요청하도록 연결할 예정입니다."
+        )
+        st.caption(
+            f"현재 범위: {scope.get('process_scope', '')} · 진행유형: {scope.get('change_type', '')}"
+        )
 
 
 def _render_followup_form(diagnosis) -> None:
     questions = followup_questions(diagnosis)
     if not questions:
-        st.success("현재 단계에서 추가로 확인할 질문이 없습니다.")
+        st.success("현재 단계에서 추가로 확인할 법적 질문이 없습니다.")
         return
 
     exclusions, has_gas_special, others = _split_questions(questions)
@@ -332,10 +438,13 @@ def _render_followup_form(diagnosis) -> None:
         )
         st.session_state["followup_result"] = result
         st.session_state.step = 5
+        st.session_state.pop("psm_scope_open", None)
+        st.session_state.pop("psm_scope", None)
 
     result = st.session_state.get("followup_result")
     if result:
         _render_followup_result(result)
+        _render_psm_scope_stage()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -356,12 +465,13 @@ step_labels = {
     3: "자동 사전진단",
     4: "필요정보 추가확인",
     5: "사전판정 결과",
+    6: "PSM 대상설비 범위 확인",
 }
-current_step = max(1, min(int(st.session_state.step), 5))
+current_step = max(1, min(int(st.session_state.step), 6))
 
 st.title("화학안전 사전진단")
 st.caption("회사 화학물질 목록을 넣으면 화사계와 PSM의 적용 가능성을 단계별로 확인합니다.")
-st.progress(current_step / 5, text=f"전체 진행 {current_step}/5 · {step_labels[current_step]}")
+st.progress(current_step / 6, text=f"전체 진행 {current_step}/6 · {step_labels[current_step]}")
 
 with st.sidebar:
     st.subheader("시스템 상태")
@@ -404,6 +514,8 @@ if uploaded is not None:
         st.subheader("3. 자동 사전진단")
         if st.button("사전진단 시작", type="primary", use_container_width=True):
             st.session_state.pop("followup_result", None)
+            st.session_state.pop("psm_scope_open", None)
+            st.session_state.pop("psm_scope", None)
             with st.status("사전진단을 진행하고 있습니다...", expanded=True) as status:
                 progress = st.progress(10, text="1/4 입력자료 확인 중")
                 st.write("✓ 회사 입력자료 형식을 확인합니다.")
@@ -429,60 +541,65 @@ if diagnosis is not None:
     c1.metric("PSM", diagnosis.psm_result)
     c2.metric("화사계", diagnosis.cap_result)
 
-    if diagnosis.psm_r_value is not None:
-        ratio_percent = diagnosis.psm_r_value * 100.0
-        if diagnosis.psm_r_value >= 1.0:
-            st.warning(
-                f"**PSM 수량기준: 기준 이상** · 합산 규정량 비율 **{ratio_percent:.0f}%**\n\n"
-                "여러 PSM 대상물질의 규정량 대비 비율을 합친 값입니다. **100% 이상이면 수량기준 대상 후보**입니다."
-            )
-        else:
-            st.info(
-                f"**PSM 수량기준: 현재 기준 미만** · 합산 규정량 비율 **{ratio_percent:.0f}%**\n\n"
-                "100%가 수량기준입니다. 다른 적용조건이 있으면 결과가 달라질 수 있습니다."
-            )
-
-        compact_count = _compact_question_count(diagnosis)
-        if compact_count:
-            st.caption(f"다음 판정을 위해 {compact_count}개 묶음 항목만 추가 확인합니다.")
-
-        with st.expander("계산 상세 보기 · 전문가용", expanded=False):
-            r1, r2 = st.columns(2)
-            r1.metric("법령상 계산값 R", f"{diagnosis.psm_r_value:.4f}")
-            r2.metric("판정기준", "R ≥ 1")
-            st.caption("R은 각 물질의 규정량 대비 비율 중 법령상 적용값을 합산한 내부 계산값입니다. 일반 사용자는 위의 %만 보면 됩니다.")
-            if diagnosis.psm_ratio_details:
-                ratio_df = pd.DataFrame(diagnosis.psm_ratio_details).rename(
-                    columns={
-                        "legal_item_no": "별표13 번호",
-                        "legal_substance": "물질명",
-                        "source_rows": "입력행",
-                        "cas_values": "CAS",
-                        "manufacture_handling_kg": "제조·취급 환산량(kg)",
-                        "storage_kg": "저장 환산량(kg)",
-                        "manufacture_handling_threshold_kg": "제조·취급 기준량(kg)",
-                        "storage_threshold_kg": "저장 기준량(kg)",
-                        "manufacture_handling_ratio": "제조·취급 비율",
-                        "storage_ratio": "저장 비율",
-                        "controlling_ratio": "합산 기여값",
-                        "controlling_basis": "적용 기준",
-                        "quantity_basis": "함량·환산 근거",
-                    }
+    if diagnosis.missing_items:
+        st.error("입력파일 보완이 먼저 필요합니다. 아래 항목을 Excel에서 수정한 뒤 다시 업로드하세요.")
+        for item in diagnosis.missing_items:
+            st.write(f"• {item}")
+    else:
+        if diagnosis.psm_r_value is not None:
+            ratio_percent = diagnosis.psm_r_value * 100.0
+            if diagnosis.psm_r_value >= 1.0:
+                st.warning(
+                    f"**PSM 수량기준: 기준 이상** · 합산 규정량 비율 **{ratio_percent:.0f}%**\n\n"
+                    "여러 PSM 대상물질의 규정량 대비 비율을 합친 값입니다. **100% 이상이면 수량기준 대상 후보**입니다."
                 )
-                for col in ["제조·취급 비율", "저장 비율", "합산 기여값"]:
-                    if col in ratio_df.columns:
-                        ratio_df[col] = pd.to_numeric(ratio_df[col], errors="coerce").round(4)
-                _static_table(ratio_df, max_rows=30)
+            else:
+                st.info(
+                    f"**PSM 수량기준: 현재 기준 미만** · 합산 규정량 비율 **{ratio_percent:.0f}%**\n\n"
+                    "100%가 수량기준입니다. 다른 적용조건이 있으면 결과가 달라질 수 있습니다."
+                )
 
-    with st.expander("판정 근거 및 시스템 알림 · 전문가용", expanded=False):
-        for message in diagnosis.messages:
-            st.write(f"• {message}")
-        if diagnosis.psm_blockers:
-            st.markdown("**추가 확인 사유**")
-            for blocker in diagnosis.psm_blockers:
-                st.write(f"• {blocker}")
+            compact_count = _compact_question_count(diagnosis)
+            if compact_count:
+                st.caption(f"다음 판정을 위해 {compact_count}개 묶음 항목만 추가 확인합니다.")
 
-    _render_followup_form(diagnosis)
+            with st.expander("계산 상세 보기 · 전문가용", expanded=False):
+                r1, r2 = st.columns(2)
+                r1.metric("법령상 계산값 R", f"{diagnosis.psm_r_value:.4f}")
+                r2.metric("판정기준", "R ≥ 1")
+                st.caption("R은 각 물질의 규정량 대비 비율 중 법령상 적용값을 합산한 내부 계산값입니다. 일반 사용자는 위의 %만 보면 됩니다.")
+                if diagnosis.psm_ratio_details:
+                    ratio_df = pd.DataFrame(diagnosis.psm_ratio_details).rename(
+                        columns={
+                            "legal_item_no": "별표13 번호",
+                            "legal_substance": "물질명",
+                            "source_rows": "입력행",
+                            "cas_values": "CAS",
+                            "manufacture_handling_kg": "제조·취급 환산량(kg)",
+                            "storage_kg": "저장 환산량(kg)",
+                            "manufacture_handling_threshold_kg": "제조·취급 기준량(kg)",
+                            "storage_threshold_kg": "저장 기준량(kg)",
+                            "manufacture_handling_ratio": "제조·취급 비율",
+                            "storage_ratio": "저장 비율",
+                            "controlling_ratio": "합산 기여값",
+                            "controlling_basis": "적용 기준",
+                            "quantity_basis": "함량·환산 근거",
+                        }
+                    )
+                    for col in ["제조·취급 비율", "저장 비율", "합산 기여값"]:
+                        if col in ratio_df.columns:
+                            ratio_df[col] = pd.to_numeric(ratio_df[col], errors="coerce").round(4)
+                    _static_table(ratio_df, max_rows=30)
+
+        with st.expander("판정 근거 및 시스템 알림 · 전문가용", expanded=False):
+            for message in diagnosis.messages:
+                st.write(f"• {message}")
+            if diagnosis.psm_blockers:
+                st.markdown("**추가 확인 사유**")
+                for blocker in diagnosis.psm_blockers:
+                    st.write(f"• {blocker}")
+
+        _render_followup_form(diagnosis)
 
 
 with st.expander("관리자 설정 · 법령/PDF 변경 감시", expanded=False):
