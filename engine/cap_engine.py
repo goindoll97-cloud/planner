@@ -41,6 +41,7 @@ class CAPAssessment:
     messages: list[str] = field(default_factory=list)
     db_ready: bool = False
     partial_only: bool = True
+    scope_direct_hits: list[dict[str, Any]] = field(default_factory=list)
     scope_candidates: list[dict[str, Any]] = field(default_factory=list)
     scope_ready_keys: list[str] = field(default_factory=list)
     scope_missing_keys: list[str] = field(default_factory=list)
@@ -126,20 +127,20 @@ def _band(max_ton: float, lowest: float | None, lower: float | None, upper: floa
 def assess_cap(intake: IntakeData) -> CAPAssessment:
     """Screen CAP with fail-closed identity handling.
 
-    Appendix 3 exact-CAS accident-preparedness screening is active once its
-    approved DB exists.  Appendix 1/2 broad legal scopes are handled separately:
-    CAS-less ranges/groups are preserved as review candidates and can never be
-    converted to an automatic negative result by name similarity alone.
+    Appendix 3 exact-CAS accident-preparedness screening is combined with any
+    approved Appendix 1/2 exact-CAS rows. Legal group/range rows that cannot be
+    represented by one CAS are retained as review candidates instead of being
+    discarded. No structural inference is performed here.
 
-    This remains a partial CAP determination until Appendices 1, 2 and 4 plus
-    exemption/group rules are fully validated and approved.
+    Final 1군/2군/비대상 remains blocked until Appendices 1-4 plus exemption and
+    group rules are all reviewed and approved.
     """
     scope = assess_cap_scope(intake)
     db = _load_db()
     if db.empty:
-        blockers = ["사고대비물질 별표 3 승인 DB 필요"]
+        blockers = ["사고대비물질 별표 3 승인 DB 필요", *scope.blockers]
         if scope.missing_keys:
-            blockers.append("화사계 별표 1·2 포괄범위 DB 미완성")
+            blockers.append("화사계 별표 1·2 물질범위 DB 미완성")
         if scope.review_required:
             blockers.append(f"CAS 미기재 포괄 규제범위 후보 {len(scope.candidate_rows)}건 확인 필요")
         return CAPAssessment(
@@ -149,8 +150,10 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
                 "사고대비물질 별표 3 승인 DB가 없어 화사계 규정수량 대조를 시작할 수 없습니다.",
                 *scope.messages,
             ],
-            blockers=blockers,
+            questions=scope.questions,
+            blockers=list(dict.fromkeys(blockers)),
             db_ready=False,
+            scope_direct_hits=scope.direct_hits,
             scope_candidates=scope.candidate_rows,
             scope_ready_keys=scope.ready_keys,
             scope_missing_keys=scope.missing_keys,
@@ -162,10 +165,13 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
         label="화사계 부분검토",
         db_ready=True,
         partial_only=True,
+        scope_direct_hits=scope.direct_hits,
         scope_candidates=scope.candidate_rows,
         scope_ready_keys=scope.ready_keys,
         scope_missing_keys=scope.missing_keys,
         scope_review_required=scope.review_required,
+        questions=list(scope.questions),
+        blockers=list(scope.blockers),
         messages=list(scope.messages),
     )
     lookup = _lookup(db)
@@ -175,13 +181,10 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
         product = _clean(row.get("제품명"))
         cas = _clean(row.get("CAS No."))
         if not CAS_RE.fullmatch(cas):
-            # A missing/invalid CAS is not silently treated as an Appendix-3 miss.
             assessment.blockers.append(f"화학물질 목록 {row_no}행의 CAS 식별 확인 필요")
             continue
         legal_rows = lookup.get(cas, [])
         if not legal_rows:
-            # Do not emit a negative conclusion here. Appendix 1/2 may contain a
-            # group/range without this CAS explicitly enumerated.
             continue
 
         pct = _valid_pct(row.get("함량(%)"))
@@ -260,33 +263,35 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
             )
         )
 
-    upper_hits = [h for h in assessment.hits if h.quantity_band == "상위 규정수량 이상"]
-    lower_hits = [h for h in assessment.hits if h.quantity_band == "하위 이상·상위 미만"]
+    app3_upper = any(h.quantity_band == "상위 규정수량 이상" for h in assessment.hits)
+    app3_lower = any(h.quantity_band == "하위 이상·상위 미만" for h in assessment.hits)
+    app12_upper = any(str(h.get("quantity_band")) == "상위 규정수량 이상" for h in assessment.scope_direct_hits)
+    app12_lower = any(str(h.get("quantity_band")) == "하위 이상·상위 미만" for h in assessment.scope_direct_hits)
 
-    if upper_hits:
-        assessment.label = "화사계 별표3 상위기준 후보"
-        assessment.status = "APP3_UPPER_CANDIDATE"
+    if app3_upper or app12_upper:
+        assessment.label = "화사계 상위기준 후보"
+        assessment.status = "UPPER_CANDIDATE"
         assessment.messages.append(
-            "사고대비물질 별표 3에서 상위 규정수량 이상 물질이 확인되었습니다. 전체 별표 1·2·4와 면제조건 검증 전에는 1군으로 확정하지 않습니다."
+            "승인된 화사계 규정수량 표에서 상위 규정수량 이상 조건이 확인되었습니다. 별표 1~4와 면제조건 검증 전에는 1군으로 확정하지 않습니다."
         )
-    elif lower_hits:
-        assessment.label = "화사계 별표3 하위기준 후보"
-        assessment.status = "APP3_LOWER_CANDIDATE"
+    elif app3_lower or app12_lower:
+        assessment.label = "화사계 하위기준 후보"
+        assessment.status = "LOWER_CANDIDATE"
         assessment.messages.append(
-            "사고대비물질 별표 3에서 하위 규정수량 이상·상위 미만 물질이 확인되었습니다. 전체 별표 1·2·4 검증 전에는 2군으로 확정하지 않습니다."
+            "승인된 화사계 규정수량 표에서 하위 이상·상위 미만 조건이 확인되었습니다. 별표 1~4와 면제조건 검증 전에는 2군으로 확정하지 않습니다."
         )
     elif assessment.scope_review_required:
         assessment.label = "화사계 포괄범위 검토 필요"
         assessment.status = "SCOPE_REVIEW_REQUIRED"
         assessment.messages.append(
-            "직접 CAS로 끝나지 않는 규제범위 후보가 있어, 별표 3 미매칭 또는 하위수량 미만만으로 비대상을 확정하지 않습니다."
+            "직접 CAS로 끝나지 않는 규제범위 후보가 있어 일부 CAS 미매칭 또는 하위수량 미만만으로 비대상을 확정하지 않습니다."
         )
-    elif assessment.hits:
-        assessment.label = "화사계 별표3 하위기준 미만"
-        assessment.status = "APP3_BELOW_LOWER"
+    elif assessment.hits or assessment.scope_direct_hits:
+        assessment.label = "화사계 확인된 규정량은 하위기준 미만"
+        assessment.status = "BELOW_LOWER_PARTIAL"
     else:
         assessment.label = "화사계 추가검토 필요"
-        assessment.status = "APP3_NO_CONFIRMED_MATCH"
+        assessment.status = "NO_CONFIRMED_MATCH_PARTIAL"
 
     if assessment.scope_review_required:
         assessment.blockers.append(
@@ -294,7 +299,7 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
         )
     if assessment.scope_missing_keys:
         assessment.blockers.append(
-            "화사계 별표 1·2 포괄범위 DB가 아직 모두 승인되지 않아 전체 비대상 판정 금지"
+            "화사계 별표 1·2 물질범위 DB가 아직 모두 승인되지 않아 전체 비대상 판정 금지"
         )
     assessment.blockers.append("화사계 별표 1·2 및 별표 4 최대보유량 산정규칙 전체 검증 전 최종 1군/2군/비대상 확정 금지")
     assessment.questions = list(dict.fromkeys(q for q in assessment.questions if q))
