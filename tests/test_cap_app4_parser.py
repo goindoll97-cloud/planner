@@ -13,7 +13,7 @@ SAMPLE = """
 나. 탑조류 또는 냉각기 등 서로 다른 물질의 성상이 두 개 이상 존재하여 사업장에서 근거를 들어 증빙하는 경우 각각의 성상이 차지하는 부피를 고려할 수 있다. 증빙이 불가능한 경우 설계용량과 액상의 비중을 이용한다.
 3. 저장·보관시설의 경우
 가. 저장탱크의 경우 저장탱크의 설계용량과 유해화학물질의 상온에서의 비중값을 이용하여 산정한다.
-나. 보관시설의 경우 유해화학물질의 보관 계획도를 기준으로 최대보유량을 산정한다. 다만 보관시설의 일일최대보관량을 고려하여 일일최대보관량 이상으로 산정하여야 한다.
+나. 보관시설의 경우 유해화학물질의 보관 구획도를 기준으로 최대보유량을 산정한다. 다만 보관시설의 일일최대보관량을 고려하여 일일최대보관량 이상으로 산정하여야 한다.
 다. 나목에도 불구하고 유해화학물질 보관시설만을 설치·운영하는 사업장의 모든 보관물질의 최대보유량이 최하위 규정수량 미만인 경우에는 별도 기준을 적용한다.
 ※ 비 고
 1. 기상물질의 경우 제조·사용시설의 운전조건을 고려하고 고압가스의 저장 방식을 고려한다.
@@ -31,6 +31,14 @@ class CAPAppendix4ParserTests(unittest.TestCase):
         rows = _parse_core_rules(SAMPLE)
         checks = _anchor_checks(SAMPLE, rows)
         self.assertTrue(all(checks.values()), checks)
+
+    def test_subclause_not_truncated_by_korean_sentence_ending(self) -> None:
+        rows = {row["rule_id"]: row["rule_text"] for row in _parse_core_rules(SAMPLE)}
+        # The old parser treated the final syllable in '산정한다.' as the legal
+        # '다.' marker and cut 3-나 before the daily-maximum sentence.
+        self.assertIn("일일최대보관량", rows["3-나"].replace(" ", ""))
+        self.assertNotIn("보관시설만을", rows["3-나"])
+        self.assertIn("보관시설만을", rows["3-다"])
 
 
 if __name__ == "__main__":
