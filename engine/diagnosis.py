@@ -35,10 +35,12 @@ def run_preliminary_diagnosis(
 ) -> PreliminaryDiagnosis:
     """Run input/latest-law gates and the currently approved deterministic rules.
 
-    CAP and PSM law freshness are gated independently. PSM becomes active only
-    after the administrator approves the current 별표 13 structured table. CAP
-    remains conservative until all quantity tables and exemption/group rules are
-    validated; the partial CAP quantity parser is managed separately in admin UI.
+    Required Excel inputs are a hard first gate. Missing workbook fields are not
+    converted into yes/no regulatory questions: the user must correct the source
+    workbook first. CAP and PSM law freshness are then gated independently. PSM
+    becomes active only after the administrator approves the current 별표 13
+    structured table. CAP remains conservative until all quantity tables and
+    exemption/group rules are validated.
     """
     missing = validate_intake(intake)
     all_sync = overall_sync_gate(law_status_rows)
@@ -53,17 +55,20 @@ def run_preliminary_diagnosis(
     psm_r_complete = False
 
     if missing:
-        messages.append("필수 입력값이 부족하여 규제 대상 여부를 확정하지 않습니다.")
+        messages.append(
+            "입력파일을 먼저 보완해야 합니다. 아래 항목은 예/아니오 질문이 아니라 Excel 필수입력 항목입니다."
+        )
+        messages.extend(f"입력 누락: {item}" for item in missing)
 
     if cap_sync["decision"] == "HOLD":
         messages.append(f"화사계 법령 게이트: {cap_sync['message']}")
     if psm_sync["decision"] == "HOLD":
         messages.append(f"PSM 법령 게이트: {psm_sync['message']}")
 
-    # CAP remains blocked until the complete current quantity/exemption/group
-    # rule set is approved. We do not convert the partial accident-material DB
-    # into a final group determination.
-    if missing or cap_sync["decision"] == "HOLD":
+    # Input validation is a hard gate before any legal applicability question.
+    if missing:
+        cap = "입력파일 보완 필요"
+    elif cap_sync["decision"] == "HOLD":
         cap = "판정보류"
     else:
         cap = "규정수량 DB 구축 중"
@@ -72,7 +77,9 @@ def run_preliminary_diagnosis(
             "별표 1~4 및 면제·작성수준 규칙 검증 전에는 1군/2군/비대상을 확정하지 않습니다."
         )
 
-    if missing or psm_sync["decision"] == "HOLD":
+    if missing:
+        psm = "입력파일 보완 필요"
+    elif psm_sync["decision"] == "HOLD":
         psm = "판정보류"
     else:
         psm_assessment = assess_psm(intake)
@@ -101,16 +108,11 @@ def run_preliminary_diagnosis(
 
 
 def followup_questions(diagnosis: PreliminaryDiagnosis) -> list[str]:
-    """Convert data gaps and rule-engine blockers into concise follow-up questions."""
-    questions: list[str] = []
-    for item in diagnosis.missing_items:
-        if "사업장 기본정보" in item:
-            questions.append(item.replace("입력 필요", "을 확인해 주세요"))
-        elif "수량 단위" in item:
-            questions.append(item.replace("수량 단위가 필요합니다.", "수량 단위를 확인해 주세요."))
-        elif "최대 제조·사용량" in item:
-            questions.append(item.replace("중 하나는 필요합니다.", "중 확인 가능한 최대량을 입력해 주세요."))
-        else:
-            questions.append(item)
-    questions.extend(diagnosis.dynamic_questions)
-    return list(dict.fromkeys(q for q in questions if q))
+    """Return only legal/rule follow-up questions after input validation passes.
+
+    Missing required workbook fields must be corrected in the Excel itself. They
+    are deliberately not rendered as yes/no survey questions.
+    """
+    if diagnosis.missing_items:
+        return []
+    return list(dict.fromkeys(q for q in diagnosis.dynamic_questions if q))
