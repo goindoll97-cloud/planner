@@ -4,9 +4,9 @@ from __future__ import annotations
 
 Dedicated current-law parsers create review candidates. This facade only moves
 review-approved candidates into the decision DB. CAP Appendix 1 (hazard-group
-rules) is intentionally kept separate from Appendix 2 (CAS/broad-scope rules).
-Every successful approval also attempts to archive the exact source PDF in the
-human-readable local legal evidence archive.
+rules) and Appendix 4 (maximum-holding rules) are intentionally kept separate
+from substance identity tables. Every successful approval also attempts to
+archive the exact source PDF in the human-readable local legal evidence archive.
 """
 
 import json
@@ -42,6 +42,13 @@ LOCAL_TABLES = {
         "approved": APPROVED_DIR / "cap_qty_app2.csv",
         "audit": APPROVED_DIR / "cap_qty_app2.approval.json",
         "label": "별표 2",
+    },
+    "CAP_QTY_APP4": {
+        "candidate": CANDIDATE_DIR / "cap_qty_app4_candidate.csv",
+        "meta": CANDIDATE_DIR / "cap_qty_app4_candidate.meta.json",
+        "approved": APPROVED_DIR / "cap_qty_app4.csv",
+        "audit": APPROVED_DIR / "cap_qty_app4.approval.json",
+        "label": "별표 4",
     },
 }
 
