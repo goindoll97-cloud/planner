@@ -36,13 +36,24 @@ EXCLUSION_LABELS = [
     "해당 없음",
     "원자력 설비",
     "군사시설",
-    "사업장 난방용 연료 저장·사용설비",
+    "사업장 내 직접 사용을 위한 난방용 연료의 저장·사용설비",
     "도매·소매시설",
-    "차량 등 운송설비",
+    "차량 등의 운송설비",
     "LPG 충전·저장시설",
     "도시가스 공급시설",
     "기타 고용노동부 고시 제외설비",
     "모름",
+]
+
+PSM_EXCLUSION_GUIDE = [
+    "① 원자력 설비",
+    "② 군사시설",
+    "③ 사업장 내 직접 사용을 위한 난방용 연료의 저장·사용설비",
+    "④ 도매·소매시설",
+    "⑤ 차량 등의 운송설비",
+    "⑥ 「액화석유가스의 안전관리 및 사업법」에 따른 LPG 충전·저장시설",
+    "⑦ 「도시가스사업법」에 따른 가스공급시설",
+    "⑧ 그 밖에 고용노동부장관이 피해 정도가 크지 않다고 인정하여 고시하는 설비",
 ]
 
 
@@ -139,7 +150,6 @@ c2.metric("입력한 화학물질", f"{len(intake.chemicals):,}개")
 with st.expander("업로드한 내용 확인", expanded=False):
     _table(inventory_preview(intake), 40)
 
-# Upload itself triggers the screening. No separate start button.
 psm = assess_psm(intake)
 cap = assess_cap(intake)
 cap_screen = screen_facility_stage(intake)
@@ -213,11 +223,19 @@ if psm.r_value is not None:
 exclusion_questions = [q for q in psm.questions if _is_psm_exclusion_question(q)]
 other_psm_questions = [q for q in psm.questions if not _is_psm_exclusion_question(q)]
 if exclusion_questions:
-    st.markdown("#### 현재 업로드한 화학물질을 실제로 제조·사용·저장하는 공정·설비가 아래 PSM 제외유형 중 하나에 해당합니까?")
-    st.caption(
+    st.markdown("#### 질문 1. 업로드한 화학물질을 실제로 제조·사용·저장하는 공정·설비가 아래 PSM 제외유형 중 하나에 해당합니까?")
+    st.write(
         "여기서 '관련 공정·설비'는 아직 특정 설비명을 입력했다는 뜻이 아닙니다. "
-        "이번 Excel에 적은 화학물질을 실제로 제조·사용·저장하는 반응기, 저장탱크, 공급설비 등의 범위를 뜻합니다."
+        "이번 Excel에 적은 화학물질을 실제로 제조·사용·저장하는 반응기, 저장탱크, 공급설비 등을 뜻합니다."
     )
+    with st.container(border=True):
+        st.markdown("**법에서 정한 PSM 제외설비는 다음과 같습니다.**")
+        for item in PSM_EXCLUSION_GUIDE:
+            st.write(item)
+        st.info(
+            "법적 근거: 「산업안전보건법 시행령」 제43조제2항. "
+            "위 유형인지 모르겠다면 추정하지 말고 '모름'을 선택하세요."
+        )
     exclusion = st.selectbox(
         "PSM 제외설비 선택",
         ["선택하세요", *EXCLUSION_LABELS],
@@ -269,11 +287,21 @@ else:
         for blocker in cap_screen.blockers:
             st.write(f"• {blocker}")
     else:
-        st.markdown("#### 회사 Excel의 '최대 동시보유량'은 사업장 내 관련 제조·사용·저장·보관시설을 모두 고려해 계산한 값입니까?")
-        st.caption(
-            "예를 들어 같은 물질이 반응기와 저장탱크에 동시에 존재할 수 있다면 둘을 모두 고려한 값이어야 합니다. "
-            "잘 모르겠다면 '잘 모르겠습니다'를 선택하세요."
-        )
+        st.markdown("#### 질문 2. 회사 Excel의 '최대 동시보유량' 값은 아래 의미의 '사업장 최대보유량'으로 계산한 값입니까?")
+        with st.container(border=True):
+            st.markdown("**사업장 최대보유량이란?**")
+            st.write(
+                "같은 유해화학물질이 사업장 안의 여러 시설에 있을 수 있습니다. "
+                "최대보유량은 그 물질을 취급하는 **모든 제조·사용·보관·저장시설에서 어느 한 순간 최대로 체류할 수 있는 양을 합한 값**입니다."
+            )
+            st.write(
+                "예를 들어 동일 물질이 동시에 저장탱크에 200 kg, 공정설비에 50 kg, 보관시설에 100 kg까지 존재할 수 있다면 "
+                "개념적으로는 이 세 곳을 함께 고려해야 합니다. 실제 법정 값은 시설유형별 산정방법을 적용하여 계산합니다."
+            )
+            st.info(
+                "법적 근거: 「유해화학물질의 규정수량에 관한 규정」 제2조제2호에서 최대보유량을 정의하고, "
+                "제4조 및 별표 4에서 시설유형별 산정방법을 정하고 있습니다."
+            )
         holding_choice = st.radio(
             "최대 동시보유량 산정방식 확인",
             ["선택하세요", "예, 법정 산정방식으로 계산한 값입니다", "아니오, 단순 재고량 또는 임의값입니다", "잘 모르겠습니다"],
@@ -311,9 +339,9 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch",
             )
-            st.caption(
-                "이 입력서는 현행 별표 4의 최대보유량 산정방법을 적용하기 위한 자료입니다. "
-                "시설별 설계용량·비중·보관량 등 필요한 항목만 작성합니다."
+            st.write(
+                "이 입력서는 「유해화학물질의 규정수량에 관한 규정」 제4조 및 별표 4의 최대보유량 산정방법을 적용하기 위한 보완자료입니다. "
+                "시설별 설계용량·비중·보관량 등 실제 필요한 항목만 작성합니다."
             )
 
 if cap.app1_required_rows:
@@ -330,7 +358,8 @@ if cap.app1_required_rows:
         columns={"row_no": "목록행번호", "product_name": "제품명", "cas": "CAS No."}
     )
     _table(app1_df, 40)
-    st.caption(
+    st.info(
+        "법적 근거: 「유해화학물질의 규정수량에 관한 규정」 제3조제1호 및 별표 1. "
         "현재 버전에서는 SDS 제2항 분류 입력 단계가 아직 간편 화면에 연결되지 않았으므로, 위 물질은 확인이 끝날 때까지 판정보류로 유지합니다. "
         "물질명이나 CAS만 보고 프로그램이 임의로 유해성 분류를 추정하지 않습니다."
     )
@@ -346,7 +375,7 @@ st.divider()
 st.markdown("### 이 화면에서 기억할 것")
 st.write(
     f"**{PSM_FULL}와 {CAP_FULL}는 동시에 해당될 수 있습니다.** "
-    "지금 화면은 두 제도의 최종 제출대상을 한 번에 확정하는 화면이 아니라, 회사 Excel 한 번으로 각각의 가능성을 선별하고 "
-    "정말 필요한 추가정보만 순서대로 요청하는 화면입니다."
+    "지금 화면은 회사 Excel 한 번으로 각각의 가능성을 선별하고, 최종판정에 꼭 필요한 추가정보만 순서대로 요청하는 화면입니다. "
+    "신입사원이 용어를 몰라도 답할 수 있도록 질문 바로 아래에 뜻, 예시, 법적 근거를 함께 표시합니다."
 )
 st.caption("규정DB 추출·승인, 별표 PDF 보관, 법령 최신성 확인은 관리자 영역에서 처리하며 일반 회사 사용 흐름에는 넣지 않습니다.")
