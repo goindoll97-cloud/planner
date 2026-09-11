@@ -10,7 +10,7 @@ import pandas as pd
 from .inventory import IntakeData
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-APPROVED_CAP3_DB = PROJECT_ROOT / "data" / "regulatory" / "approved" / "cap_accident_quantity.csv"
+APPROVED_CAP3_DB = PROJECT_ROOT / "data" / "regulatory" / "approved" / "cap_qty_app3.csv"
 CAS_RE = re.compile(r"^\d{2,7}-\d{2}-\d$")
 
 
