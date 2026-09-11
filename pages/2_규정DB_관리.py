@@ -5,6 +5,12 @@ import json
 import pandas as pd
 import streamlit as st
 
+from engine.legal_archive import (
+    EVIDENCE_CONFIG,
+    evidence_rows,
+    open_archive_folder,
+    sync_approved_evidence,
+)
 from engine.regulatory_admin import approve_candidate, approved_db_status, candidate_preview
 from engine.regulatory_tables_safe import (
     build_cap_accident_quantity_candidate,
@@ -18,13 +24,7 @@ st.set_page_config(page_title="규정수량 DB 관리", page_icon="🗂️", lay
 
 
 def _display_cell(value: object) -> object:
-    """Return an Arrow-safe value for Streamlit admin tables.
-
-    Pandas object columns can contain mixed bool/int/str/list values. PyArrow
-    may infer the first value as string and then fail when a later row is an
-    integer. Admin tables are display-only, so mixed object values are rendered
-    as text while genuine numeric columns remain numeric.
-    """
+    """Return an Arrow-safe value for Streamlit admin tables."""
     if isinstance(value, (dict, list, tuple, set)):
         serializable = list(value) if isinstance(value, set) else value
         return json.dumps(serializable, ensure_ascii=False)
@@ -57,8 +57,6 @@ def _table(df: pd.DataFrame, max_rows: int = 40) -> None:
 def _checks_frame(checks: dict[str, object]) -> pd.DataFrame:
     rows = []
     for key, value in checks.items():
-        # The '값' column deliberately uses one homogeneous display type.
-        # This prevents ArrowTypeError when ints/bools/strings coexist.
         display = _display_cell(value)
         rows.append({"검사항목": str(key), "값": display})
     return pd.DataFrame(rows, columns=["검사항목", "값"])
@@ -72,10 +70,24 @@ def _show_persistent_notice() -> None:
     message = str(notice.get("message", ""))
     if status == "APPROVED":
         st.success(message)
+        if notice.get("warning"):
+            st.warning(str(notice["warning"]))
         if notice.get("next"):
             st.info(f"다음 단계: {notice['next']}")
     else:
         st.error(message)
+
+
+def _show_archive_notice() -> None:
+    results = st.session_state.get("archive_sync_results")
+    if not results:
+        return
+    archived = [r for r in results if r.get("status") == "ARCHIVED"]
+    failed = [r for r in results if r.get("status") not in {"ARCHIVED", "NOT_APPROVED"}]
+    if archived:
+        st.success(f"승인 근거 PDF {len(archived)}건을 로컬 보관소에 확인·저장했습니다.")
+    for row in failed:
+        st.warning(str(row.get("message", "근거자료 보관 상태를 확인하세요.")))
 
 
 st.title("규정수량 DB 관리")
@@ -87,6 +99,51 @@ if not status_df.empty:
     status_df["상태"] = status_df["approved"].map({True: "승인됨", False: "미승인"})
     cols = [c for c in ["key", "상태", "rows", "file", "approved_at_utc"] if c in status_df.columns]
     _table(status_df[cols].rename(columns={"rows": "행수", "file": "파일", "approved_at_utc": "승인시각(UTC)"}), 20)
+
+st.markdown("### 승인 근거 PDF · 로컬 보관소")
+st.caption(
+    "판정 엔진은 승인된 구조화 DB를 사용하고, 그 DB의 법적 원본 PDF는 data/legal_archive에 사람이 읽기 쉬운 이름으로 별도 보관합니다. "
+    "판정근거에 별표가 표시되면 아래 버튼으로 같은 PDF가 있는 폴더를 바로 열 수 있습니다."
+)
+a1, a2 = st.columns(2)
+if a1.button("현재 승인본 근거 PDF 동기화", type="primary", width="stretch"):
+    approved_keys: list[str] = []
+    if not status_df.empty:
+        approved_keys = [
+            str(row["key"])
+            for _, row in status_df.iterrows()
+            if bool(row.get("approved")) and str(row.get("key")) in EVIDENCE_CONFIG
+        ]
+    st.session_state["archive_sync_results"] = sync_approved_evidence(approved_keys)
+    st.rerun()
+
+if a2.button("법령 근거자료 폴더 열기", width="stretch"):
+    opened = open_archive_folder()
+    if opened.get("status") == "OPENED":
+        st.toast(str(opened.get("message", "폴더를 열었습니다.")))
+    else:
+        st.warning(str(opened.get("message", "폴더를 열지 못했습니다.")))
+
+_show_archive_notice()
+archive_df = pd.DataFrame(evidence_rows())
+if not archive_df.empty:
+    display_archive = archive_df.copy()
+    if "SHA256" in display_archive.columns:
+        display_archive["SHA256"] = display_archive["SHA256"].astype(str).map(lambda v: v[:16] + "…" if len(v) > 16 else v)
+    _table(display_archive, 20)
+
+    available = archive_df[archive_df["보관상태"].eq("보관됨")]
+    if not available.empty:
+        buttons = st.columns(min(4, len(available)))
+        for idx, (_, row) in enumerate(available.iterrows()):
+            key = str(row["key"])
+            label = str(row["근거"])
+            if buttons[idx % len(buttons)].button(f"폴더 열기 · {key}", key=f"open_archive_{key}", width="stretch"):
+                opened = open_archive_folder(key)
+                if opened.get("status") == "OPENED":
+                    st.toast(f"{label} 근거 폴더를 열었습니다.")
+                else:
+                    st.warning(str(opened.get("message", "폴더를 열지 못했습니다.")))
 
 st.markdown("### 공식 별표 추출")
 c1, c2, c3, c4 = st.columns(4)
@@ -177,6 +234,7 @@ for session_key, db_key, title, next_step in entries:
         st.session_state["regdb_notice"] = {
             "status": approval.get("status", ""),
             "message": approval.get("message", "승인 처리 결과를 확인하세요."),
+            "warning": approval.get("archive_warning", ""),
             "next": next_step if approval.get("status") == "APPROVED" else "",
         }
         st.session_state.pop(session_key, None)
