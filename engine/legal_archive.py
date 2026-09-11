@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Local evidence archive for approved legal appendices.
 
-The law API remains the freshness/change-detection source.  This module keeps a
+The law API remains the freshness/change-detection source. This module keeps a
 human-readable, immutable local copy of the exact PDF that supported each
-approved regulatory table.  Decision engines continue to use reviewed CSV DBs;
+approved regulatory table. Decision engines continue to use reviewed CSV DBs;
 the archived PDF is the auditable source document that a reviewer can open
 immediately when a result cites an appendix.
 """
@@ -112,6 +112,11 @@ def _candidate_result(meta: dict[str, Any]) -> dict[str, Any]:
     return nested if isinstance(nested, dict) else meta
 
 
+def _candidate_status(config: dict[str, Any]) -> str:
+    meta = _read_json(Path(config["candidate_meta"]))
+    return str(_candidate_result(meta).get("status", "")).strip()
+
+
 def _candidate_source_path(config: dict[str, Any]) -> Path | None:
     meta = _read_json(Path(config["candidate_meta"]))
     result = _candidate_result(meta)
@@ -176,12 +181,21 @@ def archive_approved_evidence(key: str) -> dict[str, Any]:
 
     approved = Path(config["approved"])
     if not approved.exists():
-        return {"status": "NOT_APPROVED", "message": f"{config['label']} 승인 DB가 없어 근거 PDF를 보관하지 않았습니다."}
+        candidate_status = _candidate_status(config)
+        suffix = (
+            " 현재 자동추출 결과는 REVIEW_REQUIRED이므로 사람이 검토한 뒤 승인 DB로 저장해야 합니다."
+            if candidate_status == "REVIEW_REQUIRED"
+            else ""
+        )
+        return {
+            "status": "NOT_APPROVED",
+            "message": f"{config['label']} 승인 DB가 없어 근거 PDF를 보관하지 않았습니다.{suffix}",
+        }
 
     audit = _read_json(Path(config["audit"]))
     audit_source_hash = str(audit.get("source_pdf_sha256") or "").strip()
 
-    # Older legacy approvals did not record source-PDF hashes.  In that case we
+    # Older legacy approvals did not record source-PDF hashes. In that case we
     # archive only when the approved CSV is byte-identical to the current
     # candidate CSV, proving that the current candidate is the approved table.
     if not audit_source_hash and not _approved_matches_candidate(config):
@@ -274,6 +288,12 @@ def evidence_for_key(key: str) -> dict[str, Any] | None:
 
 
 def evidence_rows(keys: Iterable[str] | None = None) -> list[dict[str, Any]]:
+    """Return archive status with approval state separated from file storage.
+
+    '미보관' by itself was ambiguous: it could mean the table had never been
+    approved, or that an approved table still needed archive synchronization.
+    The UI now makes that distinction explicit.
+    """
     wanted = list(keys) if keys is not None else list(EVIDENCE_CONFIG.keys())
     rows: list[dict[str, Any]] = []
     for key in wanted:
@@ -281,11 +301,29 @@ def evidence_rows(keys: Iterable[str] | None = None) -> list[dict[str, Any]]:
         if config is None:
             continue
         entry = evidence_for_key(key)
+        approved = Path(config["approved"]).exists()
+        candidate_status = _candidate_status(config)
+        if entry:
+            storage_status = "보관됨"
+            next_action = "확인 가능"
+        elif approved:
+            storage_status = "승인됨 · 근거 PDF 동기화 필요"
+            next_action = "현재 승인본 근거 PDF 동기화"
+        elif candidate_status == "REVIEW_REQUIRED":
+            storage_status = "승인 전"
+            next_action = "후보표 검토 후 승인 DB로 저장"
+        else:
+            storage_status = "미보관"
+            next_action = "공식 PDF 추출부터 확인"
+
         rows.append(
             {
                 "key": key,
                 "근거": config["label"],
-                "보관상태": "보관됨" if entry else "미보관",
+                "승인상태": "승인됨" if approved else "미승인",
+                "보관상태": storage_status,
+                "다음조치": next_action,
+                "후보검증": candidate_status,
                 "시행일": (entry or {}).get("effective_date", ""),
                 "로컬 PDF": (entry or {}).get("archived_file", ""),
                 "SHA256": (entry or {}).get("sha256", ""),
