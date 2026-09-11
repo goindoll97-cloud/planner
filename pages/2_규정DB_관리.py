@@ -107,7 +107,7 @@ st.caption(
     "판정근거에 별표가 표시되면 아래 버튼으로 같은 PDF가 있는 폴더를 바로 열 수 있습니다."
 )
 a1, a2 = st.columns(2)
-if a1.button("현재 승인본 근거 PDF 동기화", type="primary", width="stretch"):
+if a1.button("현재 승인본 근거 PDF 동기화", width="stretch"):
     approved_keys: list[str] = []
     if not status_df.empty:
         approved_keys = [
@@ -177,7 +177,7 @@ if c4.button("화사계 별표 3 추출", width="stretch"):
         box.update(label="화사계 별표 3 추출 완료", state="complete", expanded=False)
     st.rerun()
 
-if c5.button("화사계 별표 4 추출", type="primary", width="stretch"):
+if c5.button("화사계 별표 4 추출", width="stretch"):
     with st.status("화사계 별표 4 최대보유량 산정 규칙 추출 중...", expanded=True) as box:
         result = build_cap_appendix4_candidate()
         st.session_state["regdb_cap4"] = result
