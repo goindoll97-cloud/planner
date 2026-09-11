@@ -81,6 +81,18 @@ EVIDENCE_CONFIG: dict[str, dict[str, Any]] = {
         "approved": APPROVED_DIR / "cap_qty_app3.csv",
         "audit": APPROVED_DIR / "cap_qty_app3.approval.json",
     },
+    "CAP_QTY_APP4": {
+        "law_key": "CAP_QTY",
+        "regime": "CAP",
+        "document_folder": "유해화학물질_규정수량",
+        "appendix_no": 4,
+        "label": "화사계 별표 4 최대보유량 산정 방법",
+        "filename": "별표4_최대보유량_산정_방법.pdf",
+        "candidate": CANDIDATE_DIR / "cap_qty_app4_candidate.csv",
+        "candidate_meta": CANDIDATE_DIR / "cap_qty_app4_candidate.meta.json",
+        "approved": APPROVED_DIR / "cap_qty_app4.csv",
+        "audit": APPROVED_DIR / "cap_qty_app4.approval.json",
+    },
 }
 
 
