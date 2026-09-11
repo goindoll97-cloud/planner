@@ -2,14 +2,14 @@ from __future__ import annotations
 
 """Conservative screening for regulatory rows that do not enumerate one CAS.
 
-This module is adapted from the earlier goindoll97 project.  It deliberately
-separates *candidate discovery* from legal confirmation.  Broad names such as
+This module is adapted from the earlier goindoll97 project. It deliberately
+separates *candidate discovery* from legal confirmation. Broad names such as
 "... and its salts", compound groups, mixtures, reaction products and UVCB
 ranges must never become an automatic positive/negative decision from name
 similarity alone.
 
-The current planner will feed this index only from source-verified, approved
-current-law tables.  Old project data are not imported as legal rules.
+The current planner feeds this index only from source-verified, approved
+current-law tables. Old project data are not imported as legal rules.
 """
 
 import re
@@ -92,7 +92,6 @@ def _extract_exception_cas(*texts: Any) -> set[str]:
             found.update(CAS_RE.findall(text[idx:end]))
             start = idx + 9
 
-        # Korean legal text often places the excluded CAS before the word '제외'.
         for match in re.finditer(r"제외", text):
             left = max(0, match.start() - 800)
             clause = text[left:match.end()]
@@ -131,12 +130,12 @@ def _coalesce(row: pd.Series, *columns: str) -> str:
 
 
 def build_no_cas_scope_index(master: pd.DataFrame, regime: str = "") -> pd.DataFrame:
-    """Build a review index from approved regulatory rows without a direct CAS.
+    """Build a review index for legal identity expressions wider than one CAS.
 
-    Expected fields are intentionally flexible so the same matcher can consume
-    CAP appendix 1/2 tables once those parsers are approved.  The important
-    distinction is between ``direct_cas`` (automatic exact-list identity) and
-    CAS values merely embedded in a broad legal description.
+    A row whose ``scope_type`` is DIRECT_CAS is excluded because exact identity
+    is handled by the normal CAS path. If a legal row names a parent CAS *and*
+    also extends to salts/compounds/etc., the parent CAS remains recorded as an
+    exact CAS while the wider legal expression is also indexed for review.
     """
     if master is None or master.empty:
         return pd.DataFrame()
@@ -149,18 +148,20 @@ def build_no_cas_scope_index(master: pd.DataFrame, regime: str = "") -> pd.DataF
 
         direct_text = _coalesce(row, "direct_cas")
         direct_cas = _split_cas(direct_text)
-
-        # If a parser only supplies cas_list, it must also explicitly identify
-        # the row as DIRECT_CAS before cas_list is treated as direct identity.
         scope_hint = _coalesce(row, "scope_type").upper()
+
         if not direct_cas and scope_hint == "DIRECT_CAS":
             direct_cas = _split_cas(_coalesce(row, "cas_list", "cas_text", "cas"))
-        if direct_cas:
+        if scope_hint == "DIRECT_CAS":
             continue
 
         korean = _coalesce(row, "regulatory_name", "substance_name", "substance_name_ko", "group_title")
         english = _coalesce(row, "regulatory_name_en", "substance_name_en")
         source = _coalesce(row, "source_text", "legal_text", "condition_note", "group_title")
+
+        scope_type = scope_hint or classify_scope_type(korean, english, source)
+        if scope_type == "DIRECT_CAS":
+            continue
 
         embedded = set()
         for value in (
@@ -170,6 +171,7 @@ def build_no_cas_scope_index(master: pd.DataFrame, regime: str = "") -> pd.DataF
             _coalesce(row, "anchor_cas"),
             _coalesce(row, "cas_list"),
             _coalesce(row, "cas_text"),
+            direct_text if scope_type != "DIRECT_CAS" else "",
         ):
             embedded.update(_split_cas(value))
 
@@ -177,7 +179,6 @@ def build_no_cas_scope_index(master: pd.DataFrame, regime: str = "") -> pd.DataF
         exceptions.update(_extract_exception_cas(source, english, korean))
         embedded -= exceptions
 
-        scope_type = scope_hint if scope_hint and scope_hint != "DIRECT_CAS" else classify_scope_type(korean, english, source)
         designation = _coalesce(row, "designation_id", "record_key", "rule_id") or f"ROW-{idx + 1}"
 
         rows.append({
@@ -186,6 +187,7 @@ def build_no_cas_scope_index(master: pd.DataFrame, regime: str = "") -> pd.DataF
             "regulatory_name": korean,
             "regulatory_name_en": english,
             "scope_type": scope_type,
+            "exact_direct_cas": ";".join(sorted(direct_cas)),
             "embedded_component_cas": ";".join(sorted(embedded)),
             "exception_cas": ";".join(sorted(exceptions)),
             "source_text": source,
@@ -205,11 +207,7 @@ def _inventory_value(row: pd.Series, *columns: str) -> str:
 
 
 def screen_no_cas_scopes(inventory: pd.DataFrame, index: pd.DataFrame) -> pd.DataFrame:
-    """Discover broad-scope candidates without auto-confirming membership.
-
-    Ranking follows the prior project: explicit legal exclusions first, then CAS
-    embedded in the legal scope, then conservative name/family candidates.
-    """
+    """Discover broad-scope candidates without auto-confirming membership."""
     if inventory is None or inventory.empty or index is None or index.empty:
         return pd.DataFrame()
 
@@ -223,6 +221,12 @@ def screen_no_cas_scopes(inventory: pd.DataFrame, index: pd.DataFrame) -> pd.Dat
         item_tokens = _tokens(f"{chemical_name} {product_name} {use_description}")
 
         for _, rule in index.iterrows():
+            exact_direct = {v for v in _clean(rule.get("exact_direct_cas")).split(";") if v}
+            # The exact parent/listed CAS is handled by the direct-CAS path. The
+            # wider scope is relevant only to other members of that legal range.
+            if cas and cas in exact_direct:
+                continue
+
             components = {v for v in _clean(rule.get("embedded_component_cas")).split(";") if v}
             exceptions = {v for v in _clean(rule.get("exception_cas")).split(";") if v}
             exception_hit = bool(cas and cas in exceptions)
