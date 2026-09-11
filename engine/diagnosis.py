@@ -25,6 +25,10 @@ class PreliminaryDiagnosis:
     cap_questions: list[str] = field(default_factory=list)
     cap_blockers: list[str] = field(default_factory=list)
     cap_partial_only: bool = True
+    cap_scope_candidates: list[dict[str, object]] = field(default_factory=list)
+    cap_scope_ready_keys: list[str] = field(default_factory=list)
+    cap_scope_missing_keys: list[str] = field(default_factory=list)
+    cap_scope_review_required: bool = False
 
 
 def _rows_for_regime(
@@ -41,10 +45,10 @@ def run_preliminary_diagnosis(
     """Run input/latest-law gates and approved deterministic screening rules.
 
     Required Excel inputs are a hard first gate. CAP and PSM legal freshness are
-    gated independently. PSM uses the approved current Annex 13 DB. CAP now uses
-    the approved current quantity Appendix 3 DB for accident-preparedness
-    substances, but remains explicitly partial until Appendices 1, 2 and 4 plus
-    exemption/group rules are fully validated and approved.
+    gated independently. PSM uses the approved current Annex 13 DB. CAP uses the
+    approved current Appendix 3 DB and, when available, approved Appendix 1/2
+    broad-scope identity tables. CAS-less legal ranges are never treated as a
+    negative result merely because an exact-CAS lookup misses them.
     """
     missing = validate_intake(intake)
     all_sync = overall_sync_gate(law_status_rows)
@@ -61,6 +65,10 @@ def run_preliminary_diagnosis(
     cap_questions: list[str] = []
     cap_blockers: list[str] = []
     cap_partial_only = True
+    cap_scope_candidates: list[dict[str, object]] = []
+    cap_scope_ready_keys: list[str] = []
+    cap_scope_missing_keys: list[str] = []
+    cap_scope_review_required = False
 
     if missing:
         messages.append(
@@ -73,8 +81,6 @@ def run_preliminary_diagnosis(
     if psm_sync["decision"] == "HOLD":
         messages.append(f"PSM 법령 게이트: {psm_sync['message']}")
 
-    # CAP: same company Excel is screened automatically. The current production
-    # boundary is Appendix 3 only; the UI must never present it as final 1/2군.
     if missing:
         cap = "입력파일 보완 필요"
     elif cap_sync["decision"] == "HOLD":
@@ -86,6 +92,10 @@ def run_preliminary_diagnosis(
         cap_questions = list(cap_assessment.questions)
         cap_blockers = list(cap_assessment.blockers)
         cap_partial_only = cap_assessment.partial_only
+        cap_scope_candidates = list(cap_assessment.scope_candidates)
+        cap_scope_ready_keys = list(cap_assessment.scope_ready_keys)
+        cap_scope_missing_keys = list(cap_assessment.scope_missing_keys)
+        cap_scope_review_required = bool(cap_assessment.scope_review_required)
         messages.extend(cap_assessment.messages)
 
     if missing:
@@ -119,6 +129,10 @@ def run_preliminary_diagnosis(
         cap_questions=list(dict.fromkeys(cap_questions)),
         cap_blockers=list(dict.fromkeys(cap_blockers)),
         cap_partial_only=cap_partial_only,
+        cap_scope_candidates=cap_scope_candidates,
+        cap_scope_ready_keys=cap_scope_ready_keys,
+        cap_scope_missing_keys=cap_scope_missing_keys,
+        cap_scope_review_required=cap_scope_review_required,
     )
 
 
