@@ -25,6 +25,7 @@ class PreliminaryDiagnosis:
     cap_questions: list[str] = field(default_factory=list)
     cap_blockers: list[str] = field(default_factory=list)
     cap_partial_only: bool = True
+    cap_scope_direct_hits: list[dict[str, object]] = field(default_factory=list)
     cap_scope_candidates: list[dict[str, object]] = field(default_factory=list)
     cap_scope_ready_keys: list[str] = field(default_factory=list)
     cap_scope_missing_keys: list[str] = field(default_factory=list)
@@ -47,8 +48,8 @@ def run_preliminary_diagnosis(
     Required Excel inputs are a hard first gate. CAP and PSM legal freshness are
     gated independently. PSM uses the approved current Annex 13 DB. CAP uses the
     approved current Appendix 3 DB and, when available, approved Appendix 1/2
-    broad-scope identity tables. CAS-less legal ranges are never treated as a
-    negative result merely because an exact-CAS lookup misses them.
+    direct-CAS and broad-scope tables. CAS-less legal ranges are never treated as
+    a negative result merely because an exact-CAS lookup misses them.
     """
     missing = validate_intake(intake)
     all_sync = overall_sync_gate(law_status_rows)
@@ -65,6 +66,7 @@ def run_preliminary_diagnosis(
     cap_questions: list[str] = []
     cap_blockers: list[str] = []
     cap_partial_only = True
+    cap_scope_direct_hits: list[dict[str, object]] = []
     cap_scope_candidates: list[dict[str, object]] = []
     cap_scope_ready_keys: list[str] = []
     cap_scope_missing_keys: list[str] = []
@@ -92,6 +94,7 @@ def run_preliminary_diagnosis(
         cap_questions = list(cap_assessment.questions)
         cap_blockers = list(cap_assessment.blockers)
         cap_partial_only = cap_assessment.partial_only
+        cap_scope_direct_hits = list(cap_assessment.scope_direct_hits)
         cap_scope_candidates = list(cap_assessment.scope_candidates)
         cap_scope_ready_keys = list(cap_assessment.scope_ready_keys)
         cap_scope_missing_keys = list(cap_assessment.scope_missing_keys)
@@ -129,6 +132,7 @@ def run_preliminary_diagnosis(
         cap_questions=list(dict.fromkeys(cap_questions)),
         cap_blockers=list(dict.fromkeys(cap_blockers)),
         cap_partial_only=cap_partial_only,
+        cap_scope_direct_hits=cap_scope_direct_hits,
         cap_scope_candidates=cap_scope_candidates,
         cap_scope_ready_keys=cap_scope_ready_keys,
         cap_scope_missing_keys=cap_scope_missing_keys,
