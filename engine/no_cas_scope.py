@@ -110,7 +110,7 @@ def classify_scope_type(korean: Any, english: Any = "", source_text: Any = "") -
         return "REACTION_PRODUCT"
     if "mixture" in text or "혼합물" in text:
         return "MIXTURE"
-    if any(token in compact for token in ("그염류", "염류", "its salts", "their salts")):
+    if any(token in compact for token in ("그염류", "염류", "itssalts", "theirsalts")):
         return "SALT_FAMILY"
     if any(token in compact for token in ("구조범위", "알킬기", "치환기", "탄소수", "일반식", "structuralrange")):
         return "STRUCTURAL_RANGE"
