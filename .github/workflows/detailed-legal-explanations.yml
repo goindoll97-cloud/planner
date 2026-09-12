@@ -1,0 +1,38 @@
+name: detailed-legal-explanations
+
+on:
+  push:
+    branches: [feature/detailed-legal-decision-explanations]
+    paths:
+      - '.github/workflows/detailed-legal-explanations.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply explanation refactor
+        run: python scripts/apply_detailed_legal_explanations.py
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q app.py engine ui
+      - name: Test
+        run: python -m unittest discover -s tests -v
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/stage1_workbook.py engine/template.py engine/__init__.py ui/diagnosis_page.py tests/test_template_contract.py
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+          else
+            git commit -m "Explain statutory applicability using company-specific facts"
+            git push
+          fi
