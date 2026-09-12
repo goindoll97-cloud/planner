@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-"""Fast-path CAP maximum-holding comparison using a company-declared value.
+"""Fast-path CAP maximum-holding comparison.
 
-This module does NOT calculate Appendix 4 from facility geometry. It is used only
-when the company explicitly confirms that the value already entered in the first
-workbook as '최대 동시보유량(알면 입력)' was itself prepared on an Appendix-4
-basis (all relevant facilities combined, legal exclusions handled, same material
-basis). If the user cannot make that confirmation, the detailed facility-input
-workflow remains the fallback.
+Priority:
+1. If the first company workbook already contains ``03_시설별최대보유량``, use
+   those facility facts to calculate Appendix-4 maximum holding directly.
+2. Otherwise, use the company-declared ``최대 동시보유량`` only when the UI has
+   confirmed that it was already calculated on an Appendix-4 basis.
+
+This keeps the one-upload workflow while preserving the detailed facility
+calculation as the legally safer path whenever facility data is available.
 """
 
 from dataclasses import dataclass, field
@@ -90,10 +92,55 @@ def declared_holding_preview(intake: IntakeData, legal_hits: list[dict[str, Any]
     return pd.DataFrame(rows)
 
 
+def _from_first_upload_facilities(
+    intake: IntakeData,
+    legal_hits: list[dict[str, Any]],
+) -> QuickHoldingResult | None:
+    facilities = getattr(intake, "facilities", None)
+    if facilities is None or facilities.empty:
+        return None
+
+    # Import lazily to keep the inventory/cap-holding module dependency simple.
+    from .cap_holding import assess_cap_holding
+
+    required_rows = sorted(
+        {
+            int(hit.get("row_no") or 0)
+            for hit in legal_hits
+            if int(hit.get("row_no") or 0) > 0
+        }
+    )
+    detailed = assess_cap_holding(
+        intake=intake,
+        facilities=facilities,
+        legal_hits=legal_hits,
+        required_row_numbers=required_rows,
+    )
+
+    comparisons: list[dict[str, Any]] = []
+    for row in detailed.comparison_rows:
+        copy = dict(row)
+        if "confirmed_max_holding_ton" not in copy:
+            copy["confirmed_max_holding_ton"] = copy.get("calculated_max_holding_ton")
+        copy["basis"] = "최초 회사 입력파일의 03_시설별최대보유량을 별표 4 방식으로 계산"
+        comparisons.append(copy)
+
+    return QuickHoldingResult(
+        status=detailed.status,
+        label=detailed.label,
+        comparison_rows=comparisons,
+        blockers=list(detailed.blockers),
+    )
+
+
 def compare_confirmed_declared_holding(
     intake: IntakeData,
     legal_hits: list[dict[str, Any]],
 ) -> QuickHoldingResult:
+    facility_result = _from_first_upload_facilities(intake, legal_hits)
+    if facility_result is not None:
+        return facility_result
+
     comparisons: list[dict[str, Any]] = []
     blockers: list[str] = []
 
