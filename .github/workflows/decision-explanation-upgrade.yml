@@ -39,4 +39,4 @@ jobs:
             git push
           fi
 
-# rerun after full statutory naming contract update
+# rerun after removing remaining user-facing abbreviations
