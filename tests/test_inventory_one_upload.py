@@ -9,7 +9,7 @@ from engine.inventory import read_intake_workbook
 
 
 class InventoryOneUploadTests(unittest.TestCase):
-    def _workbook_bytes(self, facility_sheet_name: str = "04_시설별최대보유량") -> bytes:
+    def _workbook_bytes(self, facility_sheet_name: str = "04_시설별최대보유량", include_note8: bool = True) -> bytes:
         wb = Workbook()
         ws = wb.active
         ws.title = "01_사업장기본정보"
@@ -59,6 +59,14 @@ class InventoryOneUploadTests(unittest.TestCase):
         final.append(["화학사고예방관리계획서", "법정 작성 면제시설 해당 여부", "해당없음"])
         final.append(["화학사고예방관리계획서", "상위 규정수량 이상을 취급하는 개별 주요취급시설 존재 여부", "Y"])
 
+        if include_note8:
+            note8 = wb.create_sheet("06_PSM_비고8제외수량")
+            note8.append(["title"])
+            note8.append([])
+            note8.append(["적용여부", "별표13 호수", "제조·취급 제외량(kg)", "저장 제외량(kg)", "시설명", "근거", "비고"])
+            note8.append(["해당", 8, 0, 500, "가스창고", "운영자료", "test"])
+            note8.append(["해당없음"])
+
         out = BytesIO()
         wb.save(out)
         return out.getvalue()
@@ -68,12 +76,15 @@ class InventoryOneUploadTests(unittest.TestCase):
         self.assertEqual(len(intake.facilities), 1)
         self.assertEqual(intake.facilities.iloc[0]["시설명"], "V-201")
         self.assertEqual(intake.final_conditions["법정 작성 면제시설 해당 여부"], "해당없음")
+        self.assertEqual(len(intake.psm_note8_exclusions), 1)
+        self.assertEqual(int(intake.psm_note8_exclusions.iloc[0]["별표13 호수"]), 8)
         self.assertTrue(bool(intake.source_fingerprint))
 
     def test_reads_legacy_03_facility_sheet_for_backward_compatibility(self):
-        intake = read_intake_workbook(self._workbook_bytes("03_시설별최대보유량"))
+        intake = read_intake_workbook(self._workbook_bytes("03_시설별최대보유량", include_note8=False))
         self.assertEqual(len(intake.facilities), 1)
         self.assertEqual(intake.facilities.iloc[0]["시설명"], "V-201")
+        self.assertTrue(intake.psm_note8_exclusions.empty)
 
 
 if __name__ == "__main__":
