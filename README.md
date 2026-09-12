@@ -71,8 +71,8 @@ ALLOW → CAP/PSM 판정 실행
 - 인화성 가스·인화성 액체(별표 13 제1·2호) 동적 물성 확인
 - KSIC 20202의 제1·2호 조건 연동
 - 발연황산 SO₃ 함량 및 니트로셀룰로오스 질소함량 후속 확인
-- 후속답변을 실제 R 계산에 재주입
-- 별표 13 비고 제8호 전문 가스 저장·판매시설 제외수량 차감 후 R 재계산
+- 추가 확인값을 별표 13 비고 제7호 합산한 값(R) 산정에 반영
+- 별표 13 비고 제8호 전문 가스 저장·판매시설 제외수량을 반영해 비고 제7호 합산한 값(R) 재산정
 - 시행령 제43조제2항 제외설비 최종 확인
 
 ### CAP
@@ -124,7 +124,7 @@ planner/
 ├─ ui/
 │  ├─ diagnosis_entry.py          # 중앙 readiness gate + 진단 진입
 │  ├─ diagnosis_page.py           # CAP/PSM 1차 판정 UI
-│  ├─ psm_followup_panel.py       # PSM 후속조건 입력 및 R 재계산
+│  ├─ psm_followup_panel.py       # PSM 법정 추가조건 입력 및 별표 13 합산한 값(R) 산정
 │  ├─ regdb_page.py               # 규정 DB 관리자 화면
 │  └─ legal_evidence_page.py      # 법적 근거 조회
 ├─ engine/

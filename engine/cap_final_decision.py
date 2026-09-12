@@ -194,7 +194,7 @@ def assess_cap_final(
     lower = [row for row in rows if row["decision_level"] == "LOWER"]
     if not upper and not lower:
         return CAPFinalDecision(
-            "NOT_REQUIRED", "작성 비대상 — 확인된 물질 모두 하위 규정수량 미만",
+            "NOT_REQUIRED", "작성 면제 — 모든 유해화학물질의 최대보유량이 하위 규정수량 미만",
             reasons=["현재 확인이 끝난 유해화학물질 중 하위 규정수량 이상인 물질이 없습니다."],
             legal_basis=["「화학물질관리법 시행규칙」 제19조제2항제2호"],
         )
@@ -224,7 +224,7 @@ def assess_cap_final(
                 legal_basis=[option.legal_basis],
             )
         return CAPFinalDecision(
-            "NOT_REQUIRED", "작성 비대상 — 법정 면제시설",
+            "NOT_REQUIRED", "작성 면제 — 법정 면제시설",
             reasons=[option.label, option.plain_language], legal_basis=[option.legal_basis],
         )
 
@@ -233,9 +233,9 @@ def assess_cap_final(
         major = str(major_facility_answer or "UNANSWERED").upper()
         if major == "YES":
             return CAPFinalDecision(
-                "REQUIRED_GROUP_1", "작성 필요 — 1군 사업장", group="1군",
+                "REQUIRED_GROUP_1", "작성수준 — 1군 사업장", group="1군",
                 reasons=[
-                    "하나 이상의 물질이 사업장 최대보유량 기준 상위 규정수량 이상입니다.",
+                    "하나 이상의 유해화학물질의 사업장 최대보유량이 상위 규정수량 이상입니다.",
                     "상위 규정수량 이상의 유해화학물질을 취급하는 주요취급시설을 운영합니다.",
                 ],
                 legal_basis=[
@@ -257,7 +257,7 @@ def assess_cap_final(
         )
 
     return CAPFinalDecision(
-        "REQUIRED_GROUP_2", "작성 필요 — 2군 사업장", group="2군",
+        "REQUIRED_GROUP_2", "작성수준 — 2군 사업장", group="2군",
         reasons=["면제조건에 해당하지 않으며 하나 이상의 유해화학물질 최대보유량이 하위 규정수량 이상 상위 규정수량 미만입니다."],
         legal_basis=["「화학사고예방관리계획서 작성 등에 관한 규정」 제2조제1항제12의2, 제4조 및 제6조"],
     )
