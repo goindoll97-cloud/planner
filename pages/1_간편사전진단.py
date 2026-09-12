@@ -9,7 +9,12 @@ import streamlit as st
 
 from engine.cap_engine import assess_cap
 from engine.cap_final_decision import assess_cap_final, exemption_by_key, exemption_options
-from engine.cap_holding import app4_db_ready, build_cap_facility_workbook
+from engine.cap_holding import (
+    app4_db_ready,
+    assess_cap_holding,
+    build_cap_facility_workbook,
+    read_cap_facility_workbook,
+)
 from engine.cap_holding_screen import screen_facility_stage
 from engine.cap_quick_holding import compare_confirmed_declared_holding
 from engine.cap_sds_app1 import app1_sds_options, assess_sds_app1_row
@@ -102,7 +107,6 @@ def _num(value: Any) -> float | None:
 
 
 def _sds_unmatched_explanation(text: str) -> str:
-    """Explain why a KOSHA SDS classification was not used for CAP Appendix 1."""
     compact = re.sub(r"[^0-9A-Za-z가-힣]", "", str(text or "")).lower()
     if "눈손상" in compact or "눈자극" in compact:
         return "별표 1의 유해·위험성 그룹에는 눈 손상성/눈 자극성 그룹이 없어 규정수량 선택에 사용하지 않습니다."
@@ -193,7 +197,6 @@ def _status_card(title: str, status: str, *, value: str = "", explanation: str =
 
 
 def _section_header(title: str, theme: str) -> None:
-    """Color-code major user-facing sections without relying on step numbers."""
     css_class = "consult-section-psm" if theme == "psm" else "consult-section-cap"
     st.markdown(
         f'<div class="consult-section-banner {css_class}">{title}</div>',
@@ -306,10 +309,37 @@ if (
 ):
     quick_cap = compare_confirmed_declared_holding(intake, cap_screen.legal_hits)
 
-direct_quantity_rows = list(getattr(quick_cap, "comparison_rows", []) or [])
+facility_result = None
+facility_frame = None
+facility_upload_error = ""
+facility_upload_state = st.session_state.get("simple_cap_facility_upload")
+if (
+    cap_holding_choice in {"아니오, 단순 재고량 또는 임의값입니다", "잘 모르겠습니다"}
+    and facility_upload_state is not None
+    and app4_db_ready()
+    and cap_screen.ready
+    and cap_screen.row_numbers
+    and not cap_screen.blockers
+):
+    try:
+        facility_bytes = facility_upload_state.getvalue() if hasattr(facility_upload_state, "getvalue") else bytes(facility_upload_state)
+        facility_frame = read_cap_facility_workbook(facility_bytes)
+        facility_result = assess_cap_holding(
+            intake=intake,
+            facilities=facility_frame,
+            legal_hits=cap_screen.legal_hits,
+            required_row_numbers=cap_screen.row_numbers,
+        )
+    except Exception as exc:
+        facility_upload_error = f"시설정보 입력서를 읽거나 계산하지 못했습니다: {type(exc).__name__}: {exc}"
+
+direct_quantity_rows = list(
+    (getattr(quick_cap, "comparison_rows", []) if quick_cap is not None else [])
+    or (getattr(facility_result, "comparison_rows", []) if facility_result is not None else [])
+    or []
+)
 direct_threshold_upper = any(_is_upper_row(row) for row in direct_quantity_rows)
 direct_threshold_lower = any(_is_lower_row(row) for row in direct_quantity_rows)
-direct_threshold_candidate = direct_threshold_upper or direct_threshold_lower
 
 kosha_state = kosha_credential_status()
 app1_runtime: list[dict[str, Any]] = []
@@ -363,12 +393,17 @@ elif cap_screen.blockers:
     unresolved.extend(cap_screen.blockers)
 
 if cap_screen.row_numbers:
-    if cap_holding_choice != "예, 법정 산정방식으로 계산한 값입니다":
-        unresolved.append("별표 2·3 직접대상 물질의 법정 사업장 최대보유량 확인 필요")
-    elif quick_cap is not None:
-        quantity_rows.extend(quick_cap.comparison_rows)
-        if quick_cap.status == "HOLD":
-            unresolved.extend(quick_cap.blockers)
+    if cap_holding_choice == "예, 법정 산정방식으로 계산한 값입니다":
+        if quick_cap is not None:
+            quantity_rows.extend(quick_cap.comparison_rows)
+            if quick_cap.status == "HOLD":
+                unresolved.extend(quick_cap.blockers)
+    elif facility_result is not None:
+        quantity_rows.extend(facility_result.comparison_rows)
+        if facility_result.status in {"HOLD", "DB_NOT_READY"}:
+            unresolved.extend(facility_result.blockers or [facility_result.label])
+    else:
+        unresolved.append("별표 2·3 직접대상 물질의 법정 사업장 최대보유량 계산을 위한 시설정보 입력서 작성·재업로드 필요")
 
 if cap.scope_candidates:
     unresolved.append(f"CAS 하나로 확정할 수 없는 포괄 물질범위 후보 {len(cap.scope_candidates)}건 확인 필요")
@@ -589,7 +624,15 @@ elif cap_screen.row_numbers:
                 with st.expander("규정수량 비교 근거 보기", expanded=False):
                     _table(pd.DataFrame(current_quick.comparison_rows), 60)
         elif holding_choice in {"아니오, 단순 재고량 또는 임의값입니다", "잘 모르겠습니다"}:
-            st.warning("현재 값으로 법적 최대보유량을 확정하지 않습니다. 해당 물질의 시설정보만 추가로 받아 별표 4 방식으로 다시 계산합니다.")
+            st.warning("현재 값으로 법적 최대보유량을 확정하지 않습니다. 아래 시설정보를 받아 「유해화학물질의 규정수량에 관한 규정」 별표 4 방식으로 다시 계산합니다.")
+            with st.container(border=True):
+                st.markdown("### 시설정보 입력서 사용방법")
+                st.write("① 아래 입력서를 다운로드합니다.")
+                st.write("② `01_CAP시설정보` 시트의 노란색 칸을 작성합니다. 같은 물질이 여러 시설에 있으면 **시설 하나당 한 줄**로 작성합니다.")
+                st.write("③ 파일을 저장합니다.")
+                st.write("④ **바로 아래 업로드 칸에 같은 파일을 다시 올립니다.**")
+                st.write("⑤ 프로그램이 시설별 최대보유량을 계산·합산하고, 규정수량 비교와 최종판정을 **이 화면에서 그대로 계속**합니다.")
+                st.success("별도의 '화학사고예방관리계획서 최대보유량' 화면으로 이동할 필요가 없습니다.")
             template = build_cap_facility_workbook(intake, cap_screen.row_numbers)
             st.download_button(
                 "최대보유량 계산용 시설정보 입력서 다운로드",
@@ -598,6 +641,35 @@ elif cap_screen.row_numbers:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch",
             )
+            facility_upload = st.file_uploader(
+                "작성한 시설정보 입력서를 이곳에 다시 업로드해 주세요.",
+                type=["xlsx"],
+                key="simple_cap_facility_upload",
+            )
+            if facility_upload_error:
+                st.error(facility_upload_error)
+            elif facility_result is not None:
+                if facility_frame is not None:
+                    with st.expander("업로드한 시설정보 확인", expanded=False):
+                        _table(facility_frame, 80)
+                if facility_result.status in {"UPPER_CANDIDATE", "LOWER_CANDIDATE"}:
+                    with st.container(border=True):
+                        st.markdown("### 🔴 사업장 최대보유량 재계산 결과")
+                        st.markdown(f"#### **{_cap_text(facility_result.label)}**")
+                elif facility_result.status == "HOLD":
+                    st.warning(_cap_text(facility_result.label))
+                else:
+                    st.info(_cap_text(facility_result.label))
+                if facility_result.facility_rows:
+                    with st.expander("시설별 최대보유량 계산 근거", expanded=False):
+                        _table(pd.DataFrame([asdict(row) for row in facility_result.facility_rows]), 100)
+                if facility_result.comparison_rows:
+                    with st.expander("규정수량 비교 결과", expanded=True):
+                        _table(pd.DataFrame(facility_result.comparison_rows), 100)
+                for blocker in facility_result.blockers:
+                    st.write(f"• 확인 필요: {blocker}")
+                if not facility_result.blockers and facility_result.comparison_rows:
+                    st.success("시설정보 재계산이 완료되었습니다. 이 결과를 사용해 아래 화학사고예방관리계획서 판정을 계속합니다.")
     else:
         st.error("최대보유량 계산기준 DB가 준비되지 않았습니다. 관리자 확인이 필요합니다.")
 else:
@@ -622,8 +694,12 @@ if cap.app1_required_rows:
             "앞 단계만으로 하위 규정수량 이상 물질이 아직 확인되지 않았기 때문에, 이 경우 SDS 제2항 확인이 실제 작성 여부 판정에 필요한 단계입니다."
         )
 
+    st.info(
+        "이 화면에서 말하는 별표 1~4는 모두 **「유해화학물질의 규정수량에 관한 규정」**의 별표입니다. "
+        "별표 1은 유해·위험성 그룹별 규정수량, 별표 2는 인체·생태유해성 물질별 규정수량, 별표 3은 사고대비물질별 규정수량, 별표 4는 사업장 최대보유량 산정방법입니다."
+    )
     st.write(
-        "별표 2·3에서 직접 결론이 나지 않은 물질은 별표 1 유해성·위험성 그룹을 확인합니다. "
+        "「유해화학물질의 규정수량에 관한 규정」 별표 3과 별표 2에서 직접 결론이 나지 않은 물질은 같은 규정 별표 1의 유해성·위험성 그룹을 확인합니다. "
         "**100% 단일물질이고 CAS가 있으면 한국산업안전보건공단 물질안전보건자료 조회 서비스를 먼저 자동조회**하고, "
         "혼합물·조회실패·불일치일 때만 회사 SDS를 직접 확인합니다."
     )
@@ -668,7 +744,7 @@ if cap.app1_required_rows:
 
             if pure and auto is not None and getattr(auto, "status", "") == "MATCHED":
                 st.success(f"CAS 자동조회 완료: {auto.chemical_name or product} · 화학물질 ID {auto.chem_id}")
-                st.markdown("**자동으로 확인한 SDS 제2항 분류 중 별표 1에 연결된 항목**")
+                st.markdown("**자동으로 확인한 SDS 제2항 분류 중 「유해화학물질의 규정수량에 관한 규정」 별표 1에 연결된 항목**")
                 for key in auto.app1_option_keys:
                     option = app1_option_map.get(key)
                     if option:
