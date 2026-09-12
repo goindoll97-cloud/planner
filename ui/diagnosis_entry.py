@@ -4,7 +4,6 @@ import streamlit as st
 
 from engine.law_monitor import run_law_monitor
 from engine.readiness import decision_readiness_gate
-from ui.psm_followup_panel import render_psm_followup_panel
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -33,10 +32,6 @@ if gate.get("decision") != "ALLOW":
     _render_gate_hold(gate)
     st.stop()
 
-# 법령 최신성과 승인 DB 출처 SHA-256이 모두 검증된 경우에만 실제 사용자 진단 화면을 실행합니다.
+# 회사가 업로드한 Excel을 유일한 사실 입력원본으로 사용합니다.
+# 화면에서는 회사 사실을 다시 묻거나 덮어쓰지 않습니다.
 exec(compile(open("ui/diagnosis_page.py", encoding="utf-8").read(), "ui/diagnosis_page.py", "exec"))
-
-# 1차 자동선별에서 확정할 수 없었던 PSM 물성·특수조건을 구조화된 답변으로 받아 R에 재주입합니다.
-intake = st.session_state.get("intake")
-if intake is not None:
-    render_psm_followup_panel(intake)
