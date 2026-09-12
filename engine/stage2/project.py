@@ -38,11 +38,14 @@ def _business_value(business: Mapping[str, object], *candidates: str) -> str:
 
 
 def _subject_from_status(status: object) -> bool | None:
+    """Map existing company-facing Stage-1 labels without re-deciding applicability."""
     text = _text(status).replace(" ", "")
     if not text:
         return None
-    if "비대상" in text or "면제" in text:
+    if any(token in text for token in ("비대상", "미해당", "면제", "의무없음", "제외설비")):
         return False
+    if "1군" in text or "2군" in text:
+        return True
     if "대상" in text:
         return True
     return None
