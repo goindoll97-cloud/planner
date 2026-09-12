@@ -352,7 +352,7 @@ def build_legal_reference_workbook() -> bytes:
     guide = wb.active
     guide.title = "00_사용안내"
     guide.merge_cells("A1:F1")
-    guide["A1"] = "PSM·화학사고예방관리계획서 법령 작성 참고"
+    guide["A1"] = "공정안전보고서·화학사고예방관리계획서 법령 작성 참고"
     guide["A1"].fill = TITLE_FILL
     guide["A1"].font = Font(color="FFFFFF", bold=True, size=14)
     guide["A1"].alignment = Alignment(vertical="center")
@@ -372,7 +372,7 @@ def build_legal_reference_workbook() -> bytes:
     _write_row(guide, 7, ["구분", "현행 기준", "핵심 법령", "핵심 조문·별표", "비고", "공식 링크"])
     _style_header(guide, "A7:F7")
     guide_rows = [
-        ["공정안전보고서(PSM)", "2026-09-12 확인", "「산업안전보건법」 / 「산업안전보건법 시행령」", "법 제44조제1항 / 시행령 제43조 / 별표 13", "별표 13: 유해·위험물질 규정량", "https://www.law.go.kr/법령/산업안전보건법시행령/제43조"],
+        ["공정안전보고서", "2026-09-12 확인", "「산업안전보건법」 / 「산업안전보건법 시행령」", "법 제44조제1항 / 시행령 제43조 / 별표 13", "별표 13: 유해·위험물질 규정량", "https://www.law.go.kr/법령/산업안전보건법시행령/제43조"],
         ["화학사고예방관리계획서", "2026-09-12 확인", "「화학물질관리법」 / 같은 법 시행규칙", "법 제23조 / 시행규칙 제19조", "작성·제출 의무 및 법정 예외", "https://www.law.go.kr/법령/화학물질관리법/제23조"],
         ["화학사고예방관리계획서", "시행 2026.5.6", "「유해화학물질의 규정수량에 관한 규정」", "제2조~제4조 / 별표 1~4", "화학물질안전원고시 제2026-4호", "https://www.law.go.kr/admRulLsInfoP.do?admRulId=93578&efYd=0"],
         ["화학사고예방관리계획서", "시행 2026.4.22", "「화학사고예방관리계획서 작성 등에 관한 규정」", "제2조 / 제4조 / 제6조 / 제9조", "화학물질안전원고시 제2026-7호", "https://www.law.go.kr/admRulInfoP.do?admRulSeq=2100000278102"],
@@ -418,7 +418,7 @@ def build_legal_reference_workbook() -> bytes:
         ["05_최종판정조건", "가스를 전문으로 저장·판매하는 시설 내 가스 여부", "별표 13 비고 제8호 적용 여부 확인", "「산업안전보건법 시행령」 별표 13 비고 제8호", "별표 13 현행본", psm_url],
         ["06_PSM_비고8제외수량", "별표13 호수 / 제조·취급 제외량 / 저장 제외량", "비고 제8호에 따라 제외할 수량을 항목별로 구분하고 비고 제7호 합산한 값(R)에 반영", "「산업안전보건법 시행령」 별표 13 비고 제7호·제8호", "별표 13 현행본", psm_url],
     ]
-    build_reference_sheet("01_PSM_법령참고", psm_rows)
+    build_reference_sheet("01_공정안전보고서_법령참고", psm_rows)
 
     cap_law_url = "https://www.law.go.kr/법령/화학물질관리법/제23조"
     cap_rule_url = "https://www.law.go.kr/법령/화학물질관리법시행규칙/제19조"
@@ -439,7 +439,7 @@ def build_legal_reference_workbook() -> bytes:
         ["05_최종판정조건", "상위 규정수량 이상을 취급하는 개별 주요취급시설 존재 여부", "1군 사업장 작성수준 판단에 필요한 주요취급시설 존재 여부 확인", "「화학물질관리법 시행규칙」 제19조제8항; 「화학사고예방관리계획서 작성 등에 관한 규정」 제2조·제4조", "화학물질안전원고시 제2026-7호", cap_write_url],
         ["05_최종판정조건", "작성수준 1군 / 2군 판단", "물질별 최대보유량과 상위·하위 규정수량을 비교하여 작성수준 결정", "「유해화학물질의 규정수량에 관한 규정」 제3조·제4조 및 별표 1~4; 「화학사고예방관리계획서 작성 등에 관한 규정」 제2조·제4조·제6조", "고시 제2026-4호 / 제2026-7호", cap_write_url],
     ]
-    build_reference_sheet("02_화사계_법령참고", cap_rows)
+    build_reference_sheet("02_화학사고예방관리계획서_법령참고", cap_rows)
 
     output = BytesIO()
     wb.save(output)

@@ -87,15 +87,18 @@ class CompanyTemplateContractTests(unittest.TestCase):
 
     def test_separate_legal_reference_workbook(self) -> None:
         legal = load_workbook(BytesIO(build_legal_reference_workbook()), data_only=False)
-        self.assertEqual(legal.sheetnames, ["00_사용안내", "01_PSM_법령참고", "02_화사계_법령참고"])
-        psm_values = "\n".join(str(c.value) for row in legal["01_PSM_법령참고"].iter_rows() for c in row if c.value is not None)
-        cap_values = "\n".join(str(c.value) for row in legal["02_화사계_법령참고"].iter_rows() for c in row if c.value is not None)
+        self.assertEqual(legal.sheetnames, ["00_사용안내", "01_공정안전보고서_법령참고", "02_화학사고예방관리계획서_법령참고"])
+        psm_values = "\n".join(str(c.value) for row in legal["01_공정안전보고서_법령참고"].iter_rows() for c in row if c.value is not None)
+        cap_values = "\n".join(str(c.value) for row in legal["02_화학사고예방관리계획서_법령참고"].iter_rows() for c in row if c.value is not None)
         self.assertIn("「산업안전보건법 시행령」 제43조제1항", psm_values)
         self.assertIn("별표 13 비고 제7호·제8호", psm_values)
         self.assertIn("「화학물질관리법」 제23조제1항", cap_values)
         self.assertIn("「유해화학물질의 규정수량에 관한 규정」", cap_values)
         self.assertIn("「화학사고예방관리계획서 작성 등에 관한 규정」 제9조", cap_values)
         combined = psm_values + "\n" + cap_values
+        guide_values = "\n".join(str(c.value) for row in legal["00_사용안내"].iter_rows() for c in row if c.value is not None)
+        self.assertIn("공정안전보고서·화학사고예방관리계획서 법령 작성 참고", guide_values)
+        self.assertNotIn("공정안전보고서(PSM)", guide_values)
         for forbidden in ["사업자등록증", "생산계획", "사내", "회사 내부자료"]:
             self.assertNotIn(forbidden, combined)
 

@@ -29,6 +29,7 @@ def _result_card(title: str, status: str, explanation: str) -> None:
         st.markdown(f"### {title}")
         st.markdown(f"#### {status}")
         if explanation:
+            st.markdown("**판정 근거 설명**")
             st.write(explanation)
 
 
