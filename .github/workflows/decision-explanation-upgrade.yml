@@ -19,7 +19,9 @@ jobs:
           python-version: '3.12'
       - name: Apply decision explanation upgrade
         run: |
-          python scripts/apply_decision_explanation_upgrade.py
+          if grep -q '회사 입력파일의 최대보유량, 상위 규정수량' engine/stage1_workbook.py; then
+            python scripts/apply_decision_explanation_upgrade.py
+          fi
           python scripts/fix_full_legal_names.py
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -39,4 +41,4 @@ jobs:
             git push
           fi
 
-# rerun after removing remaining user-facing abbreviations
+# rerun idempotently after full statutory naming cleanup
