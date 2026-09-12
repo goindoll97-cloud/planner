@@ -80,7 +80,7 @@ def _build_guide_sheet(wb: Workbook) -> None:
         ["사업장", "사업장명·주소·업종·KSIC", "기본 필수", "사업자등록증·회사 기본정보", "-", "KSIC는 모름 가능", "PSM 대상업종 및 사업장 식별", "KSIC 20111"],
         ["물질", "제품명·CAS·함량(%)", "기본 필수", "제품 SDS 제3항", "-", "추측하지 말고 모름", "PSM/화학사고예방관리계획서 물질기준", "포스겐 75-44-5, 100%"],
         ["수량", "최대 제조·사용량·최대 저장량", "기본 필수", "생산계획·탱크/창고 자료", "0 또는 실제 미취급값", "모름", "PSM 수량기준", "kg 또는 ton 권장"],
-        ["화학사고예방관리계획서", "법정 사업장 최대보유량", "최종판정 핵심", "시설별 최대체류량·설계자료", "실제 0/미취급", "모름", "하위·상위 규정수량 비교", "03_시설별최대보유량 참고"],
+        ["화학사고예방관리계획서", "법정 사업장 최대보유량", "최종판정 핵심", "시설별 최대체류량·설계자료", "실제 0/미취급", "모름", "하위·상위 규정수량 비교", "04_시설별최대보유량 참고"],
         ["물질상태", "상온·상압 액체 여부", "조건부 필수", "SDS 제9항·물성자료", "해당없음", "모름", "상태별 규정수량 선택", "암모니아 N / 염산용액 Y"],
         ["SDS", "제품 SDS 제2항 유해성·위험성 분류", "조건부 필수", "현재 공급자/제조자 SDS 제2항", "해당없음", "모름", "별표 1 유해·위험성 그룹 연결", "인화성 액체 구분 2"],
         ["면제·특수조건", "PSM 제외설비·화학사고예방관리계획서 면제시설 등", "조건부 필수", "설비용도·인허가·운영자료", "해당없음", "모름", "최종 작성/비작성 결정", "05_최종판정조건 참고"],
@@ -218,7 +218,7 @@ def _build_documents_sheet(wb: Workbook) -> None:
 
 
 def _build_facility_sheet(wb: Workbook) -> None:
-    ws = wb.create_sheet("03_시설별최대보유량")
+    ws = wb.create_sheet("04_시설별최대보유량")
     ws.merge_cells("A1:V1")
     ws["A1"] = "화학사고예방관리계획서 사업장 최대보유량 산정용 시설정보 — 시설 하나당 한 줄"
     ws["A1"].fill = CAP_FILL
@@ -311,7 +311,7 @@ def build_minimal_input_workbook() -> bytes:
 
     The historical function name is kept for compatibility. The workbook now
     includes example values, dropdowns, facility-level maximum-holding inputs
-    and final-decision conditions. The obsolete '04_최종판정준비체크' sheet is
+    and final-decision conditions. The old final-preparation checklist sheet is
     intentionally not created.
     """
     wb = Workbook()

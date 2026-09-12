@@ -20,7 +20,7 @@ class CompanyTemplateContractTests(unittest.TestCase):
                 "01_사업장기본정보",
                 "02_화학물질목록",
                 "03_기존문서보유여부",
-                "03_시설별최대보유량",
+                "04_시설별최대보유량",
                 "05_최종판정조건",
             ],
         )
@@ -50,12 +50,18 @@ class CompanyTemplateContractTests(unittest.TestCase):
         )
 
     def test_facility_and_final_condition_sheets_are_present(self) -> None:
-        facility = self.workbook["03_시설별최대보유량"]
+        facility = self.workbook["04_시설별최대보유량"]
         final_conditions = self.workbook["05_최종판정조건"]
         self.assertEqual(facility["A3"].value, "적용여부")
         self.assertEqual(facility["V3"].value, "비고")
         self.assertEqual(final_conditions["A2"].value, "제도")
         self.assertEqual(final_conditions["F2"].value, "판정에 미치는 영향")
+
+    def test_guide_points_to_04_facility_sheet(self) -> None:
+        guide = self.workbook["00_작성가이드"]
+        values = [cell.value for row in guide.iter_rows() for cell in row if isinstance(cell.value, str)]
+        self.assertTrue(any("04_시설별최대보유량" in value for value in values))
+        self.assertFalse(any("03_시설별최대보유량" in value for value in values))
 
 
 if __name__ == "__main__":

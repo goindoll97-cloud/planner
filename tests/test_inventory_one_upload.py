@@ -9,7 +9,7 @@ from engine.inventory import read_intake_workbook
 
 
 class InventoryOneUploadTests(unittest.TestCase):
-    def _workbook_bytes(self) -> bytes:
+    def _workbook_bytes(self, facility_sheet_name: str = "04_시설별최대보유량") -> bytes:
         wb = Workbook()
         ws = wb.active
         ws.title = "01_사업장기본정보"
@@ -36,7 +36,7 @@ class InventoryOneUploadTests(unittest.TestCase):
         docs.append(["자료", "보유 여부"])
         docs.append(["공정안전보고서(PSM)", "N"])
 
-        fac = wb.create_sheet("03_시설별최대보유량")
+        fac = wb.create_sheet(facility_sheet_name)
         fac.append(["title"])
         fac.append([])
         fac.append([
@@ -63,12 +63,17 @@ class InventoryOneUploadTests(unittest.TestCase):
         wb.save(out)
         return out.getvalue()
 
-    def test_reads_optional_facility_and_final_condition_sheets(self):
+    def test_reads_canonical_04_facility_and_final_condition_sheets(self):
         intake = read_intake_workbook(self._workbook_bytes())
         self.assertEqual(len(intake.facilities), 1)
         self.assertEqual(intake.facilities.iloc[0]["시설명"], "V-201")
         self.assertEqual(intake.final_conditions["법정 작성 면제시설 해당 여부"], "해당없음")
         self.assertTrue(bool(intake.source_fingerprint))
+
+    def test_reads_legacy_03_facility_sheet_for_backward_compatibility(self):
+        intake = read_intake_workbook(self._workbook_bytes("03_시설별최대보유량"))
+        self.assertEqual(len(intake.facilities), 1)
+        self.assertEqual(intake.facilities.iloc[0]["시설명"], "V-201")
 
 
 if __name__ == "__main__":

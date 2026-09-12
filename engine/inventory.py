@@ -12,7 +12,8 @@ import pandas as pd
 CHEM_SHEET = "02_화학물질목록"
 BUSINESS_SHEET = "01_사업장기본정보"
 DOCS_SHEET = "03_기존문서보유여부"
-FACILITY_SHEET = "03_시설별최대보유량"
+FACILITY_SHEET = "04_시설별최대보유량"
+LEGACY_FACILITY_SHEET = "03_시설별최대보유량"
 FINAL_CONDITIONS_SHEET = "05_최종판정조건"
 
 REQUIRED_CHEM_COLUMNS = ["제품명", "CAS No.", "함량(%)", "취급형태", "수량 단위"]
@@ -40,10 +41,15 @@ def _norm_answer(value: object) -> str:
 
 
 def _read_optional_facilities(xls: pd.ExcelFile) -> pd.DataFrame:
-    if FACILITY_SHEET not in xls.sheet_names:
+    sheet_name = ""
+    if FACILITY_SHEET in xls.sheet_names:
+        sheet_name = FACILITY_SHEET
+    elif LEGACY_FACILITY_SHEET in xls.sheet_names:
+        sheet_name = LEGACY_FACILITY_SHEET
+    if not sheet_name:
         return pd.DataFrame()
     try:
-        frame = pd.read_excel(xls, sheet_name=FACILITY_SHEET, header=2)
+        frame = pd.read_excel(xls, sheet_name=sheet_name, header=2)
     except Exception:
         return pd.DataFrame()
     if frame.empty:
