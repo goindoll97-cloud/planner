@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 import re
 
 import pandas as pd
@@ -11,6 +12,7 @@ from engine.stage1_workbook import assess_stage1_from_workbook
 
 CAP_FULL = "화학사고예방관리계획서"
 PSM_FULL = "공정안전보고서"
+STAGE2_SNAPSHOT_KEY = "_stage2_stage1_snapshot"
 
 st.set_page_config(page_title=f"{PSM_FULL} · {CAP_FULL} 사전진단", page_icon="✅", layout="wide")
 
@@ -37,6 +39,13 @@ def _display_request(value: str) -> str:
     """Hide workbook-internal location labels from company-facing requests."""
     text = str(value or "").strip()
     return re.sub(r"^(?:\d{2}_[^:]+|회사 입력파일):\s*", "", text)
+
+
+def _records(df: pd.DataFrame | None) -> list[dict[str, object]]:
+    if df is None or df.empty:
+        return []
+    clean = df.astype(object).where(pd.notna(df), None)
+    return clean.to_dict(orient="records")
 
 
 st.title(f"{PSM_FULL} · {CAP_FULL} 사전진단")
@@ -91,6 +100,17 @@ if decision.company_requests:
 
 st.success("입력파일의 판정 필수정보가 확인되었습니다.")
 
+# Stage 2는 Stage 1의 확정결과와 동일한 회사 입력원본만 승계한다.
+# 여기서 새로운 법적 판단을 만들지 않고, 판정결과와 회사 사실의 snapshot만 저장한다.
+st.session_state[STAGE2_SNAPSHOT_KEY] = {
+    "source_fingerprint": intake.source_fingerprint,
+    "business": dict(intake.business),
+    "documents": dict(intake.documents),
+    "chemicals": _records(intake.chemicals),
+    "facilities": _records(intake.facilities),
+    "decision": asdict(decision),
+}
+
 st.markdown("## 판정 결과")
 left, right = st.columns(2, gap="large")
 with left:
@@ -99,6 +119,17 @@ with left:
         st.caption(f"「산업안전보건법 시행령」 별표 13 비고 제7호 합산한 값(R): {decision.psm_r_value:.4f}")
 with right:
     _result_card(CAP_FULL, decision.cap_status, decision.cap_explanation)
+
+stage2_target = (
+    "제출 대상" in str(decision.psm_status)
+    or "1군" in str(decision.cap_status)
+    or "2군" in str(decision.cap_status)
+)
+if stage2_target:
+    st.success("작성 대상이 확인되었습니다. Stage 1의 확정자료를 승계해 2단계 작성 프로젝트를 만들 수 있습니다.")
+    st.page_link("ui/stage2_project_page.py", label="2단계 작성 프로젝트로 이동", icon="📝")
+else:
+    st.caption("현재 판정결과에서는 작성 대상이 확인되지 않아 Stage 2 문서작성으로 자동 전환하지 않습니다.")
 
 with st.expander("법적 근거", expanded=False):
     st.markdown(f"**{PSM_FULL}**")
