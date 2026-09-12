@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 import tempfile
 import unittest
 
+from openpyxl import load_workbook
+
 from engine.stage2.completeness import evaluate_project_completeness
+from engine.stage2.export import build_progress_workbook
 from engine.stage2.project import create_project_from_stage1_snapshot
 from engine.stage2.requirements import requirement_specs_for_project
 from engine.stage2.storage import load_project, save_attachment, save_project
@@ -82,6 +86,16 @@ class Stage2ProjectTests(unittest.TestCase):
             )
             self.assertEqual(len(ref.sha256), 64)
             self.assertTrue(Path(ref.location).exists())
+
+    def test_review_workbook_uses_full_legal_names(self):
+        project = create_project_from_stage1_snapshot(self._snapshot())
+        workbook = load_workbook(BytesIO(build_progress_workbook(project)))
+        sheet = workbook["작성현황"]
+        visible_system_values = {sheet.cell(row=row, column=1).value for row in range(2, sheet.max_row + 1)}
+        self.assertIn("공정안전보고서", visible_system_values)
+        self.assertIn("화학사고예방관리계획서", visible_system_values)
+        self.assertNotIn("PSM", visible_system_values)
+        self.assertNotIn("CAP", visible_system_values)
 
 
 if __name__ == "__main__":
