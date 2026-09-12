@@ -32,3 +32,4 @@ jobs:
           git add engine/stage1_workbook.py ui/diagnosis_page.py
           git commit -m "Show legal basis in company correction requests"
           git push
+# one-time migration; remove after successful run
