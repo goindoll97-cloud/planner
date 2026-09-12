@@ -43,7 +43,7 @@ def _install_company_input_guide_hook() -> None:
                     file_name="PSM_CAP_회사입력_작성예시_가이드_v0.8.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="company_input_guide_download_v08",
-                    use_container_width=True,
+                    width="stretch",
                 )
             else:
                 st.warning("작성예시 파일을 찾지 못했습니다. 관리자에게 가이드 파일 배포상태를 확인해 주세요.")
