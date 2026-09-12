@@ -238,6 +238,18 @@ def _major_format(value: str) -> str:
     }.get(value, value)
 
 
+def _is_upper_row(row: dict[str, Any]) -> bool:
+    status = str(row.get("status", ""))
+    band = str(row.get("quantity_band", ""))
+    return "UPPER" in status or "상위 규정수량 이상" in band
+
+
+def _is_lower_row(row: dict[str, Any]) -> bool:
+    status = str(row.get("status", ""))
+    band = str(row.get("quantity_band", ""))
+    return "LOWER" in status or "하위 이상" in band
+
+
 st.title(f"{PSM_FULL} · {CAP_FULL} 사전진단")
 st.caption("회사 Excel을 한 번 올리면 두 제도를 각각 자동 선별하고, 정말 필요한 정보만 추가로 확인합니다.")
 st.info(
@@ -293,6 +305,11 @@ if (
     and not cap_screen.blockers
 ):
     quick_cap = compare_confirmed_declared_holding(intake, cap_screen.legal_hits)
+
+direct_quantity_rows = list(getattr(quick_cap, "comparison_rows", []) or [])
+direct_threshold_upper = any(_is_upper_row(row) for row in direct_quantity_rows)
+direct_threshold_lower = any(_is_lower_row(row) for row in direct_quantity_rows)
+direct_threshold_candidate = direct_threshold_upper or direct_threshold_lower
 
 kosha_state = kosha_credential_status()
 app1_runtime: list[dict[str, Any]] = []
@@ -374,14 +391,8 @@ for result in app1_results:
         )
 
 unresolved = list(dict.fromkeys(v for v in unresolved if str(v).strip()))
-threshold_upper = any(
-    "UPPER" in str(row.get("status", "")) or "상위 규정수량 이상" in str(row.get("quantity_band", ""))
-    for row in quantity_rows
-)
-threshold_lower = any(
-    "LOWER" in str(row.get("status", "")) or "하위 이상" in str(row.get("quantity_band", ""))
-    for row in quantity_rows
-)
+threshold_upper = any(_is_upper_row(row) for row in quantity_rows)
+threshold_lower = any(_is_lower_row(row) for row in quantity_rows)
 
 exemption_choice = str(st.session_state.get("cap_final_exemption", "UNANSWERED"))
 if exemption_choice in {item.key for item in exemption_options()}:
@@ -462,9 +473,6 @@ raw_other_psm_questions = [q for q in psm.questions if not _is_psm_exclusion_que
 note8_questions = [q for q in raw_other_psm_questions if _is_psm_note8_question(q)]
 other_psm_questions = [q for q in raw_other_psm_questions if not _is_psm_note8_question(q)]
 
-# If a target-industry trigger already applies independently, the Annex 13 note-8
-# quantity exception does not change the initial applicability trigger. Do not
-# burden the company with a non-decisive follow-up question.
 if psm_industry_trigger:
     note8_questions = []
 
@@ -479,7 +487,21 @@ if exclusion_questions:
         label_visibility="collapsed",
     )
     if exclusion == "해당 없음" and psm.r_value is not None and psm.r_value >= 1:
-        st.success("현재 입력 기준으로 공정안전보고서 수량기준 대상 후보입니다. 실제 대상 공정·설비 범위를 확인하면 다음 단계로 진행할 수 있습니다.")
+        reasons: list[str] = []
+        if psm_industry_trigger:
+            reasons.append(f"입력된 KSIC {psm.industry_code}는 공정안전보고서 대상업종({psm.industry_match})에 해당합니다.")
+        reasons.append(f"별표 13 규정량 대비 합산값 R이 {psm.r_value:.4f}로 1.0 이상입니다.")
+        reasons.append("법정 제외설비 확인에서 '해당 없음'을 선택했습니다.")
+        with st.container(border=True):
+            st.markdown("### 🔴 공정안전보고서 판정 결과")
+            st.markdown("#### **현재 입력 기준: 작성 대상 후보**")
+            st.markdown("**왜 이런 결과가 나왔나요?**")
+            for reason in reasons:
+                st.write(f"• {reason}")
+            st.write(
+                "따라서 현재 확인 범위에서는 공정안전보고서 작성대상으로 이어질 가능성이 높습니다. "
+                "다만 실제 보고서 작성에 들어가기 전에는 어느 공정·설비가 대상범위에 포함되는지 확인해야 합니다."
+            )
     elif exclusion not in {"선택하세요", "해당 없음", "모름"}:
         st.warning("선택한 제외유형이 이번 물질과 관련된 공정·설비에 실제 적용되는지 증빙 확인이 필요합니다.")
     elif exclusion == "모름":
@@ -555,7 +577,12 @@ elif cap_screen.row_numbers:
                 for blocker in current_quick.blockers:
                     st.write(f"• {blocker}")
             elif current_quick.status in {"UPPER_CANDIDATE", "LOWER_CANDIDATE"}:
-                st.success(_cap_text(current_quick.label))
+                with st.container(border=True):
+                    st.markdown("### 🔴 화학사고예방관리계획서 수량기준 판정 결과")
+                    st.markdown(f"#### **{_cap_text(current_quick.label)}**")
+                    st.write("이 결과는 **수량기준 단계의 결과**입니다. 이것만으로 최종 작성 필요 여부가 확정되는 것은 아니며 법정 면제조건을 추가로 확인해야 합니다.")
+                    if current_quick.status == "LOWER_CANDIDATE":
+                        st.write("또한 아직 별표 1 검토가 필요한 다른 물질이 있다면, 그 물질이 상위 규정수량에 도달하는지에 따라 1군·2군 구분이 달라질 수 있습니다.")
             else:
                 st.info(_cap_text(current_quick.label))
             if current_quick.comparison_rows:
@@ -577,7 +604,24 @@ else:
     st.info("별표 2·3의 직접 물질목록에서는 바로 연결된 물질이 없습니다. 필요한 물질은 아래 SDS 단계에서 계속 확인합니다.")
 
 if cap.app1_required_rows:
-    _section_header(f"{CAP_FULL} · SDS 제2항 확인", "cap")
+    if direct_threshold_upper:
+        _section_header(f"{CAP_FULL} · 규제물질 범위 확인을 위한 SDS 제2항 확인", "cap")
+        st.info(
+            "앞 단계에서 이미 상위 규정수량 이상 후보가 확인되었습니다. 따라서 이 SDS 확인은 '작성해야 하는지 처음부터 다시 판단'하기 위한 단계가 아니라, "
+            "별표 1 대상이 되는 다른 물질과 보고서에 포함할 규제물질 범위를 확인하기 위한 보완 단계입니다."
+        )
+    elif direct_threshold_lower:
+        _section_header(f"{CAP_FULL} · 1군·2군 구분 보완을 위한 SDS 제2항 확인", "cap")
+        st.info(
+            "앞 단계에서 이미 **하위 규정수량 이상 후보**가 확인되었습니다. 즉 수량기준상 작성대상 후보는 이미 잡혔습니다. "
+            "다만 법정 면제조건 확인 전에는 최종 '작성 필요'로 확정할 수 없고, 다른 미확인 물질이 상위 규정수량에 도달하면 1군·2군 구분이 달라질 수 있으므로 SDS 확인이 필요할 수 있습니다."
+        )
+    else:
+        _section_header(f"{CAP_FULL} · 작성 여부 판정을 위한 SDS 제2항 확인", "cap")
+        st.info(
+            "앞 단계만으로 하위 규정수량 이상 물질이 아직 확인되지 않았기 때문에, 이 경우 SDS 제2항 확인이 실제 작성 여부 판정에 필요한 단계입니다."
+        )
+
     st.write(
         "별표 2·3에서 직접 결론이 나지 않은 물질은 별표 1 유해성·위험성 그룹을 확인합니다. "
         "**100% 단일물질이고 CAS가 있으면 한국산업안전보건공단 물질안전보건자료 조회 서비스를 먼저 자동조회**하고, "
