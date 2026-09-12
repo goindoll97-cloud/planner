@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply_legal_terminology.py
       - scripts/apply_legal_terminology_followup.py
+      - scripts/apply_legal_terminology_precision.py
       - .github/workflows/legal-terminology-refactor.yml
 
 permissions:
@@ -24,6 +25,7 @@ jobs:
         run: |
           python scripts/apply_legal_terminology.py
           python scripts/apply_legal_terminology_followup.py
+          python scripts/apply_legal_terminology_precision.py
       - name: Compile changed Python sources
         run: python -m compileall -q ui engine tests
       - name: Commit refactor
@@ -36,5 +38,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add ui engine docs README.md tests
-          git commit -m 'Finish statutory terminology cleanup'
+          git commit -m 'Align final decision wording with statutory terms'
           git push origin HEAD:refactor/legal-terminology
