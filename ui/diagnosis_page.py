@@ -10,7 +10,7 @@ from engine.stage1_workbook import assess_stage1_from_workbook
 
 
 CAP_FULL = "화학사고예방관리계획서"
-PSM_FULL = "공정안전보고서(PSM)"
+PSM_FULL = "공정안전보고서"
 
 st.set_page_config(page_title=f"{PSM_FULL} · {CAP_FULL} 사전진단", page_icon="✅", layout="wide")
 
@@ -29,6 +29,7 @@ def _result_card(title: str, status: str, explanation: str) -> None:
         st.markdown(f"### {title}")
         st.markdown(f"#### {status}")
         if explanation:
+            st.markdown("**판정 근거 설명**")
             st.write(explanation)
 
 
