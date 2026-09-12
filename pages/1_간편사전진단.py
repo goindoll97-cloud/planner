@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from typing import Any
 
@@ -43,9 +44,9 @@ st.markdown(
         border: 1px solid transparent;
     }
     .consult-section-psm {
-        background: #fff0e3;
-        border-color: #f1b57f;
-        color: #71370f;
+        background: #fff0df;
+        border-color: #efb36f;
+        color: #693900;
     }
     .consult-section-cap {
         background: #fff7d6;
@@ -79,6 +80,11 @@ def _is_psm_exclusion_question(text: str) -> bool:
     return text in PSM_EXCLUSION_QUESTIONS
 
 
+def _is_psm_note8_question(text: str) -> bool:
+    compact = str(text or "").replace(" ", "")
+    return "가스를전문으로저장·판매하는시설" in compact or "가스를전문으로저장ㆍ판매하는시설" in compact
+
+
 def _cap_text(value: object) -> str:
     return str(value or "").replace("화사계", CAP_FULL)
 
@@ -93,6 +99,18 @@ def _num(value: Any) -> float | None:
         return float(str(value).replace(",", "").strip())
     except (TypeError, ValueError):
         return None
+
+
+def _sds_unmatched_explanation(text: str) -> str:
+    """Explain why a KOSHA SDS classification was not used for CAP Appendix 1."""
+    compact = re.sub(r"[^0-9A-Za-z가-힣]", "", str(text or "")).lower()
+    if "눈손상" in compact or "눈자극" in compact:
+        return "별표 1의 유해·위험성 그룹에는 눈 손상성/눈 자극성 그룹이 없어 규정수량 선택에 사용하지 않습니다."
+    if "생식독성" in compact and "구분2" in compact:
+        return "별표 1의 생식독성물질 규정수량은 구분 1에 대해 설정되어 있어 생식독성 구분 2는 별표 1 규정수량 선택에 사용하지 않습니다."
+    if "특정표적장기독성1회노출" in compact and "구분3" in compact:
+        return "별표 1의 특정표적장기독성(1회 노출)은 구분 1에 대해 규정수량이 설정되어 있어 구분 3은 규정수량 선택에 사용하지 않습니다."
+    return "SDS에는 기재되어 있지만 현재 승인된 별표 1의 유해성 그룹·구분과 정확히 연결되지 않아 자동 규정수량 선택에는 사용하지 않았습니다."
 
 
 def _cap_basis(hit: dict[str, object]) -> str:
@@ -263,6 +281,7 @@ app1_options = app1_sds_options()
 app1_option_map = {option.key: option for option in app1_options}
 
 psm_exclusion_choice = str(st.session_state.get("simple_psm_exclusion", "선택하세요"))
+psm_note8_answer = str(st.session_state.get("simple_psm_note8", "선택하세요"))
 cap_holding_choice = str(st.session_state.get("simple_cap_holding_basis", "선택하세요"))
 
 quick_cap = None
@@ -383,13 +402,22 @@ final_cap = assess_cap_final(
     major_facility_answer=major_answer,
 )
 
+psm_industry_trigger = bool(psm.industry_match and psm.industry_code != "20202")
+psm_note8_relevant = bool(psm.r_value is not None and psm.r_value >= 1 and not psm_industry_trigger)
+
 if psm.r_value is None:
     psm_status = _cap_text(psm.label)
     psm_value = ""
     psm_explanation = "규정량 비율 계산에 필요한 정보가 더 필요합니다."
 elif psm.r_value >= 1:
     psm_value = f"R = {psm.r_value:.4f}"
-    if psm_exclusion_choice == "해당 없음":
+    if psm_note8_relevant and psm_note8_answer in {"선택하세요", "잘 모르겠습니다"}:
+        psm_status = "수량기준 충족 · 가스 전문 저장·판매시설 여부 확인 필요"
+        psm_explanation = "별표 13 비고 제8호가 적용되면 일부 가스가 R 산정에서 빠질 수 있어 먼저 확인합니다."
+    elif psm_note8_relevant and psm_note8_answer == "예, 해당하는 가스가 있습니다":
+        psm_status = "가스 제외수량 확인 필요"
+        psm_explanation = "전문 저장·판매시설 내 가스는 규정량 산정에서 제외되므로 해당 수량을 분리한 뒤 R을 다시 계산해야 합니다."
+    elif psm_exclusion_choice == "해당 없음":
         psm_status = "수량기준 충족 후보"
         psm_explanation = "수량기준은 충족했지만 최종 PSM 대상 확정 전 단계입니다."
     elif psm_exclusion_choice not in {"선택하세요", "모름"}:
@@ -430,7 +458,16 @@ if psm.r_value is not None:
         _render_guide("PSM_R_RATIO", compact=True)
 
 exclusion_questions = [q for q in psm.questions if _is_psm_exclusion_question(q)]
-other_psm_questions = [q for q in psm.questions if not _is_psm_exclusion_question(q)]
+raw_other_psm_questions = [q for q in psm.questions if not _is_psm_exclusion_question(q)]
+note8_questions = [q for q in raw_other_psm_questions if _is_psm_note8_question(q)]
+other_psm_questions = [q for q in raw_other_psm_questions if not _is_psm_note8_question(q)]
+
+# If a target-industry trigger already applies independently, the Annex 13 note-8
+# quantity exception does not change the initial applicability trigger. Do not
+# burden the company with a non-decisive follow-up question.
+if psm_industry_trigger:
+    note8_questions = []
+
 if exclusion_questions:
     st.markdown("#### 공정안전보고서 확인: 관련 공정·설비가 법정 제외설비에 해당합니까?")
     st.write("법에서 정한 유형과 확인된 하위 고시 내용을 함께 보여드립니다. 모르면 추정하지 말고 '모름'을 선택하세요.")
@@ -448,6 +485,29 @@ if exclusion_questions:
     elif exclusion == "모름":
         st.warning("제외설비 여부가 확인될 때까지 공정안전보고서 판정은 보류됩니다.")
 
+if note8_questions:
+    st.markdown("#### 공정안전보고서 추가 확인: 규정량 계산에서 제외되는 전문 가스 저장·판매시설이 있습니까?")
+    st.write(
+        "산업안전보건법 시행령 별표 13 비고 제8호는 **가스를 전문으로 저장·판매하는 시설 내의 가스**를 규정량 산정에서 제외합니다. "
+        "따라서 수량기준으로 PSM 여부가 갈리는 경우에만 이 사실을 추가로 확인합니다."
+    )
+    st.info("법적 근거: 「산업안전보건법 시행령」 별표 13 비고 제8호")
+    note8_answer = st.radio(
+        "전문 가스 저장·판매시설 여부",
+        ["선택하세요", "아니오, 해당하는 가스가 없습니다", "예, 해당하는 가스가 있습니다", "잘 모르겠습니다"],
+        key="simple_psm_note8",
+        label_visibility="collapsed",
+    )
+    if note8_answer == "아니오, 해당하는 가스가 없습니다":
+        st.success("별표 13 비고 제8호에 따른 가스 제외 없이 현재 R 계산을 유지합니다.")
+    elif note8_answer == "예, 해당하는 가스가 있습니다":
+        st.warning(
+            "해당 가스는 R 계산에서 제외될 수 있습니다. 현재 회사 입력파일은 물질별 수량을 시설별로 분리하지 않았으므로, "
+            "어느 가스가 어느 전문 저장·판매시설에 얼마만큼 있는지 확인한 뒤 R을 다시 계산해야 합니다."
+        )
+    elif note8_answer == "잘 모르겠습니다":
+        st.warning("전문 가스 저장·판매시설 해당 여부가 확인될 때까지 수량기준 PSM 판정은 보류합니다.")
+
 if other_psm_questions:
     st.markdown("#### 공정안전보고서에서 추가로 확인해야 하는 특수조건")
     _render_guide("PSM_SPECIAL_CONDITION", show_title=False, compact=True)
@@ -457,7 +517,10 @@ if other_psm_questions:
 
 with st.expander("공정안전보고서 계산 근거 보기 · 검토자용", expanded=False):
     if psm.ratio_lines:
-        _table(pd.DataFrame([asdict(row) for row in psm.ratio_lines]), 50)
+        ratio_df = pd.DataFrame([asdict(row) for row in psm.ratio_lines])
+        st.table(ratio_df.head(30))
+        if len(ratio_df) > 30:
+            st.caption(f"전체 {len(ratio_df):,}개 계산행 중 앞 30개를 표시합니다.")
     for blocker in psm.blockers:
         st.write(f"• {blocker}")
 
@@ -524,6 +587,20 @@ if cap.app1_required_rows:
         "한국산업안전보건공단 화학물질정보는 MSDS 작성·검토를 위한 참고자료입니다. 따라서 자동조회 결과를 그대로 법적 사실로 확정하지 않고 "
         "현재 회사/제품 SDS 제2항과 일치함을 한 번 확인한 뒤 판정에 사용합니다."
     )
+    with st.expander("혼합물의 함량(%)은 어떻게 판정하나요?", expanded=False):
+        st.write(
+            "혼합물이라고 해서 모든 물질에 공통으로 적용되는 '몇 % 이상이면 별표 1 적용' 같은 하나의 기준이 있는 것은 아닙니다. "
+            "별표 2·3에 해당 물질의 **명시적인 함량기준**이 있으면 프로그램이 CAS와 함량(%)을 이용해 자동판정합니다. "
+            "반면 별표 1은 혼합물 자체의 유해성·위험성 분류를 사용하므로 성분 CAS와 70% 같은 숫자만으로 순물질 분류를 그대로 적용하지 않습니다."
+        )
+        st.write(
+            "별표 1 경로에서는 제품 SDS 제2항의 실제 혼합물 분류를 우선 사용합니다. 혼합물 분류에는 유해성 항목별 한계농도, 가산식, "
+            "특정농도한계 또는 물리적 위험성 시험값 등이 관여할 수 있어 단일 성분함량 하나만으로 일괄 판정하면 잘못된 결과가 날 수 있습니다."
+        )
+        st.info(
+            "관련 근거: 「유해화학물질의 규정수량에 관한 규정」 제3조 및 별표 1~3, "
+            "「화학물질의 분류 및 표시 등에 관한 규정」 제6조 및 별표 1의 혼합물 분류기준"
+        )
     if kosha_state.get("status") != "READY":
         st.warning(
             "한국산업안전보건공단 물질안전보건자료 조회 서비스 API 인증키가 아직 로컬 환경에 설정되지 않았습니다. "
@@ -553,9 +630,10 @@ if cap.app1_required_rows:
                     if option:
                         st.write(f"• {option.label}")
                 if auto.unmatched_classifications:
-                    with st.expander("자동 연결하지 않은 제2항 문구 보기", expanded=False):
+                    with st.expander("별표 1 규정수량 판정에 사용하지 않은 SDS 분류와 이유", expanded=False):
                         for value in auto.unmatched_classifications:
-                            st.write(f"• {value}")
+                            st.write(f"• **{value}**")
+                            st.caption(_sds_unmatched_explanation(value))
                 st.checkbox(
                     "회사/제품 SDS 제2항과 위 자동조회 분류가 일치함을 확인했습니다.",
                     key=_sds_key(row_no, "auto_confirmed"),
@@ -569,7 +647,11 @@ if cap.app1_required_rows:
                 st.warning(auto.message)
                 st.checkbox("회사/제품 SDS를 직접 확인하겠습니다.", key=_sds_key(row_no, "manual_mode"))
             elif not pure:
-                st.info("이 행은 100% 단일물질로 확인되지 않아 CAS 하나만으로 제품 SDS 분류를 확정하지 않습니다. 회사/제품 SDS 제2항을 확인합니다.")
+                st.info(
+                    "이 행은 **혼합물**로 입력되었습니다. 별표 2·3에 명시적인 함량기준이 있는 물질은 프로그램이 CAS+함량으로 자동 판정하지만, "
+                    "별표 1은 혼합물 자체의 유해성·위험성 분류가 필요합니다. 따라서 이 성분이 70%라는 이유만으로 순물질의 SDS 분류를 그대로 적용하지 않고 "
+                    "회사/제품 SDS 제2항을 확인합니다."
+                )
                 st.session_state[_sds_key(row_no, "manual_mode")] = True
             else:
                 st.checkbox("회사/제품 SDS를 직접 확인하겠습니다.", key=_sds_key(row_no, "manual_mode"))
