@@ -16,6 +16,7 @@ FACILITY_SHEET = "04_시설별최대보유량"
 LEGACY_FACILITY_SHEET = "03_시설별최대보유량"
 FINAL_CONDITIONS_SHEET = "05_최종판정조건"
 PSM_NOTE8_SHEET = "06_공정안전보고서_비고8제외수량"
+LEGACY_PSM_NOTE8_SHEET = "06_공정안전보고서_비고8제외수량"
 LEGACY_PSM_NOTE8_SHEET = "06_PSM_비고8제외수량"
 
 REQUIRED_CHEM_COLUMNS = ["제품명", "CAS No.", "함량(%)", "취급형태", "수량 단위"]

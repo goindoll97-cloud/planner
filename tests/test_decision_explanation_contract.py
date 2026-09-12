@@ -41,6 +41,17 @@ class DecisionExplanationContractTests(unittest.TestCase):
         self.assertNotIn('PSM', joined)
         self.assertNotIn('화사계', joined)
 
+    def test_company_workbook_guide_uses_full_names(self) -> None:
+        from engine.template import build_minimal_input_workbook
+        wb = load_workbook(BytesIO(build_minimal_input_workbook()), data_only=False)
+        values = [str(cell.value or '') for ws in wb.worksheets for row in ws.iter_rows() for cell in row]
+        joined = '\n'.join(values)
+        self.assertNotIn('PSM·', joined)
+        self.assertNotIn('화관법', joined)
+        self.assertNotIn('화사계', joined)
+        self.assertIn('공정안전보고서', joined)
+        self.assertIn('화학사고예방관리계획서', joined)
+
     def test_download_filenames_do_not_use_abbreviations(self) -> None:
         text = Path('engine/__init__.py').read_text(encoding='utf-8')
         self.assertIn('공정안전보고서_화학사고예방관리계획서_법령작성참고_v1.0.xlsx', text)
