@@ -1,0 +1,22 @@
+name: legal-terminology-audit
+
+on:
+  push:
+    branches:
+      - refactor/legal-terminology
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit user-facing terminology
+        shell: bash
+        run: |
+          echo '=== non-statutory / ambiguous wording audit ==='
+          grep -RInE --include='*.py' --include='*.md' --include='*.json' \
+            '트리거|대상 후보|대상후보|작성대상|수량기준|최종 R|R 재계산|재계산 결과|위험도|R =|R이 |R을 |R 산정|R 계산|규정량 비율' \
+            ui engine docs README.md tests || true
