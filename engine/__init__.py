@@ -26,7 +26,7 @@ def _install_company_input_guide_hook() -> None:
         label_text = str(label or "")
 
         if label_text.startswith("회사 입력파일 업로드"):
-            from .template import build_minimal_input_workbook
+            from .template import build_legal_reference_workbook, build_minimal_input_workbook
 
             st.markdown("#### 처음 작성하시나요? 최신 작성예시·가이드 파일을 먼저 내려받아 보세요")
             st.caption(
@@ -42,6 +42,15 @@ def _install_company_input_guide_hook() -> None:
                 key="company_input_guide_download_v10",
                 width="stretch",
             )
+            st.download_button(
+                "법령 작성 참고파일 다운로드",
+                data=build_legal_reference_workbook(),
+                file_name="PSM_CAP_법령작성참고_v1.0.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="legal_reference_guide_download_v10",
+                width="stretch",
+            )
+            st.caption("법령 참고파일은 입력용 파일이 아닙니다. 각 작성항목과 연결되는 법령·조문·별표만 확인하는 용도입니다.")
 
         return original(*args, **kwargs)
 
