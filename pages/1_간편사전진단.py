@@ -33,6 +33,25 @@ st.markdown(
         font-size: 1.02rem !important;
         font-weight: 620 !important;
     }
+    .consult-section-banner {
+        padding: 0.9rem 1.05rem;
+        border-radius: 0.75rem;
+        margin: 1.55rem 0 0.85rem 0;
+        font-size: 1.42rem;
+        font-weight: 760;
+        line-height: 1.35;
+        border: 1px solid transparent;
+    }
+    .consult-section-psm {
+        background: #eaf3ff;
+        border-color: #b8d8ff;
+        color: #173b63;
+    }
+    .consult-section-cap {
+        background: #fff7d6;
+        border-color: #efd77a;
+        color: #594700;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -155,6 +174,15 @@ def _status_card(title: str, status: str, *, value: str = "", explanation: str =
             st.write(explanation)
 
 
+def _section_header(title: str, theme: str) -> None:
+    """Color-code major user-facing sections without relying on step numbers."""
+    css_class = "consult-section-psm" if theme == "psm" else "consult-section-cap"
+    st.markdown(
+        f'<div class="consult-section-banner {css_class}">{title}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def _sds_key(row_no: int, suffix: str) -> str:
     return f"sds_app1_{int(row_no)}_{suffix}"
 
@@ -228,9 +256,6 @@ c2.metric("입력한 화학물질", f"{len(intake.chemicals):,}개")
 with st.expander("업로드한 내용 확인", expanded=False):
     _table(inventory_preview(intake), 40)
 
-# ---------------------------------------------------------------------------
-# 1) Core screens and any answers already stored in the session
-# ---------------------------------------------------------------------------
 psm = assess_psm(intake)
 cap = assess_cap(intake)
 cap_screen = screen_facility_stage(intake)
@@ -250,9 +275,6 @@ if (
 ):
     quick_cap = compare_confirmed_declared_holding(intake, cap_screen.legal_hits)
 
-# KOSHA CAS lookup is automatic once per CAS/session for 100% single-substance
-# fallback rows. Mixtures remain company-SDS-driven because product composition
-# can alter the classification.
 kosha_state = kosha_credential_status()
 app1_runtime: list[dict[str, Any]] = []
 app1_results = []
@@ -297,7 +319,6 @@ for fallback in cap.app1_required_rows:
     app1_results.append(result)
     app1_runtime.append({"fallback": fallback, "item": item, "auto": auto, "result": result})
 
-# Normalize all quantity evidence for the final CAP decision.
 quantity_rows: list[dict[str, Any]] = []
 unresolved: list[str] = []
 if not cap_screen.ready:
@@ -334,7 +355,10 @@ for result in app1_results:
         )
 
 unresolved = list(dict.fromkeys(v for v in unresolved if str(v).strip()))
-threshold_upper = any("UPPER" in str(row.get("status", "")) or "상위 규정수량 이상" in str(row.get("quantity_band", "")) for row in quantity_rows)
+threshold_upper = any(
+    "UPPER" in str(row.get("status", "")) or "상위 규정수량 이상" in str(row.get("quantity_band", ""))
+    for row in quantity_rows
+)
 threshold_lower = any(
     "LOWER" in str(row.get("status", "")) or "하위 이상" in str(row.get("quantity_band", ""))
     for row in quantity_rows
@@ -359,9 +383,6 @@ final_cap = assess_cap_final(
     major_facility_answer=major_answer,
 )
 
-# ---------------------------------------------------------------------------
-# 2) Summary
-# ---------------------------------------------------------------------------
 if psm.r_value is None:
     psm_status = _cap_text(psm.label)
     psm_value = ""
@@ -392,21 +413,18 @@ elif final_cap.status == "NOT_REQUIRED":
 else:
     cap_explanation = final_cap.next_question or "표시된 미확인 항목을 확인하면 최종 작성 여부를 결정합니다."
 
-st.markdown("## 1. 지금까지의 결과를 한눈에 보기")
+st.markdown("## 지금까지의 결과를 한눈에 보기")
 left, right = st.columns(2, gap="large")
 with left:
     _status_card(PSM_FULL, psm_status, value=psm_value, explanation=psm_explanation)
 with right:
     _status_card(CAP_FULL, cap_status, explanation=cap_explanation)
 
-# ---------------------------------------------------------------------------
-# 3) PSM minimum follow-up
-# ---------------------------------------------------------------------------
-st.markdown(f"## 2. {PSM_FULL} — 수량기준 다음에 제외조건 확인")
+_section_header(f"{PSM_FULL} · 수량기준 다음에 제외조건 확인", "psm")
 if psm.r_value is not None:
     st.write(
         f"**R = {psm.r_value:.4f} ({psm.r_value * 100:.0f}%)** 입니다. "
-        "이 값은 PSM 수량기준을 먼저 확인하기 위한 값이며, 이것만으로 최종 PSM 대상이 확정되지는 않습니다."
+        "이 값은 공정안전보고서 수량기준을 먼저 확인하기 위한 값이며, 이것만으로 최종 작성대상이 확정되지는 않습니다."
     )
     with st.expander("R이 무엇인지 · 법적 근거 보기", expanded=False):
         _render_guide("PSM_R_RATIO", compact=True)
@@ -414,39 +432,36 @@ if psm.r_value is not None:
 exclusion_questions = [q for q in psm.questions if _is_psm_exclusion_question(q)]
 other_psm_questions = [q for q in psm.questions if not _is_psm_exclusion_question(q)]
 if exclusion_questions:
-    st.markdown("#### PSM 확인 1. 관련 공정·설비가 법정 PSM 제외설비에 해당합니까?")
+    st.markdown("#### 공정안전보고서 확인: 관련 공정·설비가 법정 제외설비에 해당합니까?")
     st.write("법에서 정한 유형과 확인된 하위 고시 내용을 함께 보여드립니다. 모르면 추정하지 말고 '모름'을 선택하세요.")
     _render_guide("PSM_EXCLUDED_FACILITY", show_title=False)
     exclusion = st.selectbox(
-        "PSM 제외설비 선택",
+        "공정안전보고서 제외설비 선택",
         ["선택하세요", *EXCLUSION_LABELS],
         key="simple_psm_exclusion",
         label_visibility="collapsed",
     )
     if exclusion == "해당 없음" and psm.r_value is not None and psm.r_value >= 1:
-        st.success("현재 입력 기준으로 PSM 수량기준 대상 후보입니다. 실제 대상 공정·설비 범위를 확인하면 다음 단계로 진행할 수 있습니다.")
+        st.success("현재 입력 기준으로 공정안전보고서 수량기준 대상 후보입니다. 실제 대상 공정·설비 범위를 확인하면 다음 단계로 진행할 수 있습니다.")
     elif exclusion not in {"선택하세요", "해당 없음", "모름"}:
         st.warning("선택한 제외유형이 이번 물질과 관련된 공정·설비에 실제 적용되는지 증빙 확인이 필요합니다.")
     elif exclusion == "모름":
-        st.warning("제외설비 여부가 확인될 때까지 PSM은 판정보류입니다.")
+        st.warning("제외설비 여부가 확인될 때까지 공정안전보고서 판정은 보류됩니다.")
 
 if other_psm_questions:
-    st.markdown("#### PSM에서 추가로 확인해야 하는 특수조건")
+    st.markdown("#### 공정안전보고서에서 추가로 확인해야 하는 특수조건")
     _render_guide("PSM_SPECIAL_CONDITION", show_title=False, compact=True)
     with st.expander(f"실제 확인 질문 {len(other_psm_questions)}개", expanded=False):
         for question in other_psm_questions:
             st.write(f"• {question}")
 
-with st.expander("PSM 계산 근거 보기 · 검토자용", expanded=False):
+with st.expander("공정안전보고서 계산 근거 보기 · 검토자용", expanded=False):
     if psm.ratio_lines:
         _table(pd.DataFrame([asdict(row) for row in psm.ratio_lines]), 50)
     for blocker in psm.blockers:
         st.write(f"• {blocker}")
 
-# ---------------------------------------------------------------------------
-# 4) CAP quantity screen
-# ---------------------------------------------------------------------------
-st.markdown(f"## 3. {CAP_FULL} — 물질기준과 최대보유량 확인")
+_section_header(f"{CAP_FULL} · 물질기준과 최대보유량 확인", "cap")
 if not cap_screen.ready:
     st.error("시스템 규정수량 DB가 준비되지 않았습니다. 일반 사용자가 해결할 항목이 아니므로 관리자 확인이 필요합니다.")
 elif cap_screen.row_numbers:
@@ -462,7 +477,7 @@ elif cap_screen.row_numbers:
         for blocker in cap_screen.blockers:
             st.write(f"• {blocker}")
     elif app4_db_ready():
-        st.markdown("#### CAP 확인 1. Excel의 '최대 동시보유량' 값들이 법에서 말하는 사업장 최대보유량입니까?")
+        st.markdown("#### 화학사고예방관리계획서 확인: Excel의 '최대 동시보유량' 값들이 법에서 말하는 사업장 최대보유량입니까?")
         _render_guide("CAP_MAX_HOLDING", show_title=False)
         holding_choice = st.radio(
             "최대보유량 산정방식 확인",
@@ -498,23 +513,21 @@ elif cap_screen.row_numbers:
 else:
     st.info("별표 2·3의 직접 물질목록에서는 바로 연결된 물질이 없습니다. 필요한 물질은 아래 SDS 단계에서 계속 확인합니다.")
 
-# ---------------------------------------------------------------------------
-# 5) CAS -> KOSHA SDS Section 2 -> Appendix 1, with company-SDS confirmation
-# ---------------------------------------------------------------------------
 if cap.app1_required_rows:
-    st.markdown("## 4. SDS 제2항 확인 — CAS 자동조회 후 필요한 경우만 직접 확인")
+    _section_header(f"{CAP_FULL} · SDS 제2항 확인", "cap")
     st.write(
         "별표 2·3에서 직접 결론이 나지 않은 물질은 별표 1 유해성·위험성 그룹을 확인합니다. "
-        "**100% 단일물질이고 CAS가 있으면 KOSHA MSDS API를 먼저 자동조회**하고, 혼합물·조회실패·불일치일 때만 회사 SDS를 직접 확인합니다."
+        "**100% 단일물질이고 CAS가 있으면 한국산업안전보건공단 물질안전보건자료 조회 서비스를 먼저 자동조회**하고, "
+        "혼합물·조회실패·불일치일 때만 회사 SDS를 직접 확인합니다."
     )
     st.info(
-        "KOSHA 화학물질정보는 MSDS 작성·검토를 위한 참고자료입니다. 따라서 자동조회 결과를 그대로 법적 사실로 확정하지 않고 "
+        "한국산업안전보건공단 화학물질정보는 MSDS 작성·검토를 위한 참고자료입니다. 따라서 자동조회 결과를 그대로 법적 사실로 확정하지 않고 "
         "현재 회사/제품 SDS 제2항과 일치함을 한 번 확인한 뒤 판정에 사용합니다."
     )
     if kosha_state.get("status") != "READY":
         st.warning(
-            "KOSHA MSDS API 인증키가 아직 로컬 환경에 설정되지 않았습니다. "
-            "`.env`의 `KOSHA_MSDS_SERVICE_KEY`에 발급받은 키를 넣으면 CAS 자동조회가 활성화됩니다. 키는 GitHub에 올리지 마세요."
+            "한국산업안전보건공단 물질안전보건자료 조회 서비스 API 인증키가 아직 로컬 환경에 설정되지 않았습니다. "
+            "`.env`의 `KOSHA_SERVICE_KEY`에 발급받은 키를 넣으면 CAS 자동조회가 활성화됩니다. 키는 GitHub에 올리지 마세요."
         )
 
     for runtime in app1_runtime:
@@ -533,7 +546,7 @@ if cap.app1_required_rows:
             st.caption(f"CAS No. {cas or '미확인'} · 함량 {item.get('함량(%)') if item is not None else '-'}% · 최대 동시보유량 {current_holding} {current_unit}")
 
             if pure and auto is not None and getattr(auto, "status", "") == "MATCHED":
-                st.success(f"KOSHA CAS 자동조회 완료: {auto.chemical_name or product} · 화학물질 ID {auto.chem_id}")
+                st.success(f"CAS 자동조회 완료: {auto.chemical_name or product} · 화학물질 ID {auto.chem_id}")
                 st.markdown("**자동으로 확인한 SDS 제2항 분류 중 별표 1에 연결된 항목**")
                 for key in auto.app1_option_keys:
                     option = app1_option_map.get(key)
@@ -632,36 +645,31 @@ if cap.app1_required_rows:
                 st.download_button(
                     "이 물질의 최대보유량 계산용 시설정보 입력서 다운로드",
                     data=template,
-                    file_name=f"CAP_최대보유량_보완_{row_no}행.xlsx",
+                    file_name=f"화학사고예방관리계획서_최대보유량_보완_{row_no}행.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"sds_facility_download_{row_no}",
                     width="stretch",
                 )
 
 if cap.scope_candidates:
-    st.markdown("## 5. CAS만으로 확정할 수 없는 물질범위")
+    _section_header(f"{CAP_FULL} · CAS만으로 확정할 수 없는 물질범위", "cap")
     st.warning(
         f"염류·화합물군·반응생성물 등 CAS 하나만으로 확정할 수 없는 규제범위 후보가 {len(cap.scope_candidates)}건 있습니다. "
         "확인 전까지 자동으로 비대상 처리하지 않습니다."
     )
     _render_guide("CAP_BROAD_SCOPE", show_title=False, compact=True)
 
-# ---------------------------------------------------------------------------
-# 6) CAP statutory exemptions -> major facility -> final Group 1/2 decision
-# ---------------------------------------------------------------------------
-st.markdown("## 6. 화학사고예방관리계획서 최종 적용여부")
+_section_header(f"{CAP_FULL} · 최종 적용여부", "cap")
 if unresolved:
     st.warning("아직 최종 작성 여부를 확정하기 전에 확인해야 할 정보가 있습니다.")
     for blocker in unresolved:
         st.write(f"• {blocker}")
     st.caption("위 항목이 해결되기 전에는 대상/비대상을 추정하지 않고 판정보류합니다.")
 else:
-    # If everything is below lower quantity, the final engine can finish without
-    # burdening the user with exemption questions.
     if not threshold_upper and not threshold_lower:
         final_now = assess_cap_final(quantity_rows)
     else:
-        st.markdown("### CAP 확인 2. 관련 취급시설이 법정 작성 면제시설에 해당합니까?")
+        st.markdown("### 화학사고예방관리계획서 추가 확인: 관련 취급시설이 법정 작성 면제시설에 해당합니까?")
         st.write(
             "수량기준에 해당하더라도 법에서 정한 면제시설이면 화학사고예방관리계획서를 작성하지 않을 수 있습니다. "
             "아래에는 시행규칙뿐 아니라 현재 고시로 구체화된 면제유형까지 표시합니다."
@@ -705,7 +713,7 @@ else:
         )
         major_now = str(st.session_state.get("cap_major_facility", "UNANSWERED"))
         if threshold_upper and selected_exemption == "NONE":
-            st.markdown("### CAP 확인 3. 상위 규정수량 이상을 취급하는 '개별 취급시설'이 있습니까?")
+            st.markdown("### 화학사고예방관리계획서 추가 확인: 상위 규정수량 이상을 취급하는 '개별 취급시설'이 있습니까?")
             st.write(
                 "여기서 주요취급시설은 **상위 규정수량 이상의 유해화학물질을 취급하는 사업장 내 개별 취급시설**입니다. "
                 "사업장 최대보유량은 여러 시설의 합이므로, 사업장 합계가 상위기준 이상이라는 사실만으로 개별 주요취급시설이 있다고 자동 판단하지 않습니다."
@@ -755,4 +763,4 @@ st.write(
     f"이 화면의 목적은 최소정보로 **{PSM_FULL}을 작성해야 하는지, {CAP_FULL}을 작성해야 하는지, 제외대상인지**를 먼저 결정하는 것입니다. "
     "확정 전에는 보고서 작성용 상세 설비자료를 무조건 요구하지 않고, 판정에 필요한 사실만 순서대로 확인합니다."
 )
-st.caption("KOSHA API 키·법령 API 키 등 비밀값은 로컬 .env에만 저장하고 GitHub에는 올리지 않습니다.")
+st.caption("한국산업안전보건공단 API 키·법령 API 키 등 비밀값은 로컬 .env에만 저장하고 GitHub에는 올리지 않습니다.")
