@@ -207,7 +207,7 @@ def _translate_psm_base_blockers(intake: IntakeData, base, requests: list[str]) 
         if text.startswith("CAS 미확인 행:"):
             requests.append(_request("02_화학물질목록", f"{text.split(':', 1)[1].strip()}의 CAS No.를 확인하여 작성해 주세요."))
         elif text.startswith("질량 환산 필요 행:"):
-            requests.append(_request("02_화학물질목록", f"{text.split(':', 1)[1].strip()}의 PSM 수량을 kg 또는 ton 질량단위로 작성해 주세요."))
+            requests.append(_request("02_화학물질목록", f"{text.split(':', 1)[1].strip()}의 공정안전보고서 판정 수량을 kg 또는 ton 질량단위로 작성해 주세요."))
         elif "제조·취급·저장량 미확인 행:" in text:
             requests.append(_request("02_화학물질목록", f"{text.split(':', 1)[1].strip()}의 최대 제조·사용량과 최대 저장량을 확인하여 작성해 주세요."))
 

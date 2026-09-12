@@ -46,7 +46,7 @@ class DecisionExplanationContractTests(unittest.TestCase):
         wb = load_workbook(BytesIO(build_minimal_input_workbook()), data_only=False)
         values = [str(cell.value or '') for ws in wb.worksheets for row in ws.iter_rows() for cell in row]
         joined = '\n'.join(values)
-        self.assertNotIn('PSM·', joined)
+        self.assertNotIn('PSM', joined)
         self.assertNotIn('화관법', joined)
         self.assertNotIn('화사계', joined)
         self.assertIn('공정안전보고서', joined)
