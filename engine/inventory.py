@@ -15,6 +15,7 @@ DOCS_SHEET = "03_기존문서보유여부"
 FACILITY_SHEET = "04_시설별최대보유량"
 LEGACY_FACILITY_SHEET = "03_시설별최대보유량"
 FINAL_CONDITIONS_SHEET = "05_최종판정조건"
+PSM_NOTE8_SHEET = "06_PSM_비고8제외수량"
 
 REQUIRED_CHEM_COLUMNS = ["제품명", "CAS No.", "함량(%)", "취급형태", "수량 단위"]
 QUANTITY_COLUMNS = ["최대 제조·사용량", "최대 저장량", "최대 동시보유량(알면 입력)"]
@@ -27,6 +28,7 @@ class IntakeData:
     documents: dict[str, object]
     facilities: pd.DataFrame = field(default_factory=pd.DataFrame)
     final_conditions: dict[str, object] = field(default_factory=dict)
+    psm_note8_exclusions: pd.DataFrame = field(default_factory=pd.DataFrame)
     source_fingerprint: str = ""
 
 
@@ -81,6 +83,23 @@ def _read_optional_final_conditions(xls: pd.ExcelFile) -> dict[str, object]:
             continue
         result[question] = row.get("입력값")
     return result
+
+
+def _read_optional_psm_note8(xls: pd.ExcelFile) -> pd.DataFrame:
+    if PSM_NOTE8_SHEET not in xls.sheet_names:
+        return pd.DataFrame()
+    try:
+        frame = pd.read_excel(xls, sheet_name=PSM_NOTE8_SHEET, header=2)
+    except Exception:
+        return pd.DataFrame()
+    if frame.empty:
+        return frame
+    frame = frame.dropna(how="all").copy()
+    if "적용여부" in frame.columns:
+        status = frame["적용여부"].map(_clean_text)
+        frame = frame[~status.isin(["해당없음", "미해당", "N", "n", ""])].copy()
+    frame.reset_index(drop=True, inplace=True)
+    return frame
 
 
 def _condition_value(conditions: dict[str, object], token: str) -> str:
@@ -283,9 +302,9 @@ def read_intake_workbook(file_bytes: bytes) -> IntakeData:
         documents=documents,
         facilities=_read_optional_facilities(xls),
         final_conditions=_read_optional_final_conditions(xls),
+        psm_note8_exclusions=_read_optional_psm_note8(xls),
         source_fingerprint=sha256(file_bytes).hexdigest(),
     )
-    _seed_streamlit_session(data)
     return data
 
 
