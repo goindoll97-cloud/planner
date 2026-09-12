@@ -97,7 +97,7 @@ class PSMFollowupIntegrationTests(unittest.TestCase):
         )
         base = PSMAssessment(
             status="APPLICABLE_CANDIDATE",
-            label="PSM 대상 후보",
+            label="공정안전보고서 제출 대상 여부 확인 필요",
             db_ready=True,
             ratio_lines=[line],
             r_value=1.2,

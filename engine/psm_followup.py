@@ -284,7 +284,7 @@ def apply_note8_exclusions(
     for item_no, adjustment in adjustments.items():
         line = by_item.get(int(item_no))
         if line is None:
-            blockers.append(f"별표 13 제{item_no}호는 현재 R 계산행에 없어 비고 제8호 제외수량을 적용할 수 없습니다.")
+            blockers.append(f"별표 13 제{item_no}호는 현재 비고 제7호 합산행에 없어 비고 제8호 제외수량을 적용할 수 없습니다.")
             continue
         mfg_ex = float(adjustment.manufacture_handling_kg or 0.0)
         storage_ex = float(adjustment.storage_kg or 0.0)
@@ -385,20 +385,20 @@ def reassess_psm_with_followup(
     r_complete = not blockers
 
     if trigger_channels:
-        label = "PSM 대상 후보 · 법정 제외설비 확인 필요"
+        label = "시행령 제43조제1항 기준 해당 · 제2항 제외설비 확인 필요"
         if len(trigger_channels) == 2:
-            label = "PSM 대상 후보 · 대상업종 및 규정량 기준 모두 충족"
+            label = "시행령 제43조제1항의 사업 종류 기준 및 별표 13 유해·위험물질 규정량 기준 해당"
         elif industry_trigger:
-            label = "PSM 대상 후보 · 대상업종 기준 충족"
+            label = "시행령 제43조제1항의 사업 종류 기준 해당"
         else:
-            label = "PSM 대상 후보 · 규정량 기준 충족"
+            label = "별표 13 유해·위험물질 규정량 기준 해당"
         status = "APPLICABLE_CANDIDATE"
     elif blockers:
         status = "ADDITIONAL_INFO_REQUIRED"
         label = "PSM 추가정보 확인 필요"
     else:
         status = "NO_TRIGGER_IN_CHECKED_SCOPE"
-        label = "현재 확인 범위 내 PSM 적용 트리거 없음"
+        label = "현재 확인 범위에서 시행령 제43조제1항 제출 대상 기준 미확인"
 
     return PSMFollowupResult(
         status=status,

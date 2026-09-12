@@ -223,9 +223,9 @@ def _exemption_format(value: str) -> str:
     if value == "UNANSWERED":
         return "선택하세요"
     if value == "NONE":
-        return "면제조건에 해당하지 않습니다"
+        return "법 제23조제1항 단서 및 고시 제9조 작성 면제 시설에 해당하지 않습니다"
     if value == "PARTIAL":
-        return "일부 시설만 면제조건에 해당할 수 있습니다"
+        return "법 제23조제1항 단서 또는 고시 제9조 작성 면제 시설이 일부 취급시설에만 해당할 수 있습니다"
     if value == "UNKNOWN":
         return "잘 모르겠습니다"
     option = exemption_by_key(value)
@@ -406,7 +406,7 @@ if cap_screen.row_numbers:
         unresolved.append("별표 2·3 직접대상 물질의 법정 사업장 최대보유량 계산을 위한 시설정보 입력서 작성·재업로드 필요")
 
 if cap.scope_candidates:
-    unresolved.append(f"CAS 하나로 확정할 수 없는 포괄 물질범위 후보 {len(cap.scope_candidates)}건 확인 필요")
+    unresolved.append(f"CAS 하나로 확정할 수 없는 포괄 물질범위 검토대상 {len(cap.scope_candidates)}건 확인 필요")
 
 for result in app1_results:
     if result.status in {"HOLD", "DB_NOT_READY"}:
@@ -454,36 +454,36 @@ psm_note8_relevant = bool(psm.r_value is not None and psm.r_value >= 1 and not p
 if psm.r_value is None:
     psm_status = _cap_text(psm.label)
     psm_value = ""
-    psm_explanation = "규정량 비율 계산에 필요한 정보가 더 필요합니다."
+    psm_explanation = "「산업안전보건법 시행령」 별표 13 비고 제7호의 합산한 값(R) 산정에 필요한 정보가 더 필요합니다."
 elif psm.r_value >= 1:
-    psm_value = f"R = {psm.r_value:.4f}"
+    psm_value = f"합산한 값(R) = {psm.r_value:.4f}"
     if psm_note8_relevant and psm_note8_answer in {"선택하세요", "잘 모르겠습니다"}:
-        psm_status = "수량기준 충족 · 가스 전문 저장·판매시설 여부 확인 필요"
-        psm_explanation = "별표 13 비고 제8호가 적용되면 일부 가스가 R 산정에서 빠질 수 있어 먼저 확인합니다."
+        psm_status = "별표 13 유해·위험물질 규정량 기준 해당 · 비고 제8호 적용 여부 확인 필요"
+        psm_explanation = "별표 13 비고 제8호가 적용되면 해당 가스 수량은 규정량 산정에서 제외되므로, 비고 제7호의 합산한 값(R)을 확정하기 전에 확인합니다."
     elif psm_note8_relevant and psm_note8_answer == "예, 해당하는 가스가 있습니다":
-        psm_status = "가스 제외수량 확인 필요"
-        psm_explanation = "전문 저장·판매시설 내 가스는 규정량 산정에서 제외되므로 해당 수량을 분리한 뒤 R을 다시 계산해야 합니다."
+        psm_status = "별표 13 비고 제8호 제외수량 확인 필요"
+        psm_explanation = "별표 13 비고 제8호에 따라 전문 저장·판매시설 내 해당 가스는 규정량 산정에서 제외되므로, 해당 수량을 분리한 뒤 비고 제7호의 합산한 값(R)을 다시 산정해야 합니다."
     elif psm_exclusion_choice == "해당 없음":
-        psm_status = "수량기준 충족 후보"
-        psm_explanation = "수량기준은 충족했지만 최종 PSM 대상 확정 전 단계입니다."
+        psm_status = "공정안전보고서 제출 대상 기준 해당"
+        psm_explanation = "별표 13 유해·위험물질 규정량 기준에 해당하고, 「산업안전보건법 시행령」 제43조제2항 제외설비에 해당하지 않는 것으로 사용자가 확인했습니다."
     elif psm_exclusion_choice not in {"선택하세요", "모름"}:
-        psm_status = "제외조건 검토 필요"
-        psm_explanation = "수량기준은 충족했지만 선택한 제외조건의 실제 적용범위를 확인해야 합니다."
+        psm_status = "시행령 제43조제2항 제외설비 적용범위 확인 필요"
+        psm_explanation = "별표 13 유해·위험물질 규정량 기준에는 해당하지만 선택한 제43조제2항 제외설비의 실제 적용범위를 확인해야 합니다."
     else:
-        psm_status = "수량기준 충족 · 제외조건 확인 필요"
-        psm_explanation = "R이 1.0 이상이라는 이유만으로 PSM 대상이 최종 확정되는 것은 아닙니다."
+        psm_status = "별표 13 유해·위험물질 규정량 기준 해당 · 제43조제2항 제외설비 확인 필요"
+        psm_explanation = "별표 13 비고 제7호의 합산한 값(R)이 1 이상이어도 시행령 제43조제2항의 제외설비 여부를 함께 확인해야 합니다."
 else:
-    psm_status = "현재 확인된 수량기준은 100% 미만"
-    psm_value = f"R = {psm.r_value:.4f}"
+    psm_status = "별표 13 비고 제7호 합산한 값(R) < 1"
+    psm_value = f"합산한 값(R) = {psm.r_value:.4f}"
     psm_explanation = "다른 적용조건이나 미확인 정보가 있으면 추가 검토합니다."
 
 cap_status = final_cap.label
 if final_cap.status == "REQUIRED_GROUP_1":
-    cap_explanation = "법정 면제조건과 주요취급시설 여부까지 확인되어 1군 작성대상으로 판정했습니다."
+    cap_explanation = "법정 작성면제 여부와 주요취급시설 요건까지 확인하여 작성수준을 1군 사업장으로 확인했습니다."
 elif final_cap.status == "REQUIRED_GROUP_2":
-    cap_explanation = "법정 면제조건까지 확인되어 2군 작성대상으로 판정했습니다."
+    cap_explanation = "법정 작성면제 여부까지 확인하여 작성수준을 2군 사업장으로 확인했습니다."
 elif final_cap.status == "NOT_REQUIRED":
-    cap_explanation = "현재 입력·확인된 법적 조건을 기준으로 작성 비대상입니다."
+    cap_explanation = "법령상 작성면제 사유가 확인되었습니다. 구체적인 사유와 법적 근거는 아래 결과에서 확인합니다."
 else:
     cap_explanation = final_cap.next_question or "표시된 미확인 항목을 확인하면 최종 작성 여부를 결정합니다."
 
@@ -494,13 +494,13 @@ with left:
 with right:
     _status_card(CAP_FULL, cap_status, explanation=cap_explanation)
 
-_section_header(f"{PSM_FULL} · 수량기준 다음에 제외조건 확인", "psm")
+_section_header(f"{PSM_FULL} · 「산업안전보건법 시행령」 제43조 제출 대상 요건 확인", "psm")
 if psm.r_value is not None:
     st.write(
-        f"**R = {psm.r_value:.4f} ({psm.r_value * 100:.0f}%)** 입니다. "
-        "이 값은 공정안전보고서 수량기준을 먼저 확인하기 위한 값이며, 이것만으로 최종 작성대상이 확정되지는 않습니다."
+        f"**별표 13 비고 제7호 합산한 값(R) = {psm.r_value:.4f}** 입니다. "
+        "이 값은 「산업안전보건법 시행령」 별표 13 비고 제7호에 따른 합산한 값(R)입니다. 시행령 제43조제1항과 제2항의 요건을 함께 확인해야 공정안전보고서 제출 대상 여부가 확정됩니다."
     )
-    with st.expander("R이 무엇인지 · 법적 근거 보기", expanded=False):
+    with st.expander("별표 13 비고 제7호 합산한 값(R) · 법적 근거 보기", expanded=False):
         _render_guide("PSM_R_RATIO", compact=True)
 
 exclusion_questions = [q for q in psm.questions if _is_psm_exclusion_question(q)]
@@ -524,17 +524,17 @@ if exclusion_questions:
     if exclusion == "해당 없음" and psm.r_value is not None and psm.r_value >= 1:
         reasons: list[str] = []
         if psm_industry_trigger:
-            reasons.append(f"입력된 KSIC {psm.industry_code}는 공정안전보고서 대상업종({psm.industry_match})에 해당합니다.")
-        reasons.append(f"별표 13 규정량 대비 합산값 R이 {psm.r_value:.4f}로 1.0 이상입니다.")
+            reasons.append(f"입력된 KSIC {psm.industry_code}는 「산업안전보건법 시행령」 제43조제1항 각 호의 사업 종류({psm.industry_match})에 해당합니다.")
+        reasons.append(f"별표 13 비고 제7호의 합산한 값(R)이 {psm.r_value:.4f}로 1 이상입니다.")
         reasons.append("법정 제외설비 확인에서 '해당 없음'을 선택했습니다.")
         with st.container(border=True):
             st.markdown("### 🔴 공정안전보고서 판정 결과")
-            st.markdown("#### **현재 입력 기준: 작성 대상 후보**")
+            st.markdown("#### **현재 입력 기준: 공정안전보고서 제출 대상 기준 해당**")
             st.markdown("**왜 이런 결과가 나왔나요?**")
             for reason in reasons:
                 st.write(f"• {reason}")
             st.write(
-                "따라서 현재 확인 범위에서는 공정안전보고서 작성대상으로 이어질 가능성이 높습니다. "
+                "따라서 현재 확인 범위에서는 시행령 제43조제1항의 제출 대상 기준에 해당하며, "
                 "다만 실제 보고서 작성에 들어가기 전에는 어느 공정·설비가 대상범위에 포함되는지 확인해야 합니다."
             )
     elif exclusion not in {"선택하세요", "해당 없음", "모름"}:
@@ -546,7 +546,7 @@ if note8_questions:
     st.markdown("#### 공정안전보고서 추가 확인: 규정량 계산에서 제외되는 전문 가스 저장·판매시설이 있습니까?")
     st.write(
         "산업안전보건법 시행령 별표 13 비고 제8호는 **가스를 전문으로 저장·판매하는 시설 내의 가스**를 규정량 산정에서 제외합니다. "
-        "따라서 수량기준으로 PSM 여부가 갈리는 경우에만 이 사실을 추가로 확인합니다."
+        "따라서 별표 13 유해·위험물질 규정량 기준으로 제출 대상 여부를 확인하는 경우에만 이 사실을 추가로 확인합니다."
     )
     st.info("법적 근거: 「산업안전보건법 시행령」 별표 13 비고 제8호")
     note8_answer = st.radio(
@@ -556,14 +556,14 @@ if note8_questions:
         label_visibility="collapsed",
     )
     if note8_answer == "아니오, 해당하는 가스가 없습니다":
-        st.success("별표 13 비고 제8호에 따른 가스 제외 없이 현재 R 계산을 유지합니다.")
+        st.success("별표 13 비고 제8호에 따른 제외수량 없이 현재 비고 제7호 합산한 값(R)을 적용합니다.")
     elif note8_answer == "예, 해당하는 가스가 있습니다":
         st.warning(
-            "해당 가스는 R 계산에서 제외될 수 있습니다. 현재 회사 입력파일은 물질별 수량을 시설별로 분리하지 않았으므로, "
-            "어느 가스가 어느 전문 저장·판매시설에 얼마만큼 있는지 확인한 뒤 R을 다시 계산해야 합니다."
+            "해당 가스는 별표 13 비고 제8호에 따라 규정량 산정에서 제외될 수 있습니다. 현재 회사 입력파일은 물질별 수량을 시설별로 분리하지 않았으므로, "
+            "어느 가스가 어느 전문 저장·판매시설에 얼마만큼 있는지 확인한 뒤 비고 제7호의 합산한 값(R)을 다시 산정해야 합니다."
         )
     elif note8_answer == "잘 모르겠습니다":
-        st.warning("전문 가스 저장·판매시설 해당 여부가 확인될 때까지 수량기준 PSM 판정은 보류합니다.")
+        st.warning("별표 13 비고 제8호 적용 여부가 확인될 때까지 공정안전보고서 제출 대상 여부 확인을 보류합니다.")
 
 if other_psm_questions:
     st.markdown("#### 공정안전보고서에서 추가로 확인해야 하는 특수조건")
@@ -613,9 +613,9 @@ elif cap_screen.row_numbers:
                     st.write(f"• {blocker}")
             elif current_quick.status in {"UPPER_CANDIDATE", "LOWER_CANDIDATE"}:
                 with st.container(border=True):
-                    st.markdown("### 🔴 화학사고예방관리계획서 수량기준 판정 결과")
+                    st.markdown("### 🔴 화학사고예방관리계획서 최대보유량·규정수량 비교 결과")
                     st.markdown(f"#### **{_cap_text(current_quick.label)}**")
-                    st.write("이 결과는 **수량기준 단계의 결과**입니다. 이것만으로 최종 작성 필요 여부가 확정되는 것은 아니며 법정 면제조건을 추가로 확인해야 합니다.")
+                    st.write("이 결과는 **유해화학물질별 최대보유량과 상위·하위 규정수량을 비교한 결과**입니다. 화학사고예방관리계획서 작성 필요 여부와 작성수준은 법정 작성면제 여부와 주요취급시설 요건까지 확인해 결정합니다.")
                     if current_quick.status == "LOWER_CANDIDATE":
                         st.write("또한 아직 별표 1 검토가 필요한 다른 물질이 있다면, 그 물질이 상위 규정수량에 도달하는지에 따라 1군·2군 구분이 달라질 수 있습니다.")
             else:
@@ -654,7 +654,7 @@ elif cap_screen.row_numbers:
                         _table(facility_frame, 80)
                 if facility_result.status in {"UPPER_CANDIDATE", "LOWER_CANDIDATE"}:
                     with st.container(border=True):
-                        st.markdown("### 🔴 사업장 최대보유량 재계산 결과")
+                        st.markdown("### 🔴 사업장 최대보유량 산정 결과")
                         st.markdown(f"#### **{_cap_text(facility_result.label)}**")
                 elif facility_result.status == "HOLD":
                     st.warning(_cap_text(facility_result.label))
@@ -679,14 +679,14 @@ if cap.app1_required_rows:
     if direct_threshold_upper:
         _section_header(f"{CAP_FULL} · 규제물질 범위 확인을 위한 SDS 제2항 확인", "cap")
         st.info(
-            "앞 단계에서 이미 상위 규정수량 이상 후보가 확인되었습니다. 따라서 이 SDS 확인은 '작성해야 하는지 처음부터 다시 판단'하기 위한 단계가 아니라, "
+            "앞 단계에서 이미 **상위 규정수량 이상이 확인된 물질**이 있습니다. 따라서 이 SDS 확인은 '작성해야 하는지 처음부터 다시 판단'하기 위한 단계가 아니라, "
             "별표 1 대상이 되는 다른 물질과 보고서에 포함할 규제물질 범위를 확인하기 위한 보완 단계입니다."
         )
     elif direct_threshold_lower:
         _section_header(f"{CAP_FULL} · 1군·2군 구분 보완을 위한 SDS 제2항 확인", "cap")
         st.info(
-            "앞 단계에서 이미 **하위 규정수량 이상 후보**가 확인되었습니다. 즉 수량기준상 작성대상 후보는 이미 잡혔습니다. "
-            "다만 법정 면제조건 확인 전에는 최종 '작성 필요'로 확정할 수 없고, 다른 미확인 물질이 상위 규정수량에 도달하면 1군·2군 구분이 달라질 수 있으므로 SDS 확인이 필요할 수 있습니다."
+            "앞 단계에서 이미 **하위 규정수량 이상이 확인된 물질**이 있습니다. 따라서 화학사고예방관리계획서 작성 필요 여부와 작성수준을 검토해야 하는 수량범위에 해당합니다. "
+            "다만 법정 작성면제 여부 확인 전에는 최종 작성수준을 확정할 수 없고, 다른 미확인 물질이 상위 규정수량에 도달하면 1군·2군 구분이 달라질 수 있으므로 SDS 확인이 필요할 수 있습니다."
         )
     else:
         _section_header(f"{CAP_FULL} · 작성 여부 판정을 위한 SDS 제2항 확인", "cap")
@@ -856,8 +856,8 @@ if cap.app1_required_rows:
 if cap.scope_candidates:
     _section_header(f"{CAP_FULL} · CAS만으로 확정할 수 없는 물질범위", "cap")
     st.warning(
-        f"염류·화합물군·반응생성물 등 CAS 하나만으로 확정할 수 없는 규제범위 후보가 {len(cap.scope_candidates)}건 있습니다. "
-        "확인 전까지 자동으로 비대상 처리하지 않습니다."
+        f"염류·화합물군·반응생성물 등 CAS 하나만으로 확정할 수 없는 규제범위 검토대상이 {len(cap.scope_candidates)}건 있습니다. "
+        "확인 전까지 자동으로 화학사고예방관리계획서 작성면제로 판단하지 않습니다."
     )
     _render_guide("CAP_BROAD_SCOPE", show_title=False, compact=True)
 
@@ -866,19 +866,19 @@ if unresolved:
     st.warning("아직 최종 작성 여부를 확정하기 전에 확인해야 할 정보가 있습니다.")
     for blocker in unresolved:
         st.write(f"• {blocker}")
-    st.caption("위 항목이 해결되기 전에는 대상/비대상을 추정하지 않고 판정보류합니다.")
+    st.caption("위 항목이 해결되기 전에는 화학사고예방관리계획서 작성 필요 여부를 추정하지 않고 판정보류합니다.")
 else:
     if not threshold_upper and not threshold_lower:
         final_now = assess_cap_final(quantity_rows)
     else:
-        st.markdown("### 화학사고예방관리계획서 추가 확인: 관련 취급시설이 법정 작성 면제시설에 해당합니까?")
+        st.markdown("### 화학사고예방관리계획서 추가 확인: 법 제23조제1항 단서에 해당합니까?")
         st.write(
-            "수량기준에 해당하더라도 법에서 정한 면제시설이면 화학사고예방관리계획서를 작성하지 않을 수 있습니다. "
+            "유해화학물질별 최대보유량이 규정수량 이상이더라도 법령에서 정한 작성면제 시설에 해당하면 화학사고예방관리계획서를 작성하지 않을 수 있습니다. "
             "아래에는 시행규칙뿐 아니라 현재 고시로 구체화된 면제유형까지 표시합니다."
         )
         exemption_values = ["UNANSWERED", "NONE", "PARTIAL", *[item.key for item in exemption_options()], "UNKNOWN"]
         selected_exemption = st.selectbox(
-            "법정 작성 면제시설 확인",
+            "법 제23조제1항 단서 해당 여부 확인",
             exemption_values,
             format_func=_exemption_format,
             key="cap_final_exemption",
@@ -896,17 +896,17 @@ else:
                     key="cap_final_exemption_all",
                 )
         elif selected_exemption == "PARTIAL":
-            st.warning("일부 시설만 면제라면 면제시설을 제외한 나머지 취급시설 기준으로 최대보유량을 다시 산정해야 합니다.")
+            st.warning("법 제23조제1항 단서가 일부 취급시설에만 해당한다면, 해당 시설을 제외한 나머지 취급시설을 기준으로 최대보유량을 다시 산정해야 합니다.")
         elif selected_exemption == "UNKNOWN":
             st.info("모르면 추정하지 않습니다. 선택 가능한 면제유형과 법적 근거를 확인한 뒤 판단합니다.")
 
-        with st.expander("법정 작성 면제유형 전체 보기", expanded=False):
-            st.markdown("**상위법·시행규칙·현행 고시의 면제조건**")
+        with st.expander("법 제23조제1항 단서 및 고시 제9조 작성 면제 시설 전체 보기", expanded=False):
+            st.markdown("**법 제23조제1항 단서·시행규칙 제19조제2항·현행 고시 제9조 작성 면제 시설**")
             for option in exemption_options():
                 st.markdown(f"**• {option.label}**")
                 st.caption(f"{option.plain_language} · {option.legal_basis}")
             st.info(
-                "별도로, 사업장의 해당 유해화학물질이 모두 하위 규정수량 미만이면 시행규칙 제19조제2항제2호에 따라 수량기준 면제가 적용되며 프로그램이 자동 판단합니다."
+                "별도로, 사업장의 해당 유해화학물질이 모두 하위 규정수량 미만이면 시행규칙 제19조제2항제2호에 따른 작성면제에 해당하며 프로그램이 자동 확인합니다."
             )
 
         selected_answer = (
@@ -937,15 +937,15 @@ else:
             major_facility_answer=major_now,
         )
 
-    st.markdown("### 최종 판정")
+    st.markdown("### 화학사고예방관리계획서 작성 필요 여부 및 작성수준")
     if final_now.status == "REQUIRED_GROUP_1":
-        st.success("**화학사고예방관리계획서 작성 필요 — 1군 사업장**")
+        st.success("**화학사고예방관리계획서 작성수준 — 1군 사업장**")
         st.write("1군은 전체 작성항목을 기준으로 작성지원 단계로 진행합니다.")
     elif final_now.status == "REQUIRED_GROUP_2":
-        st.success("**화학사고예방관리계획서 작성 필요 — 2군 사업장**")
+        st.success("**화학사고예방관리계획서 작성수준 — 2군 사업장**")
         st.write("2군은 현행 작성규정에 따라 외부 비상대응계획을 제외할 수 있는 작성수준으로 다음 단계에 필요한 자료만 요청합니다.")
     elif final_now.status == "NOT_REQUIRED":
-        st.info("**화학사고예방관리계획서 작성 비대상**")
+        st.info(f"**{final_now.label}**")
     else:
         st.warning(f"**{final_now.label}**")
         if final_now.next_question:

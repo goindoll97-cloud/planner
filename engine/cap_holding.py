@@ -542,13 +542,13 @@ def assess_cap_holding(
     upper = any(row.get("quantity_band") == "상위 규정수량 이상" for row in comparison)
     lower = any(row.get("quantity_band") == "하위 이상·상위 미만" for row in comparison)
     if upper:
-        label = "화사계 상위기준 후보"
+        label = "최대보유량이 상위 규정수량 이상"
         status = "UPPER_CANDIDATE"
     elif lower:
-        label = "화사계 하위기준 후보"
+        label = "최대보유량이 하위 규정수량 이상·상위 규정수량 미만"
         status = "LOWER_CANDIDATE"
     else:
-        label = "화사계 확인된 규정량은 하위기준 미만"
+        label = "확인된 유해화학물질의 최대보유량이 하위 규정수량 미만"
         status = "BELOW_LOWER"
 
     return CAPHoldingResult(
@@ -559,6 +559,6 @@ def assess_cap_holding(
         comparison_rows=comparison,
         messages=[
             "승인된 별표 4 기준으로 시설별 최대보유량을 산정하고 동일 법적 규칙별로 합산했습니다.",
-            "이 결과는 규정수량 비교 단계이며, 화사계 1군·2군 최종확정에는 면제조건과 군 분류 규칙 확인이 추가로 필요합니다.",
+            "이 결과는 최대보유량과 규정수량의 비교 단계이며, 작성수준(1군·2군) 확정에는 법 제23조제1항 단서 해당 여부와 작성수준 결정 요건을 추가로 확인해야 합니다.",
         ],
     )

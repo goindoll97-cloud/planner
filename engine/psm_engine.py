@@ -358,7 +358,7 @@ def _hit_from_line(line: PSMRatioLine) -> PSMHit:
         quantity_kg=quantity,
         threshold_kg=threshold,
         ratio=line.controlling_ratio,
-        basis="산업안전보건법 시행령 별표 13 비고 제7호(C/T 및 R 산정)",
+        basis="「산업안전보건법 시행령」 별표 13 비고 제7호(합산한 값 R)",
     )
 
 
@@ -367,8 +367,8 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
     if db.empty:
         return PSMAssessment(
             status="DB_NOT_READY",
-            label="PSM 규정량 DB 승인 필요",
-            messages=["산업안전보건법 시행령 별표 13의 구조화 후보를 검토·승인한 뒤 PSM 수량판정을 활성화합니다."],
+            label="별표 13 유해·위험물질 규정량 DB 승인 필요",
+            messages=["「산업안전보건법 시행령」 별표 13의 구조화 후보를 검토·승인한 뒤 유해·위험물질 규정량 기준 확인을 활성화합니다."],
             db_ready=False,
         )
 
@@ -380,10 +380,10 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
         assessment.industry_match = PSM_TARGET_INDUSTRIES[code]
         if code == "20202":
             assessment.questions.append(
-                "합성수지 및 기타 플라스틱물질 제조업은 별표 13 제1호 또는 제2호 해당 여부와 함께 대상업종 조건을 확인해야 합니다. 사업장에서 인화성 가스 또는 인화성 액체를 제조·취급·저장합니까?"
+                "합성수지 및 기타 플라스틱물질 제조업은 별표 13 제1호 또는 제2호 해당 여부와 함께 시행령 제43조제1항제3호의 사업 종류 조건을 확인해야 합니다. 사업장에서 인화성 가스 또는 인화성 액체를 제조·취급·저장합니까?"
             )
         else:
-            assessment.messages.append(f"PSM 대상업종 코드와 일치: {code} {assessment.industry_match}")
+            assessment.messages.append(f"시행령 제43조제1항의 사업 종류와 KSIC 코드 일치: {code} {assessment.industry_match}")
 
     lookup = _cas_lookup(db)
     contributions: list[dict[str, Any]] = []
@@ -481,7 +481,7 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
     if unsupported_mass_unit_rows:
         rows = ", ".join(map(str, sorted(unsupported_mass_unit_rows)))
         assessment.questions.append(
-            f"화학물질 목록 {rows}행은 질량 단위가 아닙니다. PSM 규정량(kg) 비교를 위해 최대 질량(kg/ton) 또는 밀도정보가 필요합니다."
+            f"화학물질 목록 {rows}행은 질량 단위가 아닙니다. 별표 13 유해·위험물질 규정량(kg) 비교를 위해 최대 질량(kg/ton) 또는 밀도정보가 필요합니다."
         )
         assessment.blockers.append(f"질량 환산 필요 행: {rows}")
 
@@ -490,7 +490,7 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
         assessment.questions.append(
             f"화학물질 목록 {rows}행은 별표 13 매칭 물질이지만 최대 제조·사용량과 최대 저장량이 모두 비어 있습니다. 하루 최대 제조·취급 또는 저장량을 확인해 주세요."
         )
-        assessment.blockers.append(f"PSM 일일 최대량 미확인 행: {rows}")
+        assessment.blockers.append(f"별표 13 제조·취급·저장량 미확인 행: {rows}")
 
     assessment.questions.extend(pending_questions)
     if pending_condition_items:
@@ -518,7 +518,7 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
 
     if assessment.ratio_lines:
         assessment.messages.append(
-            f"별표 13 비고 제7호에 따른 현재 확인 범위의 규정량 대비 합산값 R = {assessment.r_value:.4f}. "
+            f"별표 13 비고 제7호에 따른 현재 확인 범위의 합산한 값(R) = {assessment.r_value:.4f}. "
             "각 물질은 제조·취급 C/T와 저장 C/T 중 큰 값을 사용해 합산했습니다."
         )
         if len(assessment.ratio_lines) > 1:
@@ -528,19 +528,19 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
 
     if industry_positive or r_positive:
         assessment.status = "APPLICABLE_CANDIDATE"
-        assessment.label = "PSM 대상 후보"
+        assessment.label = "공정안전보고서 제출 대상 여부 확인 필요"
         assessment.questions.extend(PSM_EXCLUSION_QUESTIONS)
         if r_positive:
             assessment.messages.append(
-                "현재 확인된 별표 13 물질만으로 R이 1 이상이므로 규정량 기준의 PSM 대상 트리거가 확인되었습니다. "
-                "제43조제2항 제외설비 등 최종 제외조건 확인 전에는 확정 '대상'으로 표시하지 않습니다."
+                "현재 확인된 별표 13 물질을 기준으로 비고 제7호의 합산한 값(R)이 1 이상이므로 별표 13 유해·위험물질 규정량 기준에 해당합니다. "
+                "시행령 제43조제2항 제외설비 해당 여부 확인 전에는 공정안전보고서 제출 대상으로 확정하지 않습니다."
             )
             assessment.questions.append(
-                "별표 13 비고 제8호와 관련하여, R 산정에 포함된 가스가 '가스를 전문으로 저장·판매하는 시설 내의 가스'에 해당하는지 확인해 주세요. 해당 가스는 규정량 산정에서 제외될 수 있습니다."
+                "별표 13 비고 제8호와 관련하여, 비고 제7호 합산한 값(R)에 포함된 가스가 '가스를 전문으로 저장·판매하는 시설 내의 가스'에 해당하는지 확인해 주세요. 해당 가스는 규정량 산정에서 제외될 수 있습니다."
             )
     elif code == "20202":
         assessment.status = "ADDITIONAL_INFO_REQUIRED"
-        assessment.label = "PSM 대상업종 조건 확인 필요"
+        assessment.label = "시행령 제43조제1항 사업 종류 조건 확인 필요"
     else:
         if property_unresolved:
             assessment.questions.extend(_property_questions())
@@ -548,12 +548,12 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
         assessment.r_complete = not assessment.blockers
         if assessment.questions or assessment.blockers:
             assessment.status = "ADDITIONAL_INFO_REQUIRED"
-            assessment.label = "PSM 추가정보 필요"
+            assessment.label = "공정안전보고서 제출 대상 여부 확인을 위한 추가정보 필요"
         else:
             assessment.status = "NO_TRIGGER_IN_CHECKED_SCOPE"
-            assessment.label = "확인 범위 내 PSM 기준 초과 없음"
+            assessment.label = "현재 확인 범위에서 시행령 제43조제1항 제출 대상 기준 미확인"
             assessment.messages.append(
-                "현재 승인된 별표 13 DB와 입력자료에서 R < 1이고 추가 미확인 조건이 없습니다. 다만 대상업종·제외설비 등 전체 법정조건 검증 범위 내에서 최종 비대상 여부를 확정해야 합니다."
+                "현재 승인된 별표 13 DB와 입력자료에서 비고 제7호 합산한 값(R)이 1 미만이고 추가 미확인 조건이 없습니다. 다만 시행령 제43조제1항의 사업 종류와 제2항 제외설비 등 전체 법정요건을 함께 확인해야 제출 대상 여부를 확정할 수 있습니다."
             )
 
     assessment.questions = list(dict.fromkeys(q for q in assessment.questions if q))

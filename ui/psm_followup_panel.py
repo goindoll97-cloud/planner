@@ -94,11 +94,11 @@ def render_psm_followup_panel(intake) -> None:
     requirements = detect_followup_requirements(intake, base)
 
     st.markdown("---")
-    st.markdown("## 🧮 PSM 추가확인 · 최종 R 산정")
+    st.markdown("## 🧮 공정안전보고서 제출 대상 확인 · 별표 13 규정량 추가확인")
     st.caption(
         "1차 선별에서는 회사 입력파일만으로 확인 가능한 별표 13 항목을 먼저 계산합니다. "
         "그 단계에서 법적으로 필요한 물성·특수 성분조건이 남아 있을 때만 추가로 확인하며, "
-        "확인된 사실을 모두 반영한 값을 최종 R로 사용합니다. 모르는 값은 추정하지 않습니다."
+        "확인된 사실을 모두 반영하여 별표 13 비고 제7호의 합산한 값(R)을 산정합니다. 모르는 값은 추정하지 않습니다."
     )
 
     if requirements.property_items:
@@ -160,7 +160,7 @@ def render_psm_followup_panel(intake) -> None:
     if preliminary.note8_required:
         st.markdown("### 3) 별표 13 비고 제8호 · 전문 가스 저장·판매시설")
         st.write(
-            "현재 확인된 정보 기준 R이 1 이상이고 대상업종 트리거가 별도로 확인되지 않아, "
+            "현재 확인된 정보 기준 별표 13 비고 제7호의 합산한 값(R)이 1 이상이고 시행령 제43조제1항의 사업 종류 기준이 별도로 확인되지 않아, "
             "규정량에서 제외되는 전문 가스 저장·판매시설 수량이 있는지 확인해야 합니다."
         )
         note8_answer = st.radio(
@@ -204,29 +204,29 @@ def render_psm_followup_panel(intake) -> None:
                 "현재 계산수량보다 큰 값은 엔진이 거부합니다."
             )
         elif note8_answer == "모름":
-            st.warning("확인될 때까지 수량기준 최종판정은 보류됩니다.")
+            st.warning("확인될 때까지 공정안전보고서 제출 대상 여부 확인은 보류됩니다.")
 
     final_facts = _build_facts(requirements, include_note8=True)
     result = reassess_psm_with_followup(intake, final_facts, base)
 
-    st.markdown("### PSM 최종 산정 결과")
+    st.markdown("### 공정안전보고서 제출 대상 확인 결과")
     c1, c2 = st.columns(2)
-    c1.metric("추가확인 반영 전 R", f"{result.r_before_note8:.4f}")
-    c2.metric("최종 R", f"{result.r_value:.4f}")
+    c1.metric("비고 제8호 반영 전 합산한 값(R)", f"{result.r_before_note8:.4f}")
+    c2.metric("별표 13 비고 제7호 합산한 값(R)", f"{result.r_value:.4f}")
 
     if result.status == "APPLICABLE_CANDIDATE":
         st.success(f"**{result.label}**")
         if result.industry_trigger:
             if base.industry_code == "20202":
-                st.write("• KSIC 20202 조건과 별표 13 제1·2호 물성 확인을 함께 반영해 대상업종 트리거를 확인했습니다.")
+                st.write("• KSIC 20202의 경우 시행령 제43조제1항제3호 단서와 별표 13 제1·2호 물성조건을 함께 확인했습니다.")
             else:
-                st.write(f"• 대상업종 트리거: KSIC {base.industry_code} {base.industry_match}")
+                st.write(f"• 시행령 제43조제1항의 사업 종류 기준: KSIC {base.industry_code} {base.industry_match}")
         if result.quantity_trigger:
-            st.write(f"• 규정량 트리거: 비고 제7호 계산 R = {result.r_value:.4f} ≥ 1.0")
+            st.write(f"• 별표 13 유해·위험물질 규정량 기준: 비고 제7호 합산한 값(R) = {result.r_value:.4f} ≥ 1")
         st.write("• 다음 단계: 실제 관련 설비가 시행령 제43조제2항의 제외설비인지 확인합니다.")
     elif result.status == "NO_TRIGGER_IN_CHECKED_SCOPE":
-        st.info("**현재 확인 범위 내 PSM 적용 트리거가 확인되지 않았습니다.**")
-        st.write("대상업종 조건과 별표 13 물성·특수조건 및 최종 R 산정까지 확인한 결과입니다.")
+        st.info("**현재 확인 범위에서 시행령 제43조제1항의 공정안전보고서 제출 대상 기준이 확인되지 않았습니다.**")
+        st.write("시행령 제43조제1항 각 호의 사업 종류 조건과 별표 13 물성·특수조건 및 별표 13 비고 제7호 합산한 값(R) 산정까지 확인한 결과입니다.")
     else:
         st.warning(f"**{result.label}**")
 
@@ -235,7 +235,7 @@ def render_psm_followup_panel(intake) -> None:
         for blocker in result.blockers:
             st.write(f"• {blocker}")
 
-    with st.expander("최종 별표 13 R 산정 근거", expanded=False):
+    with st.expander("별표 13 비고 제7호 합산한 값(R) 산정 근거", expanded=False):
         if result.ratio_lines:
             frame = pd.DataFrame([asdict(line) for line in result.ratio_lines])
             st.dataframe(frame, width="stretch", hide_index=True)

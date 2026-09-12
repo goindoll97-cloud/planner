@@ -22,7 +22,7 @@ class CAPFinalDecisionTests(unittest.TestCase):
     def test_lower_waits_for_exemption_answer(self):
         result = assess_cap_final([{"status": "LOWER_CANDIDATE", "row_no": 1}])
         self.assertEqual(result.status, "HOLD")
-        self.assertIn("면제", result.label)
+        self.assertIn("법 제23조제1항 단서", result.label)
 
     def test_confirmed_exemption_is_not_required(self):
         result = assess_cap_final(
@@ -32,7 +32,7 @@ class CAPFinalDecisionTests(unittest.TestCase):
             exemption_all_relevant_confirmed=True,
         )
         self.assertEqual(result.status, "NOT_REQUIRED")
-        self.assertIn("면제", result.label)
+        self.assertIn("작성·제출 의무 없음", result.label)
 
     def test_partial_exemption_holds(self):
         result = assess_cap_final(
