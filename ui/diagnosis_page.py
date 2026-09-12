@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -28,6 +30,12 @@ def _result_card(title: str, status: str, explanation: str) -> None:
         st.markdown(f"#### {status}")
         if explanation:
             st.write(explanation)
+
+
+def _display_request(value: str) -> str:
+    """Hide workbook-internal location labels from company-facing requests."""
+    text = str(value or "").strip()
+    return re.sub(r"^(?:\d{2}_[^:]+|회사 입력파일):\s*", "", text)
 
 
 st.title(f"{PSM_FULL} · {CAP_FULL} 사전진단")
@@ -76,7 +84,7 @@ if decision.company_requests:
         "화면에서 별도로 선택할 항목은 없습니다."
     )
     for request in decision.company_requests:
-        st.write(f"• {request}")
+        st.write(f"• {_display_request(request)}")
     st.info("입력파일을 수정·저장한 뒤 위 업로드 칸에 다시 올리면 처음부터 자동 판정합니다.")
     st.stop()
 

@@ -149,9 +149,9 @@ def _psm_facts_from_workbook(intake: IntakeData, base, requests: list[str]) -> P
         storage = _num(_condition_value(conditions, storage_key))
         facts.property_answers[item_no] = PSMPropertyAnswer(applicable, mfg, storage)
         if applicable is None:
-            requests.append(_request("05_최종판정조건", f"'{applicable_key}'를 Y/N으로 확인하여 작성해 주세요."))
+            requests.append(_request("05_최종판정조건", f"근거: 「산업안전보건법」 제44조제1항 → 「산업안전보건법 시행령」 제43조제1항 및 별표 13 「유해·위험물질 규정량」 제{item_no}호({label}). 귀사의 취급물질·공정이 이 항목에 해당하는지 확인하여 Y/N으로 작성해 주세요."))
         elif applicable and (mfg is None or storage is None):
-            requests.append(_request("05_최종판정조건", f"{label}에 해당하므로 '{mfg_key}'와 '{storage_key}'를 kg로 작성해 주세요. 미사용 구분은 0으로 입력합니다."))
+            requests.append(_request("05_최종판정조건", f"근거: 「산업안전보건법」 제44조제1항 → 「산업안전보건법 시행령」 제43조제1항 및 별표 13 「유해·위험물질 규정량」 제{item_no}호({label}). 해당으로 확인된 경우 하루 최대 제조·취급량과 최대 저장량을 각각 kg로 작성해 주세요. 사용하지 않는 구분은 0으로 입력합니다."))
 
     special_meta = {
         23: "별표 13 제23호 발연황산 삼산화황(SO3) 중량%",
@@ -162,7 +162,11 @@ def _psm_facts_from_workbook(intake: IntakeData, base, requests: list[str]) -> P
         value = _num(_condition_value(conditions, key))
         facts.special_values_pct[item_no] = value
         if value is None:
-            requests.append(_request("05_최종판정조건", f"'{key}'를 확인하여 숫자(%)로 작성해 주세요."))
+            legal_name = {
+                23: "별표 13 「유해·위험물질 규정량」 제23호 발연황산(삼산화황 중량 65% 이상 80% 미만)",
+                42: "별표 13 「유해·위험물질 규정량」 제42호 니트로셀룰로오스(질소 함유량 12.6% 이상)",
+            }[item_no]
+            requests.append(_request("05_최종판정조건", f"근거: 「산업안전보건법」 제44조제1항 → 「산업안전보건법 시행령」 제43조제1항 및 {legal_name}. 제품 SDS, 시험성적서 또는 제조사 자료에서 해당 성분 함량을 확인하여 숫자(%)로 작성해 주세요."))
 
     note8_raw = _condition_value(conditions, "가스를 전문으로 저장·판매하는 시설 내 가스 여부")
     if _answer_is_yes(note8_raw):
