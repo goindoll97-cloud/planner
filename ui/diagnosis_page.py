@@ -406,7 +406,7 @@ if cap_screen.row_numbers:
         unresolved.append("별표 2·3 직접대상 물질의 법정 사업장 최대보유량 계산을 위한 시설정보 입력서 작성·재업로드 필요")
 
 if cap.scope_candidates:
-    unresolved.append(f"CAS 하나로 확정할 수 없는 포괄 물질범위 후보 {len(cap.scope_candidates)}건 확인 필요")
+    unresolved.append(f"CAS 하나로 확정할 수 없는 포괄 물질범위 검토대상 {len(cap.scope_candidates)}건 확인 필요")
 
 for result in app1_results:
     if result.status in {"HOLD", "DB_NOT_READY"}:
@@ -464,8 +464,8 @@ elif psm.r_value >= 1:
         psm_status = "별표 13 비고 제8호 제외수량 확인 필요"
         psm_explanation = "별표 13 비고 제8호에 따라 전문 저장·판매시설 내 해당 가스는 규정량 산정에서 제외되므로, 해당 수량을 분리한 뒤 비고 제7호의 합산한 값(R)을 다시 산정해야 합니다."
     elif psm_exclusion_choice == "해당 없음":
-        psm_status = "별표 13 유해·위험물질 규정량 기준 해당 · 제43조제2항 제외설비 확인 필요"
-        psm_explanation = "별표 13 유해·위험물질 규정량 기준에는 해당하지만 「산업안전보건법 시행령」 제43조제2항의 제외설비 여부 확인 전입니다."
+        psm_status = "공정안전보고서 제출 대상 기준 해당"
+        psm_explanation = "별표 13 유해·위험물질 규정량 기준에 해당하고, 「산업안전보건법 시행령」 제43조제2항 제외설비에 해당하지 않는 것으로 사용자가 확인했습니다."
     elif psm_exclusion_choice not in {"선택하세요", "모름"}:
         psm_status = "제외조건 검토 필요"
         psm_explanation = "별표 13 유해·위험물질 규정량 기준에는 해당하지만 선택한 제43조제2항 제외설비의 실제 적용범위를 확인해야 합니다."
@@ -483,7 +483,7 @@ if final_cap.status == "REQUIRED_GROUP_1":
 elif final_cap.status == "REQUIRED_GROUP_2":
     cap_explanation = "법정 작성면제 여부까지 확인하여 작성수준을 2군 사업장으로 확인했습니다."
 elif final_cap.status == "NOT_REQUIRED":
-    cap_explanation = "현재 입력·확인된 법적 조건을 기준으로 작성 비대상입니다."
+    cap_explanation = "법령상 작성면제 사유가 확인되었습니다. 구체적인 사유와 법적 근거는 아래 결과에서 확인합니다."
 else:
     cap_explanation = final_cap.next_question or "표시된 미확인 항목을 확인하면 최종 작성 여부를 결정합니다."
 
@@ -529,7 +529,7 @@ if exclusion_questions:
         reasons.append("법정 제외설비 확인에서 '해당 없음'을 선택했습니다.")
         with st.container(border=True):
             st.markdown("### 🔴 공정안전보고서 판정 결과")
-            st.markdown("#### **현재 입력 기준: 시행령 제43조제1항 기준 해당 · 제2항 제외설비 확인 필요**")
+            st.markdown("#### **현재 입력 기준: 공정안전보고서 제출 대상 기준 해당**")
             st.markdown("**왜 이런 결과가 나왔나요?**")
             for reason in reasons:
                 st.write(f"• {reason}")
@@ -679,14 +679,14 @@ if cap.app1_required_rows:
     if direct_threshold_upper:
         _section_header(f"{CAP_FULL} · 규제물질 범위 확인을 위한 SDS 제2항 확인", "cap")
         st.info(
-            "앞 단계에서 이미 상위 규정수량 이상 후보가 확인되었습니다. 따라서 이 SDS 확인은 '작성해야 하는지 처음부터 다시 판단'하기 위한 단계가 아니라, "
+            "앞 단계에서 이미 **상위 규정수량 이상이 확인된 물질**이 있습니다. 따라서 이 SDS 확인은 '작성해야 하는지 처음부터 다시 판단'하기 위한 단계가 아니라, "
             "별표 1 대상이 되는 다른 물질과 보고서에 포함할 규제물질 범위를 확인하기 위한 보완 단계입니다."
         )
     elif direct_threshold_lower:
         _section_header(f"{CAP_FULL} · 1군·2군 구분 보완을 위한 SDS 제2항 확인", "cap")
         st.info(
             "앞 단계에서 이미 **하위 규정수량 이상이 확인된 물질**이 있습니다. 따라서 화학사고예방관리계획서 작성 필요 여부와 작성수준을 검토해야 하는 수량범위에 해당합니다. "
-            "다만 법정 면제조건 확인 전에는 최종 '작성 필요'로 확정할 수 없고, 다른 미확인 물질이 상위 규정수량에 도달하면 1군·2군 구분이 달라질 수 있으므로 SDS 확인이 필요할 수 있습니다."
+            "다만 법정 작성면제 여부 확인 전에는 최종 작성수준을 확정할 수 없고, 다른 미확인 물질이 상위 규정수량에 도달하면 1군·2군 구분이 달라질 수 있으므로 SDS 확인이 필요할 수 있습니다."
         )
     else:
         _section_header(f"{CAP_FULL} · 작성 여부 판정을 위한 SDS 제2항 확인", "cap")
@@ -856,8 +856,8 @@ if cap.app1_required_rows:
 if cap.scope_candidates:
     _section_header(f"{CAP_FULL} · CAS만으로 확정할 수 없는 물질범위", "cap")
     st.warning(
-        f"염류·화합물군·반응생성물 등 CAS 하나만으로 확정할 수 없는 규제범위 후보가 {len(cap.scope_candidates)}건 있습니다. "
-        "확인 전까지 자동으로 비대상 처리하지 않습니다."
+        f"염류·화합물군·반응생성물 등 CAS 하나만으로 확정할 수 없는 규제범위 검토대상이 {len(cap.scope_candidates)}건 있습니다. "
+        "확인 전까지 자동으로 화학사고예방관리계획서 작성면제로 판단하지 않습니다."
     )
     _render_guide("CAP_BROAD_SCOPE", show_title=False, compact=True)
 
@@ -866,7 +866,7 @@ if unresolved:
     st.warning("아직 최종 작성 여부를 확정하기 전에 확인해야 할 정보가 있습니다.")
     for blocker in unresolved:
         st.write(f"• {blocker}")
-    st.caption("위 항목이 해결되기 전에는 대상/비대상을 추정하지 않고 판정보류합니다.")
+    st.caption("위 항목이 해결되기 전에는 화학사고예방관리계획서 작성 필요 여부를 추정하지 않고 판정보류합니다.")
 else:
     if not threshold_upper and not threshold_lower:
         final_now = assess_cap_final(quantity_rows)

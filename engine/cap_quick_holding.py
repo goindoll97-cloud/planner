@@ -3,7 +3,7 @@ from __future__ import annotations
 """Fast-path CAP maximum-holding comparison.
 
 Priority:
-1. If the first company workbook already contains ``03_시설별최대보유량``, use
+1. If the first company workbook already contains ``04_시설별최대보유량``, use
    those facility facts to calculate Appendix-4 maximum holding directly.
 2. Otherwise, use the company-declared ``최대 동시보유량`` only when the UI has
    confirmed that it was already calculated on an Appendix-4 basis.
@@ -122,7 +122,7 @@ def _from_first_upload_facilities(
         copy = dict(row)
         if "confirmed_max_holding_ton" not in copy:
             copy["confirmed_max_holding_ton"] = copy.get("calculated_max_holding_ton")
-        copy["basis"] = "최초 회사 입력파일의 03_시설별최대보유량을 별표 4 방식으로 계산"
+        copy["basis"] = "최초 회사 입력파일의 04_시설별최대보유량을 별표 4 방식으로 계산"
         comparisons.append(copy)
 
     return QuickHoldingResult(
@@ -194,19 +194,19 @@ def compare_confirmed_declared_holding(
     if any(row["quantity_band"] == "상위 규정수량 이상" for row in comparisons):
         return QuickHoldingResult(
             status="UPPER_CANDIDATE",
-            label="화사계 상위기준 후보",
+            label="최대보유량이 상위 규정수량 이상",
             comparison_rows=comparisons,
         )
     if any(row["quantity_band"] == "하위 이상·상위 미만" for row in comparisons):
         return QuickHoldingResult(
             status="LOWER_CANDIDATE",
-            label="화사계 하위기준 후보",
+            label="최대보유량이 하위 규정수량 이상·상위 규정수량 미만",
             comparison_rows=comparisons,
         )
     if comparisons:
         return QuickHoldingResult(
             status="BELOW_LOWER",
-            label="확인된 별표 2·3 직접대상은 하위 규정수량 미만",
+            label="확인된 유해화학물질의 최대보유량이 하위 규정수량 미만",
             comparison_rows=comparisons,
         )
-    return QuickHoldingResult(status="NO_DIRECT_HIT", label="별표 2·3 직접대상 없음")
+    return QuickHoldingResult(status="NO_DIRECT_HIT", label="별표 2·3 직접 규정수량 적용 물질 미확인")

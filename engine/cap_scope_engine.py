@@ -274,14 +274,14 @@ def assess_cap_scope(intake: IntakeData) -> CAPScopeScreen:
 
     if missing:
         messages.append(
-            "화사계 별표 2 물질범위 DB가 아직 승인되지 않아, CAS 미매칭만으로 비대상을 확정하지 않습니다."
+            "화사계 별표 2 물질범위 DB가 아직 승인되지 않아, CAS 미매칭만으로 작성면제를 확정하지 않습니다."
         )
     if not direct_hits.empty:
         messages.append(f"화사계 별표 2의 승인된 직접 CAS 규칙에서 {len(direct_hits)}개 적용행을 확인했습니다.")
     if not candidates.empty:
         messages.append(
-            f"CAS 하나로 특정되지 않는 화사계 별표 2 규제범위 후보 {len(candidates)}건을 찾았습니다. "
-            "이 후보는 이름 유사성만으로 자동확정하지 않고 범위 포함 여부를 확인합니다."
+            f"CAS 하나로 특정되지 않는 화사계 별표 2 규제범위 검토대상 {len(candidates)}건을 찾았습니다. "
+            "이 검토대상은 이름 유사성만으로 자동확정하지 않고 범위 포함 여부를 확인합니다."
         )
 
     return CAPScopeScreen(

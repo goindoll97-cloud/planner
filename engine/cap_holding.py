@@ -542,13 +542,13 @@ def assess_cap_holding(
     upper = any(row.get("quantity_band") == "상위 규정수량 이상" for row in comparison)
     lower = any(row.get("quantity_band") == "하위 이상·상위 미만" for row in comparison)
     if upper:
-        label = "화사계 상위기준 후보"
+        label = "최대보유량이 상위 규정수량 이상"
         status = "UPPER_CANDIDATE"
     elif lower:
-        label = "화사계 하위기준 후보"
+        label = "최대보유량이 하위 규정수량 이상·상위 규정수량 미만"
         status = "LOWER_CANDIDATE"
     else:
-        label = "화사계 확인된 규정량은 하위기준 미만"
+        label = "확인된 유해화학물질의 최대보유량이 하위 규정수량 미만"
         status = "BELOW_LOWER"
 
     return CAPHoldingResult(

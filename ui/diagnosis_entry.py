@@ -23,7 +23,7 @@ def _render_gate_hold(gate: dict[str, object]) -> None:
             st.write(f"• {blocker}")
     st.caption(
         "규정 DB 관리에서 최신 공식본 확인 → 후보표 재생성·검토 → 승인 → 근거 PDF 동기화를 완료한 뒤 다시 판정하세요. "
-        "불확실한 상태에서는 대상/비대상을 추정하지 않습니다."
+        "불확실한 상태에서는 법령상 제출·작성 필요 여부를 추정하지 않습니다."
     )
 
 

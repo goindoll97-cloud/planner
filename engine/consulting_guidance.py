@@ -111,7 +111,7 @@ GUIDES: dict[str, ConsultingGuide] = {
         key="CAP_APP1_SDS",
         title="왜 SDS 유해성·위험성 분류를 확인하나요?",
         plain_language="물질별 직접목록으로 결론이 나지 않는 경우 별표 1은 SDS 제2항의 유해성·위험성 그룹을 기준으로 적용합니다.",
-        why_needed="CAS 직접목록에서 찾지 못했다는 이유만으로 비대상으로 잘못 판단하는 것을 막기 위해 필요합니다.",
+        why_needed="CAS 직접목록에서 찾지 못했다는 이유만으로 화학사고예방관리계획서 작성면제로 잘못 판단하는 것을 막기 위해 필요합니다.",
         what_to_check=("SDS 제2항 유해성·위험성", "급성독성 구분", "인화성 등 물리·화학적 위험성", "수생환경 유해성"),
         legal_basis="「유해화학물질의 규정수량에 관한 규정」 제3조제1호 및 별표 1",
         legal_hierarchy=("적용 구조: 같은 규정 제3조", "유해성·위험성 그룹별 규정수량: 같은 규정 별표 1"),
@@ -176,7 +176,7 @@ GUIDES: dict[str, ConsultingGuide] = {
     "DECISION_HOLD": ConsultingGuide(
         key="DECISION_HOLD",
         title="'판정보류'는 무슨 뜻인가요?",
-        plain_language="현재 정보만으로 대상 또는 비대상을 안전하게 확정할 수 없다는 뜻입니다. 대상도 비대상도 아닙니다.",
+        plain_language="현재 정보만으로 법령상 제출·작성 필요 여부를 안전하게 확정할 수 없다는 뜻입니다. 확인이 끝날 때까지 판정을 보류합니다.",
         why_needed="법적 판단에 필요한 사실을 프로그램이 추정하지 않도록 하기 위한 안전장치입니다.",
         what_to_check=("함량·순도", "최대보유량", "SDS 분류", "시설 유형·면제조건", "법령·승인 DB 최신상태"),
         decision_effect="표시된 미확인 항목만 추가 확인한 뒤 다시 판정합니다.",

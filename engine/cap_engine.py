@@ -151,7 +151,7 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
         if not app1_ready:
             blockers.append("화사계 별표 1 유해·위험성 그룹 DB 미완성")
         if scope.review_required:
-            blockers.append(f"CAS 미기재 포괄 규제범위 후보 {len(scope.candidate_rows)}건 확인 필요")
+            blockers.append(f"CAS 미기재 포괄 규제범위 검토대상 {len(scope.candidate_rows)}건 확인 필요")
         return CAPAssessment(
             status="DB_NOT_READY",
             label="화사계 별표 3 DB 승인 필요",
@@ -320,7 +320,7 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
     if fallback_rows:
         if app1_ready:
             assessment.blockers.append(
-                f"별표 2·3 미적용 후보 {len(fallback_rows)}개 물질은 별표 1 적용 여부를 위해 SDS 제2항 유해성·위험성 분류 확인 필요"
+                f"별표 2·3 미적용 물질 {len(fallback_rows)}개 물질은 별표 1 적용 여부를 위해 SDS 제2항 유해성·위험성 분류 확인 필요"
             )
             assessment.messages.append(
                 "별표 1은 CAS 검색표가 아니므로 별표 2·3이 적용되지 않는 물질에 한해 SDS 유해성·위험성 그룹을 확인한 뒤 적용합니다."
@@ -334,13 +334,13 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
     app2_lower = any(str(h.get("quantity_band")) == "하위 이상·상위 미만" for h in assessment.scope_direct_hits)
 
     if app3_upper or app2_upper:
-        assessment.label = "화사계 상위기준 후보"
+        assessment.label = "최대보유량이 상위 규정수량 이상"
         assessment.status = "UPPER_CANDIDATE"
         assessment.messages.append(
             "승인된 화사계 규정수량 표에서 상위 규정수량 이상 조건이 확인되었습니다. 별표 4와 면제·군 분류 규칙 검증 전에는 1군으로 확정하지 않습니다."
         )
     elif app3_lower or app2_lower:
-        assessment.label = "화사계 하위기준 후보"
+        assessment.label = "최대보유량이 하위 규정수량 이상·상위 규정수량 미만"
         assessment.status = "LOWER_CANDIDATE"
         assessment.messages.append(
             "승인된 화사계 규정수량 표에서 하위 이상·상위 미만 조건이 확인되었습니다. 별표 4와 면제·군 분류 규칙 검증 전에는 2군으로 확정하지 않습니다."
@@ -349,10 +349,10 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
         assessment.label = "화사계 포괄범위 검토 필요"
         assessment.status = "SCOPE_REVIEW_REQUIRED"
         assessment.messages.append(
-            "직접 CAS로 끝나지 않는 별표 2 규제범위 후보가 있어 CAS 미매칭 또는 하위수량 미만만으로 비대상을 확정하지 않습니다."
+            "직접 CAS로 끝나지 않는 별표 2 규제범위 검토대상이 있어 CAS 미매칭 또는 하위 규정수량 미만만으로 작성면제를 확정하지 않습니다."
         )
     elif assessment.hits or assessment.scope_direct_hits:
-        assessment.label = "화사계 확인된 규정량은 하위기준 미만"
+        assessment.label = "확인된 유해화학물질의 최대보유량이 하위 규정수량 미만"
         assessment.status = "BELOW_LOWER_PARTIAL"
     else:
         assessment.label = "화사계 추가검토 필요"
@@ -360,13 +360,13 @@ def assess_cap(intake: IntakeData) -> CAPAssessment:
 
     if assessment.scope_review_required:
         assessment.blockers.append(
-            f"CAS 미기재 별표 2 포괄 규제범위 후보 {len(assessment.scope_candidates)}건의 범위 포함 여부 확인 필요"
+            f"CAS 미기재 별표 2 포괄 규제범위 검토대상 {len(assessment.scope_candidates)}건의 범위 포함 여부 확인 필요"
         )
     if assessment.scope_missing_keys:
         assessment.blockers.append(
-            "화사계 별표 2 물질범위 DB가 승인되지 않아 전체 비대상 판정 금지"
+            "화사계 별표 2 물질범위 DB가 승인되지 않아 전체 작성면제 판정 금지"
         )
-    assessment.blockers.append("화사계 별표 4 최대보유량 산정규칙 및 면제·군 분류 규칙 검증 전 최종 1군/2군/비대상 확정 금지")
+    assessment.blockers.append("화사계 별표 4 최대보유량 산정규칙 및 작성면제·작성수준 규칙 검증 전 최종 1군/2군/작성면제 확정 금지")
     assessment.questions = list(dict.fromkeys(q for q in assessment.questions if q))
     assessment.blockers = list(dict.fromkeys(b for b in assessment.blockers if b))
     assessment.messages = list(dict.fromkeys(m for m in assessment.messages if m))
