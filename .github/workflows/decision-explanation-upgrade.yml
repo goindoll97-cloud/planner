@@ -1,0 +1,38 @@
+name: decision-explanation-upgrade
+
+on:
+  push:
+    branches: [feature/decision-explanation-upgrade]
+    paths:
+      - '.github/workflows/decision-explanation-upgrade.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply decision explanation upgrade
+        run: python scripts/apply_decision_explanation_upgrade.py
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile
+        run: python -m compileall -q app.py engine ui
+      - name: Test
+        run: python -m unittest discover -s tests -v
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/stage1_workbook.py engine/template.py engine/__init__.py ui/diagnosis_page.py tests/test_decision_explanation_contract.py
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+          else
+            git commit -m "Explain why each company is a submission subject"
+            git push
+          fi
