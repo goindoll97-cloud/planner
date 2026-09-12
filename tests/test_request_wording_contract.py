@@ -17,9 +17,10 @@ class RequestWordingContractTests(unittest.TestCase):
         text = (PROJECT_ROOT / "engine/stage1_workbook.py").read_text(encoding="utf-8")
         self.assertIn("「산업안전보건법」 제44조제1항", text)
         self.assertIn("「산업안전보건법 시행령」 제43조제1항", text)
-        self.assertIn("별표 13 「유해·위험물질 규정량」 제1호", text)
-        self.assertIn("별표 13 「유해·위험물질 규정량」 제2호", text)
-        self.assertIn("별표 13 「유해·위험물질 규정량」 제42호", text)
+        self.assertIn("별표 13 「유해·위험물질 규정량」 제{item_no}호", text)
+        self.assertIn('1: ("인화성 가스"', text)
+        self.assertIn('2: ("인화성 액체"', text)
+        self.assertIn("별표 13 「유해·위험물질 규정량」 제42호 니트로셀룰로오스(질소 함유량 12.6% 이상)", text)
 
 
 if __name__ == "__main__":
