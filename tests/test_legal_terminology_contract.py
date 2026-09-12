@@ -36,6 +36,9 @@ FORBIDDEN_AMBIGUOUS_TERMS = [
     "상위 규정수량 이상 후보",
     "포괄 물질범위 후보",
     "규제범위 후보",
+    "대상업종",
+    "면제조건",
+    "작성 면제 —",
 ]
 
 
@@ -67,7 +70,7 @@ class LegalTerminologyContractTests(unittest.TestCase):
         text = self._read("engine/cap_final_decision.py")
         self.assertIn("작성수준 — 1군 사업장", text)
         self.assertIn("작성수준 — 2군 사업장", text)
-        self.assertIn("작성 면제", text)
+        self.assertIn("화학사고예방관리계획서 작성·제출 의무 없음", text)
 
 
 if __name__ == "__main__":

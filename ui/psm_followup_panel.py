@@ -226,7 +226,7 @@ def render_psm_followup_panel(intake) -> None:
         st.write("• 다음 단계: 실제 관련 설비가 시행령 제43조제2항의 제외설비인지 확인합니다.")
     elif result.status == "NO_TRIGGER_IN_CHECKED_SCOPE":
         st.info("**현재 확인 범위에서 시행령 제43조제1항의 공정안전보고서 제출 대상 기준이 확인되지 않았습니다.**")
-        st.write("대상업종 조건과 별표 13 물성·특수조건 및 별표 13 비고 제7호 합산한 값(R) 산정까지 확인한 결과입니다.")
+        st.write("시행령 제43조제1항 각 호의 사업 종류 조건과 별표 13 물성·특수조건 및 별표 13 비고 제7호 합산한 값(R) 산정까지 확인한 결과입니다.")
     else:
         st.warning(f"**{result.label}**")
 

@@ -170,7 +170,7 @@ def _seed_streamlit_session(data: IntakeData) -> None:
 
     conditions = data.final_conditions
 
-    psm_exclusion = _condition_value(conditions, "법정 제외설비 해당 여부")
+    psm_exclusion = _condition_value(conditions, "시행령 제43조제2항 제외설비 해당 여부") or _condition_value(conditions, "법정 제외설비 해당 여부")
     if "simple_psm_exclusion" not in session and psm_exclusion:
         if _answer_is_no(psm_exclusion):
             session["simple_psm_exclusion"] = "해당 없음"
@@ -188,8 +188,8 @@ def _seed_streamlit_session(data: IntakeData) -> None:
         elif _answer_is_unknown(gas_special):
             session["simple_psm_note8"] = "잘 모르겠습니다"
 
-    partial_exemption = _condition_value(conditions, "일부 시설만 면제조건")
-    exemption = _condition_value(conditions, "법정 작성 면제시설 해당 여부")
+    partial_exemption = _condition_value(conditions, "법 제23조제1항 단서가 일부 취급시설에만 해당하는지") or _condition_value(conditions, "일부 시설만 면제조건")
+    exemption = _condition_value(conditions, "법 제23조제1항 단서 해당 여부") or _condition_value(conditions, "법정 작성 면제시설 해당 여부")
     if "cap_final_exemption" not in session:
         if _answer_is_yes(partial_exemption):
             session["cap_final_exemption"] = "PARTIAL"

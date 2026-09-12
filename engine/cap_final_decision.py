@@ -194,37 +194,37 @@ def assess_cap_final(
     lower = [row for row in rows if row["decision_level"] == "LOWER"]
     if not upper and not lower:
         return CAPFinalDecision(
-            "NOT_REQUIRED", "작성 면제 — 모든 유해화학물질의 최대보유량이 하위 규정수량 미만",
-            reasons=["현재 확인이 끝난 유해화학물질 중 하위 규정수량 이상인 물질이 없습니다."],
+            "NOT_REQUIRED", "화학사고예방관리계획서 작성·제출 의무 없음 — 하위 규정수량 미만",
+            reasons=["전체 확인 물질의 최대보유량이 하위 규정수량 미만으로 「화학물질관리법 시행규칙」 제19조제2항제2호에 해당합니다."],
             legal_basis=["「화학물질관리법 시행규칙」 제19조제2항제2호"],
         )
 
     answer = str(exemption_answer or "UNANSWERED").upper()
     if answer in {"UNANSWERED", "UNKNOWN"}:
         return CAPFinalDecision(
-            "HOLD", "면제조건 확인 필요",
-            next_question="규정수량 이상 판단에 영향을 주는 관련 취급시설이 법정 작성 면제시설에 해당하는지 확인해 주세요.",
+            "HOLD", "법 제23조제1항 단서 해당 여부 확인 필요",
+            next_question="관련 취급시설이 「화학물질관리법」 제23조제1항 단서, 시행규칙 제19조제2항 또는 고시 제9조 작성 면제 시설에 해당하는지 확인해 주세요.",
             legal_basis=["「화학물질관리법」 제23조제1항", "같은 법 시행규칙 제19조제2항", "화학사고예방관리계획서 작성 등에 관한 규정 제9조"],
         )
     if answer == "PARTIAL":
         return CAPFinalDecision(
-            "HOLD", "판정보류 — 일부 시설만 면제될 수 있습니다",
-            blockers=["면제시설을 제외한 뒤 남는 취급시설의 물질별 최대보유량을 다시 산정해야 합니다."],
-            next_question="면제시설을 제외한 비면제 취급시설 기준 최대보유량을 확인해 주세요.",
+            "HOLD", "판정보류 — 법 제23조제1항 단서가 일부 취급시설에만 해당할 수 있습니다",
+            blockers=["법 제23조제1항 단서가 적용되는 시설을 제외한 뒤 남는 취급시설의 물질별 최대보유량을 다시 산정해야 합니다."],
+            next_question="법 제23조제1항 단서가 적용되지 않는 취급시설을 기준으로 최대보유량을 확인해 주세요.",
         )
     if answer == "EXEMPT":
         option = exemption_by_key(exemption_key)
         if option is None:
-            return CAPFinalDecision("HOLD", "면제유형 확인 필요", blockers=["선택한 면제유형을 법적 기준과 연결하지 못했습니다."])
+            return CAPFinalDecision("HOLD", "법적 예외 유형 확인 필요", blockers=["선택한 유형을 법 제23조제1항 단서·시행규칙 제19조제2항·고시 제9조와 연결하지 못했습니다."])
         if not exemption_all_relevant_confirmed:
             return CAPFinalDecision(
-                "HOLD", "면제범위 확인 필요",
-                blockers=["선택한 면제유형이 규정수량 판정에 영향을 주는 관련 취급시설 전체에 적용되는지 확인되지 않았습니다."],
-                next_question="관련 취급시설 전체가 선택한 면제유형에 해당하는지 확인해 주세요.",
+                "HOLD", "법 제23조제1항 단서 적용범위 확인 필요",
+                blockers=["선택한 법적 예외 유형이 관련 취급시설 전체에 적용되는지 확인되지 않았습니다."],
+                next_question="관련 취급시설 전체가 선택한 법 제23조제1항 단서 또는 고시 제9조 작성 면제 시설 유형에 해당하는지 확인해 주세요.",
                 legal_basis=[option.legal_basis],
             )
         return CAPFinalDecision(
-            "NOT_REQUIRED", "작성 면제 — 법정 면제시설",
+            "NOT_REQUIRED", "화학사고예방관리계획서 작성·제출 의무 없음",
             reasons=[option.label, option.plain_language], legal_basis=[option.legal_basis],
         )
 
@@ -258,6 +258,6 @@ def assess_cap_final(
 
     return CAPFinalDecision(
         "REQUIRED_GROUP_2", "작성수준 — 2군 사업장", group="2군",
-        reasons=["면제조건에 해당하지 않으며 하나 이상의 유해화학물질 최대보유량이 하위 규정수량 이상 상위 규정수량 미만입니다."],
+        reasons=["법 제23조제1항 단서에 해당하지 않으며 하나 이상의 유해화학물질 최대보유량이 하위 규정수량 이상 상위 규정수량 미만입니다."],
         legal_basis=["「화학사고예방관리계획서 작성 등에 관한 규정」 제2조제1항제12의2, 제4조 및 제6조"],
     )

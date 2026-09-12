@@ -223,9 +223,9 @@ def _exemption_format(value: str) -> str:
     if value == "UNANSWERED":
         return "선택하세요"
     if value == "NONE":
-        return "면제조건에 해당하지 않습니다"
+        return "법 제23조제1항 단서 및 고시 제9조 작성 면제 시설에 해당하지 않습니다"
     if value == "PARTIAL":
-        return "일부 시설만 면제조건에 해당할 수 있습니다"
+        return "법 제23조제1항 단서 또는 고시 제9조 작성 면제 시설이 일부 취급시설에만 해당할 수 있습니다"
     if value == "UNKNOWN":
         return "잘 모르겠습니다"
     option = exemption_by_key(value)
@@ -467,7 +467,7 @@ elif psm.r_value >= 1:
         psm_status = "공정안전보고서 제출 대상 기준 해당"
         psm_explanation = "별표 13 유해·위험물질 규정량 기준에 해당하고, 「산업안전보건법 시행령」 제43조제2항 제외설비에 해당하지 않는 것으로 사용자가 확인했습니다."
     elif psm_exclusion_choice not in {"선택하세요", "모름"}:
-        psm_status = "제외조건 검토 필요"
+        psm_status = "시행령 제43조제2항 제외설비 적용범위 확인 필요"
         psm_explanation = "별표 13 유해·위험물질 규정량 기준에는 해당하지만 선택한 제43조제2항 제외설비의 실제 적용범위를 확인해야 합니다."
     else:
         psm_status = "별표 13 유해·위험물질 규정량 기준 해당 · 제43조제2항 제외설비 확인 필요"
@@ -524,7 +524,7 @@ if exclusion_questions:
     if exclusion == "해당 없음" and psm.r_value is not None and psm.r_value >= 1:
         reasons: list[str] = []
         if psm_industry_trigger:
-            reasons.append(f"입력된 KSIC {psm.industry_code}는 공정안전보고서 대상업종({psm.industry_match})에 해당합니다.")
+            reasons.append(f"입력된 KSIC {psm.industry_code}는 「산업안전보건법 시행령」 제43조제1항 각 호의 사업 종류({psm.industry_match})에 해당합니다.")
         reasons.append(f"별표 13 비고 제7호의 합산한 값(R)이 {psm.r_value:.4f}로 1 이상입니다.")
         reasons.append("법정 제외설비 확인에서 '해당 없음'을 선택했습니다.")
         with st.container(border=True):
@@ -871,14 +871,14 @@ else:
     if not threshold_upper and not threshold_lower:
         final_now = assess_cap_final(quantity_rows)
     else:
-        st.markdown("### 화학사고예방관리계획서 추가 확인: 관련 취급시설이 법정 작성 면제시설에 해당합니까?")
+        st.markdown("### 화학사고예방관리계획서 추가 확인: 법 제23조제1항 단서에 해당합니까?")
         st.write(
             "유해화학물질별 최대보유량이 규정수량 이상이더라도 법령에서 정한 작성면제 시설에 해당하면 화학사고예방관리계획서를 작성하지 않을 수 있습니다. "
             "아래에는 시행규칙뿐 아니라 현재 고시로 구체화된 면제유형까지 표시합니다."
         )
         exemption_values = ["UNANSWERED", "NONE", "PARTIAL", *[item.key for item in exemption_options()], "UNKNOWN"]
         selected_exemption = st.selectbox(
-            "법정 작성 면제시설 확인",
+            "법 제23조제1항 단서 해당 여부 확인",
             exemption_values,
             format_func=_exemption_format,
             key="cap_final_exemption",
@@ -896,12 +896,12 @@ else:
                     key="cap_final_exemption_all",
                 )
         elif selected_exemption == "PARTIAL":
-            st.warning("일부 시설만 면제라면 면제시설을 제외한 나머지 취급시설 기준으로 최대보유량을 다시 산정해야 합니다.")
+            st.warning("법 제23조제1항 단서가 일부 취급시설에만 해당한다면, 해당 시설을 제외한 나머지 취급시설을 기준으로 최대보유량을 다시 산정해야 합니다.")
         elif selected_exemption == "UNKNOWN":
             st.info("모르면 추정하지 않습니다. 선택 가능한 면제유형과 법적 근거를 확인한 뒤 판단합니다.")
 
-        with st.expander("법정 작성 면제유형 전체 보기", expanded=False):
-            st.markdown("**상위법·시행규칙·현행 고시의 면제조건**")
+        with st.expander("법 제23조제1항 단서 및 고시 제9조 작성 면제 시설 전체 보기", expanded=False):
+            st.markdown("**법 제23조제1항 단서·시행규칙 제19조제2항·현행 고시 제9조 작성 면제 시설**")
             for option in exemption_options():
                 st.markdown(f"**• {option.label}**")
                 st.caption(f"{option.plain_language} · {option.legal_basis}")

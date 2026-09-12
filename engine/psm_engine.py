@@ -380,7 +380,7 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
         assessment.industry_match = PSM_TARGET_INDUSTRIES[code]
         if code == "20202":
             assessment.questions.append(
-                "합성수지 및 기타 플라스틱물질 제조업은 별표 13 제1호 또는 제2호 해당 여부와 함께 대상업종 조건을 확인해야 합니다. 사업장에서 인화성 가스 또는 인화성 액체를 제조·취급·저장합니까?"
+                "합성수지 및 기타 플라스틱물질 제조업은 별표 13 제1호 또는 제2호 해당 여부와 함께 시행령 제43조제1항제3호의 사업 종류 조건을 확인해야 합니다. 사업장에서 인화성 가스 또는 인화성 액체를 제조·취급·저장합니까?"
             )
         else:
             assessment.messages.append(f"시행령 제43조제1항의 사업 종류와 KSIC 코드 일치: {code} {assessment.industry_match}")
@@ -533,7 +533,7 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
         if r_positive:
             assessment.messages.append(
                 "현재 확인된 별표 13 물질을 기준으로 비고 제7호의 합산한 값(R)이 1 이상이므로 별표 13 유해·위험물질 규정량 기준에 해당합니다. "
-                "제43조제2항 제외설비 등 최종 제외조건 확인 전에는 확정 '대상'으로 표시하지 않습니다."
+                "시행령 제43조제2항 제외설비 해당 여부 확인 전에는 공정안전보고서 제출 대상으로 확정하지 않습니다."
             )
             assessment.questions.append(
                 "별표 13 비고 제8호와 관련하여, 비고 제7호 합산한 값(R)에 포함된 가스가 '가스를 전문으로 저장·판매하는 시설 내의 가스'에 해당하는지 확인해 주세요. 해당 가스는 규정량 산정에서 제외될 수 있습니다."
