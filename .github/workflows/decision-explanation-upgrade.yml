@@ -38,3 +38,5 @@ jobs:
             git commit -m "Explain statutory submission basis with company facts"
             git push
           fi
+
+# rerun after full statutory naming contract update
