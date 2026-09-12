@@ -6,6 +6,10 @@ This screen does not use the provisional 'maximum concurrent holding' value from
 the first company workbook.  It identifies direct Appendix 3 then Appendix 2
 rules from CAS + concentration, preserving the legal priority so the second
 stage can request facility facts only for materials that actually need them.
+
+When the company workbook already contains a decisive condition (for example,
+whether a material is liquid at ambient temperature/pressure), that information
+is consumed here so the Streamlit page does not ask for it again.
 """
 
 from dataclasses import dataclass, field
@@ -23,6 +27,12 @@ APPROVED_DIR = PROJECT_ROOT / "data" / "regulatory" / "approved"
 APP3 = APPROVED_DIR / "cap_qty_app3.csv"
 APP2 = APPROVED_DIR / "cap_qty_app2.csv"
 CAS_RE = re.compile(r"^\d{2,7}-\d{2}-\d$")
+
+AMBIENT_LIQUID_FIELDS = (
+    "상온·상압 액체 여부(해당 시)",
+    "상온·상압 액체 여부",
+    "상온상압 액체 여부",
+)
 
 
 @dataclass
@@ -71,6 +81,22 @@ def _truthy(value: Any, default: bool = True) -> bool:
     return text in {"1", "true", "yes", "y", "예", "active"}
 
 
+def _yes_no_unknown(value: Any) -> str:
+    text = _clean(value).lower().replace(" ", "")
+    if text in {"1", "true", "yes", "y", "예", "해당", "액체"}:
+        return "YES"
+    if text in {"0", "false", "no", "n", "아니오", "아님", "비해당", "기체"}:
+        return "NO"
+    return "UNKNOWN"
+
+
+def _first_field(item: pd.Series, names: tuple[str, ...]) -> Any:
+    for name in names:
+        if name in item.index and _clean(item.get(name)):
+            return item.get(name)
+    return None
+
+
 def _load(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
@@ -109,7 +135,19 @@ def _app3_hits_for_row(row_no: int, item: pd.Series, app3: pd.DataFrame) -> tupl
         if not special.empty:
             chosen = special.iloc[0]
     elif item_no in {42, 43, 44} and "variant_type" in variants.columns and variants["variant_type"].astype(str).eq("LIQUID_AT_AMBIENT").any():
-        return [], [f"{product}: 별표 3 제{item_no}호의 상온·상압 액체 여부를 먼저 확인해야 합니다."], True
+        ambient_answer = _yes_no_unknown(_first_field(item, AMBIENT_LIQUID_FIELDS))
+        if ambient_answer == "YES":
+            special = variants[variants["variant_type"].astype(str).eq("LIQUID_AT_AMBIENT")]
+            if special.empty:
+                return [], [f"{product}: 별표 3 제{item_no}호의 상온·상압 액체 규정행을 확인하지 못했습니다."], True
+            chosen = special.iloc[0]
+        elif ambient_answer == "NO":
+            chosen = base_row
+        else:
+            return [], [
+                f"{product}: 별표 3 제{item_no}호 적용을 위해 '상온·상압 액체 여부'가 필요합니다. "
+                "회사 입력파일의 '상온·상압 액체 여부(해당 시)' 열에 예/아니오를 미리 입력할 수 있습니다."
+            ], True
 
     hit = {
         "source_key": "CAP_QTY_APP3",
