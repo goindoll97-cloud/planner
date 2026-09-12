@@ -37,15 +37,15 @@ def _install_company_input_guide_hook() -> None:
             st.download_button(
                 "회사 입력 작성예시·가이드 파일 다운로드",
                 data=build_minimal_input_workbook(),
-                file_name="PSM_CAP_회사입력_작성예시_가이드_v1.0.xlsx",
+                file_name="공정안전보고서_화학사고예방관리계획서_회사입력_작성예시_가이드_v1.0.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="company_input_guide_download_v10",
                 width="stretch",
             )
             st.download_button(
-                "법령 작성 참고파일 다운로드",
+                "공정안전보고서·화학사고예방관리계획서 법령 작성 참고파일 다운로드",
                 data=build_legal_reference_workbook(),
-                file_name="PSM_CAP_법령작성참고_v1.0.xlsx",
+                file_name="공정안전보고서_화학사고예방관리계획서_법령작성참고_v1.0.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="legal_reference_guide_download_v10",
                 width="stretch",

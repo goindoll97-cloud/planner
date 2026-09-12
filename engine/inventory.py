@@ -15,7 +15,8 @@ DOCS_SHEET = "03_기존문서보유여부"
 FACILITY_SHEET = "04_시설별최대보유량"
 LEGACY_FACILITY_SHEET = "03_시설별최대보유량"
 FINAL_CONDITIONS_SHEET = "05_최종판정조건"
-PSM_NOTE8_SHEET = "06_PSM_비고8제외수량"
+PSM_NOTE8_SHEET = "06_공정안전보고서_비고8제외수량"
+LEGACY_PSM_NOTE8_SHEET = "06_PSM_비고8제외수량"
 
 REQUIRED_CHEM_COLUMNS = ["제품명", "CAS No.", "함량(%)", "취급형태", "수량 단위"]
 QUANTITY_COLUMNS = ["최대 제조·사용량", "최대 저장량", "최대 동시보유량(알면 입력)"]
@@ -86,10 +87,15 @@ def _read_optional_final_conditions(xls: pd.ExcelFile) -> dict[str, object]:
 
 
 def _read_optional_psm_note8(xls: pd.ExcelFile) -> pd.DataFrame:
-    if PSM_NOTE8_SHEET not in xls.sheet_names:
+    sheet_name = ""
+    if PSM_NOTE8_SHEET in xls.sheet_names:
+        sheet_name = PSM_NOTE8_SHEET
+    elif LEGACY_PSM_NOTE8_SHEET in xls.sheet_names:
+        sheet_name = LEGACY_PSM_NOTE8_SHEET
+    if not sheet_name:
         return pd.DataFrame()
     try:
-        frame = pd.read_excel(xls, sheet_name=PSM_NOTE8_SHEET, header=2)
+        frame = pd.read_excel(xls, sheet_name=sheet_name, header=2)
     except Exception:
         return pd.DataFrame()
     if frame.empty:
