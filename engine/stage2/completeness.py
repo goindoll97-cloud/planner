@@ -92,6 +92,20 @@ def evaluate_requirement(project: Stage2Project, spec: RequirementSpec) -> Requi
     )
 
 
+def _aggregate_state(results: list[RequirementResult]) -> str:
+    """Fail closed: HOLD always outranks REVIEW_REQUIRED and READY."""
+    if not results:
+        return "NOT_REQUIRED"
+    states = {result.state for result in results}
+    if "HOLD" in states:
+        return "HOLD"
+    if "REVIEW_REQUIRED" in states:
+        return "REVIEW_REQUIRED"
+    if states.issubset({"READY", "NOT_REQUIRED"}):
+        return "READY"
+    return "HOLD"
+
+
 def evaluate_project_completeness(project: Stage2Project) -> dict[str, Any]:
     specs = requirement_specs_for_project(project)
     results = [evaluate_requirement(project, spec) for spec in specs]
@@ -102,28 +116,22 @@ def evaluate_project_completeness(project: Stage2Project) -> dict[str, Any]:
             return {"required_n": 0, "ready_n": 0, "completion_pct": 100.0, "state": "NOT_REQUIRED"}
         ready = [r for r in selected if r.state == "READY"]
         pct = sum(r.completion_pct for r in selected) / len(selected)
-        state = "READY" if len(ready) == len(selected) else "HOLD"
-        if state != "READY" and any(r.state == "REVIEW_REQUIRED" for r in selected):
-            state = "REVIEW_REQUIRED"
         return {
             "required_n": len(selected),
             "ready_n": len(ready),
             "completion_pct": round(pct, 1),
-            "state": state,
+            "state": _aggregate_state(selected),
         }
 
     overall_pct = (
         sum(r.completion_pct for r in results) / len(results)
         if results else 100.0
     )
-    overall_state = "READY" if results and all(r.state == "READY" for r in results) else "HOLD"
-    if overall_state != "READY" and any(r.state == "REVIEW_REQUIRED" for r in results):
-        overall_state = "REVIEW_REQUIRED"
 
     return {
         "overall": {
             "completion_pct": round(overall_pct, 1),
-            "state": overall_state,
+            "state": _aggregate_state(results),
             "required_n": len(results),
             "ready_n": sum(r.state == "READY" for r in results),
         },
