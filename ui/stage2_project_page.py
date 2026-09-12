@@ -20,6 +20,27 @@ PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 SNAPSHOT_KEY = "_stage2_stage1_snapshot"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
+SYSTEM_LABELS = {
+    "COMMON": "공통자료",
+    "PSM": PSM_FULL,
+    "CAP": CAP_FULL,
+}
+FIELD_LABELS = {
+    "business.company_name": "회사명",
+    "business.address": "사업장 소재지",
+    "inventory.chemicals": "화학물질 목록",
+    "inventory.facilities": "시설·설비 목록",
+    "process.description": "공정 설명",
+    "documents.pfd": "공정흐름도(PFD)",
+    "documents.pid": "배관계장도(P&ID)",
+    "documents.site_plan": "사업장·설비 배치도",
+    "psm.hazard_assessment": "공정위험성평가",
+    "psm.safe_operation_plan": "안전운전계획",
+    "emergency.internal_plan": "내부 비상대응계획",
+    "cap.offsite_assessment": "장외평가정보",
+    "cap.prevention_policy": "사전관리방침",
+    "emergency.external_plan": "외부 비상대응계획",
+}
 
 st.set_page_config(page_title="작성 프로젝트", page_icon="📝", layout="wide")
 st.title("📝 2. 작성 프로젝트")
@@ -35,6 +56,10 @@ def _truth_label(value: bool | None) -> str:
     if value is False:
         return "비대상"
     return "미확정"
+
+
+def _field_label(key: str) -> str:
+    return FIELD_LABELS.get(key, key)
 
 
 def _project_selector() -> str | None:
@@ -117,6 +142,7 @@ with summary_tab:
     st.markdown("### 법정 작성구조별 현황")
     req_df = pd.DataFrame(completeness["requirements"])
     if not req_df.empty:
+        req_df["system"] = req_df["system"].map(lambda value: SYSTEM_LABELS.get(value, value))
         req_df = req_df.rename(columns={
             "system": "구분",
             "section": "절",
@@ -128,6 +154,8 @@ with summary_tab:
             "hold_fields": "HOLD 필드",
             "legal_basis": "작성근거",
         })
+        for col in ["미확인 필드", "AI 초안 필드", "HOLD 필드"]:
+            req_df[col] = req_df[col].map(lambda values: tuple(_field_label(v) for v in values))
         st.dataframe(
             req_df[["구분", "절", "작성항목", "상태", "완성도(%)", "미확인 필드", "AI 초안 필드", "HOLD 필드", "작성근거"]],
             width="stretch",
@@ -142,7 +170,6 @@ with summary_tab:
         if isinstance(value, (list, dict)):
             value = f"구조화 자료 {len(value)}건" if isinstance(value, list) else "구조화 자료"
         field_rows.append({
-            "field_key": key,
             "항목": record.label,
             "상태": record.status,
             "값/자료": value,
@@ -165,10 +192,17 @@ with register_tab:
     spec_key = st.selectbox(
         "작성항목",
         list(spec_map),
-        format_func=lambda key: f"[{spec_map[key].system}] {spec_map[key].section} · {spec_map[key].label}",
+        format_func=lambda key: (
+            f"[{SYSTEM_LABELS.get(spec_map[key].system, spec_map[key].system)}] "
+            f"{spec_map[key].section} · {spec_map[key].label}"
+        ),
     )
     spec = spec_map[spec_key]
-    field_key = st.selectbox("등록할 데이터 필드", list(spec.field_keys))
+    field_key = st.selectbox(
+        "등록할 데이터 필드",
+        list(spec.field_keys),
+        format_func=_field_label,
+    )
     existing = project.get_field(field_key)
     default_value = ""
     if existing and not isinstance(existing.value, (list, dict)) and existing.value is not None:
@@ -213,14 +247,14 @@ with register_tab:
             stored_value = upload.name
         project.set_field(
             field_key,
-            field_key,
+            _field_label(field_key),
             stored_value,
             status,
             evidence=evidence,
             note=note,
         )
         save_project(project)
-        st.success(f"{field_key}를 {status} 상태로 저장했습니다.")
+        st.success(f"{_field_label(field_key)} 항목을 {status} 상태로 저장했습니다.")
         st.rerun()
 
 with export_tab:
