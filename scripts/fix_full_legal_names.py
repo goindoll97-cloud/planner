@@ -33,10 +33,11 @@ STAGE1.write_text(stage1, encoding='utf-8')
 ui = UI.read_text(encoding='utf-8').replace('PSM_FULL = "공정안전보고서(PSM)"', 'PSM_FULL = "공정안전보고서"')
 UI.write_text(ui, encoding='utf-8')
 
-# Update old contract test to the new canonical names.
+# Update old contract test to the new canonical names everywhere, including lookups.
 test = TEMPLATE_TEST.read_text(encoding='utf-8')
-test = test.replace('"06_PSM_비고8제외수량"', '"06_공정안전보고서_비고8제외수량"')
-test = test.replace('["00_사용안내", "01_PSM_법령참고", "02_화사계_법령참고"]', '["00_사용안내", "01_공정안전보고서_법령참고", "02_화학사고예방관리계획서_법령참고"]')
+test = test.replace('06_PSM_비고8제외수량', '06_공정안전보고서_비고8제외수량')
+test = test.replace('01_PSM_법령참고', '01_공정안전보고서_법령참고')
+test = test.replace('02_화사계_법령참고', '02_화학사고예방관리계획서_법령참고')
 TEMPLATE_TEST.write_text(test, encoding='utf-8')
 
 # Strengthen the new contract: reference workbook contains no shortened system names.
