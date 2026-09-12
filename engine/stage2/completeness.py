@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+from typing import Any
+
+from .project import CONFIRMED_STATUSES, Stage2Project
+from .requirements import RequirementSpec, requirement_specs_for_project
+
+
+@dataclass(frozen=True)
+class RequirementResult:
+    key: str
+    system: str
+    section: str
+    label: str
+    state: str
+    completion_pct: float
+    missing_fields: tuple[str, ...]
+    draft_fields: tuple[str, ...]
+    hold_fields: tuple[str, ...]
+    legal_basis: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def evaluate_requirement(project: Stage2Project, spec: RequirementSpec) -> RequirementResult:
+    if not spec.required:
+        return RequirementResult(
+            key=spec.key,
+            system=spec.system,
+            section=spec.section,
+            label=spec.label,
+            state="NOT_REQUIRED",
+            completion_pct=100.0,
+            missing_fields=(),
+            draft_fields=(),
+            hold_fields=(),
+            legal_basis=spec.legal_basis,
+        )
+
+    if not spec.field_keys:
+        return RequirementResult(
+            key=spec.key,
+            system=spec.system,
+            section=spec.section,
+            label=spec.label,
+            state="HOLD",
+            completion_pct=0.0,
+            missing_fields=(),
+            draft_fields=(),
+            hold_fields=(),
+            legal_basis=spec.legal_basis,
+        )
+
+    confirmed = 0
+    missing: list[str] = []
+    drafts: list[str] = []
+    holds: list[str] = []
+
+    for key in spec.field_keys:
+        record = project.get_field(key)
+        if record is None:
+            missing.append(key)
+            continue
+        if record.status in CONFIRMED_STATUSES:
+            confirmed += 1
+        elif record.status == "AI_DRAFT":
+            drafts.append(key)
+        else:
+            holds.append(key)
+
+    pct = confirmed / len(spec.field_keys) * 100.0
+    if confirmed == len(spec.field_keys):
+        state = "READY"
+    elif drafts and not missing and not holds:
+        state = "REVIEW_REQUIRED"
+    else:
+        state = "HOLD"
+
+    return RequirementResult(
+        key=spec.key,
+        system=spec.system,
+        section=spec.section,
+        label=spec.label,
+        state=state,
+        completion_pct=round(pct, 1),
+        missing_fields=tuple(missing),
+        draft_fields=tuple(drafts),
+        hold_fields=tuple(holds),
+        legal_basis=spec.legal_basis,
+    )
+
+
+def evaluate_project_completeness(project: Stage2Project) -> dict[str, Any]:
+    specs = requirement_specs_for_project(project)
+    results = [evaluate_requirement(project, spec) for spec in specs]
+
+    def summary(system: str) -> dict[str, Any]:
+        selected = [r for r in results if r.system in {"COMMON", system}]
+        if not selected:
+            return {"required_n": 0, "ready_n": 0, "completion_pct": 100.0, "state": "NOT_REQUIRED"}
+        ready = [r for r in selected if r.state == "READY"]
+        pct = sum(r.completion_pct for r in selected) / len(selected)
+        state = "READY" if len(ready) == len(selected) else "HOLD"
+        if state != "READY" and any(r.state == "REVIEW_REQUIRED" for r in selected):
+            state = "REVIEW_REQUIRED"
+        return {
+            "required_n": len(selected),
+            "ready_n": len(ready),
+            "completion_pct": round(pct, 1),
+            "state": state,
+        }
+
+    overall_pct = (
+        sum(r.completion_pct for r in results) / len(results)
+        if results else 100.0
+    )
+    overall_state = "READY" if results and all(r.state == "READY" for r in results) else "HOLD"
+    if overall_state != "READY" and any(r.state == "REVIEW_REQUIRED" for r in results):
+        overall_state = "REVIEW_REQUIRED"
+
+    return {
+        "overall": {
+            "completion_pct": round(overall_pct, 1),
+            "state": overall_state,
+            "required_n": len(results),
+            "ready_n": sum(r.state == "READY" for r in results),
+        },
+        "psm": summary("PSM") if project.psm_required is True else {"state": "NOT_REQUIRED", "completion_pct": 100.0},
+        "cap": summary("CAP") if project.cap_required is True else {"state": "NOT_REQUIRED", "completion_pct": 100.0},
+        "requirements": [r.to_dict() for r in results],
+    }
