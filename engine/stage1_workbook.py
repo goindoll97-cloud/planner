@@ -14,7 +14,7 @@ from typing import Any
 import pandas as pd
 
 from .cap_engine import assess_cap
-from .cap_final_decision import assess_cap_final, exemption_options
+from .cap_final_decision import assess_cap_final, exemption_options, normalize_quantity_evidence
 from .cap_holding import app4_db_ready, assess_cap_holding
 from .cap_holding_screen import screen_facility_stage
 from .cap_quick_holding import compare_confirmed_declared_holding
