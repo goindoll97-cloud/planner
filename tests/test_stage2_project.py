@@ -70,6 +70,15 @@ class Stage2ProjectTests(unittest.TestCase):
         self.assertEqual(row["state"], "REVIEW_REQUIRED")
         self.assertEqual(row["completion_pct"], 0.0)
 
+    def test_hold_has_priority_over_review_required(self):
+        project = create_project_from_stage1_snapshot(self._snapshot())
+        project.set_field("process.description", "공정 설명", "AI가 작성한 설명", "AI_DRAFT")
+        # Other required fields are still missing/HOLD, so project must remain HOLD.
+        result = evaluate_project_completeness(project)
+        self.assertEqual(result["overall"]["state"], "HOLD")
+        self.assertEqual(result["psm"]["state"], "HOLD")
+        self.assertEqual(result["cap"]["state"], "HOLD")
+
     def test_project_and_attachment_persist_with_hash(self):
         project = create_project_from_stage1_snapshot(self._snapshot())
         with tempfile.TemporaryDirectory() as tmp:
