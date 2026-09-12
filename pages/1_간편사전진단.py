@@ -43,9 +43,9 @@ st.markdown(
         border: 1px solid transparent;
     }
     .consult-section-psm {
-        background: #eaf3ff;
-        border-color: #b8d8ff;
-        color: #173b63;
+        background: #fff0e3;
+        border-color: #f1b57f;
+        color: #71370f;
     }
     .consult-section-cap {
         background: #fff7d6;
