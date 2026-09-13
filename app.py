@@ -10,7 +10,7 @@ pages = [
     st.Page("ui/stage2_validation_page.py", title="4. 작성자료 교차검증", icon="🔎"),
     st.Page("ui/stage2_review_page.py", title="5. 작성·검토", icon="📝"),
     st.Page("ui/regdb_page.py", title="6. 규정 DB 관리", icon="🗂️"),
-    st.Page("ui/legal_evidence_page.py", title="7. 법령 근거", icon="📚"),
+    st.Page("ui/legal_evidence_page.py", title="7. 법령·근거 라이브러리", icon="📚"),
 ]
 
 st.navigation(pages).run()
