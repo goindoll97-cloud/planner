@@ -84,7 +84,7 @@ class Stage2TextFirstWorkflowTests(unittest.TestCase):
 
     def test_missing_report_narrative_is_ai_text_candidate(self):
         project = self._project()
-        risk = self._item(project, "psm.risk.assessment")
+        risk = self._item(project, "psm.risk.mitigation")
         guidance = build_requirement_guidance(project, risk)
         self.assertEqual(stage3_bucket(project, risk, guidance), BUCKET_AI_TEXT)
 
