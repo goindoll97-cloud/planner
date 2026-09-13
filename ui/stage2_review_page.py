@@ -9,6 +9,12 @@ from engine.stage2.export import build_progress_workbook
 from engine.stage2.intake import field_label, selected_requirement_specs
 from engine.stage2.project import EVIDENCE_STATUSES
 from engine.stage2.psm_requests import build_psm_data_requests
+from engine.stage2.report_draft import (
+    build_draft_bundle,
+    build_report_draft,
+    draft_filename,
+    report_generation_status,
+)
 from engine.stage2.storage import list_projects, load_project, project_json_bytes, save_project
 
 
@@ -70,8 +76,8 @@ with c2:
 with c3:
     st.metric("프로그램 작성상태", completeness["overall"]["state"])
 
-summary_tab, request_tab, edit_tab, export_tab = st.tabs(
-    ["작성현황", "부족자료·근거", "확인값·초안 관리", "검토자료 내보내기"]
+summary_tab, request_tab, edit_tab, draft_tab, export_tab = st.tabs(
+    ["작성현황", "부족자료·근거", "확인값·초안 관리", "보고서 초안 생성", "감사·검토자료"]
 )
 
 with summary_tab:
@@ -195,9 +201,72 @@ with edit_tab:
                 st.success("저장했습니다.")
                 st.rerun()
 
+with draft_tab:
+    st.markdown("### 검토용 보고서 DOCX 생성")
+    st.info(
+        "회사에서 확인한 값과 구조화 표를 법정 작성구조에 맞춰 DOCX 초안으로 배치합니다. "
+        "없는 값은 임의로 만들지 않고 [확인 필요], 접수 후 미검증 자료는 [검증 보류], AI 초안은 [AI 초안 · 사람 검토 필요]로 표시합니다."
+    )
+    st.warning(
+        "여기서 생성하는 문서는 검토용 자동작성 초안입니다. HOLD가 남아 있어도 생성할 수 있지만 법정 제출용 최종본으로 사용할 수 없습니다."
+    )
+
+    selected_systems = []
+    if project.psm_in_scope:
+        selected_systems.append(("PSM", PSM_FULL))
+    if project.cap_in_scope:
+        selected_systems.append(("CAP", CAP_FULL))
+
+    for system, label in selected_systems:
+        status = report_generation_status(project, system)
+        st.markdown(f"#### {label}")
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("작성완성도", f"{status.completion_pct:.1f}%")
+        with m2:
+            st.metric("작성상태", status.state)
+        with m3:
+            st.metric("미해결 필드", status.unresolved_n)
+
+        if status.final_ready:
+            st.success("현재 작성요건 기준으로 모든 필드가 확인되었습니다. 검토용 DOCX 초안을 내려받아 최종 사람 검토를 진행하세요.")
+        else:
+            st.caption(
+                "초안은 생성되지만 미확인·AI 초안·검증 보류 항목이 문서 끝의 '검토 필요 항목'에 표시됩니다."
+            )
+
+        try:
+            draft_bytes = build_report_draft(project, system)
+        except Exception as exc:
+            st.error(f"{label} 초안을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
+        else:
+            st.download_button(
+                f"{label} 검토용 DOCX 초안 다운로드",
+                data=draft_bytes,
+                file_name=draft_filename(project, system),
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key=f"download_draft_{system}_{project.project_id}",
+                width="stretch",
+            )
+
+    if len(selected_systems) > 1:
+        try:
+            bundle_bytes = build_draft_bundle(project)
+        except Exception as exc:
+            st.error(f"초안 묶음을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
+        else:
+            st.download_button(
+                "두 보고서 검토용 초안 ZIP으로 한 번에 다운로드",
+                data=bundle_bytes,
+                file_name=f"{project.project_id}_보고서_검토용_초안.zip",
+                mime="application/zip",
+                key=f"download_draft_bundle_{project.project_id}",
+                width="stretch",
+            )
+
 with export_tab:
     st.warning(
-        "현재 파일은 검토·감사·자료요청 관리용입니다. 법정 제출용 최종본은 최종 검증 gate가 완성된 뒤 활성화합니다."
+        "이 탭의 파일은 감사·자료요청 관리용입니다. 법정 제출용 최종본은 최종 검증 gate가 완성된 뒤 활성화합니다."
     )
     left, right = st.columns(2)
     with left:
