@@ -192,13 +192,17 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
         self.assertNotIn("외부 비상대응계획", headings)
 
-    def test_review_page_exposes_grounded_ai_workflow(self):
+    def test_review_page_exposes_grounded_local_ai_workflow(self):
         source = Path("ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn('"AI 문장 보강"', source)
         self.assertIn("generate_system_ai_drafts", source)
         self.assertIn("담당자 검토·승인", source)
         self.assertIn("AI 보강 검토용 DOCX", source)
-        self.assertIn("OPENAI_API_KEY", source)
+        self.assertIn("LOCAL_LLM_MODEL", source)
+        self.assertIn("build_local_llm_client", source)
+        self.assertIn("127.0.0.1", source)
+        self.assertNotIn("OpenAI API Key", source)
+        self.assertNotIn("OPENAI_API_KEY", source)
 
 
 if __name__ == "__main__":

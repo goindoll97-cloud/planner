@@ -4,16 +4,11 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2.ai_drafting import (
-    DEFAULT_API_URL,
-    DEFAULT_MODEL,
-    LLMConfig,
-    OpenAIResponsesClient,
     ai_draft_field_key,
     ai_draftable_specs,
     approve_ai_draft,
     build_operating_profile,
     generate_system_ai_drafts,
-    llm_config_from_sources,
     remove_ai_draft,
 )
 from engine.stage2.ai_report import (
@@ -25,6 +20,16 @@ from engine.stage2.cap_requests import build_cap_data_requests
 from engine.stage2.completeness import evaluate_project_completeness
 from engine.stage2.export import build_progress_workbook
 from engine.stage2.intake import field_label, selected_requirement_specs
+from engine.stage2.local_llm import (
+    DEFAULT_MODEL,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OPENAI_COMPATIBLE_URL,
+    LocalLLMConfig,
+    build_local_llm_client,
+    local_llm_config_from_sources,
+    local_runtime_label,
+    validate_local_base_url,
+)
 from engine.stage2.psm_requests import build_psm_data_requests
 from engine.stage2.report_draft import (
     build_draft_bundle,
@@ -39,19 +44,19 @@ PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 SYSTEM_LABELS = {"COMMON": "공통자료", "PSM": PSM_FULL, "CAP": CAP_FULL}
-AI_SECRET_KEYS = (
-    "OPENAI_API_KEY",
-    "OPENAI_MODEL",
-    "OPENAI_RESPONSES_URL",
-    "OPENAI_TIMEOUT_SECONDS",
-    "OPENAI_MAX_OUTPUT_TOKENS",
+LOCAL_LLM_SETTING_KEYS = (
+    "LOCAL_LLM_PROVIDER",
+    "LOCAL_LLM_MODEL",
+    "LOCAL_LLM_URL",
+    "LOCAL_LLM_TIMEOUT_SECONDS",
+    "LOCAL_LLM_MAX_OUTPUT_TOKENS",
 )
 
 
-def _secret_values() -> dict[str, str]:
+def _local_llm_values() -> dict[str, str]:
     values: dict[str, str] = {}
     try:
-        for key in AI_SECRET_KEYS:
+        for key in LOCAL_LLM_SETTING_KEYS:
             value = st.secrets.get(key)
             if value not in (None, ""):
                 values[key] = str(value)
@@ -238,10 +243,16 @@ with edit_tab:
                 st.rerun()
 
 with ai_tab:
-    st.markdown("### 사업장 사실 기반 AI 문장 보강")
+    st.markdown("### 사업장 사실 기반 로컬 AI 문장 보강")
     st.info(
         "AI는 1·2군 여부나 법적 대상 여부를 다시 판단하지 않습니다. Rule Engine이 확정한 작성범위와 VERIFIED/USER_CONFIRMED/CALCULATED 사실만 받아 보고서 문체를 보강합니다. "
         "없는 수치·설비·인원·주기·절차는 만들지 않고 '추가 확인하면 좋은 내용'으로 분리합니다."
+    )
+    st.success(
+        "회사 정보 보호를 위해 AI 문장 보강은 로컬 LLM만 사용합니다. 프로그램은 127.0.0.1/localhost/::1 주소만 허용하며 외부 AI API 주소는 차단합니다."
+    )
+    st.caption(
+        "이 프로그램과 Ollama/LM Studio가 같은 회사 PC에서 실행되는 구성을 기준으로 합니다. 로컬 LLM이 실행되지 않으면 AI 보강만 사용할 수 없고 나머지 판정·작성 기능은 계속 사용할 수 있습니다."
     )
 
     profile = build_operating_profile(project)
@@ -281,52 +292,78 @@ with ai_tab:
         st.error(str(exc))
     st.caption(f"현재 확인자료로 AI 보강 가능한 작성항목: {len(candidates)}개")
 
-    secret_config = llm_config_from_sources(_secret_values())
-    if secret_config:
-        st.success("서버의 LLM API 설정을 사용할 수 있습니다. API 키는 프로젝트 데이터에 저장되지 않습니다.")
-    else:
-        st.caption("서버 API 키가 없으면 아래에 테스트용 키를 입력할 수 있습니다. 입력값은 현재 Streamlit 세션에서만 사용합니다.")
+    try:
+        base_config = local_llm_config_from_sources(_local_llm_values())
+    except Exception as exc:
+        st.error(f"로컬 LLM 기본설정을 읽지 못했습니다: {exc}")
+        base_config = LocalLLMConfig()
 
-    session_key = st.text_input("OpenAI API Key", type="password", key="stage2_openai_api_key")
-    model = st.text_input(
-        "LLM 모델",
-        value=secret_config.model if secret_config else DEFAULT_MODEL,
-        key="stage2_openai_model",
+    provider_options = ["ollama", "openai_compatible"]
+    provider = st.selectbox(
+        "로컬 AI 실행기",
+        provider_options,
+        index=provider_options.index(base_config.provider) if base_config.provider in provider_options else 0,
+        format_func=lambda value: "Ollama" if value == "ollama" else "LM Studio/llama.cpp 등 OpenAI 호환 로컬 서버",
+        key="stage2_local_llm_provider",
     )
-    with st.expander("고급 API 설정"):
-        api_url = st.text_input(
-            "Responses API URL",
-            value=secret_config.api_url if secret_config else DEFAULT_API_URL,
-            key="stage2_openai_api_url",
-        )
-        st.caption("운영환경에서는 Streamlit secrets 또는 환경변수 OPENAI_API_KEY / OPENAI_MODEL / OPENAI_RESPONSES_URL 사용을 권장합니다.")
+    model = st.text_input(
+        "로컬 모델 이름",
+        value=base_config.model or DEFAULT_MODEL,
+        key="stage2_local_llm_model",
+    )
+    default_url = (
+        base_config.base_url
+        if base_config.provider == provider
+        else (DEFAULT_OLLAMA_URL if provider == "ollama" else DEFAULT_OPENAI_COMPATIBLE_URL)
+    )
+    local_url = st.text_input(
+        "로컬 LLM 주소",
+        value=default_url,
+        key="stage2_local_llm_url",
+    )
+    st.caption(
+        "설정 예: Ollama http://127.0.0.1:11434 · LM Studio http://127.0.0.1:1234. API Key는 사용하지 않습니다."
+    )
 
-    generate_disabled = not candidates or not (session_key or (secret_config and secret_config.api_key))
+    config_error = ""
+    local_config = None
+    try:
+        validated_url = validate_local_base_url(local_url)
+        local_config = LocalLLMConfig(
+            provider=provider,
+            model=model.strip() or DEFAULT_MODEL,
+            base_url=validated_url,
+            timeout_seconds=base_config.timeout_seconds,
+            max_output_tokens=base_config.max_output_tokens,
+        )
+    except Exception as exc:
+        config_error = str(exc)
+        st.error(config_error)
+    else:
+        st.caption("현재 로컬 AI 설정: " + local_runtime_label(local_config))
+
+    generate_disabled = not candidates or local_config is None
     if st.button(
-        f"{SYSTEM_LABELS[ai_system]} AI 문장 보강 생성",
+        f"{SYSTEM_LABELS[ai_system]} 로컬 AI 문장 보강 생성",
         type="primary",
         disabled=generate_disabled,
         width="stretch",
     ):
-        base = secret_config
-        config = LLMConfig(
-            api_key=session_key or (base.api_key if base else ""),
-            model=model.strip() or (base.model if base else DEFAULT_MODEL),
-            api_url=api_url.strip() or (base.api_url if base else DEFAULT_API_URL),
-            timeout_seconds=base.timeout_seconds if base else 90,
-            max_output_tokens=base.max_output_tokens if base else 12000,
-        )
         try:
-            with st.spinner("확인된 사업장 사실과 법적 작성구조를 바탕으로 문장을 보강하고 있습니다..."):
+            client = build_local_llm_client(local_config)
+            with st.spinner("로컬 PC에서 확인된 사업장 사실과 법적 작성구조를 바탕으로 문장을 보강하고 있습니다..."):
                 result = generate_system_ai_drafts(
                     project,
                     ai_system,
-                    OpenAIResponsesClient(config),
+                    client,
                     store_safe_drafts=True,
                 )
                 save_project(project)
         except Exception as exc:
-            st.error(f"AI 문장 보강에 실패했습니다: {type(exc).__name__}: {exc}")
+            st.error(
+                "로컬 AI 문장 보강에 실패했습니다. Ollama/LM Studio가 이 PC에서 실행 중이고 모델이 설치되어 있는지 확인하세요. "
+                f"({type(exc).__name__}: {exc})"
+            )
         else:
             st.session_state["stage2_ai_flash"] = (
                 f"{result.system_label}: 안전검증 통과 {len(result.generated)}개, "
