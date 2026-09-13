@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any, Mapping, Protocol
 
+from .guidance import STATIC_WORKBOOK_LOCATIONS
 from .intake import selected_requirement_specs
 from .language_policy import (
     language_policy_for_prompt,
@@ -14,6 +15,7 @@ from .language_policy import (
 )
 from .project import CONFIRMED_STATUSES, Stage2Project
 from .requirements import RequirementSpec
+from .workflow import ATTACHMENT_MODE_MANUAL, attachment_mode, input_kind_has_attachment
 
 
 SYSTEM_LABELS = {
@@ -21,7 +23,7 @@ SYSTEM_LABELS = {
     "CAP": "화학사고예방관리계획서",
 }
 
-_ATTACHMENT_TOKENS = ("DRAWING", "DOCUMENT_SET", "ATTACHMENT")
+_PURE_ATTACHMENT_KINDS = {"DRAWING", "DRAWING_SET", "DOCUMENT_SET", "ANALYSIS_DOCUMENT"}
 _TABLE_ONLY_TOKENS = ("STRUCTURED_TABLE", "TABLE_AND_CALCULATION")
 _TAG_RE = re.compile(r"\b[A-Z]{1,8}[-_]\d{1,6}\b")
 _CAS_RE = re.compile(r"\b\d{2,7}-\d{2}-\d\b")
@@ -159,19 +161,51 @@ def ai_draft_field_key(system: str, requirement_key: str) -> str:
     return f"ai_draft.{system.lower()}.{requirement_key}"
 
 
+def _pure_attachment_spec(spec: RequirementSpec) -> bool:
+    kind = str(spec.input_kind or "").upper()
+    if kind in _PURE_ATTACHMENT_KINDS:
+        return True
+    if spec.field_keys and all(key.startswith("documents.") or key == "psm.psi.msds" for key in spec.field_keys):
+        return True
+    return False
+
+
+def _global_context_ready(project: Stage2Project) -> bool:
+    facts = _confirmed_facts(project)
+    core = (
+        "business.company_name",
+        "inventory.chemicals",
+        "inventory.facilities",
+        "process.description",
+        "psm.psi.equipment_specs",
+        "cap.facility.equipment_specs",
+    )
+    return sum(1 for key in core if key in facts) >= 3
+
+
 def _eligible_spec(project: Stage2Project, spec: RequirementSpec) -> bool:
     kind = str(spec.input_kind or "").upper()
-    if any(token in kind for token in _ATTACHMENT_TOKENS):
-        return False
     if any(token in kind for token in _TABLE_ONLY_TOKENS):
         return False
-    if not spec.field_keys:
+    if not spec.field_keys or _pure_attachment_spec(spec):
         return False
+
     for key in spec.field_keys:
         record = project.get_field(key)
         if record and record.status in CONFIRMED_STATUSES and _nonempty(record.value):
             return True
-    return False
+
+    # Company-source tables and identity facts must still come from the company.
+    # Missing report-specific narrative fields, however, may receive a cautious
+    # local-AI draft from the confirmed operating profile. Mixed items such as
+    # "계획 + 계산/도면" are also eligible in manual-attachment mode, but only
+    # the textual narrative is drafted; the actual drawing/calculation remains
+    # a separate human deliverable.
+    if any(key in STATIC_WORKBOOK_LOCATIONS for key in spec.field_keys):
+        return False
+    if input_kind_has_attachment(kind) and attachment_mode(project) != ATTACHMENT_MODE_MANUAL:
+        return False
+    return _global_context_ready(project)
 
 
 def ai_draftable_specs(project: Stage2Project, system: str) -> list[RequirementSpec]:
@@ -200,11 +234,13 @@ def _system_prompt(system: str) -> str:
         "당신은 대한민국 화학안전 규제문서의 문장작성 보조자다. 법적 적용 여부와 사업장 작성범위는 이미 규칙 기반 판정으로 확정되어 있으므로 절대 재판단하지 않는다. "
         "회사 사실은 제공된 확인자료만 사용한다. 제공되지 않은 수치, 설비, 인원, 주기, 연락처, 절차, 성능, 위치, 물질, 법적 의무를 절대 만들어내지 않는다. "
         "법적 근거와 작성요건은 회사 사실이 아니며, 공식 용어와 작성목적을 자연스럽게 설명하는 데만 사용한다. "
-        "확인되지 않은 내용이 필요하면 본문에 추정해 넣지 말고 suggested_additions에 회사가 추가 확인할 내용으로 남긴다. "
+        "특정 작성항목 자체의 회사 확인사실이 없고 공통 사업장 사실만 제공된 경우, 해당 설비·절차·계획이 실제 존재한다고 단정하지 않는다. "
+        "그 경우 확인된 사업장 특성과 작성목적만 연결하고, 필요한 사업장 고유내용은 '[확인 필요: …]'로 명확히 표시하거나 suggested_additions에 남긴다. "
+        "도면·이미지·계산서가 담당자 별도 작성 범위인 혼합항목에서는 보고서 본문의 설명문만 작성하고, 실제 도면번호·계산결과·설치상태를 추정하지 않는다. "
         "화학사고예방관리계획서 2군 사업장에서는 제공된 작성항목 밖의 외부 비상대응계획을 생성하지 않는다. "
         "정식 법령·행정규칙 용어가 있는 개념은 반드시 제공된 용어지침의 표현을 우선하고, 내부 변수명·상태값·데이터구조명·개발자 용어를 draft_text, profile_summary, suggested_additions에 절대 출력하지 않는다. "
         "법령 문구를 그대로 반복하는 것보다 회사의 확인된 사실을 실무자가 이해하기 쉬운 규제문서 문체로 연결한다. "
-        "draft_text는 실제 보고서에 사용할 수 있는 자연스러운 한국어 문장으로 작성하되 사실을 부풀리거나 사업장 규모를 과장하지 않는다. "
+        "draft_text는 실제 보고서의 검토용 초안으로 사용할 수 있는 자연스러운 한국어 문장으로 작성하되 사실을 부풀리거나 사업장 규모를 과장하지 않는다. "
         "용어지침: " + json.dumps(policy, ensure_ascii=False) + " "
         "응답은 반드시 JSON 객체만 반환한다."
     )
@@ -227,6 +263,11 @@ def _build_pack_prompt(project: Stage2Project, system: str, specs: list[Requirem
             "legal_basis": spec.legal_basis,
             "writing_request": spec.request_text or spec.description,
             "suggested_evidence": list(spec.suggested_evidence),
+            "requirement_specific_facts_available": bool(keys),
+            "manual_attachment_part": bool(
+                attachment_mode(project) == ATTACHMENT_MODE_MANUAL
+                and input_kind_has_attachment(spec.input_kind)
+            ),
             "confirmed_fact_keys": keys,
             "confirmed_facts": {key: facts[key] for key in keys if key in facts},
         })
@@ -259,18 +300,20 @@ def _build_pack_prompt(project: Stage2Project, system: str, specs: list[Requirem
             "drafts": [
                 {
                     "requirement_key": "입력된 requirement_key와 정확히 동일",
-                    "draft_text": "회사 사실과 공식 작성맥락을 정식 법령 용어와 실무 문체로 다듬은 문장",
-                    "suggested_additions": ["회사 확인이 필요한 추가 정보. 본문에는 넣지 않음"],
+                    "draft_text": "회사 사실과 공식 작성맥락을 연결한 검토용 문장. 항목 고유 사실이 없으면 확인 필요 표시를 사용",
+                    "suggested_additions": ["회사 확인이 필요한 추가 정보. 본문에서 사실로 단정하지 않음"],
                     "used_fact_keys": ["실제로 사용한 confirmed_fact_keys 또는 global fact key"],
                 }
             ],
         },
     }
     prompt = (
-        "아래 JSON은 이미 법적 작성범위가 확정된 사업장의 확인자료다. 사업장 규모와 위험 특성에 맞춰 각 항목의 문장을 보강하라. "
+        "아래 JSON은 작성범위가 정해진 사업장의 확인자료다. 사업장 규모와 위험 특성에 맞춰 각 항목의 보고서 본문 초안을 작성하라. "
         "연결어, 법적 목적을 설명하는 일반적 표현, 문서체 정리는 허용하지만 새로운 회사 사실을 추가하면 안 된다. "
-        "내용이 부족하면 suggested_additions에만 적고 draft_text에서 단정하지 마라. 숫자·설비 Tag·CAS·횟수·기간은 입력 JSON에 있는 값만 사용할 수 있다. "
-        "terminology_policy의 canonical_sections와 canonical_terms를 우선하고 forbidden_output_terms는 사용자에게 보이는 세 필드에 절대 쓰지 마라.\n\n"
+        "requirement_specific_facts_available가 false이면 그 항목의 설치·운영·주기·성능·담당조직을 실제 사실처럼 단정하지 말고 '[확인 필요: …]' 표시와 suggested_additions를 사용하라. "
+        "manual_attachment_part가 true이면 도면·계산서·원본자료는 담당자 별도 작성 범위이므로 본문 설명만 작성하고 도면번호나 계산결과를 만들지 마라. "
+        "숫자·설비 Tag·CAS·횟수·기간은 입력 JSON에 있는 값만 사용할 수 있다. terminology_policy의 canonical_sections와 canonical_terms를 우선하고 "
+        "forbidden_output_terms는 사용자에게 보이는 세 필드에 절대 쓰지 마라.\n\n"
         + json.dumps(payload, ensure_ascii=False, default=str)
     )
     return prompt, {key: facts[key] for key in used_fact_keys if key in facts}
