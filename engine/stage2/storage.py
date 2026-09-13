@@ -16,7 +16,10 @@ DEFAULT_ROOT = Path("data/runtime/stage2")
 
 
 def _safe_component(value: str) -> str:
-    text = re.sub(r"[^0-9A-Za-z._-]+", "_", str(value or "").strip())
+    # Keep Unicode letters/numbers (including Korean company/file names) while
+    # replacing path separators, control characters and punctuation that can
+    # break filesystem paths. ``\w`` is Unicode-aware in Python 3.
+    text = re.sub(r"[^\w.-]+", "_", str(value or "").strip(), flags=re.UNICODE)
     text = text.strip("._")
     if not text:
         raise ValueError("빈 파일/프로젝트 식별자는 사용할 수 없습니다.")
