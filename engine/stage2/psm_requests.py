@@ -50,14 +50,12 @@ def _priority(spec) -> str:
 
 
 def build_psm_data_requests(project: Stage2Project) -> list[PSMDataRequest]:
-    """Return unresolved PSM inputs without re-requesting confirmed facts.
+    """Return unresolved PSM inputs only when PSM is selected for authoring.
 
-    Historical example-book content never becomes legal authority by itself.
-    VERIFY_CURRENT rows are shown as non-blocking verification requests even
-    when the field has not yet been created, while required rows participate in
-    the normal completeness gate.
+    The Stage 1 legal decision remains unchanged even when the user excludes
+    PSM from the current Stage 2 authoring project.
     """
-    if project.psm_required is not True:
+    if not project.psm_in_scope:
         return []
 
     labels = psm_field_labels()
