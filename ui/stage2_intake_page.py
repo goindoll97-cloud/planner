@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import streamlit as st
 
+from engine.kosha_msds import credential_status
 from engine.stage2.guidance import ACTION_PROGRAM, build_requirement_guidance
-from engine.stage2.integrated_workbook import (
-    apply_integrated_authoring_workbook,
-    attach_company_file,
-)
-from engine.stage2.workbook_enhancements import build_enhanced_integrated_authoring_workbook
-from engine.stage2.intake import (
-    COVERAGE_CONFIRMED,
-    COVERAGE_NOT_APPLICABLE,
-    build_intake_catalog,
+from engine.stage2.integrated_workbook import apply_integrated_authoring_workbook, attach_company_file
+from engine.stage2.intake import COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE, build_intake_catalog
+from engine.stage2.msds_reference import (
+    build_msds_reference_bundle,
+    inventory_chemicals,
+    refresh_msds_references,
+    store_supplier_sds_comparison,
+    stored_msds_reference,
 )
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
+from engine.stage2.workbook_enhancements import build_enhanced_integrated_authoring_workbook
 from engine.stage2.workflow import (
     ATTACHMENT_MODE_MANUAL,
     ATTACHMENT_MODE_PROGRAM,
@@ -45,8 +46,8 @@ MODE_LABELS = {
 st.set_page_config(page_title="통합 작성자료", page_icon="📥", layout="wide")
 st.title("📥 3. 통합 작성자료")
 st.caption(
-    "보고서 본문에 필요한 회사 사실·표를 먼저 정리합니다. 도면·이미지·계산서·원본 첨부자료는 회사 업무방식에 따라 "
-    "담당자가 별도로 작성하거나 이 프로젝트에서 함께 관리할 수 있습니다."
+    "보고서 본문에 필요한 회사 사실·표를 먼저 정리합니다. CAS 번호가 있으면 KOSHA MSDS 참고자료를 자동 조회할 수 있으며, "
+    "도면·이미지·계산서·공급자 MSDS 원본은 회사 업무방식에 따라 별도 작성하거나 이 프로젝트에서 함께 관리할 수 있습니다."
 )
 
 
@@ -120,11 +121,11 @@ if selected_mode != current_mode:
 manual_mode = attachment_mode(project) == ATTACHMENT_MODE_MANUAL
 if manual_mode:
     st.info(
-        "현재는 **텍스트·표 작성 우선 모드**입니다. PFD, P&ID, 배치도, MSDS, 각종 도면·이미지·계산서 원본은 담당자가 별도로 작성·취합합니다. "
-        "프로그램은 확인된 회사 사실을 바탕으로 보고서 본문과 표 작성에 집중하며, 도면이 필요한 부분은 별도 첨부 예정으로 남깁니다."
+        "현재는 **텍스트·표 작성 우선 모드**입니다. PFD, P&ID, 배치도, 각종 도면·이미지·계산서와 실제 제품 MSDS 원본은 담당자가 별도로 작성·취합합니다. "
+        "CAS 기반 KOSHA MSDS 참고자료는 아래에서 별도로 조회할 수 있지만 실제 제품 MSDS를 대체하지 않습니다."
     )
 else:
-    st.info("현재는 첨부자료까지 프로젝트에서 함께 관리합니다. 실제 도면·PDF를 아래에서 업로드하면 교차검증에 연결됩니다.")
+    st.info("현재는 첨부자료까지 프로젝트에서 함께 관리합니다. 실제 도면·PDF·제품 MSDS를 아래에서 업로드하면 검토자료에 연결됩니다.")
 
 st.markdown("### 2. 통합 작성자료 내려받기")
 st.write(
@@ -157,38 +158,114 @@ integrated_upload = st.file_uploader(
     type=["xlsx"],
     key="stage2_integrated_workbook_upload",
 )
-if integrated_upload is not None:
-    if st.button("통합 작성자료 반영", type="primary", width="stretch"):
-        raw = integrated_upload.getvalue()
-        try:
-            workbook_ref = save_attachment(
-                project.project_id,
-                integrated_upload.name,
-                raw,
-                source_type="STAGE2_INTEGRATED_WORKBOOK",
-                note="회사 작성 통합 작성자료 Excel",
-            )
-            result = apply_integrated_authoring_workbook(
-                project,
-                raw,
-                workbook_evidence=workbook_ref,
-            )
-            reset_after_intake_change(project)
-            save_project(project)
-        except Exception as exc:
-            st.error(f"통합 작성자료를 반영하지 못했습니다: {type(exc).__name__}: {exc}")
-        else:
-            st.success(
-                f"통합 작성자료를 반영했습니다. 입력·확인 {result.updated_fields}개 항목, "
-                f"구조화 표 {result.table_fields}개 연결, 첨부파일명 {result.attachment_declarations}건을 확인했습니다."
-            )
-            for warning in result.warnings:
-                st.warning(warning)
+if integrated_upload is not None and st.button("통합 작성자료 반영", type="primary", width="stretch"):
+    raw = integrated_upload.getvalue()
+    try:
+        workbook_ref = save_attachment(
+            project.project_id,
+            integrated_upload.name,
+            raw,
+            source_type="STAGE2_INTEGRATED_WORKBOOK",
+            note="회사 작성 통합 작성자료 Excel",
+        )
+        result = apply_integrated_authoring_workbook(project, raw, workbook_evidence=workbook_ref)
+        reset_after_intake_change(project)
+        save_project(project)
+    except Exception as exc:
+        st.error(f"통합 작성자료를 반영하지 못했습니다: {type(exc).__name__}: {exc}")
+    else:
+        st.success(
+            f"통합 작성자료를 반영했습니다. 입력·확인 {result.updated_fields}개 항목, "
+            f"구조화 표 {result.table_fields}개 연결, 첨부파일명 {result.attachment_declarations}건을 확인했습니다."
+        )
+        for warning in result.warnings:
+            st.warning(warning)
+        st.rerun()
 
-st.markdown("### 4. 도면·첨부자료")
+st.markdown("### 4. CAS 기반 물질정보·MSDS 참고자료")
+chemicals = inventory_chemicals(project)
+if not chemicals:
+    st.info("화학물질 표에 유효한 CAS 번호가 확인되면 KOSHA MSDS 참고자료 자동조회 기능이 열립니다.")
+else:
+    st.info(
+        "이 기능은 **CAS 번호만** 한국산업안전보건공단 MSDS 조회 서비스로 전송합니다. "
+        "회사명, 보유량, 공정명, 설비정보, 사업장 주소와 첨부파일 내용은 외부 API로 보내지 않습니다. "
+        "조회 결과는 MSDS 작성·검토 참고자료이며 공급자·제조자·수입자의 실제 제품 MSDS를 대체하지 않습니다."
+    )
+    available_cas = [item.cas for item in chemicals]
+    name_by_cas = {item.cas: item.chemical_name or item.product_name for item in chemicals}
+    default_selection = available_cas if len(available_cas) <= 10 else available_cas[:10]
+    selected_cas = st.multiselect(
+        "KOSHA 참고자료를 조회할 CAS",
+        available_cas,
+        default=default_selection,
+        format_func=lambda cas: f"{cas} · {name_by_cas.get(cas, '')}".rstrip(" ·"),
+        key=f"msds_cas_selection_{project.project_id}",
+    )
+    if len(available_cas) > 10:
+        st.caption("화학물질이 많아 기본적으로 처음 10개만 선택했습니다. API 호출량을 고려해 필요한 물질을 나누어 조회할 수 있습니다.")
+
+    api_state = credential_status()
+    if api_state["status"] != "READY":
+        st.warning(
+            "KOSHA MSDS OpenAPI 인증키가 아직 설정되지 않았습니다. 공공데이터포털의 '한국산업안전보건공단_물질안전보건자료 조회 서비스' "
+            "활용신청 후 로컬 `.env`에 `KOSHA_MSDS_SERVICE_KEY=발급키`를 넣으면 활성화됩니다. 인증키가 없어도 회사 MSDS를 사용해 다음 단계로 진행할 수 있습니다."
+        )
+    else:
+        st.caption("KOSHA MSDS OpenAPI 연결 설정이 확인되었습니다. 한 물질당 16개 표준 MSDS 항목을 조회하므로 선택 물질 수에 따라 시간이 걸릴 수 있습니다.")
+
+    if st.button(
+        "선택한 CAS의 KOSHA MSDS 16개 항목 조회",
+        width="stretch",
+        disabled=not selected_cas or api_state["status"] != "READY",
+        key=f"lookup_kosha_msds_{project.project_id}",
+    ):
+        with st.spinner("CAS 기준 KOSHA MSDS 참고자료를 조회하고 있습니다..."):
+            try:
+                refreshed = refresh_msds_references(project, cas_numbers=selected_cas)
+                save_project(project)
+            except Exception as exc:
+                st.error(f"KOSHA MSDS 참고자료 조회에 실패했습니다: {type(exc).__name__}: {exc}")
+            else:
+                success_n = sum(item.status in {"REFERENCE_READY", "PARTIAL_REFERENCE"} for item in refreshed)
+                st.success(f"{len(refreshed)}개 CAS를 조회했고 {success_n}개에서 참고자료를 확보했습니다.")
+                st.rerun()
+
+    stored_rows = []
+    for item in chemicals:
+        payload = stored_msds_reference(project, item.cas)
+        if payload is None:
+            continue
+        sections = payload.get("sections") if isinstance(payload.get("sections"), dict) else {}
+        stored_rows.append((item.cas, payload, len(sections)))
+
+    if stored_rows:
+        with st.expander(f"저장된 KOSHA MSDS 참고자료 · {len(stored_rows)}개 CAS", expanded=False):
+            for cas, payload, section_n in stored_rows:
+                status = str(payload.get("reference_status") or "")
+                name = str(payload.get("chemical_name") or payload.get("company_input_name") or "")
+                st.markdown(f"- **{cas} · {name or '물질명 확인 필요'}** · {status} · {section_n}/16개 항목")
+                message = str(payload.get("message") or "").strip()
+                if message:
+                    st.caption(message)
+        try:
+            bundle = build_msds_reference_bundle(project)
+        except Exception:
+            bundle = None
+        if bundle:
+            st.download_button(
+                "KOSHA MSDS 검토용 참고자료 ZIP 다운로드",
+                data=bundle,
+                file_name=f"{project.project_id}_KOSHA_MSDS_검토용_참고자료.zip",
+                mime="application/zip",
+                width="stretch",
+                key=f"download_kosha_msds_{project.project_id}",
+            )
+
+st.markdown("### 5. 도면·제품 MSDS·첨부자료")
 if manual_mode:
-    st.success("도면·이미지·원본 첨부자료는 담당자가 별도 작성·취합하도록 설정되어 있어 이 단계의 완료조건에 포함하지 않습니다.")
-    with st.expander("필요한 경우 참고자료만 선택적으로 업로드", expanded=False):
+    st.success("도면·이미지·원본 첨부자료는 담당자가 별도 작성·취합하도록 설정되어 있어 이 단계의 텍스트 작성 완료조건에 포함하지 않습니다.")
+    with st.expander("필요한 경우 제품 MSDS·참고자료를 선택적으로 업로드", expanded=False):
         attachments = st.file_uploader(
             "선택적 참고자료 업로드",
             accept_multiple_files=True,
@@ -212,12 +289,11 @@ if manual_mode:
                 reset_after_intake_change(project)
                 save_project(project)
                 st.success(f"참고자료 {len(attachments)}개를 접수했습니다. 목록 자동연결 {linked}개입니다.")
+                st.rerun()
 else:
-    st.caption(
-        "통합 작성자료의 ‘07_도면_첨부자료목록’ 시트에 적은 PFD, P&ID, 배치도, MSDS 등의 실제 파일을 한 번에 올리세요."
-    )
+    st.caption("통합 작성자료의 ‘07_도면_첨부자료목록’ 시트에 적은 PFD, P&ID, 배치도, 제품 MSDS 등의 실제 파일을 한 번에 올리세요.")
     attachments = st.file_uploader(
-        "도면·첨부자료 업로드",
+        "도면·제품 MSDS·첨부자료 업로드",
         accept_multiple_files=True,
         key="stage2_bulk_attachments",
     )
@@ -233,7 +309,7 @@ else:
                     upload.name,
                     upload.getvalue(),
                     source_type="ATTACHMENT",
-                    note="통합 작성자료와 함께 제출된 도면·첨부자료",
+                    note="통합 작성자료와 함께 제출된 도면·제품 MSDS·첨부자료",
                 )
                 if attach_company_file(project, ref):
                     linked += 1
@@ -242,13 +318,29 @@ else:
             reset_after_intake_change(project)
             save_project(project)
             st.success(f"첨부자료 {len(attachments)}개를 접수했습니다. 목록 자동연결 {linked}개, 연결대상 확인 필요 {unlinked}개입니다.")
+            st.rerun()
+
+with st.expander("회사/공급자 MSDS의 CAS 자동 비교검토", expanded=False):
+    st.caption(
+        "업로드한 PDF·DOCX·TXT·CSV MSDS에서 CAS 번호를 **로컬 PC 안에서만** 읽어 화학물질 목록과 비교합니다. "
+        "파일 내용은 KOSHA API나 로컬 AI로 전송하지 않습니다. CAS 일치만 확인하는 보조검토이며 MSDS 전체 내용의 법적 적정성을 자동 확정하지 않습니다."
+    )
+    if st.button("업로드한 제품 MSDS와 CAS 비교", width="stretch", key=f"compare_supplier_sds_{project.project_id}"):
+        result = store_supplier_sds_comparison(project)
+        save_project(project)
+        if result.status == "CAS_COVERED":
+            st.success(result.message)
+        elif result.status in {"PARTIAL", "NO_CAS_MATCH", "UNREADABLE"}:
+            st.warning(result.message)
+        else:
+            st.info(result.message)
+        if result.matched_cas:
+            st.caption("확인된 CAS: " + ", ".join(result.matched_cas))
+        if result.missing_cas:
+            st.caption("추가 확인할 CAS: " + ", ".join(result.missing_cas))
 
 catalog = build_intake_catalog(project)
-unresolved = [
-    item
-    for item in catalog
-    if item.coverage_status not in {COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE}
-]
+unresolved = [item for item in catalog if item.coverage_status not in {COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE}]
 classified = []
 for item in unresolved:
     guidance = build_requirement_guidance(project, item)
@@ -285,7 +377,7 @@ if ai_rows:
 if manual_rows:
     with st.expander(f"담당자 별도 작성·첨부 예정 · {len(manual_rows)}건", expanded=False):
         st.caption(
-            "현재 운영방식에서는 아래 도면·이미지·계산서·원본자료가 프로그램의 텍스트 작성 진행을 막지 않습니다. "
+            "현재 운영방식에서는 아래 도면·이미지·계산서·제품 MSDS 원본이 프로그램의 텍스트 작성 진행을 막지 않습니다. "
             "최종 제출 전에는 담당자가 실제 자료를 작성·확인하여 결합해야 합니다."
         )
         for item, guidance in manual_rows:
@@ -302,8 +394,8 @@ if review_rows:
             st.markdown(_line(item, guidance))
 
 st.info(
-    "도면·첨부자료를 별도 작성하는 경우에도 법정 제출자료에서 해당 자료가 없어지는 것은 아닙니다. "
-    "이 프로그램에서는 텍스트·표 초안 작성과 최종 첨부자료 완성 여부를 분리해 관리합니다."
+    "KOSHA CAS 조회자료와 도면·첨부자료를 별도 관리하더라도 법정 제출자료에서 실제 제품 MSDS나 필요한 도면이 없어지는 것은 아닙니다. "
+    "프로그램에서는 텍스트·표 작성, 공공 참고자료, 최종 회사 첨부자료의 역할을 분리해 관리합니다."
 )
 
 st.divider()

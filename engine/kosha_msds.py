@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-"""KOSHA MSDS reference lookup for CAP Appendix-1 screening.
+"""KOSHA MSDS reference lookup.
 
-The public-data/KOSHA API is used as an automatic reference/prefill, not as a
-replacement for the supplier/manufacturer's legally provided product MSDS.
-Only deterministic text matches to approved Appendix-1 group/category rows are
-accepted. No LLM or fuzzy semantic inference is used.
+The KOSHA/public-data service is reference material for MSDS preparation and
+review. It must never be treated as a supplier/manufacturer/importer product
+MSDS or as proof of company-specific composition, use, quantity or conditions.
+Only a CAS number is sent to the external search endpoint.
 
 Official public-data dataset: 한국산업안전보건공단_물질안전보건자료 조회 서비스
-(data.go.kr 15157612). The current portal describes REST/XML data and states
-that KOSHA chemical information is reference material for MSDS preparation and
-review. The documented msdschem service operations are:
-- /chemlist      : chemical search (searchCnd=1 means CAS No.)
-- /chemdetail02  : MSDS Section 2 detail by chemId
+(data.go.kr 15157612). Current public-data operations use ``msdslist`` and
+``chemdetail01`` ... ``chemdetail16`` under ``apis.data.go.kr``. Endpoint
+variables remain overridable because public-data gateways can change versions.
 
 Environment variables (never commit the actual key):
 - KOSHA_MSDS_SERVICE_KEY (preferred), KOSHA_SERVICE_KEY, or KOSHA_API_KEY
 - KOSHA_MSDS_BASE_URL (optional endpoint override)
-- KOSHA_MSDS_SEARCH_URL / KOSHA_MSDS_SECTION2_URL (optional full overrides)
+- KOSHA_MSDS_SEARCH_URL (optional full search override)
+- KOSHA_MSDS_SECTION2_URL (legacy Section-2 override)
+- KOSHA_MSDS_SECTION_01_URL ... KOSHA_MSDS_SECTION_16_URL (optional)
 """
 
 import os
@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import requests
 
@@ -34,8 +34,27 @@ from .cap_sds_app1 import SDSApp1Option, app1_sds_options
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_BASE_URL = "https://msds.kosha.or.kr/openapi/service/msdschem"
+DEFAULT_BASE_URL = "https://apis.data.go.kr/B552468/msds_api"
 CAS_RE = re.compile(r"^\d{2,7}-\d{2}-\d$")
+
+MSDS_SECTIONS: dict[int, str] = {
+    1: "화학제품과 회사에 관한 정보",
+    2: "유해성·위험성",
+    3: "구성성분의 명칭 및 함유량",
+    4: "응급조치요령",
+    5: "폭발·화재시 대처방법",
+    6: "누출사고시 대처방법",
+    7: "취급 및 저장방법",
+    8: "노출방지 및 개인보호구",
+    9: "물리화학적 특성",
+    10: "안정성 및 반응성",
+    11: "독성에 관한 정보",
+    12: "환경에 미치는 영향",
+    13: "폐기시 주의사항",
+    14: "운송에 필요한 정보",
+    15: "법적규제 현황",
+    16: "그 밖의 참고사항",
+}
 
 
 @dataclass
@@ -58,8 +77,53 @@ class KOSHAMSDSResult:
         return self.status == "MATCHED" and bool(self.app1_option_keys)
 
 
+@dataclass(frozen=True)
+class KOSHAMSDSSection:
+    number: int
+    title: str
+    items: tuple[tuple[str, str], ...] = ()
+    text: str = ""
+
+
+@dataclass
+class KOSHAFullMSDSResult:
+    status: str
+    cas: str
+    message: str
+    chem_id: str = ""
+    chemical_name: str = ""
+    sections: dict[int, KOSHAMSDSSection] = field(default_factory=dict)
+    source: str = "한국산업안전보건공단 물질안전보건자료 조회 서비스"
+    source_dataset_id: str = "15157612"
+    checked_at_utc: str = ""
+
+    @property
+    def ready(self) -> bool:
+        return self.status == "REFERENCE_READY" and bool(self.sections)
+
+    def to_reference_dict(self) -> dict[str, Any]:
+        return {
+            "reference_status": self.status,
+            "cas": self.cas,
+            "chemical_name": self.chemical_name,
+            "chem_id": self.chem_id,
+            "source": self.source,
+            "source_dataset_id": self.source_dataset_id,
+            "checked_at_utc": self.checked_at_utc,
+            "message": self.message,
+            "sections": {
+                str(number): {
+                    "title": section.title,
+                    "items": [[label, detail] for label, detail in section.items],
+                    "text": section.text,
+                }
+                for number, section in sorted(self.sections.items())
+            },
+        }
+
+
 def _load_local_env() -> None:
-    """Minimal .env reader so the Streamlit app needs no dotenv dependency."""
+    """Minimal .env reader so the app needs no dotenv dependency."""
     for path in (PROJECT_ROOT / ".env", Path.cwd() / ".env"):
         if not path.exists():
             continue
@@ -94,7 +158,7 @@ def credential_status() -> dict[str, str]:
         "message": (
             "KOSHA OpenAPI 인증키 설정 완료"
             if key
-            else ".env에 KOSHA_MSDS_SERVICE_KEY를 설정하면 CAS 자동조회가 활성화됩니다."
+            else ".env에 KOSHA_MSDS_SERVICE_KEY를 설정하면 CAS 기반 MSDS 참고자료 조회가 활성화됩니다."
         ),
     }
 
@@ -106,12 +170,20 @@ def _base_url() -> str:
 
 def _search_url() -> str:
     _load_local_env()
-    return (os.getenv("KOSHA_MSDS_SEARCH_URL") or f"{_base_url()}/chemlist").strip()
+    return (os.getenv("KOSHA_MSDS_SEARCH_URL") or f"{_base_url()}/msdslist").strip()
 
 
-def _section2_url() -> str:
+def _section_url(section: int) -> str:
     _load_local_env()
-    return (os.getenv("KOSHA_MSDS_SECTION2_URL") or f"{_base_url()}/chemdetail02").strip()
+    padded = f"{section:02d}"
+    explicit = os.getenv(f"KOSHA_MSDS_SECTION_{padded}_URL", "").strip()
+    if explicit:
+        return explicit
+    if section == 2:
+        legacy = os.getenv("KOSHA_MSDS_SECTION2_URL", "").strip()
+        if legacy:
+            return legacy
+    return f"{_base_url()}/chemdetail{padded}"
 
 
 def _safe_error(exc: Exception, key: str) -> str:
@@ -157,20 +229,14 @@ def _value(row: dict[str, str], *candidates: str) -> str:
 
 
 def parse_search_xml(xml_text: str, requested_cas: str) -> list[dict[str, str]]:
-    """Return exact-CAS rows with a usable chemical ID.
-
-    Field names have changed across KOSHA revisions, so this recognizes common
-    variants such as casNo/chemId/chemNameKor rather than relying on one casing.
-    """
+    """Return exact-CAS rows with a usable chemical ID."""
     exact: list[dict[str, str]] = []
     for row in _all_item_dicts(xml_text):
         record_cas = _value(row, "casNo", "cas", "cas_no")
         if record_cas.replace(" ", "") != requested_cas:
-            # Defensive fallback for older response schemas whose CAS tag name
-            # is unfamiliar, while still requiring an exact field value.
             if requested_cas not in {_clean(v).replace(" ", "") for v in row.values()}:
                 continue
-        chem_id = _value(row, "chemId", "chem_id", "chemicalId", "msdsId")
+        chem_id = _value(row, "chemId", "chem_id", "chemicalId", "msdsId", "chemNo")
         if not chem_id:
             continue
         name = _value(row, "chemNameKor", "chemNmKor", "chemicalNameKor", "chemName", "korName")
@@ -185,19 +251,31 @@ def _split_tokens(text: str) -> list[str]:
     return [part.strip() for part in parts if part.strip() and part.strip() not in {"자료없음", "해당없음"}]
 
 
-def parse_section2_xml(xml_text: str) -> list[str]:
-    """Extract hazard/category statements from the Section-2 endpoint.
-
-    `/chemdetail02` already scopes the response to MSDS Section 2.  We therefore
-    collect every detail text field and later accept only phrases that map
-    deterministically to an approved Appendix-1 group + explicit category.
-    This is more robust than depending on one historical item-name tag.
-    """
-    classifications: list[str] = []
+def parse_detail_xml(xml_text: str) -> list[tuple[str, str]]:
+    """Preserve the KOSHA item label/detail pairs without semantic invention."""
+    pairs: list[tuple[str, str]] = []
     for row in _all_item_dicts(xml_text):
-        detail = _value(row, "itemDetail", "detail", "item_detail", "contents", "content")
+        label = _value(
+            row,
+            "msdsItemNameKor", "itemNameKor", "itemNmKor", "itemName", "itemNm", "title", "name",
+        )
+        detail = _value(row, "itemDetail", "detail", "item_detail", "contents", "content", "value")
+        if not detail:
+            # Last-resort preservation for schema revisions: keep non-ID leaf text.
+            candidates = [
+                value for key, value in row.items()
+                if value and not re.search(r"(?:id|no|seq|num)$", key, flags=re.I)
+            ]
+            detail = " | ".join(dict.fromkeys(candidates))
         if detail:
-            classifications.extend(_split_tokens(detail))
+            pairs.append((label, detail))
+    return pairs
+
+
+def parse_section2_xml(xml_text: str) -> list[str]:
+    classifications: list[str] = []
+    for _label, detail in parse_detail_xml(xml_text):
+        classifications.extend(_split_tokens(detail))
     return list(dict.fromkeys(classifications))
 
 
@@ -207,13 +285,9 @@ def _category_from_text(text: str) -> int | None:
 
 
 def _group_aliases(group: str) -> set[str]:
-    """Small deterministic spelling aliases only; never semantic inference."""
     base = _norm(group)
     aliases = {base}
-    for left, right in (
-        ("수생독성", "수생환경유해성"),
-        ("수생환경유해성", "수생독성"),
-    ):
+    for left, right in (("수생독성", "수생환경유해성"), ("수생환경유해성", "수생독성")):
         if left in base:
             aliases.add(base.replace(left, right))
     return {value for value in aliases if value}
@@ -227,13 +301,10 @@ def match_app1_options(
     option_rows = app1_sds_options() if options is None else options
     matched: list[str] = []
     unmatched: list[str] = []
-
     for text in classifications:
         normalized = _norm(text)
         category = _category_from_text(text)
         if category is None:
-            # Pictograms, signal words and hazard statements are expected in
-            # Section 2 but are not themselves APP1 classification evidence.
             continue
         hits: list[str] = []
         for option in option_rows:
@@ -246,7 +317,6 @@ def match_app1_options(
             matched.append(hits[0])
         else:
             unmatched.append(text)
-
     return list(dict.fromkeys(matched)), list(dict.fromkeys(unmatched))
 
 
@@ -259,108 +329,187 @@ def _api_error_text(xml_text: str) -> str:
     message = ""
     for node in root.iter():
         tag = _tag_name(node.tag).lower()
-        if tag == "resultcode":
+        if tag in {"resultcode", "returnreasoncode", "errorcode"}:
             code = _clean(node.text)
-        elif tag in {"resultmsg", "errmsg", "message"}:
+        elif tag in {"resultmsg", "errmsg", "message", "returnauthmsg", "errormessage"}:
             message = _clean(node.text)
-    if code and code not in {"0", "00", "0000"}:
+    if code and code not in {"0", "00", "0000"} and not code.upper().startswith("NORMAL"):
         return f"API resultCode={code}" + (f" ({message})" if message else "")
     return ""
 
 
-def lookup_by_cas(cas: str, *, timeout: int = 15) -> KOSHAMSDSResult:
-    """CAS -> KOSHA chemical ID -> MSDS Section 2 -> APP1 candidate keys."""
-    checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    cas = _clean(cas)
-    if not CAS_RE.fullmatch(cas):
-        return KOSHAMSDSResult("INVALID_CAS", cas, "CAS 번호 형식을 확인해 주세요.", checked_at_utc=checked)
+def _request_xml(url: str, params: dict[str, Any], *, timeout: int, key: str) -> str:
+    response = requests.get(url, params=params, timeout=timeout)
+    response.raise_for_status()
+    text = response.text or ""
+    api_error = _api_error_text(text)
+    if api_error:
+        raise RuntimeError(api_error)
+    return text
 
+
+def _search_exact_cas(cas: str, *, timeout: int, key: str) -> tuple[str, str, str]:
+    search_xml = _request_xml(
+        _search_url(),
+        {"serviceKey": key, "searchWrd": cas, "searchCnd": 1, "numOfRows": 20, "pageNo": 1},
+        timeout=timeout,
+        key=key,
+    )
+    rows = parse_search_xml(search_xml, cas)
+    ids = list(dict.fromkeys(row["chem_id"] for row in rows if row.get("chem_id")))
+    if not ids:
+        return "NO_MATCH", "", ""
+    if len(ids) > 1:
+        return "AMBIGUOUS", "", ""
+    chem_id = ids[0]
+    name = next((row.get("chemical_name", "") for row in rows if row.get("chem_id") == chem_id), "")
+    return "MATCH", chem_id, name
+
+
+def _validate_cas(cas: str) -> str:
+    cas = _clean(cas).replace(" ", "")
+    return cas if CAS_RE.fullmatch(cas) else ""
+
+
+def lookup_by_cas(cas: str, *, timeout: int = 15) -> KOSHAMSDSResult:
+    """CAS -> KOSHA Section 2 -> conservative CAP Appendix-1 candidates."""
+    checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    normalized = _validate_cas(cas)
+    if not normalized:
+        return KOSHAMSDSResult("INVALID_CAS", _clean(cas), "CAS 번호 형식을 확인해 주세요.", checked_at_utc=checked)
     key = _credential()
     if not key:
         return KOSHAMSDSResult(
-            "NOT_CONFIGURED",
-            cas,
+            "NOT_CONFIGURED", normalized,
             "KOSHA OpenAPI 인증키가 설정되지 않아 자동조회하지 못했습니다. 회사/제품 SDS 확인으로 계속할 수 있습니다.",
             checked_at_utc=checked,
         )
-
     try:
-        search_response = requests.get(
-            _search_url(),
-            params={
-                "ServiceKey": key,
-                "searchWrd": cas,
-                "searchCnd": 1,  # CAS No.
-                "numOfRows": 20,
-                "pageNo": 1,
-            },
+        search_status, chem_id, name = _search_exact_cas(normalized, timeout=timeout, key=key)
+        if search_status == "NO_MATCH":
+            return KOSHAMSDSResult("NO_MATCH", normalized, "KOSHA 참고자료에서 이 CAS의 정확한 검색결과를 찾지 못했습니다.", checked_at_utc=checked)
+        if search_status == "AMBIGUOUS":
+            return KOSHAMSDSResult("AMBIGUOUS", normalized, "같은 CAS에 여러 KOSHA 자료가 검색되어 자동으로 하나를 선택하지 않았습니다. 회사/제품 SDS를 확인해 주세요.", checked_at_utc=checked)
+
+        detail_xml = _request_xml(
+            _section_url(2),
+            {"serviceKey": key, "chemId": chem_id, "chemNo": chem_id},
             timeout=timeout,
+            key=key,
         )
-        search_response.raise_for_status()
-        search_xml = search_response.text or ""
-        api_error = _api_error_text(search_xml)
-        if api_error:
-            return KOSHAMSDSResult("API_ERROR", cas, f"KOSHA CAS 검색 API 오류: {api_error}", checked_at_utc=checked)
-
-        rows = parse_search_xml(search_xml, cas)
-        ids = list(dict.fromkeys(row["chem_id"] for row in rows if row.get("chem_id")))
-        if not ids:
-            return KOSHAMSDSResult("NO_MATCH", cas, "KOSHA 참고자료에서 이 CAS의 정확한 검색결과를 찾지 못했습니다.", checked_at_utc=checked)
-        if len(ids) > 1:
-            return KOSHAMSDSResult(
-                "AMBIGUOUS", cas,
-                "같은 CAS에 여러 KOSHA 자료가 검색되어 자동으로 하나를 선택하지 않았습니다. 회사/제품 SDS를 확인해 주세요.",
-                checked_at_utc=checked,
-            )
-
-        chem_id = ids[0]
-        name = next((row.get("chemical_name", "") for row in rows if row.get("chem_id") == chem_id), "")
-        detail_response = requests.get(
-            _section2_url(),
-            params={"ServiceKey": key, "chemId": chem_id},
-            timeout=timeout,
-        )
-        detail_response.raise_for_status()
-        detail_xml = detail_response.text or ""
-        api_error = _api_error_text(detail_xml)
-        if api_error:
-            return KOSHAMSDSResult(
-                "API_ERROR", cas, f"KOSHA SDS 제2항 API 오류: {api_error}",
-                chem_id=chem_id, chemical_name=name, checked_at_utc=checked,
-            )
-
         classifications = parse_section2_xml(detail_xml)
         if not classifications:
             return KOSHAMSDSResult(
-                "NO_SECTION2", cas,
-                "KOSHA 자료에서 SDS 제2항 상세내용을 확인하지 못했습니다.",
+                "NO_SECTION2", normalized, "KOSHA 자료에서 SDS 제2항 상세내용을 확인하지 못했습니다.",
                 chem_id=chem_id, chemical_name=name, checked_at_utc=checked,
                 raw_section2_available=bool(detail_xml.strip()),
             )
-
         matched, unmatched = match_app1_options(classifications)
         if not matched:
             return KOSHAMSDSResult(
-                "NO_APP1_MATCH", cas,
+                "NO_APP1_MATCH", normalized,
                 "KOSHA 제2항 자료는 조회했지만 현재 승인된 별표 1 분류와 보수적으로 자동 연결되는 항목이 없습니다. 회사/제품 SDS로 확인해 주세요.",
-                chem_id=chem_id, chemical_name=name,
-                ghs_classifications=classifications,
-                unmatched_classifications=unmatched,
-                checked_at_utc=checked, raw_section2_available=True,
+                chem_id=chem_id, chemical_name=name, ghs_classifications=classifications,
+                unmatched_classifications=unmatched, checked_at_utc=checked, raw_section2_available=True,
             )
-
         return KOSHAMSDSResult(
-            "MATCHED", cas,
+            "MATCHED", normalized,
             "CAS 기준 KOSHA SDS 제2항 참고분류를 조회하고 별표 1 후보를 자동 연결했습니다. 최종 적용 전 회사/제품 SDS와 일치 여부를 확인하세요.",
-            chem_id=chem_id, chemical_name=name,
-            ghs_classifications=classifications,
-            app1_option_keys=matched,
-            unmatched_classifications=unmatched,
+            chem_id=chem_id, chemical_name=name, ghs_classifications=classifications,
+            app1_option_keys=matched, unmatched_classifications=unmatched,
             checked_at_utc=checked, raw_section2_available=True,
         )
     except Exception as exc:
         return KOSHAMSDSResult(
-            "API_ERROR", cas,
+            "API_ERROR", normalized,
             "KOSHA 자동조회 중 오류가 발생했습니다: " + _safe_error(exc, key),
+            checked_at_utc=checked,
+        )
+
+
+def lookup_full_msds_by_cas(
+    cas: str,
+    *,
+    sections: Iterable[int] | None = None,
+    timeout: int = 20,
+) -> KOSHAFullMSDSResult:
+    """Retrieve KOSHA reference MSDS sections for one exact CAS.
+
+    This function sends only the CAS number and the KOSHA chemical identifier
+    returned for that CAS. It never transmits company identity, quantity,
+    process, equipment, product name or other Stage-2 facts.
+    """
+    checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    normalized = _validate_cas(cas)
+    if not normalized:
+        return KOSHAFullMSDSResult("INVALID_CAS", _clean(cas), "CAS 번호 형식을 확인해 주세요.", checked_at_utc=checked)
+    key = _credential()
+    if not key:
+        return KOSHAFullMSDSResult(
+            "NOT_CONFIGURED", normalized,
+            "KOSHA OpenAPI 인증키가 설정되지 않았습니다. 회사/제품 SDS로 계속 작성할 수 있습니다.",
+            checked_at_utc=checked,
+        )
+
+    requested = list(dict.fromkeys(int(value) for value in (sections or range(1, 17))))
+    invalid = [value for value in requested if value not in MSDS_SECTIONS]
+    if invalid:
+        return KOSHAFullMSDSResult("INVALID_SECTION", normalized, f"MSDS 항목 번호는 1~16이어야 합니다: {invalid}", checked_at_utc=checked)
+
+    try:
+        search_status, chem_id, name = _search_exact_cas(normalized, timeout=timeout, key=key)
+        if search_status == "NO_MATCH":
+            return KOSHAFullMSDSResult("NO_MATCH", normalized, "KOSHA 참고자료에서 이 CAS의 정확한 검색결과를 찾지 못했습니다.", checked_at_utc=checked)
+        if search_status == "AMBIGUOUS":
+            return KOSHAFullMSDSResult("AMBIGUOUS", normalized, "같은 CAS에 여러 KOSHA 자료가 검색되어 자동 선택하지 않았습니다. 공급자 SDS를 우선 확인하세요.", checked_at_utc=checked)
+
+        result_sections: dict[int, KOSHAMSDSSection] = {}
+        failures: list[str] = []
+        for number in requested:
+            try:
+                xml_text = _request_xml(
+                    _section_url(number),
+                    {"serviceKey": key, "chemId": chem_id, "chemNo": chem_id},
+                    timeout=timeout,
+                    key=key,
+                )
+                items = parse_detail_xml(xml_text)
+                text = "\n".join(
+                    f"{label}: {detail}" if label else detail
+                    for label, detail in items
+                    if detail
+                ).strip()
+                result_sections[number] = KOSHAMSDSSection(
+                    number=number,
+                    title=MSDS_SECTIONS[number],
+                    items=tuple(items),
+                    text=text,
+                )
+            except Exception as exc:
+                failures.append(f"{number}항: {_safe_error(exc, key)}")
+
+        if not result_sections:
+            return KOSHAFullMSDSResult(
+                "API_ERROR", normalized, "KOSHA MSDS 상세항목을 조회하지 못했습니다." + (" / " + " / ".join(failures[:3]) if failures else ""),
+                chem_id=chem_id, chemical_name=name, checked_at_utc=checked,
+            )
+
+        status = "REFERENCE_READY" if len(result_sections) == len(requested) else "PARTIAL_REFERENCE"
+        message = (
+            "KOSHA MSDS 16개 항목 참고자료를 조회했습니다. 법정 제품 MSDS가 아니므로 공급자·제조자·수입자 MSDS와 회사 제품정보를 최종 확인하세요."
+            if status == "REFERENCE_READY"
+            else f"KOSHA MSDS 참고자료를 일부 조회했습니다({len(result_sections)}/{len(requested)}개 항목). 공급자 SDS를 우선 확인하세요."
+        )
+        if failures:
+            message += " 조회 실패: " + " / ".join(failures[:3])
+        return KOSHAFullMSDSResult(
+            status, normalized, message,
+            chem_id=chem_id, chemical_name=name, sections=result_sections,
+            checked_at_utc=checked,
+        )
+    except Exception as exc:
+        return KOSHAFullMSDSResult(
+            "API_ERROR", normalized,
+            "KOSHA MSDS 자동조회 중 오류가 발생했습니다: " + _safe_error(exc, key),
             checked_at_utc=checked,
         )
