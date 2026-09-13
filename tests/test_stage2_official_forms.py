@@ -88,9 +88,9 @@ class OfficialStatutoryFormTests(unittest.TestCase):
                 rows = official_forms.resolve_official_form_for_program(
                     "별지 제3호서식", "화학사고예방관리계획서"
                 )
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0].full_path, cap_form)
-            self.assertEqual(official_forms.official_form_bytes(rows[0]), b"cap-form")
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0].full_path, cap_form)
+                self.assertEqual(official_forms.official_form_bytes(rows[0]), b"cap-form")
 
     def test_official_form_bytes_are_exact_source_bytes(self):
         with tempfile.TemporaryDirectory() as tmp:
