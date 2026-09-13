@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
 from .project import Stage2Project
+
+
+CAP_REGISTRY_PATH = Path(__file__).resolve().parents[2] / "data" / "stage2" / "cap_manual_registry.json"
 
 
 @dataclass(frozen=True)
@@ -16,6 +23,12 @@ class RequirementSpec:
     evidence_required: bool = True
     required: bool = True
     legal_basis: str = ""
+    manual_pages: tuple[int, ...] = ()
+    input_kind: str = ""
+    source_owner: str = ""
+    suggested_evidence: tuple[str, ...] = ()
+    automation: str = ""
+    request_text: str = ""
 
 
 COMMON_REQUIREMENTS: tuple[RequirementSpec, ...] = (
@@ -121,62 +134,55 @@ PSM_REQUIREMENTS: tuple[RequirementSpec, ...] = (
 )
 
 
-CAP_REQUIREMENTS: tuple[RequirementSpec, ...] = (
-    RequirementSpec(
-        key="cap.basic_info",
+@lru_cache(maxsize=1)
+def load_cap_manual_registry() -> dict[str, Any]:
+    with CAP_REGISTRY_PATH.open("r", encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if raw.get("schema_version") != "cap-manual-registry-v1":
+        raise ValueError("지원하지 않는 화학사고예방관리계획서 매뉴얼 registry 버전입니다.")
+    return raw
+
+
+def cap_field_labels() -> dict[str, str]:
+    return dict(load_cap_manual_registry().get("field_labels") or {})
+
+
+def cap_manual_source() -> dict[str, Any]:
+    return dict(load_cap_manual_registry().get("source") or {})
+
+
+def _cap_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
+    pages = tuple(int(v) for v in row.get("manual_pages") or [])
+    basis = str(row.get("manual_basis") or "").strip()
+    description = str(row.get("request") or row.get("label") or "").strip()
+    return RequirementSpec(
+        key=str(row["key"]),
         system="CAP",
-        section="기본정보",
-        label="기본정보",
-        description="사업장과 취급 유해화학물질 등 계획서 기본정보",
-        field_keys=("business.company_name", "business.address", "inventory.chemicals"),
-        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 제3조",
-    ),
-    RequirementSpec(
-        key="cap.facility_info",
-        system="CAP",
-        section="시설정보",
-        label="시설정보",
-        description="유해화학물질 취급시설과 공정·저장시설의 정보 및 배치근거",
-        field_keys=("inventory.facilities", "documents.site_plan"),
-        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 제3조",
-    ),
-    RequirementSpec(
-        key="cap.offsite_assessment",
-        system="CAP",
-        section="장외평가정보",
-        label="장외평가정보",
-        description="사고시나리오, 영향범위 및 주변지역 관련 장외평가 작성자료",
-        field_keys=("cap.offsite_assessment",),
-        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 제3조",
-    ),
-    RequirementSpec(
-        key="cap.prevention_policy",
-        system="CAP",
-        section="사전관리방침",
-        label="사전관리방침",
-        description="사고예방을 위한 조직·운영·관리 방침과 이행자료",
-        field_keys=("cap.prevention_policy",),
-        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 제3조",
-    ),
-    RequirementSpec(
-        key="cap.internal_emergency",
-        system="CAP",
-        section="내부 비상대응 계획",
-        label="내부 비상대응 계획",
-        description="사업장 내부의 사고 대응조직, 절차, 장비, 대피·교육·훈련 자료",
-        field_keys=("emergency.internal_plan",),
-        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 제3조",
-    ),
-    RequirementSpec(
-        key="cap.external_emergency",
-        system="CAP",
-        section="외부 비상대응 계획",
-        label="외부 비상대응 계획",
-        description="사업장 외부 영향에 대한 연락·고지·대응 및 관계기관 연계 자료",
-        field_keys=("emergency.external_plan",),
-        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 제3조",
-    ),
-)
+        section=str(row.get("section") or ""),
+        label=str(row.get("label") or row["key"]),
+        description=description,
+        field_keys=tuple(str(v) for v in row.get("field_keys") or []),
+        evidence_required=True,
+        required=True,
+        legal_basis=basis,
+        manual_pages=pages,
+        input_kind=str(row.get("input_kind") or ""),
+        source_owner=str(row.get("source_owner") or ""),
+        suggested_evidence=tuple(str(v) for v in row.get("suggested_evidence") or []),
+        automation=str(row.get("automation") or ""),
+        request_text=str(row.get("request") or ""),
+    )
+
+
+def cap_requirement_specs(group: str) -> list[RequirementSpec]:
+    registry = load_cap_manual_registry()
+    selected: list[RequirementSpec] = []
+    for row in registry.get("requirements") or []:
+        applies_to = {str(v) for v in row.get("applies_to") or []}
+        if group and group not in applies_to:
+            continue
+        selected.append(_cap_requirement_from_row(row))
+    return selected
 
 
 def requirement_specs_for_project(project: Stage2Project) -> list[RequirementSpec]:
@@ -184,9 +190,7 @@ def requirement_specs_for_project(project: Stage2Project) -> list[RequirementSpe
     if project.psm_required is True:
         specs.extend(PSM_REQUIREMENTS)
     if project.cap_required is True:
-        specs.extend(CAP_REQUIREMENTS)
-
-    # Stage 1에서 2군으로 확정된 경우 외부 비상대응계획은 작성대상 registry에서 제외한다.
-    if project.cap_required is True and project.cap_group == "2군":
-        specs = [spec for spec in specs if spec.key != "cap.external_emergency"]
+        # Stage 1에서 작성수준이 확정되지 않았다면 fail closed: 1군 항목까지 포함한다.
+        group = project.cap_group if project.cap_group in {"1군", "2군"} else "1군"
+        specs.extend(cap_requirement_specs(group))
     return specs

@@ -3,10 +3,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from engine.stage2.cap_requests import build_cap_data_requests, cap_request_summary
 from engine.stage2.completeness import evaluate_project_completeness
 from engine.stage2.export import build_progress_workbook
 from engine.stage2.project import create_project_from_stage1_snapshot
-from engine.stage2.requirements import requirement_specs_for_project
+from engine.stage2.requirements import cap_field_labels, cap_manual_source, requirement_specs_for_project
 from engine.stage2.storage import (
     list_projects,
     load_project,
@@ -25,7 +26,7 @@ SYSTEM_LABELS = {
     "PSM": PSM_FULL,
     "CAP": CAP_FULL,
 }
-FIELD_LABELS = {
+BASE_FIELD_LABELS = {
     "business.company_name": "회사명",
     "business.address": "사업장 소재지",
     "inventory.chemicals": "화학물질 목록",
@@ -37,8 +38,6 @@ FIELD_LABELS = {
     "psm.hazard_assessment": "공정위험성평가",
     "psm.safe_operation_plan": "안전운전계획",
     "emergency.internal_plan": "내부 비상대응계획",
-    "cap.offsite_assessment": "장외평가정보",
-    "cap.prevention_policy": "사전관리방침",
     "emergency.external_plan": "외부 비상대응계획",
 }
 
@@ -58,8 +57,21 @@ def _truth_label(value: bool | None) -> str:
     return "미확정"
 
 
+def _field_labels() -> dict[str, str]:
+    labels = dict(BASE_FIELD_LABELS)
+    try:
+        labels.update(cap_field_labels())
+    except Exception:
+        pass
+    return labels
+
+
 def _field_label(key: str) -> str:
-    return FIELD_LABELS.get(key, key)
+    return _field_labels().get(key, key)
+
+
+def _pages(values) -> str:
+    return ", ".join(str(value) for value in values)
 
 
 def _project_selector() -> str | None:
@@ -136,7 +148,17 @@ st.caption(
     f"{project.stage1_source_fingerprint or '미기록'}"
 )
 
-summary_tab, register_tab, export_tab = st.tabs(["작성현황", "자료·근거 등록", "검토자료 내보내기"])
+if project.cap_required is True:
+    manual = cap_manual_source()
+    st.caption(
+        f"{CAP_FULL} 작성 실무지침: {manual.get('title', '')} "
+        f"({manual.get('document_code', '')}, {manual.get('pdf_pages', '')}쪽) · "
+        f"PDF SHA-256 {manual.get('sha256', '')}"
+    )
+
+summary_tab, request_tab, register_tab, export_tab = st.tabs(
+    ["작성현황", "회사 요청자료", "자료·근거 등록", "검토자료 내보내기"]
+)
 
 with summary_tab:
     st.markdown("### 법정 작성구조별 현황")
@@ -181,6 +203,49 @@ with summary_tab:
     else:
         st.info("아직 등록된 작성자료가 없습니다.")
 
+with request_tab:
+    if project.cap_required is not True:
+        st.info(f"이 프로젝트는 현재 {CAP_FULL} 작성 대상으로 확정되지 않았습니다.")
+    else:
+        summary = cap_request_summary(project)
+        requests = build_cap_data_requests(project)
+        left, middle, right = st.columns(3)
+        with left:
+            st.metric("미완료 작성항목", summary["request_count"])
+        with middle:
+            st.metric("우선 확인 필요", summary["high_priority_count"])
+        with right:
+            st.metric("작성수준", project.cap_group or "미확정")
+
+        st.info(
+            "Stage 1 또는 Stage 2에서 이미 VERIFIED/USER_CONFIRMED/CALCULATED 상태인 값은 다시 요청하지 않습니다. "
+            "AI_DRAFT와 HOLD는 확인 완료로 보지 않습니다."
+        )
+        if not requests:
+            st.success("현재 매뉴얼 registry 기준으로 추가 요청할 자료가 없습니다.")
+        else:
+            request_rows = []
+            for item in requests:
+                request_rows.append({
+                    "우선순위": item.priority,
+                    "절": item.section,
+                    "작성항목": item.label,
+                    "매뉴얼 쪽": _pages(item.manual_pages),
+                    "미확인 항목": ", ".join(item.missing_labels),
+                    "권장 증빙자료": ", ".join(item.suggested_evidence),
+                    "요청사항": item.request_text,
+                    "처리방식": item.automation,
+                })
+            st.dataframe(pd.DataFrame(request_rows), width="stretch", hide_index=True)
+
+        with st.expander("작성 매뉴얼 provenance", expanded=False):
+            source = summary["manual_source"]
+            st.write(f"문서명: {source.get('title', '')}")
+            st.write(f"문서번호: {source.get('document_code', '')}")
+            st.write(f"페이지 수: {source.get('pdf_pages', '')}")
+            st.code(str(source.get("sha256", "")))
+            st.caption(str(source.get("legal_note", "")))
+
 with register_tab:
     st.markdown("### 작성자료 등록")
     st.info(
@@ -198,6 +263,11 @@ with register_tab:
         ),
     )
     spec = spec_map[spec_key]
+    if spec.manual_pages:
+        st.caption(
+            f"작성 매뉴얼 관련 쪽: {_pages(spec.manual_pages)} · "
+            f"권장 증빙: {', '.join(spec.suggested_evidence) if spec.suggested_evidence else '별도 지정 없음'}"
+        )
     field_key = st.selectbox(
         "등록할 데이터 필드",
         list(spec.field_keys),
@@ -260,8 +330,8 @@ with register_tab:
 with export_tab:
     st.markdown("### 검토용 산출물")
     st.warning(
-        "현재 Stage 2-1 산출물은 작성현황·근거 추적용입니다. 법정 제출용 최종 DOCX/PDF는 "
-        "세부 작성엔진과 최종 검증 gate를 구현한 뒤 활성화합니다."
+        "현재 산출물은 작성현황·근거 추적·회사 요청자료 관리용입니다. 법정 제출용 최종 DOCX/PDF는 "
+        "세부 계산·검증 엔진과 최종 검증 gate를 구현한 뒤 활성화합니다."
     )
     json_bytes = project_json_bytes(project)
     xlsx_bytes = build_progress_workbook(project)
@@ -276,9 +346,9 @@ with export_tab:
         )
     with right:
         st.download_button(
-            "작성현황·근거 XLSX 다운로드",
+            "작성현황·근거·요청자료 XLSX 다운로드",
             data=xlsx_bytes,
-            file_name=f"{project.project_id}_작성현황_근거.xlsx",
+            file_name=f"{project.project_id}_작성현황_근거_요청자료.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             width="stretch",
         )
