@@ -6,9 +6,8 @@ import re
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from .completeness import evaluate_project_completeness
-from .intake import field_label
 from .project import Stage2Project
-from .statutory_report import build_statutory_report_draft
+from .statutory_report_v2 import build_statutory_report_draft
 
 
 PSM = "PSM"
@@ -98,9 +97,9 @@ def draft_filename(project: Stage2Project, system: str) -> str:
 def build_report_draft(project: Stage2Project, system: str) -> bytes:
     """Build a review-only DOCX using the current statutory annex forms.
 
-    The legal forms and legal writing order are the output schema. Company facts
-    are placed into those fixed cells/sections. Unknown facts are shown as
-    ``[확인 필요]`` and are never inferred merely to complete a form.
+    The statutory forms and their writing order are the output schema. Company
+    facts are placed into fixed legal-form cells/sections. Unknown facts remain
+    ``[확인 필요]`` and are never invented merely to make the document look full.
     """
     system = _normalize_system(system)
     status = report_generation_status(project, system)
