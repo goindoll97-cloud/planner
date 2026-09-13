@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
 import streamlit as st
 
 from engine.stage2.project import create_project_from_stage1_snapshot
-from engine.stage2.storage import list_projects, load_project, save_project
+from engine.stage2.storage import delete_project, list_projects, load_project, save_project
 
 
 PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 SNAPSHOT_KEY = "_stage2_stage1_snapshot"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
+FLASH_KEY = "_stage2_project_flash"
+KST = ZoneInfo("Asia/Seoul")
 
 
 st.set_page_config(page_title="작성범위 선택", page_icon="🧭", layout="wide")
@@ -19,6 +24,10 @@ st.caption(
     "작성범위에서 제외하더라도 Stage 1의 법적 판정은 변경되지 않습니다."
 )
 
+flash = st.session_state.pop(FLASH_KEY, "")
+if flash:
+    st.success(flash)
+
 
 def _legal_status(value: bool | None) -> str:
     if value is True:
@@ -26,6 +35,19 @@ def _legal_status(value: bool | None) -> str:
     if value is False:
         return "비대상"
     return "미확정"
+
+
+def _format_datetime(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "기록 없음"
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(KST).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return text
 
 
 def _project_selector() -> str | None:
@@ -44,7 +66,7 @@ def _project_selector() -> str | None:
                 project = create_project_from_stage1_snapshot(snapshot)
                 save_project(project)
                 st.session_state[ACTIVE_PROJECT_KEY] = project.project_id
-                st.success(f"새 작성 프로젝트를 생성했습니다: {project.project_id}")
+                st.session_state[FLASH_KEY] = f"새 작성 프로젝트를 생성했습니다: {project.project_id}"
                 st.rerun()
 
         projects = list_projects()
@@ -52,10 +74,12 @@ def _project_selector() -> str | None:
             st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단을 완료하세요.")
             return None
 
+        by_id = {row["project_id"]: row for row in projects}
         labels = {
             row["project_id"]: (
                 f"{row['company_name']}"
                 + (f" / {row['site_name']}" if row.get("site_name") else "")
+                + f" · 생성 {_format_datetime(row.get('created_at'))}"
                 + f" · {row['project_id']}"
             )
             for row in projects
@@ -70,6 +94,40 @@ def _project_selector() -> str | None:
             format_func=lambda pid: labels.get(pid, pid),
         )
         st.session_state[ACTIVE_PROJECT_KEY] = selected
+
+        selected_meta = by_id[selected]
+        c1, c2 = st.columns(2)
+        c1.caption(f"생성일시 · {_format_datetime(selected_meta.get('created_at'))} (한국시간)")
+        c2.caption(f"최근 수정일시 · {_format_datetime(selected_meta.get('updated_at'))} (한국시간)")
+
+        with st.expander("프로젝트 관리", expanded=False):
+            st.warning(
+                "프로젝트를 삭제하면 이 프로젝트에 저장된 통합 작성자료 정보와 첨부자료가 함께 삭제됩니다. "
+                "Stage 1 판정결과 자체를 비대상으로 변경하거나 법적 판정을 수정하는 기능은 아닙니다."
+            )
+            confirm = st.checkbox(
+                f"{selected} 프로젝트와 저장된 첨부자료를 삭제합니다.",
+                key=f"delete_confirm_{selected}",
+            )
+            if st.button(
+                "선택한 작성 프로젝트 삭제",
+                type="secondary",
+                width="stretch",
+                disabled=not confirm,
+                key=f"delete_project_{selected}",
+            ):
+                try:
+                    removed = delete_project(selected)
+                except Exception as exc:
+                    st.error(f"프로젝트를 삭제하지 못했습니다: {type(exc).__name__}: {exc}")
+                else:
+                    if removed:
+                        st.session_state.pop(ACTIVE_PROJECT_KEY, None)
+                        st.session_state[FLASH_KEY] = f"작성 프로젝트를 삭제했습니다: {selected}"
+                        st.rerun()
+                    else:
+                        st.warning("이미 삭제되었거나 저장된 프로젝트를 찾을 수 없습니다.")
+
         return selected
 
 
