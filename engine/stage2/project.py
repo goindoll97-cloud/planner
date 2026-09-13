@@ -112,14 +112,45 @@ class Stage2Project:
     site_name: str = ""
     created_at: str = field(default_factory=_utc_now)
     updated_at: str = field(default_factory=_utc_now)
+
+    # Stage 1 legal applicability. These values must never be changed merely
+    # because a user chooses not to author a document in this project.
     psm_required: bool | None = None
     cap_required: bool | None = None
     cap_group: str = ""
+
+    # Stage 2 authoring scope. The authoring choice is operational only and
+    # does not alter the Stage 1 legal decision.
+    scope_confirmed: bool = False
+    psm_selected: bool = False
+    cap_selected: bool = False
+
     stage1_source_fingerprint: str = ""
     stage1_snapshot: dict[str, Any] = field(default_factory=dict)
     fields: dict[str, FieldRecord] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
-    schema_version: str = "stage2-project-v1"
+    schema_version: str = "stage2-project-v2"
+
+    @property
+    def psm_in_scope(self) -> bool:
+        return bool(self.scope_confirmed and self.psm_selected and self.psm_required is True)
+
+    @property
+    def cap_in_scope(self) -> bool:
+        return bool(self.scope_confirmed and self.cap_selected and self.cap_required is True)
+
+    def set_authoring_scope(self, *, psm_selected: bool, cap_selected: bool) -> None:
+        """Set the Stage 2 authoring scope without altering legal applicability."""
+        if psm_selected and self.psm_required is not True:
+            raise ValueError("Stage 1에서 공정안전보고서 제출 대상으로 확정되지 않은 프로젝트는 작성범위로 선택할 수 없습니다.")
+        if cap_selected and self.cap_required is not True:
+            raise ValueError("Stage 1에서 화학사고예방관리계획서 작성·제출 대상으로 확정되지 않은 프로젝트는 작성범위로 선택할 수 없습니다.")
+        if not psm_selected and not cap_selected:
+            raise ValueError("이번 프로젝트에서 작성할 문서를 하나 이상 선택해야 합니다.")
+        self.psm_selected = bool(psm_selected)
+        self.cap_selected = bool(cap_selected)
+        self.scope_confirmed = True
+        self.touch()
 
     def set_field(
         self,
@@ -161,29 +192,49 @@ class Stage2Project:
             str(key): FieldRecord.from_dict(value)
             for key, value in dict(raw.get("fields") or {}).items()
         }
+
+        # Backward compatibility: projects created before scope selection was
+        # introduced are treated as having selected every legally applicable
+        # document so existing work does not silently disappear.
+        has_scope_fields = "scope_confirmed" in raw or "psm_selected" in raw or "cap_selected" in raw
+        psm_required = raw.get("psm_required")
+        cap_required = raw.get("cap_required")
+        if has_scope_fields:
+            scope_confirmed = bool(raw.get("scope_confirmed", False))
+            psm_selected = bool(raw.get("psm_selected", False))
+            cap_selected = bool(raw.get("cap_selected", False))
+        else:
+            scope_confirmed = True
+            psm_selected = psm_required is True
+            cap_selected = cap_required is True
+
         return cls(
             project_id=str(raw.get("project_id") or ""),
             company_name=str(raw.get("company_name") or ""),
             site_name=str(raw.get("site_name") or ""),
             created_at=str(raw.get("created_at") or _utc_now()),
             updated_at=str(raw.get("updated_at") or _utc_now()),
-            psm_required=raw.get("psm_required"),
-            cap_required=raw.get("cap_required"),
+            psm_required=psm_required,
+            cap_required=cap_required,
             cap_group=str(raw.get("cap_group") or ""),
+            scope_confirmed=scope_confirmed,
+            psm_selected=psm_selected,
+            cap_selected=cap_selected,
             stage1_source_fingerprint=str(raw.get("stage1_source_fingerprint") or ""),
             stage1_snapshot=dict(raw.get("stage1_snapshot") or {}),
             fields=fields,
             notes=list(raw.get("notes") or []),
-            schema_version=str(raw.get("schema_version") or "stage2-project-v1"),
+            schema_version=str(raw.get("schema_version") or "stage2-project-v2"),
         )
 
 
 def create_project_from_stage1_snapshot(snapshot: Mapping[str, Any]) -> Stage2Project:
     """Create a Stage-2 project from the last completed Stage-1 decision.
 
-    The snapshot is expected to contain only facts already supplied in the
-    company workbook plus the Stage-1 rule-engine decision. No new legal fact
-    is inferred here. Unknown values remain HOLD/None.
+    The snapshot contains only facts already supplied in the company workbook
+    plus the Stage-1 rule-engine decision. Stage 2 does not re-decide legal
+    applicability. A newly created project deliberately has no authoring scope
+    until the user selects which legally applicable document(s) to prepare.
     """
     business = dict(snapshot.get("business") or {})
     decision = dict(snapshot.get("decision") or {})
@@ -209,6 +260,9 @@ def create_project_from_stage1_snapshot(snapshot: Mapping[str, Any]) -> Stage2Pr
         psm_required=_subject_from_status(decision.get("psm_status")),
         cap_required=_subject_from_status(decision.get("cap_status")),
         cap_group=_cap_group_from_status(decision.get("cap_status")),
+        scope_confirmed=False,
+        psm_selected=False,
+        cap_selected=False,
         stage1_source_fingerprint=str(snapshot.get("source_fingerprint") or ""),
         stage1_snapshot={
             "decision": decision,
