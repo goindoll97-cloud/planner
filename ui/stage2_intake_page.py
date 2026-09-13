@@ -38,7 +38,11 @@ st.caption(
 def _project_selector() -> str | None:
     projects = list_projects()
     if not projects:
-        st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단과 2. 작성범위 선택을 진행하세요.")
+        st.info(
+            "저장된 작성 프로젝트가 없습니다. 2. 작성범위 선택에서 Stage 1 판정결과로 프로젝트를 만들거나, "
+            "이미 작성한 통합 작성자료를 이용해 Stage 2를 직접 시작하세요."
+        )
+        st.page_link("ui/stage2_scope_page.py", label="2. 작성범위 선택·Stage 2 직접 시작", icon="🧭")
         return None
     labels = {
         row["project_id"]: (
