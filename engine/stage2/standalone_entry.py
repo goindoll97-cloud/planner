@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Mapping
+from typing import Any
 import re
 
 from openpyxl import load_workbook
@@ -119,11 +119,11 @@ def _parse_table(ws, header_row: int = 4) -> list[dict[str, Any]]:
 
 
 def inspect_standalone_workbook(workbook_bytes: bytes) -> StandaloneWorkbookPreview:
-    """Read only the Stage 2 workbook contract needed to start authoring directly.
+    """Read the program workbook contract needed to start Stage 2 directly.
 
     This does not determine legal applicability. It only reads the authoring
-    scope that is already encoded in the program workbook and, for CAP, the
-    visible writing-level value entered by the company.
+    scope encoded in the workbook and, for CAP, the visible writing-level value
+    confirmed by the company.
     """
     wb = load_workbook(BytesIO(workbook_bytes), data_only=False)
     if META_SHEET not in wb.sheetnames:
@@ -175,12 +175,12 @@ def create_project_from_standalone_workbook(
     *,
     workbook_evidence: EvidenceRef | None = None,
 ) -> tuple[Stage2Project, IntegratedImportResult, StandaloneWorkbookPreview]:
-    """Create an authoring-only project directly from a completed Stage 2 workbook.
+    """Create an authoring-only project directly from a completed workbook.
 
     The resulting project deliberately does not claim that legal applicability
-    was decided. Internally the selected report flags are enabled only so the
-    Stage 2 authoring/validation/report pipeline can run. A permanent project
-    note and entry-mode marker preserve that distinction.
+    was decided. The selected report flags enable the Stage 2 authoring,
+    validation and draft-report pipeline only. A permanent marker preserves
+    that distinction for later review.
     """
     preview = inspect_standalone_workbook(workbook_bytes)
     evidence = [workbook_evidence] if workbook_evidence is not None else []
@@ -232,6 +232,18 @@ def create_project_from_standalone_workbook(
         workbook_bytes,
         workbook_evidence=workbook_evidence,
     )
+
+    # A workbook originally produced for group 1 may later be edited to group 2
+    # for a test or a changed authoring case. Never retain external emergency
+    # response fields when the visible writing level is group 2.
+    if preview.cap_selected and preview.cap_group == "2군":
+        removed = False
+        for key in list(project.fields):
+            if key.startswith("cap.external."):
+                del project.fields[key]
+                removed = True
+        if removed:
+            project.touch()
 
     # Stage 1 normally supplies these common inventory facts. In direct Stage 2
     # mode, mirror the completed integrated tables so PSM/CAP share the same
