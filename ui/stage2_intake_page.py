@@ -5,7 +5,6 @@ import streamlit as st
 from engine.stage2.guidance import (
     ACTION_EXCEL,
     ACTION_FILE,
-    ACTION_ORDER,
     ACTION_PROGRAM,
     ACTION_REVIEW,
     build_requirement_guidance,
@@ -20,14 +19,12 @@ from engine.stage2.intake import (
     COVERAGE_NOT_APPLICABLE,
     build_intake_catalog,
 )
-from engine.stage2.official_forms import official_form_bytes, resolve_official_form_for_program
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 
 
 PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
-LEGAL_FOCUS_KEY = "_legal_focus_requirement_key"
 
 
 st.set_page_config(page_title="통합 작성자료", page_icon="📥", layout="wide")
@@ -59,49 +56,17 @@ def _project_selector() -> str | None:
     return selected
 
 
-def _download_official_form(reference: str, program_label: str, *, key_prefix: str) -> None:
-    matches = resolve_official_form_for_program(reference, program_label)
-    if len(matches) == 1:
-        form = matches[0]
-        st.download_button(
-            f"{reference} 공식 PDF",
-            data=official_form_bytes(form),
-            file_name=form.file_name,
-            mime="application/pdf",
-            key=f"{key_prefix}_{form.law_key}_{reference}",
-            width="stretch",
-        )
-        meta = []
-        if form.effective_date:
-            meta.append(f"시행일 {form.effective_date}")
-        if form.issue_number:
-            meta.append(f"발령번호 {form.issue_number}")
-        meta.append(f"SHA-256 {form.sha256[:16]}…")
-        st.caption(" · ".join(meta))
-    elif len(matches) > 1:
-        st.warning(f"{reference}: 적용 가능한 공식 서식이 둘 이상 확인되어 자동 선택하지 않습니다.")
-    else:
-        st.caption(f"{reference}: 현재 최신성 확인이 완료된 공식 PDF를 직접 연결하지 못했습니다.")
-
-
-def _show_basis_entries(title: str, entries) -> None:
-    st.write(f"**{title}**")
-    if not entries:
-        if title == "법적 의무 근거":
-            st.caption(
-                "현재 작성 registry에서 이 세부 항목에 직접 연결된 법률·시행령·시행규칙 조문을 확인하지 못했습니다. "
-                "근거를 임의로 만들지 않고, 아래에 확인된 세부 작성기준·작성 참고자료만 표시합니다."
-            )
-        else:
-            st.caption("현재 구조화된 직접 근거가 없습니다.")
-        return
-    for entry in entries:
-        st.markdown(f"- **{entry.system} · {entry.section} · {entry.label}**  \n  {entry.text}")
-
-
-def _open_legal_library(requirement_key: str) -> None:
-    st.session_state[LEGAL_FOCUS_KEY] = requirement_key
-    st.switch_page("ui/legal_evidence_page.py")
+def _compact_missing_line(item, guidance) -> str:
+    location = " → ".join(guidance.workbook_locations)
+    if guidance.action_type == ACTION_EXCEL:
+        suffix = f" · 작성 위치: {location}" if location else ""
+        return f"- **{item.system_label} · {item.label}**{suffix}"
+    if guidance.action_type == ACTION_FILE:
+        suffix = f" · 목록 위치: {location}" if location else ""
+        return f"- **{item.system_label} · {item.label}** · 실제 파일 업로드 필요{suffix}"
+    if guidance.action_type == ACTION_REVIEW:
+        return f"- **{item.system_label} · {item.label}** · 접수자료 사람 확인 필요"
+    return f"- **{item.system_label} · {item.label}**"
 
 
 project_id = _project_selector()
@@ -192,7 +157,6 @@ if integrated_upload is not None:
             )
             for warning in result.warnings:
                 st.warning(warning)
-            st.rerun()
 
 st.markdown("### 3. 도면·첨부자료 한 번에 업로드")
 st.caption(
@@ -225,95 +189,40 @@ if st.button("도면·첨부자료 접수", width="stretch"):
                 unlinked += 1
         save_project(project)
         st.success(f"첨부자료 {len(attachments)}개를 접수했습니다. 목록 자동연결 {linked}개, 연결대상 확인 필요 {unlinked}개입니다.")
-        st.rerun()
 
 catalog = build_intake_catalog(project)
 unresolved = [
-    item for item in catalog
+    item
+    for item in catalog
     if item.coverage_status not in {COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE}
 ]
-guided = [(item, build_requirement_guidance(project, item)) for item in unresolved]
-by_action = {action: [] for action in ACTION_ORDER}
-for item, guidance in guided:
-    by_action.setdefault(guidance.action_type, []).append((item, guidance))
+user_actions = []
+for item in unresolved:
+    guidance = build_requirement_guidance(project, item)
+    if guidance.action_type == ACTION_PROGRAM:
+        continue
+    user_actions.append((item, guidance))
 
-st.markdown("### 4. 해야 할 일·작성상태 확인")
-st.caption(
-    "법령 목차 순서보다 ‘지금 회사가 무엇을 해야 하는지’를 먼저 보여줍니다. "
-    "각 항목의 ‘왜 필요한가?’를 열면 그 자리에서 법적 의무 근거, 세부 작성기준, 작성 참고자료를 확인할 수 있습니다."
-)
-
-completed_count = sum(item.coverage_status == COVERAGE_CONFIRMED for item in catalog)
-c1, c2, c3, c4, c5 = st.columns(5)
-with c1:
-    st.metric("확인 완료", completed_count)
-with c2:
-    st.metric("Excel 추가작성", len(by_action.get(ACTION_EXCEL, [])))
-with c3:
-    st.metric("파일 업로드", len(by_action.get(ACTION_FILE, [])))
-with c4:
-    st.metric("사람 확인", len(by_action.get(ACTION_REVIEW, [])))
-with c5:
-    st.metric("프로그램 처리", len(by_action.get(ACTION_PROGRAM, [])))
-
-if not unresolved:
-    st.success("현재 통합 작성자료 기준으로 추가 확인이 필요한 작성항목이 없습니다.")
+if user_actions:
+    st.markdown("### 추가로 필요한 항목")
+    st.caption(
+        "세부 법령 설명은 이 화면에서 반복하지 않습니다. 아래 항목만 보완한 뒤 다시 업로드하면 됩니다."
+    )
+    with st.expander(f"추가 작성·업로드 필요 {len(user_actions)}건", expanded=False):
+        grouped = (
+            (ACTION_EXCEL, "통합 Excel에 추가 작성"),
+            (ACTION_FILE, "파일 추가 업로드"),
+            (ACTION_REVIEW, "사람 확인"),
+        )
+        for action_type, title in grouped:
+            rows = [(item, guidance) for item, guidance in user_actions if guidance.action_type == action_type]
+            if not rows:
+                continue
+            st.write(f"**{title} · {len(rows)}건**")
+            for item, guidance in rows:
+                st.markdown(_compact_missing_line(item, guidance))
 else:
-    section_icons = {
-        ACTION_EXCEL: "📝",
-        ACTION_FILE: "📎",
-        ACTION_REVIEW: "👤",
-        ACTION_PROGRAM: "⚙️",
-    }
-    for action in ACTION_ORDER:
-        rows = by_action.get(action, [])
-        if not rows:
-            continue
-        st.markdown(f"#### {section_icons.get(action, '•')} {action} · {len(rows)}건")
-        for item, guidance in rows:
-            title = f"{item.system_label} · {item.label} — {item.coverage_status}"
-            with st.container(border=True):
-                st.markdown(f"**{title}**")
-                st.write(f"**무엇을 해야 하나요?** {guidance.action_text}")
-                if guidance.workbook_locations:
-                    st.write("**작성·확인 위치** " + " → ".join(guidance.workbook_locations))
-                st.write(f"**현재 부족내용** {guidance.current_gap}")
-                if item.suggested_evidence:
-                    st.caption("확인에 도움이 되는 자료 예: " + " · ".join(item.suggested_evidence))
-
-                with st.expander(f"왜 필요한가? · {item.label}", expanded=False):
-                    _show_basis_entries("법적 의무 근거", guidance.statutory_bases)
-                    st.write("")
-                    _show_basis_entries("세부 작성기준", guidance.detailed_bases)
-
-                    st.write("")
-                    st.write("**작성 참고자료**")
-                    if guidance.references:
-                        for ref in guidance.references:
-                            pages = ", ".join(str(page) for page in ref.pages)
-                            st.markdown(f"- {ref.title}" + (f" · 관련 쪽 {pages}" if pages else ""))
-                    else:
-                        st.caption("현재 연결된 공식 매뉴얼·작성예시 페이지가 없습니다.")
-
-                    if guidance.form_references:
-                        st.write("")
-                        st.write("**관련 법정 서식**")
-                        for form in guidance.form_references:
-                            _download_official_form(
-                                form,
-                                item.system_label,
-                                key_prefix=f"reason_{item.requirement_key}",
-                            )
-
-                    st.caption(
-                        "위 근거는 현재 registry에 구조화되어 확인되는 범위만 표시합니다. 직접 근거가 없는 경우 프로그램이 임의의 조문을 만들어 표시하지 않습니다."
-                    )
-                    if st.button(
-                        "법령·근거 라이브러리에서 이 항목 자세히 보기",
-                        key=f"legal_library_{item.requirement_key}",
-                        width="stretch",
-                    ):
-                        _open_legal_library(item.requirement_key)
+    st.success("회사에서 추가로 작성하거나 업로드할 항목이 없습니다. 다음 교차검증으로 진행하세요.")
 
 st.info(
     "통합 작성자료에 입력된 회사 사실은 보고서 초안 작성에 사용할 수 있지만, 빈칸이나 확인되지 않은 내용은 프로그램이 임의로 만들어 채우지 않습니다."
