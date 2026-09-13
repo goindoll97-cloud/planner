@@ -18,7 +18,7 @@ from engine.stage2.official_forms import (
 LEGAL_FOCUS_KEY = "_legal_focus_requirement_key"
 
 st.set_page_config(page_title="법령·근거 라이브러리", page_icon="📚", layout="wide")
-st.title("📚 7. 법령·근거 라이브러리")
+st.title("📚 법령·근거 라이브러리")
 st.caption(
     "작성항목을 검색하면 그 항목에 현재 구조화되어 연결된 법적 근거, 세부 작성기준, 작성 참고자료를 먼저 보여줍니다. "
     "승인 근거 PDF와 현행 공식 별지서식은 아래 전체 자료 보관영역에서 확인할 수 있습니다."
