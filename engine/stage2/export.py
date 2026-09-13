@@ -8,6 +8,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 
 from .cap_requests import build_cap_data_requests
 from .completeness import evaluate_project_completeness
+from .intake import build_intake_catalog
 from .project import Stage2Project
 from .psm_requests import build_psm_data_requests
 from .requirements import (
@@ -29,10 +30,10 @@ BASE_FIELD_LABELS = {
     "business.address": "사업장 소재지",
     "inventory.chemicals": "화학물질 목록",
     "inventory.facilities": "시설·설비 목록",
-    "process.description": "공정 설명",
+    "process.description": "공정설명서",
     "documents.pfd": "공정흐름도(PFD)",
-    "documents.pid": "배관계장도(P&ID)",
-    "documents.site_plan": "사업장·설비 배치도",
+    "documents.pid": "공정배관·계장도(P&ID)",
+    "documents.site_plan": "각종 건물·설비의 배치도",
     "emergency.internal_plan": "내부 비상대응계획",
     "emergency.external_plan": "외부 비상대응계획",
 }
@@ -76,15 +77,18 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
         ("프로젝트 ID", project.project_id),
         ("회사명", project.company_name),
         ("사업장명", project.site_name),
-        ("공정안전보고서 대상", project.psm_required),
-        ("화학사고예방관리계획서 대상", project.cap_required),
+        ("공정안전보고서 법적 대상 여부", project.psm_required),
+        ("화학사고예방관리계획서 법적 대상 여부", project.cap_required),
         ("화학사고예방관리계획서 작성수준", project.cap_group),
+        ("작성범위 선택 완료", project.scope_confirmed),
+        ("공정안전보고서 작성 지원 선택", project.psm_in_scope),
+        ("화학사고예방관리계획서 작성 지원 선택", project.cap_in_scope),
         ("Stage 1 원본 SHA-256", project.stage1_source_fingerprint),
         ("생성일", project.created_at),
         ("최종수정일", project.updated_at),
         ("스키마", project.schema_version),
     ]
-    if project.psm_required is True:
+    if project.psm_in_scope:
         sources = psm_example_source()
         source = sources.get("source", {})
         outline = sources.get("outline_source", {})
@@ -98,7 +102,7 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
             ("공정안전보고서 현행 법적 근거", f"{legal_ref.get('statute', '')} / {legal_ref.get('rule', '')}"),
             ("공정안전보고서 현행 세부고시", legal_ref.get("administrative_rule", "")),
         ])
-    if project.cap_required is True:
+    if project.cap_in_scope:
         source = cap_manual_source()
         rows.extend([
             ("화학사고예방관리계획서 작성 매뉴얼", source.get("title", "")),
@@ -110,12 +114,12 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
     for r, (label, value) in enumerate(rows, start=2):
         ws.cell(r, 1, label)
         ws.cell(r, 2, "" if value is None else str(value))
-    ws.column_dimensions["A"].width = 42
+    ws.column_dimensions["A"].width = 46
     ws.column_dimensions["B"].width = 90
 
     completeness = evaluate_project_completeness(project)
     ws2 = wb.create_sheet("작성현황")
-    _header(ws2, 1, ["구분", "절", "작성항목", "상태", "완성도(%)", "미확인 항목", "AI 초안 항목", "HOLD 항목", "근거"])
+    _header(ws2, 1, ["구분", "작성구조", "작성항목", "상태", "완성도(%)", "미확인 항목", "AI 초안 항목", "검증 보류 항목", "작성근거"])
     for r, item in enumerate(completeness["requirements"], start=2):
         values = [
             SYSTEM_LABELS.get(item["system"], item["system"]),
@@ -130,10 +134,37 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
         ]
         for c, value in enumerate(values, start=1):
             ws2.cell(r, c, value)
-    for col, width in {"A": 28, "B": 24, "C": 34, "D": 18, "E": 14, "F": 50, "G": 42, "H": 42, "I": 72}.items():
+    for col, width in {"A": 28, "B": 26, "C": 38, "D": 18, "E": 14, "F": 50, "G": 42, "H": 42, "I": 72}.items():
         ws2.column_dimensions[col].width = width
 
-    if project.psm_required is True:
+    ws_intake = wb.create_sheet("자료준비·접수현황")
+    _header(ws_intake, 1, [
+        "구분", "작성구조", "작성항목", "자료상태", "현재 확인되지 않은 항목",
+        "접수 후 확인이 필요한 항목", "확인 가능한 자료 예", "관련 법정 서식", "작성근거", "작성 참고자료", "관련 쪽"
+    ])
+    for r, item in enumerate(build_intake_catalog(project), start=2):
+        values = [
+            item.system_label,
+            item.section,
+            item.label,
+            item.coverage_status,
+            ", ".join(item.missing_labels),
+            ", ".join(item.received_unconfirmed_labels),
+            ", ".join(item.suggested_evidence),
+            ", ".join(item.form_references),
+            item.legal_basis,
+            item.reference_label,
+            ", ".join(str(v) for v in item.reference_pages),
+        ]
+        for c, value in enumerate(values, start=1):
+            ws_intake.cell(r, c, value)
+    for col, width in {
+        "A": 28, "B": 26, "C": 38, "D": 18, "E": 55, "F": 55,
+        "G": 70, "H": 34, "I": 78, "J": 50, "K": 18
+    }.items():
+        ws_intake.column_dimensions[col].width = width
+
+    if project.psm_in_scope:
         ws_psm = wb.create_sheet("공정안전보고서 요청자료")
         _header(ws_psm, 1, [
             "우선순위", "구분", "작성항목", "예시집 PDF 페이지", "미확인 항목",
@@ -161,9 +192,9 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
         }.items():
             ws_psm.column_dimensions[col].width = width
 
-    if project.cap_required is True:
+    if project.cap_in_scope:
         ws_req = wb.create_sheet("화학사고예방관리계획서 요청자료")
-        _header(ws_req, 1, ["우선순위", "절", "작성항목", "매뉴얼 페이지", "미확인 항목", "권장 증빙자료", "요청문구", "자동화 방식"])
+        _header(ws_req, 1, ["우선순위", "작성구조", "작성항목", "매뉴얼 페이지", "미확인 항목", "권장 증빙자료", "요청문구", "자동화 방식"])
         for r, item in enumerate(build_cap_data_requests(project), start=2):
             values = [
                 item.priority,
@@ -177,7 +208,7 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
             ]
             for c, value in enumerate(values, start=1):
                 ws_req.cell(r, c, value)
-        for col, width in {"A": 12, "B": 24, "C": 32, "D": 18, "E": 52, "F": 65, "G": 75, "H": 28}.items():
+        for col, width in {"A": 12, "B": 26, "C": 34, "D": 18, "E": 52, "F": 65, "G": 75, "H": 28}.items():
             ws_req.column_dimensions[col].width = width
 
     ws3 = wb.create_sheet("필드")
@@ -191,7 +222,7 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
         values = [record.key, record.label, value, record.status, record.note, record.updated_at, len(record.evidence)]
         for c, cell_value in enumerate(values, start=1):
             ws3.cell(r, c, cell_value)
-    for col, width in {"A": 38, "B": 34, "C": 80, "D": 18, "E": 50, "F": 28, "G": 10}.items():
+    for col, width in {"A": 38, "B": 38, "C": 80, "D": 18, "E": 55, "F": 28, "G": 10}.items():
         ws3.column_dimensions[col].width = width
     ws3.column_dimensions["A"].hidden = True
 
@@ -205,7 +236,7 @@ def build_progress_workbook(project: Stage2Project) -> bytes:
             for c, cell_value in enumerate(values, start=1):
                 ws4.cell(r, c, cell_value)
             r += 1
-    for col, width in {"A": 38, "B": 34, "C": 22, "D": 42, "E": 68, "F": 12, "G": 70, "H": 50}.items():
+    for col, width in {"A": 38, "B": 38, "C": 22, "D": 42, "E": 68, "F": 12, "G": 70, "H": 50}.items():
         ws4.column_dimensions[col].width = width
     ws4.column_dimensions["A"].hidden = True
 
