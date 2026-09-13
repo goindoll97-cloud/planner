@@ -37,12 +37,8 @@ def _priority(spec) -> str:
 
 
 def build_cap_data_requests(project: Stage2Project) -> list[CAPDataRequest]:
-    """Return only unresolved CAP inputs, grouped by manual requirement.
-
-    Confirmed Stage-1/Stage-2 facts are never requested again. AI_DRAFT is not
-    considered confirmed and therefore remains a review/request item.
-    """
-    if project.cap_required is not True:
+    """Return unresolved CAP inputs only when CAP is selected for authoring."""
+    if not project.cap_in_scope:
         return []
 
     group = project.cap_group if project.cap_group in {"1군", "2군"} else "1군"
