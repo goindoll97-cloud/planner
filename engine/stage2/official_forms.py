@@ -90,7 +90,7 @@ def _row(law_key: str, path: Path, form_reference: str) -> OfficialFormFile | No
 def resolve_official_form(
     form_reference: str,
     *,
-    candidate_law_keys: Iterable[str] = ("CAP_DRAFT", "PSM_NOTICE"),
+    candidate_law_keys: Iterable[str],
 ) -> list[OfficialFormFile]:
     """Resolve a statutory 별지서식 only from CURRENT official observed PDFs."""
     results: list[OfficialFormFile] = []
@@ -100,6 +100,18 @@ def resolve_official_form(
             if item is not None:
                 results.append(item)
     return results
+
+
+def resolve_official_form_for_program(form_reference: str, program_label: str) -> list[OfficialFormFile]:
+    """Resolve a form only within the selected legal regime.
+
+    Form numbers may overlap across regulations, so cross-regime number-only
+    matching is intentionally prohibited.
+    """
+    return resolve_official_form(
+        form_reference,
+        candidate_law_keys=PROGRAM_FORM_SOURCES.get(program_label, ()),
+    )
 
 
 def list_official_forms_for_program(program_label: str) -> list[OfficialFormFile]:
@@ -116,8 +128,8 @@ def list_official_forms_for_program(program_label: str) -> list[OfficialFormFile
     return results
 
 
-def unique_official_form(form_reference: str) -> OfficialFormFile | None:
-    rows = resolve_official_form(form_reference)
+def unique_official_form_for_program(form_reference: str, program_label: str) -> OfficialFormFile | None:
+    rows = resolve_official_form_for_program(form_reference, program_label)
     return rows[0] if len(rows) == 1 and rows[0].full_path.exists() else None
 
 
