@@ -78,81 +78,133 @@ def _render_requirement(spec, *, expanded: bool = False) -> None:
                 if len(matches) == 1:
                     form = matches[0]
                     st.download_button(
-                        f"{reference} 다운로드",
+                        f"{reference} 공식 PDF",
                         data=official_form_bytes(form),
                         file_name=form.file_name,
-                        mime=form.mime_type,
-                        key=f"library_form_{spec.key}_{form.source_id}_{form.form_no}",
+                        mime="application/pdf",
+                        key=f"library_form_{spec.key}_{form.law_key}_{reference}",
                         width="stretch",
                     )
+                    st.caption(
+                        f"시행일 {form.effective_date or '-'} · 발령번호 {form.issue_number or '-'} · SHA-256 {form.sha256[:16]}…"
+                    )
                 elif len(matches) > 1:
-                    st.caption(f"{reference}: 동일 번호의 현행 공식 서식이 여러 건 있어 전체 자료 보관영역에서 확인하세요.")
+                    st.warning(f"{reference}: 현재 공식자료에서 둘 이상의 서식이 연결되어 자동 선택하지 않습니다.")
                 else:
-                    st.caption(f"{reference}: 현재 등록된 현행 공식 서식 파일을 찾지 못했습니다.")
+                    st.caption(f"{reference}: 현재 CURRENT 상태의 공식 PDF를 직접 연결하지 못했습니다.")
 
+        if spec.suggested_evidence:
+            st.write("**회사에서 확인할 수 있는 자료 예**")
+            st.write(" · ".join(spec.suggested_evidence))
+        st.caption(f"registry key: {spec.key}")
+
+
+specs = all_requirement_specs_for_library()
+focus_key = str(st.session_state.get(LEGAL_FOCUS_KEY) or "")
+focus_spec = next((spec for spec in specs if spec.key == focus_key), None)
+default_query = focus_spec.label if focus_spec is not None else ""
 
 st.markdown("### 작성항목 근거 검색")
-specs = all_requirement_specs_for_library()
 query = st.text_input(
-    "작성항목 또는 근거 검색",
-    placeholder="예: 공정흐름도, 변경요소 관리계획, 내부 비상대응계획",
+    "찾고 싶은 작성항목을 입력하세요",
+    value=default_query,
+    placeholder="예: 공정흐름도, P&ID, 안전밸브, 비상연락체계",
 )
 
-focus_key = str(st.session_state.get(LEGAL_FOCUS_KEY) or "").strip()
-focus_spec = next((spec for spec in specs if spec.key == focus_key), None)
-if focus_spec is not None:
-    st.info(f"현재 선택된 작성항목: [{_program_label(focus_spec.system)}] {focus_spec.section} · {focus_spec.label}")
-    _render_requirement(focus_spec, expanded=True)
-
 if query.strip():
-    q = query.strip().lower()
-    matches = [spec for spec in specs if q in requirement_library_search_text(spec).lower()]
-    st.caption(f"검색결과 {len(matches)}건")
-    for spec in matches[:80]:
-        _render_requirement(spec)
+    token = query.strip().lower()
+    matched = [spec for spec in specs if token in requirement_library_search_text(spec)]
+    if not matched:
+        st.warning("현재 작성 registry에서 검색어와 연결된 작성항목을 찾지 못했습니다.")
+    else:
+        st.success(f"검색결과 {len(matched)}건")
+        for spec in matched[:40]:
+            _render_requirement(spec, expanded=(focus_spec is not None and spec.key == focus_spec.key))
+        if len(matched) > 40:
+            st.caption("검색결과가 많아 앞의 40건만 표시합니다. 검색어를 더 구체적으로 입력하세요.")
 else:
-    st.caption("검색어를 입력하면 작성항목별 법적 근거와 작성 참고자료를 확인할 수 있습니다.")
+    st.info("작성항목명을 검색하면 해당 항목과 직접 연결된 근거부터 확인할 수 있습니다.")
 
 st.divider()
-st.markdown("### 승인 근거 PDF · 로컬 보관소")
-archive_df = pd.DataFrame(evidence_rows())
-if archive_df.empty:
-    st.caption("현재 표시할 승인 근거 PDF가 없습니다.")
-else:
-    display_archive = archive_df.copy()
-    if "SHA256" in display_archive.columns:
-        display_archive["SHA256"] = display_archive["SHA256"].astype(str).map(
-            lambda value: value[:16] + "…" if len(value) > 16 else value
-        )
-    st.dataframe(display_archive, width="stretch", hide_index=True)
-    available = archive_df[archive_df["보관상태"].eq("보관됨")]
-    if not available.empty:
-        columns = st.columns(min(4, len(available)))
-        for idx, (_, row) in enumerate(available.iterrows()):
-            key = str(row["key"])
-            if columns[idx % len(columns)].button(
-                f"폴더 열기 · {key}",
-                key=f"library_open_archive_{key}",
-                width="stretch",
-            ):
-                opened = open_archive_folder(key)
-                if opened.get("status") == "OPENED":
-                    st.toast(str(opened.get("message", "근거 폴더를 열었습니다.")))
-                else:
-                    st.warning(str(opened.get("message", "폴더를 열지 못했습니다.")))
 
-st.markdown("### 현행 공식 별지서식")
-for program in ("공정안전보고서", "화학사고예방관리계획서"):
-    forms = list_official_forms_for_program(program)
-    if not forms:
-        continue
-    with st.expander(f"{program} · {len(forms)}건", expanded=False):
-        for form in forms:
-            st.download_button(
-                f"별지 제{form.form_no}호서식 · {form.title}",
+rows = evidence_rows()
+for row in rows:
+    row["근거"] = (
+        str(row.get("근거", ""))
+        .replace("PSM", "공정안전보고서")
+        .replace("화사계", "화학사고예방관리계획서")
+    )
+
+df = pd.DataFrame(rows)
+with st.expander("전체 승인 근거자료·PDF 보관현황", expanded=False):
+    if df.empty:
+        st.info("아직 로컬에 보관된 승인 근거자료가 없습니다. ‘규정 DB 관리’에서 승인본 근거 PDF를 동기화하세요.")
+    else:
+        shown = df.copy()
+        if "SHA256" in shown.columns:
+            shown["SHA256"] = shown["SHA256"].astype(str).map(lambda v: v[:16] + "…" if len(v) > 16 else v)
+        for col in shown.columns:
+            shown[col] = shown[col].astype(str)
+        st.dataframe(shown, width="stretch", hide_index=True)
+
+        available = df[df["보관상태"].eq("보관됨")]
+        if available.empty:
+            st.warning("승인 DB는 있어도 근거 PDF가 아직 로컬 보관소에 동기화되지 않았습니다. 규정 DB 관리에서 동기화하세요.")
+        else:
+            for _, row in available.iterrows():
+                key = str(row["key"])
+                label = str(row["근거"])
+                raw_path = str(row.get("로컬 PDF", ""))
+                c1, c2, c3 = st.columns([4, 1, 1])
+                c1.write(f"**{label}**")
+                c1.caption(raw_path)
+                if c2.button("폴더 열기", key=f"evidence_open_{key}", width="stretch"):
+                    result = open_archive_folder(key)
+                    if result.get("status") == "OPENED":
+                        st.toast(f"{label} 근거 폴더를 열었습니다.")
+                    else:
+                        st.warning(str(result.get("message", "폴더를 열지 못했습니다.")))
+                local_path = Path(raw_path) if raw_path else None
+                if local_path is not None and local_path.exists():
+                    c3.download_button(
+                        "PDF 받기",
+                        data=local_path.read_bytes(),
+                        file_name=local_path.name,
+                        mime="application/pdf",
+                        key=f"evidence_download_{key}",
+                        width="stretch",
+                    )
+
+with st.expander("전체 현행 공식 법정 별지서식 PDF", expanded=False):
+    st.caption(
+        "법제처 공식 첨부파일 중 법령감시 결과가 CURRENT인 별지서식만 제공합니다. "
+        "개정 감지 또는 최신성 미확인 상태의 파일은 제공하지 않습니다."
+    )
+    for program in ("공정안전보고서", "화학사고예방관리계획서"):
+        forms = list_official_forms_for_program(program)
+        if not forms:
+            st.warning(f"{program}: 현재 CURRENT 상태로 제공할 공식 별지서식 PDF가 없습니다.")
+            continue
+        st.write(f"**{program} · {len(forms)}건**")
+        for idx, form in enumerate(forms):
+            c1, c2 = st.columns([5, 1])
+            c1.write(f"**{form.form_reference}** · {form.source_title}")
+            c1.caption(
+                f"시행일 {form.effective_date or '-'} · 발령번호 {form.issue_number or '-'} · SHA-256 {form.sha256}"
+            )
+            c2.download_button(
+                "공식 PDF",
                 data=official_form_bytes(form),
                 file_name=form.file_name,
-                mime=form.mime_type,
-                key=f"library_all_form_{form.source_id}_{form.form_no}_{form.file_name}",
+                mime="application/pdf",
+                key=f"official_form_{program}_{idx}_{form.law_key}",
                 width="stretch",
             )
+
+st.info(
+    "이 화면의 검색결과는 현재 작성 registry에 구조화되어 연결된 근거만 보여줍니다. "
+    "직접 근거가 등록되지 않은 세부항목에는 임의의 조문을 만들어 붙이지 않습니다."
+)
+st.caption(
+    "승인 근거 PDF는 사람이 원문을 확인하기 위한 사본이며, 실제 판정 계산은 같은 공식 근거에서 검토·승인한 구조화 Regulatory DB를 사용합니다."
+)
