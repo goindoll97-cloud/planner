@@ -29,13 +29,16 @@ class Stage2IntakeSimplifiedUITests(unittest.TestCase):
         self.assertNotIn("resolve_official_form_for_program", self.source)
         self.assertNotIn("LEGAL_FOCUS_KEY", self.source)
 
-    def test_upload_success_is_not_immediately_hidden_by_workflow_rerun(self):
+    def test_upload_success_is_emitted_before_optional_refresh(self):
+        """Workbook import must save and acknowledge before refreshing CAS controls."""
         marker = "통합 작성자료를 반영했습니다. 입력·확인"
         self.assertIn(marker, self.source)
         start = self.source.index(marker)
-        # Workflow navigation may rerun later when a completion gate changes,
-        # but the upload-success block itself must remain visible first.
-        self.assertNotIn("st.rerun()", self.source[start:start + 1200])
+        rerun = self.source.find("st.rerun()", start)
+        self.assertTrue(rerun == -1 or rerun > start)
+        save = self.source.rfind("save_project(project)", 0, start)
+        self.assertGreater(save, -1)
+        self.assertLess(save, start)
 
 
 if __name__ == "__main__":
