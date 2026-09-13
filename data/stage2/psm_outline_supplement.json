@@ -1,0 +1,26 @@
+{
+  "schema_version": "psm-outline-supplement-v1",
+  "source": {
+    "title": "공정안전보고서 목차(사용자 추출)",
+    "sha256": "0687a8c892a762780244937c23315b8576ea4183a9181e8eac9ff041f948cec8",
+    "source_role": "e-PSM 작성트리 보완"
+  },
+  "requirements": [
+    {
+      "key": "psm.psi.fire_detection",
+      "section": "공정안전자료",
+      "label": "화재탐지 및 경보설비 설치계획",
+      "field_keys": ["psm.psi.fire_detection"],
+      "input_kind": "PLAN_SPEC_CALCULATION_AND_DRAWING",
+      "source_owner": "COMPANY",
+      "suggested_evidence": ["화재탐지·경보설비 설치계획", "시방서", "용량계산서", "배치도면"],
+      "automation": "CHECK_APPLICABILITY_UPLOAD_AND_VALIDATE",
+      "request": "화재탐지·경보설비 적용 대상 여부를 확인하고 해당 시 설치계획·시방·계산·도면을 제출해 주세요.",
+      "example_pages": [],
+      "legal_basis": "사용자 추출 e-PSM 작성트리의 공정안전자료 세부항목; 위험설비 안전설계·제작 및 설치 관련 지침의 조건부 세부자료로 관리",
+      "legal_status": "CONDITIONAL_DETAIL",
+      "outline_checkbox_status": "CHECKED",
+      "cross_checks": ["documents.site_plan", "psm.psi.fire_protection", "psm.emergency.resources"]
+    }
+  ]
+}
