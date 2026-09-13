@@ -13,8 +13,8 @@ from engine.stage2.guidance import (
 from engine.stage2.integrated_workbook import (
     apply_integrated_authoring_workbook,
     attach_company_file,
-    build_integrated_authoring_workbook,
 )
+from engine.stage2.workbook_enhancements import build_enhanced_integrated_authoring_workbook
 from engine.stage2.intake import (
     COVERAGE_CONFIRMED,
     COVERAGE_NOT_APPLICABLE,
@@ -133,13 +133,16 @@ if len(scope_labels) == 2:
 st.markdown("### 1. 통합 작성자료 내려받기")
 st.write(
     "실제 입력용 파일에는 Stage 1에서 확인된 회사정보·화학물질·시설자료를 가능한 범위에서 미리 채워 둡니다. "
-    "작성예시 파일은 같은 구조에 예시값이 들어 있어 신입 담당자도 작성방법을 참고할 수 있습니다."
+    "정형화 가능한 항목은 드롭다운으로 선택할 수 있고, 목록에 없는 사업장 고유값은 직접 입력할 수 있습니다."
+)
+st.caption(
+    "실제 입력용 파일은 예시문을 최소화하고 작성방법 중심으로 구성합니다. 작성예시 파일은 저장·이송형, 반응공정형, 혼합·충전형 등 여러 상황의 사례를 비교할 수 있도록 더 많은 예시를 제공합니다."
 )
 left, right = st.columns(2)
 with left:
     st.download_button(
         "통합 작성자료.xlsx 다운로드",
-        data=build_integrated_authoring_workbook(project, example=False),
+        data=build_enhanced_integrated_authoring_workbook(project, example=False),
         file_name=f"{project.project_id}_통합_작성자료.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary",
@@ -148,7 +151,7 @@ with left:
 with right:
     st.download_button(
         "통합 작성자료_작성예시.xlsx 다운로드",
-        data=build_integrated_authoring_workbook(project, example=True),
+        data=build_enhanced_integrated_authoring_workbook(project, example=True),
         file_name=f"{project.project_id}_통합_작성자료_작성예시.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         width="stretch",
