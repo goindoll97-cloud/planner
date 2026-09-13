@@ -78,6 +78,7 @@ class Stage2StandaloneEntryTests(unittest.TestCase):
 
         selected = selected_requirement_specs(project)
         self.assertFalse(any(spec.key.startswith("cap.external.") for spec in selected))
+        self.assertFalse(any(key.startswith("cap.external.") for key in project.fields))
 
     def test_non_program_workbook_is_rejected(self):
         wb = Workbook()
