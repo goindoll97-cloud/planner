@@ -31,6 +31,8 @@ class PSMDataRequest:
 
 
 def _priority(spec) -> str:
+    if spec.legal_status == "VERIFY_CURRENT":
+        return "VERIFY"
     if spec.legal_status in {"STATUTORY_REQUIRED", "STATUTORY_REQUIRED_WHEN_APPLICABLE"}:
         return "HIGH"
     if spec.input_kind in {
@@ -44,17 +46,16 @@ def _priority(spec) -> str:
         return "HIGH"
     if "CALCULATE" in spec.automation or "CROSSCHECK" in spec.automation:
         return "HIGH"
-    if spec.legal_status == "VERIFY_CURRENT":
-        return "VERIFY"
     return "MEDIUM"
 
 
 def build_psm_data_requests(project: Stage2Project) -> list[PSMDataRequest]:
     """Return unresolved PSM inputs without re-requesting confirmed facts.
 
-    The historical example book is never treated as the legal authority. Each
-    request carries a legal_status/legal_basis and example-book provenance so
-    the UI can distinguish current-law requirements from example-only details.
+    Historical example-book content never becomes legal authority by itself.
+    VERIFY_CURRENT rows are shown as non-blocking verification requests even
+    when the field has not yet been created, while required rows participate in
+    the normal completeness gate.
     """
     if project.psm_required is not True:
         return []
@@ -62,26 +63,16 @@ def build_psm_data_requests(project: Stage2Project) -> list[PSMDataRequest]:
     labels = psm_field_labels()
     requests: list[PSMDataRequest] = []
     for spec in psm_requirement_specs():
-        if not spec.required:
-            # Non-blocking reference/verification items are surfaced only if a
-            # record exists and still needs review; they do not become a company
-            # request merely because no field was created.
-            unresolved = []
-            for field_key in spec.field_keys:
-                record = project.get_field(field_key)
-                if record is not None and record.status not in CONFIRMED_STATUSES:
-                    unresolved.append(field_key)
-            if not unresolved:
-                continue
-            missing = unresolved
-        else:
-            missing = []
-            for field_key in spec.field_keys:
-                record = project.get_field(field_key)
-                if record is None or record.status not in CONFIRMED_STATUSES:
-                    missing.append(field_key)
-            if not missing:
-                continue
+        missing: list[str] = []
+        for field_key in spec.field_keys:
+            record = project.get_field(field_key)
+            if record is None or record.status not in CONFIRMED_STATUSES:
+                missing.append(field_key)
+
+        if not missing:
+            continue
+        if not spec.required and spec.legal_status != "VERIFY_CURRENT":
+            continue
 
         requests.append(
             PSMDataRequest(
