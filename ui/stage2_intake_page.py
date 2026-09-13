@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from engine.stage2.guidance import (
+    ACTION_EXCEL,
+    ACTION_FILE,
+    ACTION_ORDER,
+    ACTION_PROGRAM,
+    ACTION_REVIEW,
+    build_requirement_guidance,
+)
 from engine.stage2.integrated_workbook import (
     apply_integrated_authoring_workbook,
     attach_company_file,
@@ -11,7 +19,6 @@ from engine.stage2.intake import (
     COVERAGE_CONFIRMED,
     COVERAGE_NOT_APPLICABLE,
     build_intake_catalog,
-    intake_summary,
 )
 from engine.stage2.official_forms import official_form_bytes, resolve_official_form_for_program
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
@@ -20,6 +27,7 @@ from engine.stage2.storage import list_projects, load_project, save_attachment, 
 PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
+LEGAL_FOCUS_KEY = "_legal_focus_requirement_key"
 
 
 st.set_page_config(page_title="통합 작성자료", page_icon="📥", layout="wide")
@@ -74,6 +82,26 @@ def _download_official_form(reference: str, program_label: str, *, key_prefix: s
         st.warning(f"{reference}: 적용 가능한 공식 서식이 둘 이상 확인되어 자동 선택하지 않습니다.")
     else:
         st.caption(f"{reference}: 현재 최신성 확인이 완료된 공식 PDF를 직접 연결하지 못했습니다.")
+
+
+def _show_basis_entries(title: str, entries) -> None:
+    st.write(f"**{title}**")
+    if not entries:
+        if title == "법적 의무 근거":
+            st.caption(
+                "현재 작성 registry에서 이 세부 항목에 직접 연결된 법률·시행령·시행규칙 조문을 확인하지 못했습니다. "
+                "근거를 임의로 만들지 않고, 아래에 확인된 세부 작성기준·작성 참고자료만 표시합니다."
+            )
+        else:
+            st.caption("현재 구조화된 직접 근거가 없습니다.")
+        return
+    for entry in entries:
+        st.markdown(f"- **{entry.system} · {entry.section} · {entry.label}**  \n  {entry.text}")
+
+
+def _open_legal_library(requirement_key: str) -> None:
+    st.session_state[LEGAL_FOCUS_KEY] = requirement_key
+    st.switch_page("ui/legal_evidence_page.py")
 
 
 project_id = _project_selector()
@@ -196,59 +224,97 @@ if st.button("도면·첨부자료 접수", width="stretch"):
         st.success(f"첨부자료 {len(attachments)}개를 접수했습니다. 목록 자동연결 {linked}개, 연결대상 확인 필요 {unlinked}개입니다.")
         st.rerun()
 
-summary = intake_summary(project)
 catalog = build_intake_catalog(project)
-counts = summary["counts"]
-
-st.markdown("### 4. 작성상태 확인")
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.metric("확인", counts.get("확인", 0))
-with c2:
-    st.metric("일부 확인", counts.get("일부 확인", 0))
-with c3:
-    st.metric("사람 확인 필요", counts.get("사람 확인 필요", 0))
-with c4:
-    st.metric("미작성·자료 필요", counts.get("자료 요청 필요", 0))
-
 unresolved = [
     item for item in catalog
     if item.coverage_status not in {COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE}
 ]
+guided = [(item, build_requirement_guidance(project, item)) for item in unresolved]
+by_action = {action: [] for action in ACTION_ORDER}
+for item, guidance in guided:
+    by_action.setdefault(guidance.action_type, []).append((item, guidance))
+
+st.markdown("### 4. 해야 할 일·작성상태 확인")
+st.caption(
+    "법령 목차 순서보다 ‘지금 회사가 무엇을 해야 하는지’를 먼저 보여줍니다. "
+    "각 항목의 ‘왜 필요한가?’를 열면 그 자리에서 법적 의무 근거, 세부 작성기준, 작성 참고자료를 확인할 수 있습니다."
+)
+
+completed_count = sum(item.coverage_status == COVERAGE_CONFIRMED for item in catalog)
+c1, c2, c3, c4, c5 = st.columns(5)
+with c1:
+    st.metric("확인 완료", completed_count)
+with c2:
+    st.metric("Excel 추가작성", len(by_action.get(ACTION_EXCEL, [])))
+with c3:
+    st.metric("파일 업로드", len(by_action.get(ACTION_FILE, [])))
+with c4:
+    st.metric("사람 확인", len(by_action.get(ACTION_REVIEW, [])))
+with c5:
+    st.metric("프로그램 처리", len(by_action.get(ACTION_PROGRAM, [])))
 
 if not unresolved:
     st.success("현재 통합 작성자료 기준으로 추가 확인이 필요한 작성항목이 없습니다.")
 else:
-    st.write("아래는 아직 비어 있거나 사람이 확인해야 하는 항목입니다. 평소에는 항목만 보고, 필요한 경우에만 ‘왜 필요한가?’를 열어 근거를 확인하세요.")
-    for item in unresolved:
-        missing = list(item.missing_labels) + list(item.received_unconfirmed_labels)
-        detail = ", ".join(missing) if missing else item.label
-        st.write(f"• **{item.system_label} · {item.label}** — {item.coverage_status} · {detail}")
-        with st.expander(f"왜 필요한가? · {item.system_label} · {item.label}", expanded=False):
-            if item.request_text:
-                st.write(item.request_text)
-            if item.suggested_evidence:
-                st.write("**확인에 도움이 되는 자료 예**")
-                st.write(" · ".join(item.suggested_evidence))
-            if item.legal_basis:
-                st.write("**작성근거**")
-                st.code(item.legal_basis)
-            if item.form_references:
-                st.write("**관련 법정 서식**")
-                for form in item.form_references:
-                    _download_official_form(
-                        form,
-                        item.system_label,
-                        key_prefix=f"reason_{item.requirement_key}",
+    section_icons = {
+        ACTION_EXCEL: "📝",
+        ACTION_FILE: "📎",
+        ACTION_REVIEW: "👤",
+        ACTION_PROGRAM: "⚙️",
+    }
+    for action in ACTION_ORDER:
+        rows = by_action.get(action, [])
+        if not rows:
+            continue
+        st.markdown(f"#### {section_icons.get(action, '•')} {action} · {len(rows)}건")
+        for item, guidance in rows:
+            title = f"{item.system_label} · {item.label} — {item.coverage_status}"
+            with st.container(border=True):
+                st.markdown(f"**{title}**")
+                st.write(f"**무엇을 해야 하나요?** {guidance.action_text}")
+                if guidance.workbook_locations:
+                    st.write("**작성·확인 위치** " + " → ".join(guidance.workbook_locations))
+                st.write(f"**현재 부족내용** {guidance.current_gap}")
+                if item.suggested_evidence:
+                    st.caption("확인에 도움이 되는 자료 예: " + " · ".join(item.suggested_evidence))
+
+                with st.expander(f"왜 필요한가? · {item.label}", expanded=False):
+                    _show_basis_entries("법적 의무 근거", guidance.statutory_bases)
+                    st.write("")
+                    _show_basis_entries("세부 작성기준", guidance.detailed_bases)
+
+                    st.write("")
+                    st.write("**작성 참고자료**")
+                    if guidance.references:
+                        for ref in guidance.references:
+                            pages = ", ".join(str(page) for page in ref.pages)
+                            st.markdown(f"- {ref.title}" + (f" · 관련 쪽 {pages}" if pages else ""))
+                    else:
+                        st.caption("현재 연결된 공식 매뉴얼·작성예시 페이지가 없습니다.")
+
+                    if guidance.form_references:
+                        st.write("")
+                        st.write("**관련 법정 서식**")
+                        for form in guidance.form_references:
+                            _download_official_form(
+                                form,
+                                item.system_label,
+                                key_prefix=f"reason_{item.requirement_key}",
+                            )
+
+                    st.caption(
+                        "위 근거는 현재 registry에 구조화되어 확인되는 범위만 표시합니다. 직접 근거가 없는 경우 프로그램이 임의의 조문을 만들어 표시하지 않습니다."
                     )
-            if item.reference_label:
-                pages = ", ".join(str(v) for v in item.reference_pages)
-                st.write(f"**작성 참고자료**: {item.reference_label}" + (f" · 관련 쪽 {pages}" if pages else ""))
-            st.page_link("ui/legal_evidence_page.py", label="법령·공식 근거자료 자세히 보기", icon="📚")
+                    if st.button(
+                        "법령·근거 라이브러리에서 이 항목 자세히 보기",
+                        key=f"legal_library_{item.requirement_key}",
+                        width="stretch",
+                    ):
+                        _open_legal_library(item.requirement_key)
 
 st.info(
     "통합 작성자료에 입력된 회사 사실은 보고서 초안 작성에 사용할 수 있지만, 빈칸이나 확인되지 않은 내용은 프로그램이 임의로 만들어 채우지 않습니다."
 )
 
 st.divider()
-st.page_link("ui/stage2_validation_page.py", label="4. 작성자료 교차검증으로 이동", icon="🔎")
+st.page_link("ui/stage2_validation_page.py", label="다음: 작성자료 교차검증", icon="🔎")
