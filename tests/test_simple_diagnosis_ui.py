@@ -27,6 +27,13 @@ class SimpleDiagnosisUIContractTests(unittest.TestCase):
         self.assertIn("화면에서 별도로 선택할 항목은 없습니다", text)
         self.assertIn("st.stop()", text)
 
+    def test_completed_diagnosis_links_to_registered_scope_page(self) -> None:
+        diagnosis = (PROJECT_ROOT / "ui/diagnosis_page.py").read_text(encoding="utf-8")
+        app = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn('st.page_link("ui/stage2_scope_page.py"', diagnosis)
+        self.assertIn('st.Page("ui/stage2_scope_page.py"', app)
+        self.assertNotIn("stage2_project_page.py", diagnosis)
+
 
 if __name__ == "__main__":
     unittest.main()
