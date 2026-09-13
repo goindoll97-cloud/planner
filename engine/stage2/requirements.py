@@ -9,7 +9,9 @@ from typing import Any
 from .project import Stage2Project
 
 
-CAP_REGISTRY_PATH = Path(__file__).resolve().parents[2] / "data" / "stage2" / "cap_manual_registry.json"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "stage2"
+CAP_REGISTRY_PATH = DATA_DIR / "cap_manual_registry.json"
+PSM_REGISTRY_PATH = DATA_DIR / "psm_example_registry.json"
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,10 @@ class RequirementSpec:
     suggested_evidence: tuple[str, ...] = ()
     automation: str = ""
     request_text: str = ""
+    source_kind: str = ""
+    legal_status: str = ""
+    outline_checkbox_status: str = ""
+    cross_checks: tuple[str, ...] = ()
 
 
 COMMON_REQUIREMENTS: tuple[RequirementSpec, ...] = (
@@ -94,46 +100,6 @@ COMMON_REQUIREMENTS: tuple[RequirementSpec, ...] = (
 )
 
 
-PSM_REQUIREMENTS: tuple[RequirementSpec, ...] = (
-    RequirementSpec(
-        key="psm.process_safety_information",
-        system="PSM",
-        section="공정안전자료",
-        label="공정안전자료",
-        description="유해·위험물질, 공정기술, 설비·도면 등 공정안전자료의 작성근거가 확인되어야 함",
-        field_keys=("inventory.chemicals", "inventory.facilities", "process.description", "documents.pfd", "documents.pid"),
-        legal_basis="산업안전보건법상 공정안전보고서 작성·심사 체계",
-    ),
-    RequirementSpec(
-        key="psm.hazard_assessment",
-        system="PSM",
-        section="공정위험성평가",
-        label="공정위험성평가",
-        description="적용한 위험성평가 기법, 평가범위, 위험요인 및 개선조치가 확인되어야 함",
-        field_keys=("psm.hazard_assessment",),
-        legal_basis="공정안전보고서 심사기준의 위험성평가 분야",
-    ),
-    RequirementSpec(
-        key="psm.safe_operation_plan",
-        system="PSM",
-        section="안전운전계획",
-        label="안전운전계획",
-        description="안전운전절차와 설비 유지관리, 작업허가, 변경관리 등 운영계획의 근거자료",
-        field_keys=("psm.safe_operation_plan",),
-        legal_basis="공정안전보고서 심사기준의 안전운전계획 분야",
-    ),
-    RequirementSpec(
-        key="psm.emergency_plan",
-        system="PSM",
-        section="비상조치계획",
-        label="비상조치계획",
-        description="비상대응 조직, 대피, 공정 안전조치, 교육·훈련 및 사고시나리오 대응계획",
-        field_keys=("emergency.internal_plan",),
-        legal_basis="공정안전보고서 심사기준의 비상조치계획 분야",
-    ),
-)
-
-
 @lru_cache(maxsize=1)
 def load_cap_manual_registry() -> dict[str, Any]:
     with CAP_REGISTRY_PATH.open("r", encoding="utf-8") as handle:
@@ -143,12 +109,34 @@ def load_cap_manual_registry() -> dict[str, Any]:
     return raw
 
 
+@lru_cache(maxsize=1)
+def load_psm_example_registry() -> dict[str, Any]:
+    with PSM_REGISTRY_PATH.open("r", encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if raw.get("schema_version") != "psm-example-registry-v1":
+        raise ValueError("지원하지 않는 공정안전보고서 registry 버전입니다.")
+    return raw
+
+
 def cap_field_labels() -> dict[str, str]:
     return dict(load_cap_manual_registry().get("field_labels") or {})
 
 
+def psm_field_labels() -> dict[str, str]:
+    return dict(load_psm_example_registry().get("field_labels") or {})
+
+
 def cap_manual_source() -> dict[str, Any]:
     return dict(load_cap_manual_registry().get("source") or {})
+
+
+def psm_example_source() -> dict[str, Any]:
+    raw = load_psm_example_registry()
+    return {
+        "source": dict(raw.get("source") or {}),
+        "outline_source": dict(raw.get("outline_source") or {}),
+        "legal_reference": dict(raw.get("legal_reference") or {}),
+    }
 
 
 def _cap_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
@@ -163,7 +151,7 @@ def _cap_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
         description=description,
         field_keys=tuple(str(v) for v in row.get("field_keys") or []),
         evidence_required=True,
-        required=True,
+        required=bool(row.get("required", True)),
         legal_basis=basis,
         manual_pages=pages,
         input_kind=str(row.get("input_kind") or ""),
@@ -171,6 +159,34 @@ def _cap_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
         suggested_evidence=tuple(str(v) for v in row.get("suggested_evidence") or []),
         automation=str(row.get("automation") or ""),
         request_text=str(row.get("request") or ""),
+        source_kind="CAP_MANUAL",
+        legal_status="MANUAL_GUIDANCE",
+    )
+
+
+def _psm_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
+    pages = tuple(int(v) for v in row.get("example_pages") or [])
+    description = str(row.get("request") or row.get("label") or "").strip()
+    return RequirementSpec(
+        key=str(row["key"]),
+        system="PSM",
+        section=str(row.get("section") or ""),
+        label=str(row.get("label") or row["key"]),
+        description=description,
+        field_keys=tuple(str(v) for v in row.get("field_keys") or []),
+        evidence_required=True,
+        required=bool(row.get("required", True)),
+        legal_basis=str(row.get("legal_basis") or ""),
+        manual_pages=pages,
+        input_kind=str(row.get("input_kind") or ""),
+        source_owner=str(row.get("source_owner") or ""),
+        suggested_evidence=tuple(str(v) for v in row.get("suggested_evidence") or []),
+        automation=str(row.get("automation") or ""),
+        request_text=str(row.get("request") or ""),
+        source_kind="PSM_EXAMPLE",
+        legal_status=str(row.get("legal_status") or ""),
+        outline_checkbox_status=str(row.get("outline_checkbox_status") or ""),
+        cross_checks=tuple(str(v) for v in row.get("cross_checks") or []),
     )
 
 
@@ -185,10 +201,15 @@ def cap_requirement_specs(group: str) -> list[RequirementSpec]:
     return selected
 
 
+def psm_requirement_specs() -> list[RequirementSpec]:
+    registry = load_psm_example_registry()
+    return [_psm_requirement_from_row(row) for row in registry.get("requirements") or []]
+
+
 def requirement_specs_for_project(project: Stage2Project) -> list[RequirementSpec]:
     specs: list[RequirementSpec] = list(COMMON_REQUIREMENTS)
     if project.psm_required is True:
-        specs.extend(PSM_REQUIREMENTS)
+        specs.extend(psm_requirement_specs())
     if project.cap_required is True:
         # Stage 1에서 작성수준이 확정되지 않았다면 fail closed: 1군 항목까지 포함한다.
         group = project.cap_group if project.cap_group in {"1군", "2군"} else "1군"
