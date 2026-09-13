@@ -69,10 +69,15 @@ class Stage2WorkbookEnhancementTests(unittest.TestCase):
         for sheet_name in ("01_사업장정보", "06_공정정보"):
             ws = wb[sheet_name]
             self.assertEqual(ws["C4"].value, "작성방법")
-            self.assertLessEqual(ws.max_column, 3)
+            self.assertIsNone(ws["D4"].value)
+            self.assertIsNone(ws["E4"].value)
+            self.assertIsNone(ws["F4"].value)
 
         process = wb["06_공정정보"]
         self.assertIn("실제 사업장 사실", str(process["C5"].value))
+        self.assertIsNone(process["D5"].value)
+        self.assertIsNone(process["E5"].value)
+        self.assertIsNone(process["F5"].value)
 
         all_text = []
         for ws in wb.worksheets:
