@@ -6,6 +6,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from engine.legal_terminology import psm_field_label, psm_section_name
+
 from .project import Stage2Project
 
 
@@ -86,7 +88,7 @@ COMMON_REQUIREMENTS: tuple[RequirementSpec, ...] = (
         key="common.pid",
         system="COMMON",
         section="공통 도면",
-        label="배관계장도(P&ID)",
+        label="공정배관·계장도(P&ID)",
         description="배관, 계기, 차단·안전설비 등 공정 상세를 확인할 수 있는 도면",
         field_keys=("documents.pid",),
     ),
@@ -94,7 +96,7 @@ COMMON_REQUIREMENTS: tuple[RequirementSpec, ...] = (
         key="common.site_plan",
         system="COMMON",
         section="공통 도면",
-        label="사업장·설비 배치도",
+        label="각종 건물·설비의 배치도",
         description="사업장 경계, 공정·저장시설 및 주요 안전·비상시설의 위치를 확인할 수 있는 도면",
         field_keys=("documents.site_plan",),
     ),
@@ -135,7 +137,8 @@ def cap_field_labels() -> dict[str, str]:
 
 
 def psm_field_labels() -> dict[str, str]:
-    return dict(load_psm_example_registry().get("field_labels") or {})
+    labels = dict(load_psm_example_registry().get("field_labels") or {})
+    return {key: psm_field_label(key, value) for key, value in labels.items()}
 
 
 def cap_manual_source() -> dict[str, Any]:
@@ -179,15 +182,19 @@ def _cap_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
 
 
 def _psm_requirement_from_row(row: dict[str, Any], *, source_kind: str = "PSM_EXAMPLE") -> RequirementSpec:
+    key = str(row["key"])
     pages = tuple(int(v) for v in row.get("example_pages") or [])
-    description = str(row.get("request") or row.get("label") or "").strip()
+    field_keys = tuple(str(v) for v in row.get("field_keys") or [])
+    fallback_label = str(row.get("label") or key)
+    label = psm_field_label(field_keys[0], fallback_label) if len(field_keys) == 1 else fallback_label
+    description = str(row.get("request") or label).strip()
     return RequirementSpec(
-        key=str(row["key"]),
+        key=key,
         system="PSM",
-        section=str(row.get("section") or ""),
-        label=str(row.get("label") or row["key"]),
+        section=psm_section_name(key, str(row.get("section") or "")),
+        label=label,
         description=description,
-        field_keys=tuple(str(v) for v in row.get("field_keys") or []),
+        field_keys=field_keys,
         evidence_required=True,
         required=bool(row.get("required", True)),
         legal_basis=str(row.get("legal_basis") or ""),
