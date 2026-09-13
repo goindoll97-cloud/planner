@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from engine.stage2.direct_template import create_direct_entry_template_project
 from engine.stage2.project import create_project_from_stage1_snapshot
 from engine.stage2.standalone_entry import (
     create_project_from_standalone_workbook,
@@ -18,6 +19,7 @@ from engine.stage2.storage import (
     save_attachment,
     save_project,
 )
+from engine.stage2.workbook_enhancements import build_enhanced_integrated_authoring_workbook
 
 
 PSM_FULL = "공정안전보고서"
@@ -25,14 +27,15 @@ CAP_FULL = "화학사고예방관리계획서"
 SNAPSHOT_KEY = "_stage2_stage1_snapshot"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 FLASH_KEY = "_stage2_project_flash"
+DIRECT_TEMPLATE_PROJECT_KEY = "_stage2_direct_template_project_id"
 KST = ZoneInfo("Asia/Seoul")
 
 
 st.set_page_config(page_title="작성범위 선택", page_icon="🧭", layout="wide")
 st.title("🧭 2. 작성범위 선택")
 st.caption(
-    "일반적으로는 Stage 1 판정결과를 이어서 사용합니다. 이미 작성한 통합 작성자료가 있다면 Stage 1을 다시 업로드하지 않고 "
-    "Stage 2 작성·검토를 직접 시작할 수도 있습니다."
+    "일반적으로는 Stage 1 판정결과를 이어서 사용합니다. Stage 1 없이 작성부터 시작하려면 이 화면에서 전용 통합 작성자료를 내려받거나, "
+    "이미 작성한 통합 작성자료를 바로 업로드할 수 있습니다."
 )
 
 flash = st.session_state.pop(FLASH_KEY, "")
@@ -61,10 +64,96 @@ def _format_datetime(value: object) -> str:
         return text
 
 
+def _direct_downloads() -> None:
+    st.markdown("#### 1) Stage 2 전용 입력파일 받기")
+    st.caption(
+        "Stage 1을 거치지 않고 작성부터 시작할 때 사용합니다. 작성할 문서를 선택하면 실제 입력용 파일과 작성예시 파일을 바로 내려받을 수 있습니다. "
+        "이 선택은 법적 대상 여부를 판정하는 기능이 아니라 작성범위 설정입니다."
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        psm_selected = st.checkbox(
+            f"{PSM_FULL} 작성",
+            value=True,
+            key="stage2_direct_template_psm",
+        )
+    with c2:
+        cap_selected = st.checkbox(
+            f"{CAP_FULL} 작성",
+            value=True,
+            key="stage2_direct_template_cap",
+        )
+
+    cap_group = ""
+    if cap_selected:
+        cap_group_option = st.selectbox(
+            "화학사고예방관리계획서 작성수준",
+            ["선택하세요", "1군", "2군"],
+            index=0,
+            key="stage2_direct_template_cap_group",
+            help="이미 확인된 사업장 작성수준을 선택하세요. 여기서 1군·2군 법적 판정을 새로 수행하지 않습니다.",
+        )
+        cap_group = "" if cap_group_option == "선택하세요" else cap_group_option
+
+    valid = bool(psm_selected or cap_selected) and (not cap_selected or cap_group in {"1군", "2군"})
+    if not psm_selected and not cap_selected:
+        st.info("작성할 문서를 하나 이상 선택하세요.")
+    elif cap_selected and not cap_group:
+        st.info("화학사고예방관리계획서를 작성하려면 확인된 작성수준을 선택하세요.")
+
+    if not valid:
+        return
+
+    project_id = str(st.session_state.get(DIRECT_TEMPLATE_PROJECT_KEY) or "").strip()
+    try:
+        template_project = create_direct_entry_template_project(
+            psm_selected=bool(psm_selected),
+            cap_selected=bool(cap_selected),
+            cap_group=cap_group,
+            project_id=project_id or None,
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+
+    st.session_state[DIRECT_TEMPLATE_PROJECT_KEY] = template_project.project_id
+    actual = build_enhanced_integrated_authoring_workbook(template_project, example=False)
+    example = build_enhanced_integrated_authoring_workbook(template_project, example=True)
+
+    left, right = st.columns(2)
+    with left:
+        st.download_button(
+            "통합 작성자료.xlsx 다운로드",
+            data=actual,
+            file_name=f"{template_project.project_id}_통합_작성자료.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            width="stretch",
+            key="stage2_direct_template_input_download",
+        )
+    with right:
+        st.download_button(
+            "통합 작성자료_작성예시.xlsx 다운로드",
+            data=example,
+            file_name=f"{template_project.project_id}_통합_작성자료_작성예시.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch",
+            key="stage2_direct_template_example_download",
+        )
+    st.caption(
+        "실제 입력용 파일의 회사명·사업장 소재지는 비워 두었습니다. 실제 사업장 사실을 작성한 뒤 아래 업로드 영역에서 같은 파일을 제출하세요. "
+        "작성예시 파일은 참고용이며 업로드할 수 없습니다."
+    )
+
+
 def _direct_stage2_start(projects: list[dict]) -> None:
     with st.expander("Stage 2 통합 작성자료로 직접 시작", expanded=not projects):
+        _direct_downloads()
+        st.divider()
+        st.markdown("#### 2) 작성 완료한 통합 작성자료 업로드")
         st.caption(
-            "이미 작성한 프로그램용 '통합 작성자료.xlsx'가 있으면 여기에서 바로 작성 프로젝트를 만들 수 있습니다. "
+            "위에서 내려받아 작성한 파일 또는 이미 보유한 프로그램용 '통합 작성자료.xlsx'를 올리면 바로 작성 프로젝트를 만들 수 있습니다. "
             "이 경로는 법적 대상 여부를 새로 판정하지 않고, 파일에 기록된 작성범위와 회사 사실을 작성·검토용으로 불러옵니다."
         )
         upload = st.file_uploader(
@@ -129,8 +218,6 @@ def _direct_stage2_start(projects: list[dict]) -> None:
                 )
                 save_project(project)
             except Exception as exc:
-                # The project id did not exist before this operation, so an
-                # incomplete direct-start folder can be removed safely.
                 try:
                     delete_project(preview.project_id)
                 except Exception:
@@ -169,7 +256,7 @@ def _project_selector() -> str | None:
         projects = list_projects()
         if not projects:
             st.info(
-                "저장된 작성 프로젝트가 없습니다. 1. 판정진단을 완료하거나, 위의 'Stage 2 통합 작성자료로 직접 시작'에서 이미 작성한 파일을 업로드하세요."
+                "저장된 작성 프로젝트가 없습니다. 1. 판정진단을 완료하거나, 위의 'Stage 2 통합 작성자료로 직접 시작'에서 입력파일을 내려받아 작성 후 업로드하세요."
             )
             return None
 
