@@ -7,7 +7,14 @@ from engine.stage2.cap_requests import build_cap_data_requests, cap_request_summ
 from engine.stage2.completeness import evaluate_project_completeness
 from engine.stage2.export import build_progress_workbook
 from engine.stage2.project import create_project_from_stage1_snapshot
-from engine.stage2.requirements import cap_field_labels, cap_manual_source, requirement_specs_for_project
+from engine.stage2.psm_requests import build_psm_data_requests, psm_request_summary
+from engine.stage2.requirements import (
+    cap_field_labels,
+    cap_manual_source,
+    psm_example_source,
+    psm_field_labels,
+    requirement_specs_for_project,
+)
 from engine.stage2.storage import (
     list_projects,
     load_project,
@@ -35,8 +42,6 @@ BASE_FIELD_LABELS = {
     "documents.pfd": "공정흐름도(PFD)",
     "documents.pid": "배관계장도(P&ID)",
     "documents.site_plan": "사업장·설비 배치도",
-    "psm.hazard_assessment": "공정위험성평가",
-    "psm.safe_operation_plan": "안전운전계획",
     "emergency.internal_plan": "내부 비상대응계획",
     "emergency.external_plan": "외부 비상대응계획",
 }
@@ -59,6 +64,10 @@ def _truth_label(value: bool | None) -> str:
 
 def _field_labels() -> dict[str, str]:
     labels = dict(BASE_FIELD_LABELS)
+    try:
+        labels.update(psm_field_labels())
+    except Exception:
+        pass
     try:
         labels.update(cap_field_labels())
     except Exception:
@@ -148,6 +157,16 @@ st.caption(
     f"{project.stage1_source_fingerprint or '미기록'}"
 )
 
+if project.psm_required is True:
+    psm_sources = psm_example_source()
+    psm_example = psm_sources.get("source", {})
+    legal_ref = psm_sources.get("legal_reference", {})
+    st.caption(
+        f"{PSM_FULL} 형식 참고자료: {psm_example.get('title', '')} "
+        f"({psm_example.get('pdf_pages', '')}쪽) · PDF SHA-256 {psm_example.get('sha256', '')} · "
+        f"법적 구조 확인기준: {legal_ref.get('rule', '')}"
+    )
+
 if project.cap_required is True:
     manual = cap_manual_source()
     st.caption(
@@ -204,9 +223,60 @@ with summary_tab:
         st.info("아직 등록된 작성자료가 없습니다.")
 
 with request_tab:
-    if project.cap_required is not True:
-        st.info(f"이 프로젝트는 현재 {CAP_FULL} 작성 대상으로 확정되지 않았습니다.")
-    else:
+    st.info(
+        "Stage 1 또는 Stage 2에서 이미 VERIFIED/USER_CONFIRMED/CALCULATED 상태인 값은 다시 요청하지 않습니다. "
+        "AI_DRAFT와 HOLD는 확인 완료로 보지 않습니다."
+    )
+
+    if project.psm_required is True:
+        st.markdown(f"### {PSM_FULL} 요청자료")
+        summary = psm_request_summary(project)
+        requests = build_psm_data_requests(project)
+        left, middle, right = st.columns(3)
+        with left:
+            st.metric("미완료 작성항목", summary["request_count"])
+        with middle:
+            st.metric("우선 확인 필요", summary["high_priority_count"])
+        with right:
+            st.metric("현행기준 재확인", summary["verify_count"])
+
+        if not requests:
+            st.success("현재 공정안전보고서 registry 기준으로 추가 요청할 자료가 없습니다.")
+        else:
+            request_rows = []
+            for item in requests:
+                request_rows.append({
+                    "우선순위": item.priority,
+                    "구분": item.section,
+                    "작성항목": item.label,
+                    "예시집 PDF 쪽": _pages(item.example_pages),
+                    "미확인 항목": ", ".join(item.missing_labels),
+                    "권장 증빙자료": ", ".join(item.suggested_evidence),
+                    "상호검증": ", ".join(_field_label(v) for v in item.cross_checks),
+                    "법적 상태": item.legal_status,
+                    "요청사항": item.request_text,
+                    "처리방식": item.automation,
+                })
+            st.dataframe(pd.DataFrame(request_rows), width="stretch", hide_index=True)
+
+        with st.expander("공정안전보고서 참고자료 provenance", expanded=False):
+            sources = summary["sources"]
+            source = sources.get("source", {})
+            outline = sources.get("outline_source", {})
+            legal_ref = sources.get("legal_reference", {})
+            st.write(f"작성예시집: {source.get('title', '')}")
+            st.write(f"페이지 수: {source.get('pdf_pages', '')}")
+            st.code(str(source.get("sha256", "")))
+            st.caption(str(source.get("source_note", "")))
+            st.write(f"e-PSM 작성트리 자료: {outline.get('title', '')}")
+            st.code(str(outline.get("sha256", "")))
+            st.caption(str(outline.get("unchecked_note", "")))
+            st.write(f"현행 법적 구조 확인일: {legal_ref.get('checked_as_of', '')}")
+            st.write(f"현행 기준: {legal_ref.get('statute', '')} / {legal_ref.get('rule', '')}")
+            st.write(f"세부 고시: {legal_ref.get('administrative_rule', '')}")
+
+    if project.cap_required is True:
+        st.markdown(f"### {CAP_FULL} 요청자료")
         summary = cap_request_summary(project)
         requests = build_cap_data_requests(project)
         left, middle, right = st.columns(3)
@@ -217,10 +287,6 @@ with request_tab:
         with right:
             st.metric("작성수준", project.cap_group or "미확정")
 
-        st.info(
-            "Stage 1 또는 Stage 2에서 이미 VERIFIED/USER_CONFIRMED/CALCULATED 상태인 값은 다시 요청하지 않습니다. "
-            "AI_DRAFT와 HOLD는 확인 완료로 보지 않습니다."
-        )
         if not requests:
             st.success("현재 매뉴얼 registry 기준으로 추가 요청할 자료가 없습니다.")
         else:
@@ -246,6 +312,9 @@ with request_tab:
             st.code(str(source.get("sha256", "")))
             st.caption(str(source.get("legal_note", "")))
 
+    if project.psm_required is not True and project.cap_required is not True:
+        st.info("이 프로젝트는 현재 작성대상 제도가 확정되지 않았습니다.")
+
 with register_tab:
     st.markdown("### 작성자료 등록")
     st.info(
@@ -264,10 +333,15 @@ with register_tab:
     )
     spec = spec_map[spec_key]
     if spec.manual_pages:
+        source_label = "작성예시집 PDF" if spec.system == "PSM" else "작성 매뉴얼"
         st.caption(
-            f"작성 매뉴얼 관련 쪽: {_pages(spec.manual_pages)} · "
+            f"{source_label} 관련 쪽: {_pages(spec.manual_pages)} · "
             f"권장 증빙: {', '.join(spec.suggested_evidence) if spec.suggested_evidence else '별도 지정 없음'}"
         )
+    if spec.system == "PSM" and spec.legal_status:
+        st.caption(f"법적 상태: {spec.legal_status} · 근거: {spec.legal_basis}")
+        if spec.outline_checkbox_status == "UNCHECKED":
+            st.warning("e-PSM 목차 추출본에서 미체크였던 항목입니다. 미체크를 법적 비대상으로 해석하지 않습니다.")
     field_key = st.selectbox(
         "등록할 데이터 필드",
         list(spec.field_keys),
