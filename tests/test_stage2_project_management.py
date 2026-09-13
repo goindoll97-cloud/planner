@@ -66,6 +66,22 @@ class Stage2ProjectManagementTests(unittest.TestCase):
             self.assertEqual(list_projects(root=root), [])
             self.assertFalse(delete_project(project.project_id, root=root))
 
+    def test_korean_only_attachment_filename_is_stored_without_empty_identifier_error(self):
+        project = self._project()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = save_attachment(
+                project.project_id,
+                "통합_작성자료_가상회사_완성본.xlsx",
+                b"workbook-bytes",
+                root=root,
+                source_type="STAGE2_INTEGRATED_WORKBOOK",
+            )
+            stored = Path(ref.location)
+            self.assertTrue(stored.exists())
+            self.assertIn("통합_작성자료_가상회사_완성본", stored.name)
+            self.assertEqual(ref.source_name, "통합_작성자료_가상회사_완성본.xlsx")
+
     def test_scope_page_exposes_project_delete_and_timestamp_controls(self):
         text = (PROJECT_ROOT / "ui/stage2_scope_page.py").read_text(encoding="utf-8")
         self.assertIn("생성일시", text)
