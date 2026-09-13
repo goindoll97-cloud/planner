@@ -60,7 +60,7 @@ uploaded = st.file_uploader(
     help="프로그램에서 내려받은 회사 입력 예시파일에 필요한 정보를 작성한 뒤 업로드해 주세요.",
 )
 if uploaded is None:
-    st.info("회사 입력파일을 업로드하면 PSM과 화학사고예방관리계획서를 함께 판정합니다.")
+    st.info("회사 입력파일을 업로드하면 공정안전보고서와 화학사고예방관리계획서를 함께 판정합니다.")
     st.stop()
 
 try:
@@ -126,8 +126,8 @@ stage2_target = (
     or "2군" in str(decision.cap_status)
 )
 if stage2_target:
-    st.success("작성 대상이 확인되었습니다. Stage 1의 확정자료를 승계해 2단계 작성 프로젝트를 만들 수 있습니다.")
-    st.page_link("ui/stage2_project_page.py", label="2단계 작성 프로젝트로 이동", icon="📝")
+    st.success("작성 대상이 확인되었습니다. Stage 1의 확정자료를 승계해 이번 프로젝트에서 작성할 문서를 선택할 수 있습니다.")
+    st.page_link("ui/stage2_scope_page.py", label="2. 작성범위 선택으로 이동", icon="🧭")
 else:
     st.caption("현재 판정결과에서는 작성 대상이 확인되지 않아 Stage 2 문서작성으로 자동 전환하지 않습니다.")
 
