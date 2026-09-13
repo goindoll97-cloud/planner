@@ -1,6 +1,6 @@
 # 화학안전 계획서 작성 지원 시스템 (planner)
 
-기업이 **화학사고예방관리계획서(CAP)** 및 **공정안전보고서(PSM)**의 대상 여부를 먼저 신뢰성 있게 판정하고, 대상일 때만 다음 단계의 작성자료를 요청하도록 설계한 Streamlit 기반 지원 시스템입니다.
+기업이 **화학사고예방관리계획서** 및 **공정안전보고서**의 대상 여부를 먼저 신뢰성 있게 판정하고, 대상일 때만 다음 단계의 작성자료를 요청하도록 설계한 Streamlit 기반 지원 시스템입니다.
 
 ## 핵심 원칙
 
@@ -9,11 +9,46 @@
 3. **공식본 추적**: 국가법령정보 Open API로 현행 법령·행정규칙과 첨부 PDF를 확인하고 SHA-256으로 변경을 감지합니다.
 4. **승인 DB 출처 검증**: 판정용 승인 DB가 현재 공식 PDF에서 만들어진 자료인지 SHA-256 provenance를 확인한 뒤에만 판정을 허용합니다.
 5. **동적 질문**: 자동으로 확정할 수 없는 사실만 추가로 묻고, 답변은 다시 Rule Engine 계산에 반영합니다.
-6. **CAP/PSM 독립 판정**: 한 사업장이 두 제도 모두 대상일 수 있으므로 각각 별도로 판정합니다.
+6. **제도별 독립 판정**: 한 사업장이 화학사고예방관리계획서와 공정안전보고서 모두 대상일 수 있으므로 각각 별도로 판정합니다.
 7. **작성근거 추적**: Stage 2 작성자료는 값만 저장하지 않고 상태와 증빙 SHA-256을 함께 기록합니다.
 8. **AI 초안과 확인사실 분리**: `AI_DRAFT`는 검토 전까지 완료로 계산하지 않습니다.
+9. **법령 용어 우선**: 법령에 정식 명칭이 있는 개념은 사용자 화면, registry의 표시명·절명·요청문구·근거, XLSX 및 문서에서 현행 법령·고시의 용어와 표현을 그대로 사용합니다.
 
-## 현재 단계 — Stage 1 판정엔진 + Stage 2-1 작성 프로젝트 기반
+## 법령 용어 사용 원칙
+
+용어의 우선순위는 다음과 같습니다.
+
+```text
+법률·시행령·시행규칙
+        ↓
+현행 행정규칙·별표·별지
+        ↓
+공식 작성매뉴얼·안전보건기술지침
+        ↓
+내부 보조용어
+```
+
+상위 법령에 정식 명칭이 있으면 하위 자료나 과거 작성예시집의 유사 표현으로 바꾸지 않습니다. 내부 코드 식별자는 기존 데이터 호환성을 위해 유지할 수 있으나, 사용자가 보는 표시문구는 `data/legal_terminology.json`의 현행 법령 용어를 적용합니다.
+
+현재 공정안전보고서의 법정 상위 작성항목은 다음과 같이 관리합니다.
+
+- 공정안전자료
+- 공정위험성평가서
+- 안전운전계획
+- 비상조치계획
+
+현재 화학사고예방관리계획서의 법정 작성항목은 다음과 같이 관리합니다.
+
+- 기본정보
+- 시설정보
+- 장외평가정보
+- 사전관리방침
+- 내부 비상대응계획
+- 외부 비상대응계획
+
+`VERIFIED`, `USER_CONFIRMED`, `CALCULATED`, `AI_DRAFT`, `HOLD`는 법령 용어가 아니라 프로그램의 작성자료 상태값입니다.
+
+## 현재 단계 — Stage 1 판정엔진 + Stage 2 작성 프로젝트 기반
 
 ### 사용자 화면
 
@@ -50,20 +85,14 @@ streamlit run app.py
         ↓
 현재 공식 PDF SHA-256과 일치
         ↓
-ALLOW → CAP/PSM 판정 실행
+ALLOW → 판정 실행
 ```
 
 하나라도 맞지 않으면 `HOLD` 처리합니다.
 
-현재 provenance 검증 대상 판정 DB는 다음 5종입니다.
+현재 provenance 검증 대상 판정 DB는 공정안전보고서 시행령 별표 13과 화학사고예방관리계획서 규정수량 관련 승인 DB입니다.
 
-- PSM 시행령 별표 13
-- CAP 규정수량 별표 1
-- CAP 규정수량 별표 2
-- CAP 규정수량 별표 3
-- CAP 규정수량 별표 4
-
-### PSM
+### 공정안전보고서
 
 현재 구현 범위는 다음과 같습니다.
 
@@ -80,21 +109,21 @@ ALLOW → CAP/PSM 판정 실행
 - 별표 13 비고 제8호 전문 가스 저장·판매시설 제외수량을 반영해 비고 제7호 합산한 값(R) 재산정
 - 시행령 제43조제2항 제외설비 최종 확인
 
-### CAP
+### 화학사고예방관리계획서
 
 현재 구현 범위는 다음과 같습니다.
 
-- 별표 3 사고대비물질 우선 판정
-- 별표 2 직접 CAS 및 포괄 법적 물질범위 판정
+- 사고대비물질 우선 판정
+- 직접 CAS 및 포괄 법적 물질범위 판정
 - CAS 하나로 확정할 수 없는 염류·화합물군·반응생성물 등은 자동 비대상 처리하지 않고 HOLD
-- 별표 1 GHS 유해성·위험성 그룹 fallback
+- 유해성·위험성 그룹 fallback
 - KOSHA MSDS 자동조회는 참고자료로만 사용하고 회사/제품 SDS 확인 요구
-- 별표 4 기준 사업장 최대보유량 계산
+- 사업장 최대보유량 계산
 - 하위/상위 규정수량 비교
 - 법정 면제시설 확인
-- 주요취급시설 확인 후 1군/2군 최종 판정
+- 주요취급시설 확인 후 1군 사업장/2군 사업장 최종 판정
 
-## Stage 2-1 작성 프로젝트
+## Stage 2 작성 프로젝트
 
 Stage 1의 판정이 완료되면 같은 회사 입력 Excel과 판정결과를 `Stage2Project` snapshot으로 넘깁니다. Stage 2는 대상 여부를 다시 판단하지 않고 Stage 1의 결과를 그대로 승계합니다.
 
@@ -105,7 +134,7 @@ Stage 2 프로젝트 생성
     ↓
 공통 사업장·물질·시설자료 승계
     ↓
-PSM/CAP 작성항목 registry 생성
+법정 작성항목 registry 생성
     ↓
 자료·증빙 등록 + SHA-256 기록
     ↓
@@ -124,23 +153,23 @@ PSM/CAP 작성항목 registry 생성
 
 ### 작성구조
 
-공정안전보고서는 Stage 2 registry에서 다음 큰 축으로 관리합니다.
+공정안전보고서는 현행 「산업안전보건법 시행규칙」 제50조의 용어를 기준으로 다음 큰 축으로 관리합니다.
 
 - 공정안전자료
-- 공정위험성평가
+- 공정위험성평가서
 - 안전운전계획
 - 비상조치계획
 
-화학사고예방관리계획서는 현행 작성구조에 맞춰 다음 축으로 관리합니다.
+화학사고예방관리계획서는 현행 「화학사고예방관리계획서 작성 등에 관한 규정」의 용어를 기준으로 다음 축으로 관리합니다.
 
 - 기본정보
 - 시설정보
 - 장외평가정보
 - 사전관리방침
-- 내부 비상대응 계획
-- 외부 비상대응 계획
+- 내부 비상대응계획
+- 외부 비상대응계획
 
-Stage 1에서 2군으로 확정된 사업장은 외부 비상대응계획을 필수 작성률에서 제외합니다.
+Stage 1에서 2군 사업장으로 확정된 경우 외부 비상대응계획은 필수 작성률에서 제외합니다.
 
 ### 저장과 증빙
 
@@ -159,7 +188,7 @@ data/runtime/stage2/projects/<project_id>/
 현재는 법정 제출 최종본이 아니라 검토·감사용 산출물만 제공합니다.
 
 - 프로젝트 원본 JSON
-- 작성현황·근거 XLSX
+- 작성현황·근거·요청자료 XLSX
 
 최종 DOCX/PDF는 세부 작성엔진과 최종 validation gate를 구현한 뒤 활성화합니다. 근거가 확인되지 않은 값이나 `AI_DRAFT`가 남아 있는 상태에서는 최종본을 만들지 않는 방향입니다.
 
@@ -194,16 +223,17 @@ KOSHA_SERVICE_KEY=KOSHA_MSDS_API_인증값
 
 ```text
 planner/
-├─ app.py                         # Streamlit navigation
+├─ app.py
 ├─ ui/
-│  ├─ diagnosis_entry.py          # 중앙 readiness gate + 진단 진입
-│  ├─ diagnosis_page.py           # CAP/PSM 1차 판정 UI + Stage 2 handoff
-│  ├─ stage2_project_page.py      # 작성 프로젝트/증빙/작성률/검토용 export
-│  ├─ psm_followup_panel.py       # PSM 법정 추가조건 입력 및 별표 13 합산한 값(R) 산정
-│  ├─ regdb_page.py               # 규정 DB 관리자 화면
-│  └─ legal_evidence_page.py      # 법적 근거 조회
+│  ├─ diagnosis_entry.py
+│  ├─ diagnosis_page.py
+│  ├─ stage2_project_page.py
+│  ├─ psm_followup_panel.py
+│  ├─ regdb_page.py
+│  └─ legal_evidence_page.py
 ├─ engine/
-│  ├─ readiness.py                # 법령 + 승인 DB provenance 중앙 gate
+│  ├─ legal_terminology.py        # 현행 법령 용어 적용
+│  ├─ readiness.py
 │  ├─ law_api.py
 │  ├─ law_monitor.py
 │  ├─ legal_archive.py
@@ -211,18 +241,13 @@ planner/
 │  ├─ psm_followup.py
 │  ├─ cap_engine.py
 │  ├─ cap_final_decision.py
-│  ├─ stage2/
-│  │  ├─ project.py               # 프로젝트/필드/증빙 데이터모델
-│  │  ├─ requirements.py          # PSM/CAP 작성항목 registry
-│  │  ├─ completeness.py          # READY/REVIEW_REQUIRED/HOLD 평가
-│  │  ├─ storage.py               # 프로젝트·증빙 로컬 저장
-│  │  └─ export.py                # 검토용 JSON/XLSX export
-│  └─ ...
+│  └─ stage2/
 ├─ data/
+│  ├─ legal_terminology.json      # 법령 용어사전
 │  ├─ law_registry.json
-│  ├─ regulatory/approved/        # 로컬 승인 DB
-│  ├─ runtime/                    # Git 제외, Stage 2 프로젝트 포함
-│  └─ legal_archive/              # Git 제외
+│  ├─ regulatory/approved/
+│  ├─ runtime/
+│  └─ legal_archive/
 └─ tests/
 ```
 
@@ -233,16 +258,6 @@ Pull Request와 `main` push에서 GitHub Actions가 다음을 수행합니다.
 1. Python 소스 compile check
 2. 전체 `unittest` 실행
 
-Stage 1의 R 합산, 동일 법적 항목 선합산, 농도조건, 특수 성분조건, PSM 제1·2호 물성 후속답변, 비고 제8호 제외수량 재계산, CAP 최종판정, 법령/승인 DB SHA-256 readiness gate 등에 더해 Stage 2에서는 다음을 검사합니다.
-
-- Stage 1 대상·비대상 결과의 정확한 승계
-- CAP 1군/2군별 작성항목 차이
-- `AI_DRAFT`가 READY로 계산되지 않는지 여부
-- 프로젝트 저장·재로딩
-- 증빙파일 SHA-256 생성
-
-## 다음 단계
-
-Stage 2-2에서는 PSM/CAP 각 세부 서식에 필요한 필드 registry를 현행 법령·고시·별지 단위로 확장하고, 공통자료 재사용, 도면/SDS 입력검증, 계산 모듈, 초안 생성 및 최종 validation gate를 구현합니다. 그 다음 단계에서 편집용 DOCX와 고정 검토용 PDF, 계산표 XLSX, 전체 증빙 ZIP 패키지를 생성합니다.
+Stage 2에서는 대상·비대상 결과의 정확한 승계, 작성수준별 작성항목 차이, AI 초안의 검토 gate, 증빙 SHA-256뿐 아니라 **법정 상위 작성항목과 주요 표시문구가 현행 법령 용어로 노출되는지도 자동 검사**합니다.
 
 > 본 프로그램은 규제 검토 및 작성 지원 도구입니다. 최신 법령·고시·별표 및 승인 규정 DB의 출처가 검증되지 않은 상태에서는 결과를 확정하지 않고 `HOLD` 처리합니다.
