@@ -17,6 +17,10 @@ from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_repor
 from engine.stage2.project import Stage2Project
 
 
+SAFETY_MANAGEMENT_REQUIREMENT = "cap.prevention.safety_management"
+SELF_INSPECTION_REQUIREMENT = "cap.prevention.self_inspection"
+
+
 class FakeLLMClient:
     model = "fake-grounded-model"
 
@@ -76,7 +80,8 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         specs = ai_draftable_specs(project, "CAP")
         keys = {spec.key for spec in specs}
 
-        self.assertIn("cap.prevention.safety_policy", keys)
+        self.assertIn(SAFETY_MANAGEMENT_REQUIREMENT, keys)
+        self.assertIn(SELF_INSPECTION_REQUIREMENT, keys)
         self.assertFalse(any(key.startswith("cap.external.") for key in keys))
 
         profile = build_operating_profile(project)
@@ -91,7 +96,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
             "profile_summary": "인화성 물질을 취급하고 설비건전성과 비상대응을 중시하는 2군 사업장",
             "drafts": [
                 {
-                    "requirement_key": "cap.prevention.safety_policy",
+                    "requirement_key": SAFETY_MANAGEMENT_REQUIREMENT,
                     "draft_text": "본 사업장은 유해화학물질의 누출·화재·폭발 사고를 예방하고 설비건전성, 작업자 역량, 변경관리 및 비상대응을 주요 안전관리 방향으로 운영한다.",
                     "suggested_additions": ["안전관리 목표의 확인 가능한 성과지표가 있으면 추가 확인"],
                     "used_fact_keys": ["cap.prevention.safety_policy"],
@@ -104,7 +109,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         self.assertEqual(len(result.rejected), 0)
         self.assertEqual(project.get_field("cap.prevention.safety_policy").value, original)
 
-        key = ai_draft_field_key("CAP", "cap.prevention.safety_policy")
+        key = ai_draft_field_key("CAP", SAFETY_MANAGEMENT_REQUIREMENT)
         record = project.get_field(key)
         self.assertIsNotNone(record)
         self.assertEqual(record.status, "AI_DRAFT")
@@ -117,7 +122,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
             "profile_summary": "2군 사업장",
             "drafts": [
                 {
-                    "requirement_key": "cap.prevention.self_inspection_plan",
+                    "requirement_key": SELF_INSPECTION_REQUIREMENT,
                     "draft_text": "사업장은 방재시설을 연 2회 점검하고 결과를 개선조치로 관리한다.",
                     "suggested_additions": [],
                     "used_fact_keys": ["cap.prevention.self_inspection_plan"],
@@ -129,7 +134,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         self.assertEqual(len(result.generated), 0)
         self.assertEqual(len(result.rejected), 1)
         self.assertTrue(any("확인자료에 없는 수치" in warning for warning in result.rejected[0].validation_warnings))
-        self.assertIsNone(project.get_field(ai_draft_field_key("CAP", "cap.prevention.self_inspection_plan")))
+        self.assertIsNone(project.get_field(ai_draft_field_key("CAP", SELF_INSPECTION_REQUIREMENT)))
 
     def test_approval_revalidates_edited_text_and_prevents_new_equipment_tag(self):
         project = self._cap_group2_project()
@@ -137,7 +142,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
             "profile_summary": "2군 사업장",
             "drafts": [
                 {
-                    "requirement_key": "cap.prevention.safety_policy",
+                    "requirement_key": SAFETY_MANAGEMENT_REQUIREMENT,
                     "draft_text": "본 사업장은 확인된 안전관리 방향에 따라 유해화학물질 사고 예방활동을 운영한다.",
                     "suggested_additions": [],
                     "used_fact_keys": ["cap.prevention.safety_policy"],
@@ -150,17 +155,17 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
             approve_ai_draft(
                 project,
                 "CAP",
-                "cap.prevention.safety_policy",
+                SAFETY_MANAGEMENT_REQUIREMENT,
                 "신규 설비 R-999를 활용하여 사고를 예방한다.",
             )
 
         approve_ai_draft(
             project,
             "CAP",
-            "cap.prevention.safety_policy",
+            SAFETY_MANAGEMENT_REQUIREMENT,
             "본 사업장은 확인된 안전관리 방향에 따라 유해화학물질 사고 예방활동을 운영한다.",
         )
-        record = project.get_field(ai_draft_field_key("CAP", "cap.prevention.safety_policy"))
+        record = project.get_field(ai_draft_field_key("CAP", SAFETY_MANAGEMENT_REQUIREMENT))
         self.assertEqual(record.status, "USER_CONFIRMED")
 
     def test_ai_enhanced_docx_keeps_source_fact_and_inserts_ai_prose(self):
@@ -169,7 +174,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
             "profile_summary": "2군 사업장",
             "drafts": [
                 {
-                    "requirement_key": "cap.prevention.safety_policy",
+                    "requirement_key": SAFETY_MANAGEMENT_REQUIREMENT,
                     "draft_text": "본 사업장은 확인된 안전관리 방향을 중심으로 유해화학물질 사고 예방활동을 체계적으로 운영한다.",
                     "suggested_additions": ["성과 확인방법 추가 확인"],
                     "used_fact_keys": ["cap.prevention.safety_policy"],
