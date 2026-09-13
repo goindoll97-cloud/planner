@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import tempfile
 from typing import Any
 
@@ -72,12 +73,29 @@ def list_projects(root: Path = DEFAULT_ROOT) -> list[dict[str, Any]]:
                 "psm_required": raw.get("psm_required"),
                 "cap_required": raw.get("cap_required"),
                 "cap_group": str(raw.get("cap_group") or ""),
+                "created_at": str(raw.get("created_at") or ""),
                 "updated_at": str(raw.get("updated_at") or ""),
             })
         except Exception:
             continue
     rows.sort(key=lambda row: row.get("updated_at", ""), reverse=True)
     return rows
+
+
+def delete_project(project_id: str, root: Path = DEFAULT_ROOT) -> bool:
+    """Delete one Stage 2 project and every attachment stored under it.
+
+    The project id is sanitized by ``project_dir`` before filesystem access, so
+    deletion cannot escape the Stage 2 project root. Missing projects are a
+    no-op and return ``False``.
+    """
+    target = project_dir(project_id, root)
+    if not target.exists():
+        return False
+    if not target.is_dir():
+        raise ValueError(f"프로젝트 저장경로가 폴더가 아닙니다: {project_id}")
+    shutil.rmtree(target)
+    return True
 
 
 def save_attachment(
