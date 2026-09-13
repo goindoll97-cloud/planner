@@ -5,7 +5,8 @@ import json
 import pandas as pd
 import streamlit as st
 
-from engine.stage2.cross_validation import PROGRAM_STATUS_LABELS, validate_stage2_project
+from engine.stage2.cross_validation import PROGRAM_STATUS_LABELS
+from engine.stage2.scope_validation import validate_selected_scope
 from engine.stage2.storage import list_projects, load_project
 
 
@@ -20,9 +21,9 @@ SYSTEM_LABELS = {
 
 
 st.set_page_config(page_title="작성자료 교차검증", page_icon="🔎", layout="wide")
-st.title("🔎 3. 작성자료 교차검증")
+st.title("🔎 4. 작성자료 교차검증")
 st.caption(
-    "확인된 작성자료의 근거 유무와 자료 간 식별정보의 일치 여부를 보수적으로 확인합니다. "
+    "선택한 작성범위 안에서 확인된 작성자료의 근거 유무와 자료 간 식별정보의 일치 여부를 보수적으로 확인합니다. "
     "도면·PDF·자유서술의 내용을 추정하지 않으며, 구조화된 값이 없으면 사람 확인이 필요한 상태로 남깁니다."
 )
 st.info(
@@ -32,7 +33,7 @@ st.info(
 
 projects = list_projects()
 if not projects:
-    st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단과 2. 작성 프로젝트를 진행하세요.")
+    st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단과 2. 작성범위 선택을 진행하세요.")
     st.stop()
 
 labels = {
@@ -60,7 +61,19 @@ except Exception as exc:
     st.error(f"프로젝트를 읽지 못했습니다: {type(exc).__name__}: {exc}")
     st.stop()
 
-report = validate_stage2_project(project)
+if not project.scope_confirmed:
+    st.warning("작성범위가 아직 선택되지 않았습니다.")
+    st.page_link("ui/stage2_scope_page.py", label="2. 작성범위 선택으로 이동", icon="🧭")
+    st.stop()
+
+scope_labels = []
+if project.psm_in_scope:
+    scope_labels.append(PSM_FULL)
+if project.cap_in_scope:
+    scope_labels.append(CAP_FULL)
+st.success("현재 교차검증 범위: " + ", ".join(scope_labels))
+
+report = validate_selected_scope(project)
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -70,7 +83,7 @@ with c2:
 with c3:
     st.metric("확인 완료", report.pass_count)
 with c4:
-    st.metric("최종본 생성 가능", "가능" if report.final_export_allowed else "아직 불가")
+    st.metric("현재 검증규칙 통과", "가능" if report.final_export_allowed else "아직 불가")
 
 if report.final_export_allowed:
     st.success("현재 구현된 교차검증 규칙에서 미해결 항목이 없습니다.")
@@ -127,3 +140,5 @@ st.download_button(
     mime="application/json",
     width="stretch",
 )
+
+st.page_link("ui/stage2_project_page.py", label="5. 작성·검토로 이동", icon="📝")
