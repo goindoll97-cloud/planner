@@ -91,8 +91,6 @@ def _manual_deferred(issue) -> bool:
     keys = set(issue.field_keys)
     if not keys.intersection(attachment_fields):
         return False
-    # Source-missing and attachment-evidence checks are exactly the items the
-    # responsible employee will finish outside the text-authoring workflow.
     return issue.code == "CROSSCHECK-SOURCE-MISSING" or any(key in attachment_fields for key in keys)
 
 
@@ -171,4 +169,4 @@ else:
             st.rerun()
     else:
         st.success("4단계 완료: 5. 작성·검토가 열렸습니다.")
-        st.page_link("ui/stage2_review_page.py", label="다음: 5. 작성·검토", icon="📝")
+        st.page_link("ui/stage2_review_page.py", label="5. 작성·검토로 이동", icon="📝")
