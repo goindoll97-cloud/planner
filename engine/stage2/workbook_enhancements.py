@@ -56,12 +56,8 @@ TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
         "감지방식": "detector_type",
         "비상전원 여부": "yes_no_na",
     },
-    "10_동력기계": {
-        "형식": "machinery_type",
-    },
-    "20_배출물질_처리시설": {
-        "처리방식": "treatment_type",
-    },
+    "10_동력기계": {"형식": "machinery_type"},
+    "20_배출물질_처리시설": {"처리방식": "treatment_type"},
 }
 
 FIELD_DROPDOWNS = {
@@ -70,9 +66,9 @@ FIELD_DROPDOWNS = {
 }
 
 INPUT_HINTS = {
-    "process.description": "공정단계, 주요 설비, 취급물질, 정상 운전조건을 사실 위주로 작성",
+    "process.description": "공정단계, 주요 설비, 취급물질, 정상 운전조건을 실제 사업장 사실 기준으로 작성",
     "cap.business.submission_type": "신규·변경 등 해당 유형을 선택. 목록에 없으면 직접 입력 가능",
-    "cap.business.other_system_review": "해당 여부를 선택",
+    "cap.business.other_system_review": "실제 해당 여부를 선택",
 }
 
 TABLE_EXAMPLES: dict[str, tuple[tuple[Any, ...], ...]] = {
@@ -265,30 +261,47 @@ def _annotate_identifiers(wb) -> None:
         col = headers.get(header)
         if not col:
             continue
-        cell = ws.cell(4, col)
-        cell.comment = Comment(text, "PSM/CAP 작성지원")
+        ws.cell(4, col).comment = Comment(text, "PSM/CAP 작성지원")
 
 
 def _input_hint(field_key: str) -> str:
     return INPUT_HINTS.get(field_key, "사업장 실제 기준으로 작성. 확인되지 않은 내용은 임의로 채우지 말고 빈칸 유지")
 
 
-def _simplify_input_examples(wb) -> None:
+def _remove_examples_from_input_forms(wb) -> None:
+    """실제 입력파일에서 예시 열과 예시문을 완전히 제거한다.
+
+    값 입력열(B)은 그대로 유지하고, 예시 전용 열은 작성방법 열 하나로 축약한다.
+    메타데이터의 value_column은 B열이므로 가져오기 호환성은 유지된다.
+    """
     records = _meta_records(wb)
+    by_sheet: dict[str, list[dict[str, Any]]] = {}
     for rec in records:
-        if rec["kind"] not in {"FORM", "PROTECTED"} or rec["sheet"] not in wb.sheetnames:
-            continue
-        ws = wb[rec["sheet"]]
-        if ws.cell(4, 3).value == "작성 예":
-            ws.cell(4, 3, "입력 도움말")
-        field_key = rec["field_keys"].split("|")[0]
-        if rec["kind"] == "PROTECTED":
-            hint = "Stage 1 판정자료에서 자동 입력된 값입니다. 변경이 필요하면 판정진단을 다시 수행하세요."
-        else:
-            hint = _input_hint(field_key)
-        ws.cell(rec["row"], 3, hint)
-        ws.cell(rec["row"], 3).fill = PatternFill("solid", fgColor=NOTE_FILL)
-        ws.cell(rec["row"], 3).alignment = Alignment(vertical="top", wrap_text=True)
+        if rec["kind"] in {"FORM", "PROTECTED"} and rec["sheet"] in wb.sheetnames:
+            by_sheet.setdefault(rec["sheet"], []).append(rec)
+
+    for sheet_name, sheet_records in by_sheet.items():
+        ws = wb[sheet_name]
+        ws.cell(4, 1, "확인할 내용")
+        ws.cell(4, 2, "회사 작성값")
+        ws.cell(4, 3, "작성방법")
+
+        for rec in sheet_records:
+            field_key = rec["field_keys"].split("|")[0]
+            if rec["kind"] == "PROTECTED":
+                guidance = "Stage 1 판정자료에서 자동 입력된 값입니다. 변경이 필요하면 판정진단을 다시 수행하세요."
+            else:
+                guidance = _input_hint(field_key)
+            cell = ws.cell(rec["row"], 3)
+            cell.value = guidance
+            cell.fill = PatternFill("solid", fgColor=NOTE_FILL)
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+        if ws.max_column > 3:
+            ws.delete_cols(4, ws.max_column - 3)
+        ws.column_dimensions["A"].width = max(ws.column_dimensions["A"].width or 0, 44)
+        ws.column_dimensions["B"].width = max(ws.column_dimensions["B"].width or 0, 52)
+        ws.column_dimensions["C"].width = max(ws.column_dimensions["C"].width or 0, 40)
 
 
 def _generic_variants(question: str) -> tuple[str, str, str]:
@@ -297,6 +310,18 @@ def _generic_variants(question: str) -> tuple[str, str, str]:
         f"[복수 공정 사업장 예] 공정별 차이가 있으면 공정명과 담당부서를 구분하여 {question} 관련 내용을 작성",
         f"[해당 없음 예] 사업장에 해당하지 않는 경우 '해당 없음'으로 적고 적용되지 않는 이유를 간단히 작성",
     )
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
 
 
 def _enrich_example_forms(wb) -> None:
@@ -308,23 +333,30 @@ def _enrich_example_forms(wb) -> None:
         field_key = rec["field_keys"].split("|")[0]
         row = rec["row"]
         question = str(ws.cell(row, 1).value or "작성항목")
-        variants = EXAMPLE_VARIANTS.get(field_key, _generic_variants(question))
+        base_example = str(ws.cell(row, 2).value or "").strip()
+        variants = list(EXAMPLE_VARIANTS.get(field_key, _generic_variants(question)))
+        examples = _dedupe(([base_example] if base_example else []) + variants)
+        while len(examples) < 4:
+            examples.extend(value for value in _generic_variants(question) if value not in examples)
+            if len(examples) >= 4:
+                break
+        examples = examples[:4]
+
         ws.cell(4, 1, "확인할 내용")
-        ws.cell(4, 2, "예시 A")
-        ws.cell(4, 3, "예시 B")
-        ws.cell(4, 4, "예시 C")
-        ws.cell(4, 5, "작성 포인트")
-        for idx, value in enumerate(variants, start=2):
+        for idx, letter in enumerate(("A", "B", "C", "D"), start=2):
+            ws.cell(4, idx, f"예시 {letter}")
+        ws.cell(4, 6, "작성 포인트")
+
+        for idx, value in enumerate(examples, start=2):
             ws.cell(row, idx, value)
             ws.cell(row, idx).fill = PatternFill("solid", fgColor=EXAMPLE_FILL)
             ws.cell(row, idx).alignment = Alignment(vertical="top", wrap_text=True)
-        ws.cell(row, 5, "예시는 표현방식만 참고하세요. 실제 사업장 사실·설비·조직·수치와 다르면 복사하지 마십시오.")
-        ws.cell(row, 5).fill = PatternFill("solid", fgColor=NOTE_FILL)
-        ws.cell(row, 5).alignment = Alignment(vertical="top", wrap_text=True)
-        ws.column_dimensions["B"].width = 48
-        ws.column_dimensions["C"].width = 48
-        ws.column_dimensions["D"].width = 48
-        ws.column_dimensions["E"].width = 36
+        ws.cell(row, 6, "예시는 표현방식만 참고하세요. 실제 사업장 사실·설비·조직·수치와 다르면 복사하지 마십시오.")
+        ws.cell(row, 6).fill = PatternFill("solid", fgColor=NOTE_FILL)
+        ws.cell(row, 6).alignment = Alignment(vertical="top", wrap_text=True)
+        for col in ("B", "C", "D", "E"):
+            ws.column_dimensions[col].width = 46
+        ws.column_dimensions["F"].width = 36
 
 
 def _replace_example_table_rows(wb) -> None:
@@ -376,7 +408,7 @@ def build_enhanced_integrated_authoring_workbook(project: Stage2Project, *, exam
         _enrich_example_forms(wb)
         _add_example_guide_note(wb)
     else:
-        _simplify_input_examples(wb)
+        _remove_examples_from_input_forms(wb)
 
     out = BytesIO()
     wb.save(out)
