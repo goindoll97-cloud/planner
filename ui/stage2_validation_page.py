@@ -33,7 +33,11 @@ st.info(
 
 projects = list_projects()
 if not projects:
-    st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단과 2. 작성범위 선택을 진행하세요.")
+    st.info(
+        "저장된 작성 프로젝트가 없습니다. 2. 작성범위 선택에서 Stage 1 판정결과로 프로젝트를 만들거나, "
+        "통합 작성자료로 Stage 2를 직접 시작하세요."
+    )
+    st.page_link("ui/stage2_scope_page.py", label="2. 작성범위 선택으로 이동", icon="🧭")
     st.stop()
 
 labels = {
@@ -141,4 +145,4 @@ st.download_button(
     width="stretch",
 )
 
-st.page_link("ui/stage2_project_page.py", label="5. 작성·검토로 이동", icon="📝")
+st.page_link("ui/stage2_review_page.py", label="5. 작성·검토로 이동", icon="📝")
