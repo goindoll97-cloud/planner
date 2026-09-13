@@ -13,6 +13,7 @@ from docx.shared import Pt, RGBColor
 
 from .ai_drafting import ai_draft_field_key
 from .intake import selected_requirement_specs
+from .language_policy import assert_public_prose
 from .project import Stage2Project
 from .report_draft import build_report_draft, draft_filename
 
@@ -52,10 +53,12 @@ def has_ai_report_prose(project: Stage2Project, system: str) -> bool:
 
 
 def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes:
-    """Inject grounded AI prose immediately after matching requirement headings.
+    """Inject grounded AI prose after matching legal-writing headings.
 
     The deterministic report remains the source-of-truth skeleton. AI prose is
     a separate overlay and never replaces the underlying confirmed field data.
+    Before output, every user-facing AI sentence is checked again against the
+    legal-language policy so legacy drafts cannot leak developer terminology.
     """
     system = str(system or "").strip().upper()
     base = build_report_draft(project, system)
@@ -73,7 +76,7 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
         if payload_status is None:
             continue
         payload, status = payload_status
-        draft_text = str(payload.get("draft_text") or "").strip()
+        draft_text = assert_public_prose(str(payload.get("draft_text") or "").strip(), system)
         suggestions = payload.get("suggested_additions")
 
         marker = _insert_after(paragraph)
@@ -93,9 +96,15 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
             _run_font(run, size=9)
 
         if isinstance(suggestions, list) and suggestions:
-            note = _insert_after(body)
-            run = note.add_run("추가 확인하면 좋은 내용: " + " / ".join(str(v) for v in suggestions if str(v).strip()))
-            _run_font(run, size=8, color="9C6500")
+            safe_suggestions = [
+                assert_public_prose(str(value), system)
+                for value in suggestions
+                if str(value).strip()
+            ]
+            if safe_suggestions:
+                note = _insert_after(body)
+                run = note.add_run("추가 확인하면 좋은 내용: " + " / ".join(safe_suggestions))
+                _run_font(run, size=8, color="9C6500")
         inserted += 1
 
     if inserted:
