@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from typing import Any
 
+from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
-from .requirements import RequirementSpec, requirement_specs_for_project
+from .requirements import RequirementSpec
 
 
 @dataclass(frozen=True)
@@ -107,7 +108,7 @@ def _aggregate_state(results: list[RequirementResult]) -> str:
 
 
 def evaluate_project_completeness(project: Stage2Project) -> dict[str, Any]:
-    specs = requirement_specs_for_project(project)
+    specs = selected_requirement_specs(project)
     results = [evaluate_requirement(project, spec) for spec in specs]
 
     def summary(system: str) -> dict[str, Any]:
@@ -129,13 +130,14 @@ def evaluate_project_completeness(project: Stage2Project) -> dict[str, Any]:
     )
 
     return {
+        "scope_confirmed": project.scope_confirmed,
         "overall": {
             "completion_pct": round(overall_pct, 1),
             "state": _aggregate_state(results),
             "required_n": len(results),
             "ready_n": sum(r.state == "READY" for r in results),
         },
-        "psm": summary("PSM") if project.psm_required is True else {"state": "NOT_REQUIRED", "completion_pct": 100.0},
-        "cap": summary("CAP") if project.cap_required is True else {"state": "NOT_REQUIRED", "completion_pct": 100.0},
+        "psm": summary("PSM") if project.psm_in_scope else {"state": "NOT_REQUIRED", "completion_pct": 100.0},
+        "cap": summary("CAP") if project.cap_in_scope else {"state": "NOT_REQUIRED", "completion_pct": 100.0},
         "requirements": [r.to_dict() for r in results],
     }
