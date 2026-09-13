@@ -7,6 +7,7 @@ import streamlit as st
 
 from engine.legal_archive import evidence_rows, open_archive_folder
 from engine.stage2.intake import extract_form_references
+from engine.stage2.official_forms import list_official_forms_for_program, official_form_bytes
 from engine.stage2.requirements import cap_requirement_specs
 
 
@@ -18,8 +19,6 @@ st.caption(
 )
 
 rows = evidence_rows()
-# Legacy archive metadata may contain internal abbreviations. User-facing text is
-# normalized to the full legal document names.
 for row in rows:
     row["근거"] = (
         str(row.get("근거", ""))
@@ -68,6 +67,33 @@ else:
                 )
 
 st.divider()
+st.markdown("### 현행 공식 법정 별지서식 PDF")
+st.caption(
+    "법제처 공식 첨부파일 중 법령감시 결과가 CURRENT인 별지서식만 제공합니다. "
+    "개정 감지 또는 최신성 미확인 상태의 파일은 제공하지 않습니다."
+)
+for program in ("공정안전보고서", "화학사고예방관리계획서"):
+    forms = list_official_forms_for_program(program)
+    if not forms:
+        st.warning(f"{program}: 현재 CURRENT 상태로 제공할 공식 별지서식 PDF가 없습니다.")
+        continue
+    with st.expander(f"{program} 공식 별지서식 {len(forms)}건", expanded=False):
+        for idx, form in enumerate(forms):
+            c1, c2 = st.columns([5, 1])
+            c1.write(f"**{form.form_reference}** · {form.source_title}")
+            c1.caption(
+                f"시행일 {form.effective_date or '-'} · 발령번호 {form.issue_number or '-'} · SHA-256 {form.sha256}"
+            )
+            c2.download_button(
+                "공식 PDF",
+                data=official_form_bytes(form),
+                file_name=form.file_name,
+                mime="application/pdf",
+                key=f"official_form_{program}_{idx}_{form.law_key}",
+                width="stretch",
+            )
+
+st.divider()
 st.markdown("### 화학사고예방관리계획서 관련 법정 별지서식 참조")
 form_map: dict[str, set[str]] = {}
 for spec in cap_requirement_specs("1군"):
@@ -85,7 +111,7 @@ if form_map:
     st.dataframe(pd.DataFrame(form_rows), width="stretch", hide_index=True)
     st.info(
         "위 표는 현재 작성 registry에서 확인되는 법정 별지서식의 참조목록입니다. "
-        "법정 서식 원문은 현행 고시의 공식 첨부파일을 기준으로 확인해야 하며, 프로그램 입력양식을 법정 서식으로 대체하지 않습니다."
+        "위 ‘현행 공식 법정 별지서식 PDF’에서 CURRENT 상태의 공식 파일을 직접 내려받을 수 있습니다."
     )
 else:
     st.info("현재 registry에서 별지서식 참조를 추출하지 못했습니다.")
