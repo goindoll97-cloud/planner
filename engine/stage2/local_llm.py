@@ -99,14 +99,14 @@ def local_runtime_setup_steps(config: LocalLLMConfig) -> tuple[str, ...]:
             "Ollama 앱을 실행합니다. 서버가 자동으로 시작되지 않으면 명령 프롬프트에서 `ollama serve`를 실행합니다.",
             "명령 프롬프트에서 `ollama list`로 설치된 모델을 확인합니다.",
             f"현재 설정 모델이 없으면 `ollama pull {config.model}`로 모델을 설치하거나, 프로그램의 모델 이름을 이미 설치된 모델명으로 바꿉니다.",
-            f"프로그램에서 로컬 주소가 `{config.base_url}`인지 확인한 뒤 '로컬 AI 연결 확인'을 누릅니다.",
+            f"프로그램의 로컬 주소는 `{config.base_url}`로 사용합니다.",
         )
     return (
         "LM Studio 등 OpenAI 호환 로컬 실행기를 이 PC에서 실행합니다.",
         "로컬 서버 기능을 시작하고 외부 네트워크 공개가 아닌 로컬 PC 전용으로 사용합니다.",
-        "LM Studio에서 사용할 모델을 먼저 로드합니다.",
-        f"프로그램에서 로컬 주소가 `{config.base_url}`인지 확인한 뒤 '로컬 AI 연결 확인'을 누릅니다.",
-        "연결 후 프로그램에 표시되는 모델 ID를 로컬 모델 이름에 입력합니다.",
+        "사용할 모델을 먼저 로드합니다.",
+        f"프로그램의 로컬 주소는 `{config.base_url}`로 사용합니다.",
+        "연결 후 서버에 표시되는 모델 ID를 프로그램의 로컬 모델 이름에 입력합니다.",
     )
 
 
@@ -148,8 +148,6 @@ def _model_matches(selected: str, available: tuple[str, ...]) -> bool:
         return False
     if target in available:
         return True
-    # Ollama sometimes exposes an explicit :latest tag while users enter the
-    # base model name. Treat only this harmless alias as equivalent.
     return f"{target}:latest" in available or (target.endswith(":latest") and target[:-7] in available)
 
 
@@ -211,6 +209,14 @@ def probe_local_llm_runtime(config: LocalLLMConfig, *, timeout_seconds: float = 
         selected_model_available=selected_available,
         message=message,
     )
+
+
+def local_runtime_not_ready_message(config: LocalLLMConfig, probe: LocalLLMProbe) -> str:
+    parts = [probe.message]
+    if probe.models and not probe.selected_model_available:
+        parts.append("현재 사용 가능한 모델: " + ", ".join(probe.models[:12]))
+    parts.append("조치 방법: " + " → ".join(local_runtime_setup_steps(config)))
+    return " ".join(part for part in parts if part)
 
 
 def _parse_json_object(text: str) -> Mapping[str, Any]:
@@ -304,6 +310,9 @@ class OpenAICompatibleLocalClient:
 
 def build_local_llm_client(config: LocalLLMConfig):
     validate_local_base_url(config.base_url)
+    probe = probe_local_llm_runtime(config)
+    if not probe.ready:
+        raise ValueError(local_runtime_not_ready_message(config, probe))
     if config.provider == "ollama":
         return OllamaLocalClient(config)
     if config.provider == "openai_compatible":
