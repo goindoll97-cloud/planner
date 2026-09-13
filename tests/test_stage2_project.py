@@ -106,8 +106,13 @@ class Stage2ProjectTests(unittest.TestCase):
     def test_psm_request_engine_does_not_ask_confirmed_stage1_inventory_again(self):
         project = create_project_from_stage1_snapshot(self._snapshot())
         rows = build_psm_data_requests(project)
-        chemical = next(row for row in rows if row.requirement_key == "psm.psi.chemical_inventory")
-        self.assertNotIn("inventory.chemicals", chemical.missing_fields)
+        # Chemical inventory contains only the already-VERIFIED Stage-1 field,
+        # so the whole request row should disappear rather than ask it again.
+        keys = {row.requirement_key for row in rows}
+        self.assertNotIn("psm.psi.chemical_inventory", keys)
+
+        # Equipment details still need the Stage-2 detailed spec, but the
+        # verified Stage-1 facility inventory must not be requested again.
         equipment = next(row for row in rows if row.requirement_key == "psm.psi.equipment_specs")
         self.assertNotIn("inventory.facilities", equipment.missing_fields)
         self.assertIn("psm.psi.equipment_specs", equipment.missing_fields)
