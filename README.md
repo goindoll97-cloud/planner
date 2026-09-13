@@ -10,16 +10,19 @@
 4. **승인 DB 출처 검증**: 판정용 승인 DB가 현재 공식 PDF에서 만들어진 자료인지 SHA-256 provenance를 확인한 뒤에만 판정을 허용합니다.
 5. **동적 질문**: 자동으로 확정할 수 없는 사실만 추가로 묻고, 답변은 다시 Rule Engine 계산에 반영합니다.
 6. **CAP/PSM 독립 판정**: 한 사업장이 두 제도 모두 대상일 수 있으므로 각각 별도로 판정합니다.
+7. **작성근거 추적**: Stage 2 작성자료는 값만 저장하지 않고 상태와 증빙 SHA-256을 함께 기록합니다.
+8. **AI 초안과 확인사실 분리**: `AI_DRAFT`는 검토 전까지 완료로 계산하지 않습니다.
 
-## 현재 단계 — Stage 1 판정엔진 v1.0 후보
+## 현재 단계 — Stage 1 판정엔진 + Stage 2-1 작성 프로젝트 기반
 
 ### 사용자 화면
 
-사이드바는 세 화면만 노출합니다.
+사이드바는 다음 네 화면을 노출합니다.
 
 - `✅ 1. 판정진단`
-- `🗂️ 2. 규정 DB 관리`
-- `📚 3. 법령 근거`
+- `📝 2. 작성 프로젝트`
+- `🗂️ 3. 규정 DB 관리`
+- `📚 4. 법령 근거`
 
 실행 진입점은 기존과 동일합니다.
 
@@ -29,6 +32,8 @@ streamlit run app.py
 ```
 
 `app.py`는 navigation만 담당하고 실제 UI는 `ui/` 아래에 분리되어 있습니다.
+
+## Stage 1 판정엔진
 
 ### 판정 전 중앙 readiness gate
 
@@ -89,6 +94,75 @@ ALLOW → CAP/PSM 판정 실행
 - 법정 면제시설 확인
 - 주요취급시설 확인 후 1군/2군 최종 판정
 
+## Stage 2-1 작성 프로젝트
+
+Stage 1의 판정이 완료되면 같은 회사 입력 Excel과 판정결과를 `Stage2Project` snapshot으로 넘깁니다. Stage 2는 대상 여부를 다시 판단하지 않고 Stage 1의 결과를 그대로 승계합니다.
+
+```text
+Stage 1 확정판정
+    ↓
+Stage 2 프로젝트 생성
+    ↓
+공통 사업장·물질·시설자료 승계
+    ↓
+PSM/CAP 작성항목 registry 생성
+    ↓
+자료·증빙 등록 + SHA-256 기록
+    ↓
+작성률 / HOLD / REVIEW_REQUIRED 계산
+    ↓
+검토용 JSON·XLSX 내보내기
+```
+
+### 작성자료 상태
+
+- `VERIFIED`: 회사 원본파일·도면·SDS 등 증빙으로 확인된 사실
+- `USER_CONFIRMED`: 담당자가 직접 확인한 사실
+- `CALCULATED`: 검증된 계산엔진으로 산출한 값
+- `AI_DRAFT`: AI가 만든 초안이며 사람 검토 전에는 완료로 인정하지 않음
+- `HOLD`: 미확인 또는 근거 부족
+
+### 작성구조
+
+공정안전보고서는 Stage 2 registry에서 다음 큰 축으로 관리합니다.
+
+- 공정안전자료
+- 공정위험성평가
+- 안전운전계획
+- 비상조치계획
+
+화학사고예방관리계획서는 현행 작성구조에 맞춰 다음 축으로 관리합니다.
+
+- 기본정보
+- 시설정보
+- 장외평가정보
+- 사전관리방침
+- 내부 비상대응 계획
+- 외부 비상대응 계획
+
+Stage 1에서 2군으로 확정된 사업장은 외부 비상대응계획을 필수 작성률에서 제외합니다.
+
+### 저장과 증빙
+
+작성 프로젝트와 업로드 증빙은 Git에 커밋하지 않고 아래 런타임 폴더에 저장합니다.
+
+```text
+data/runtime/stage2/projects/<project_id>/
+├─ project.json
+└─ attachments/
+```
+
+증빙파일은 저장 시 SHA-256을 계산하여 필드별 `EvidenceRef`에 연결합니다.
+
+### 현재 Stage 2 산출물
+
+현재는 법정 제출 최종본이 아니라 검토·감사용 산출물만 제공합니다.
+
+- 프로젝트 원본 JSON
+- 작성현황·근거 XLSX
+
+최종 DOCX/PDF는 세부 작성엔진과 최종 validation gate를 구현한 뒤 활성화합니다. 근거가 확인되지 않은 값이나 `AI_DRAFT`가 남아 있는 상태에서는 최종본을 만들지 않는 방향입니다.
+
 ## 규정 DB와 법적 근거 관리
 
 최신 공식 PDF에서 바로 판정 DB로 넘어가지 않습니다.
@@ -123,7 +197,8 @@ planner/
 ├─ app.py                         # Streamlit navigation
 ├─ ui/
 │  ├─ diagnosis_entry.py          # 중앙 readiness gate + 진단 진입
-│  ├─ diagnosis_page.py           # CAP/PSM 1차 판정 UI
+│  ├─ diagnosis_page.py           # CAP/PSM 1차 판정 UI + Stage 2 handoff
+│  ├─ stage2_project_page.py      # 작성 프로젝트/증빙/작성률/검토용 export
 │  ├─ psm_followup_panel.py       # PSM 법정 추가조건 입력 및 별표 13 합산한 값(R) 산정
 │  ├─ regdb_page.py               # 규정 DB 관리자 화면
 │  └─ legal_evidence_page.py      # 법적 근거 조회
@@ -136,11 +211,17 @@ planner/
 │  ├─ psm_followup.py
 │  ├─ cap_engine.py
 │  ├─ cap_final_decision.py
+│  ├─ stage2/
+│  │  ├─ project.py               # 프로젝트/필드/증빙 데이터모델
+│  │  ├─ requirements.py          # PSM/CAP 작성항목 registry
+│  │  ├─ completeness.py          # READY/REVIEW_REQUIRED/HOLD 평가
+│  │  ├─ storage.py               # 프로젝트·증빙 로컬 저장
+│  │  └─ export.py                # 검토용 JSON/XLSX export
 │  └─ ...
 ├─ data/
 │  ├─ law_registry.json
 │  ├─ regulatory/approved/        # 로컬 승인 DB
-│  ├─ runtime/                    # Git 제외
+│  ├─ runtime/                    # Git 제외, Stage 2 프로젝트 포함
 │  └─ legal_archive/              # Git 제외
 └─ tests/
 ```
@@ -152,10 +233,16 @@ Pull Request와 `main` push에서 GitHub Actions가 다음을 수행합니다.
 1. Python 소스 compile check
 2. 전체 `unittest` 실행
 
-중요 시나리오에는 R 합산, 동일 법적 항목 선합산, 농도조건, 특수 성분조건, PSM 제1·2호 물성 후속답변, 비고 제8호 제외수량 재계산, CAP 최종판정, 법령/승인 DB SHA-256 readiness gate 등이 포함됩니다.
+Stage 1의 R 합산, 동일 법적 항목 선합산, 농도조건, 특수 성분조건, PSM 제1·2호 물성 후속답변, 비고 제8호 제외수량 재계산, CAP 최종판정, 법령/승인 DB SHA-256 readiness gate 등에 더해 Stage 2에서는 다음을 검사합니다.
+
+- Stage 1 대상·비대상 결과의 정확한 승계
+- CAP 1군/2군별 작성항목 차이
+- `AI_DRAFT`가 READY로 계산되지 않는지 여부
+- 프로젝트 저장·재로딩
+- 증빙파일 SHA-256 생성
 
 ## 다음 단계
 
-Stage 1 판정엔진을 고정한 뒤 Stage 2에서 실제 CAP/PSM 작성 지원으로 확장합니다. Stage 2에서는 판정 결과에 따라 필요한 설비·공정·도면·비상대응 자료만 선택적으로 요청하고, 확인된 사실과 법적 근거만 사용해 문서 초안을 생성하는 방향으로 진행합니다.
+Stage 2-2에서는 PSM/CAP 각 세부 서식에 필요한 필드 registry를 현행 법령·고시·별지 단위로 확장하고, 공통자료 재사용, 도면/SDS 입력검증, 계산 모듈, 초안 생성 및 최종 validation gate를 구현합니다. 그 다음 단계에서 편집용 DOCX와 고정 검토용 PDF, 계산표 XLSX, 전체 증빙 ZIP 패키지를 생성합니다.
 
 > 본 프로그램은 규제 검토 및 작성 지원 도구입니다. 최신 법령·고시·별표 및 승인 규정 DB의 출처가 검증되지 않은 상태에서는 결과를 확정하지 않고 `HOLD` 처리합니다.
