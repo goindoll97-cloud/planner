@@ -101,7 +101,8 @@ with c2:
 
 st.markdown("### 이번 프로젝트에서 작성할 문서")
 st.info(
-    "아래 선택은 작성 지원 범위만 정합니다. 법적 제출 대상 여부를 다시 판단하거나 변경하지 않습니다."
+    "아래 선택은 작성 지원 범위만 정합니다. 법적 제출 대상 여부를 다시 판단하거나 변경하지 않습니다. "
+    "두 문서를 모두 선택하면 다음 단계의 통합 작성자료에서 공통정보는 한 번만 입력합니다."
 )
 
 psm_default = project.psm_selected if project.scope_confirmed else False
@@ -144,7 +145,7 @@ else:
             st.error(str(exc))
         else:
             save_project(project)
-            st.success("작성범위를 저장했습니다. 다음 단계에서 필요한 자료와 관련 근거·서식을 확인할 수 있습니다.")
+            st.success("작성범위를 저장했습니다. 다음 단계에서 회사별 통합 작성자료와 작성예시를 내려받을 수 있습니다.")
             st.rerun()
 
 if project.scope_confirmed:
@@ -154,4 +155,4 @@ if project.scope_confirmed:
     if project.cap_in_scope:
         selected_labels.append(CAP_FULL)
     st.success("현재 작성범위: " + ", ".join(selected_labels))
-    st.page_link("ui/stage2_intake_page.py", label="3. 자료준비·접수로 이동", icon="📥")
+    st.page_link("ui/stage2_intake_page.py", label="3. 통합 작성자료로 이동", icon="📥")
