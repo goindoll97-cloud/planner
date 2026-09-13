@@ -9,12 +9,19 @@ from typing import Iterable
 from engine.regulatory_tables import PROJECT_ROOT, observed_pdf_paths, observed_source
 
 
+PROGRAM_FORM_SOURCES = {
+    "공정안전보고서": ("PSM_NOTICE",),
+    "화학사고예방관리계획서": ("CAP_DRAFT",),
+}
+
+
 @dataclass(frozen=True)
 class OfficialFormFile:
     law_key: str
     source_title: str
     effective_date: str
     issue_number: str
+    monitor_status: str
     form_reference: str
     file_name: str
     relative_path: str
@@ -38,6 +45,12 @@ def _form_number(reference: str) -> str:
     return match.group(1) if match else ""
 
 
+def _reference_from_path(path: Path) -> str:
+    logical = _normalize(path.stem.split("__", 1)[0])
+    match = re.search(r"별지(?:제)?0*(\d+)(?:호)?(?:서식)?", logical)
+    return f"별지 제{int(match.group(1))}호서식" if match else ""
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -50,51 +63,56 @@ def _matching_pdf_paths(law_key: str, form_reference: str) -> list[Path]:
     number = _form_number(form_reference)
     if not number:
         return []
+    return [path for path in observed_pdf_paths(law_key) if _form_number(_reference_from_path(path)) == number]
 
-    matched: list[Path] = []
-    patterns = (
-        re.compile(rf"별지0*{re.escape(number)}(?:호)?(?:서식)?(?:_|$)"),
-        re.compile(rf"별지제?0*{re.escape(number)}호?서식"),
+
+def _row(law_key: str, path: Path, form_reference: str) -> OfficialFormFile | None:
+    source = observed_source(law_key) or {}
+    if str(source.get("monitor_status") or "") != "CURRENT":
+        return None
+    try:
+        rel = str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return None
+    return OfficialFormFile(
+        law_key=law_key,
+        source_title=str(source.get("title") or law_key),
+        effective_date=str(source.get("effective_date") or ""),
+        issue_number=str(source.get("issue_number") or ""),
+        monitor_status=str(source.get("monitor_status") or ""),
+        form_reference=form_reference,
+        file_name=path.name,
+        relative_path=rel,
+        sha256=_sha256(path),
     )
-    for path in observed_pdf_paths(law_key):
-        logical = _normalize(path.stem.split("__", 1)[0])
-        if any(pattern.search(logical) for pattern in patterns):
-            matched.append(path)
-    return matched
 
 
 def resolve_official_form(
     form_reference: str,
     *,
-    candidate_law_keys: Iterable[str] = ("CAP_DRAFT", "CAP_RULE", "PSM_RULE", "PSM_NOTICE"),
+    candidate_law_keys: Iterable[str] = ("CAP_DRAFT", "PSM_NOTICE"),
 ) -> list[OfficialFormFile]:
-    """Resolve a 법정 별지서식 only from current official observed PDFs.
-
-    The law monitor downloads the official PDF attachments into the runtime
-    pending store. This resolver never creates or reconstructs a statutory form.
-    If more than one source matches, callers must present the ambiguity instead
-    of choosing one automatically.
-    """
+    """Resolve a statutory 별지서식 only from CURRENT official observed PDFs."""
     results: list[OfficialFormFile] = []
     for law_key in candidate_law_keys:
-        source = observed_source(law_key) or {}
         for path in _matching_pdf_paths(law_key, form_reference):
-            try:
-                rel = str(path.relative_to(PROJECT_ROOT))
-            except ValueError:
+            item = _row(law_key, path, form_reference)
+            if item is not None:
+                results.append(item)
+    return results
+
+
+def list_official_forms_for_program(program_label: str) -> list[OfficialFormFile]:
+    results: list[OfficialFormFile] = []
+    for law_key in PROGRAM_FORM_SOURCES.get(program_label, ()):
+        for path in observed_pdf_paths(law_key):
+            reference = _reference_from_path(path)
+            if not reference:
                 continue
-            results.append(
-                OfficialFormFile(
-                    law_key=law_key,
-                    source_title=str(source.get("title") or law_key),
-                    effective_date=str(source.get("effective_date") or ""),
-                    issue_number=str(source.get("issue_number") or ""),
-                    form_reference=form_reference,
-                    file_name=path.name,
-                    relative_path=rel,
-                    sha256=_sha256(path),
-                )
-            )
+            item = _row(law_key, path, reference)
+            if item is not None:
+                results.append(item)
+    results.sort(key=lambda item: int(_form_number(item.form_reference) or 9999))
     return results
 
 
