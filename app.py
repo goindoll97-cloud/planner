@@ -35,10 +35,13 @@ if intake_ready:
 if validation_ready:
     pages.append(st.Page("ui/stage2_review_page.py", title="5. 작성·검토", icon="📝"))
 
+# These are reference/administration tools rather than sequential workflow
+# stages. Keep them always available, but do not number them so hidden Stage 4
+# or Stage 5 does not make the navigation look broken to a new user.
 pages.extend(
     [
-        st.Page("ui/regdb_page.py", title="6. 규정 DB 관리", icon="🗂️"),
-        st.Page("ui/legal_evidence_page.py", title="7. 법령·근거 라이브러리", icon="📚"),
+        st.Page("ui/regdb_page.py", title="규정 DB 관리", icon="🗂️"),
+        st.Page("ui/legal_evidence_page.py", title="법령·근거 라이브러리", icon="📚"),
     ]
 )
 
