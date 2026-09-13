@@ -6,6 +6,11 @@ from docx import Document
 
 from .project import Stage2Project
 from . import statutory_report as base
+from .cap_report_authoritative import (
+    add_cap_form6_msds_candidate_review,
+    add_cap_form7_msds_candidate_review,
+    add_cap_source_declaration,
+)
 
 
 # The base renderer uses small helper tables inside a larger statutory form.
@@ -119,6 +124,7 @@ CAP_ARTICLE_ITEMS = {
 
 def _render_cap(doc: Document, project: Stage2Project) -> None:
     base._add_title(doc, "화학사고예방관리계획서", base.CAP_SOURCE, project, cap_group=project.cap_group)
+    add_cap_source_declaration(doc)
 
     doc.add_heading("기본정보", level=1)
     base._cap_form1(doc, project)
@@ -126,7 +132,9 @@ def _render_cap(doc: Document, project: Stage2Project) -> None:
     base._cap_facility_overview(doc, project, detailed=False)
     base._cap_facility_overview(doc, project, detailed=True)
     base._add_form_table(doc, base.CAP_FORMS["6"], base._cap_form6_rows(project))
+    add_cap_form6_msds_candidate_review(doc, project)
     base._cap_form7(doc, project)
+    add_cap_form7_msds_candidate_review(doc, project)
     base._cap_form8(doc, project)
 
     doc.add_page_break()
