@@ -186,18 +186,20 @@ def _dedupe_refs(entries: Iterable[GuidanceReference]) -> tuple[GuidanceReferenc
 
 
 def _classify_action(item: IntakeRequirement) -> str:
+    fields = set(item.missing_fields)
+    if fields:
+        if (
+            item.input_kind in ATTACHMENT_INPUT_KINDS
+            or all(key.startswith("documents.") or key == "psm.psi.msds" for key in fields)
+        ):
+            return ACTION_FILE
+        return ACTION_EXCEL
     if item.received_unconfirmed_fields:
         return ACTION_REVIEW
-    fields = set(item.missing_fields)
-    if fields and (
-        item.input_kind in ATTACHMENT_INPUT_KINDS
-        or all(key.startswith("documents.") or key == "psm.psi.msds" for key in fields)
-    ):
-        return ACTION_FILE
     automation = str(item.automation or "").upper()
-    if not fields and any(token in automation for token in ("CALCULATE", "GENERATE", "DRAFT")):
+    if any(token in automation for token in ("CALCULATE", "GENERATE", "DRAFT")):
         return ACTION_PROGRAM
-    return ACTION_EXCEL
+    return ACTION_REVIEW
 
 
 def build_requirement_guidance(project: Stage2Project, item: IntakeRequirement) -> RequirementGuidance:
@@ -226,17 +228,14 @@ def build_requirement_guidance(project: Stage2Project, item: IntakeRequirement) 
         if ref is not None:
             references.append(ref)
 
-    # Common requirements often intentionally contain no legal citation. Their
-    # legal basis comes from the selected report-specific requirement that uses
-    # the same field. Do not invent a citation when the registry has none.
+    # Common requirements intentionally carry little or no legal wording. The
+    # report-specific requirements that use the same field supply the legal
+    # connection. If that connection is absent, keep the gap visible rather
+    # than inventing a citation.
     if not statutory and item.legal_basis and _is_statutory_basis(item.legal_basis):
-        statutory.append(
-            BasisEntry(item.system_label, item.section, item.label, item.legal_basis)
-        )
+        statutory.append(BasisEntry(item.system_label, item.section, item.label, item.legal_basis))
     if not detailed and item.legal_basis and any(token in item.legal_basis for token in ("고시", "작성규정", "별표", "별지")):
-        detailed.append(
-            BasisEntry(item.system_label, item.section, item.label, item.legal_basis)
-        )
+        detailed.append(BasisEntry(item.system_label, item.section, item.label, item.legal_basis))
 
     if item.form_references:
         for form in item.form_references:
