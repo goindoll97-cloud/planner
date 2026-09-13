@@ -20,6 +20,7 @@ class CAPDataRequest:
     input_kind: str
     automation: str
     request_text: str
+    legal_basis: str
     priority: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -65,6 +66,7 @@ def build_cap_data_requests(project: Stage2Project) -> list[CAPDataRequest]:
                 input_kind=spec.input_kind,
                 automation=spec.automation,
                 request_text=spec.request_text,
+                legal_basis=spec.legal_basis,
                 priority=_priority(spec),
             )
         )
