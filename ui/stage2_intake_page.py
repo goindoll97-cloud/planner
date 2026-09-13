@@ -14,7 +14,7 @@ from engine.stage2.intake import (
 from engine.stage2.official_forms import (
     list_official_forms_for_program,
     official_form_bytes,
-    resolve_official_form,
+    resolve_official_form_for_program,
 )
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 
@@ -73,18 +73,18 @@ def _download_form(form, *, key: str) -> None:
     )
 
 
-def _render_reference_form(reference: str, *, key_prefix: str) -> None:
-    matches = resolve_official_form(reference)
+def _render_reference_form(reference: str, program_label: str, *, key_prefix: str) -> None:
+    matches = resolve_official_form_for_program(reference, program_label)
     if len(matches) == 1:
         _download_form(matches[0], key=f"{key_prefix}_{matches[0].law_key}_{reference}")
     elif len(matches) > 1:
         st.warning(
-            f"{reference}: 현재 공식자료에서 둘 이상의 서식이 연결되어 자동 선택하지 않습니다. "
-            "법령 근거 화면에서 적용 법령·고시를 확인해 주세요."
+            f"{reference}: {program_label}의 현재 공식자료에서 둘 이상의 서식이 연결되어 자동 선택하지 않습니다. "
+            "법령 근거 화면에서 적용 고시를 확인해 주세요."
         )
     else:
         st.warning(
-            f"{reference}: 현재 법령감시에서 CURRENT로 확인된 공식 PDF를 찾지 못했습니다. "
+            f"{reference}: {program_label}의 법령감시에서 CURRENT로 확인된 공식 PDF를 찾지 못했습니다. "
             "규정 DB 관리에서 최신 공식본 확인 후 다시 시도해 주세요."
         )
 
@@ -211,7 +211,11 @@ else:
             if item.form_references:
                 st.write("**관련 법정 서식**")
                 for form in item.form_references:
-                    _render_reference_form(form, key_prefix=f"missing_{item.requirement_key}")
+                    _render_reference_form(
+                        form,
+                        item.system_label,
+                        key_prefix=f"missing_{item.requirement_key}",
+                    )
             if item.legal_basis:
                 st.write("**작성근거**")
                 st.code(item.legal_basis)
