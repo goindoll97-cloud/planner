@@ -12,6 +12,7 @@ from .project import Stage2Project
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "stage2"
 CAP_REGISTRY_PATH = DATA_DIR / "cap_manual_registry.json"
 PSM_REGISTRY_PATH = DATA_DIR / "psm_example_registry.json"
+PSM_SUPPLEMENT_PATH = DATA_DIR / "psm_outline_supplement.json"
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,17 @@ def load_psm_example_registry() -> dict[str, Any]:
     return raw
 
 
+@lru_cache(maxsize=1)
+def load_psm_outline_supplement() -> dict[str, Any]:
+    if not PSM_SUPPLEMENT_PATH.exists():
+        return {"schema_version": "psm-outline-supplement-v1", "requirements": []}
+    with PSM_SUPPLEMENT_PATH.open("r", encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if raw.get("schema_version") != "psm-outline-supplement-v1":
+        raise ValueError("지원하지 않는 공정안전보고서 목차 보완 registry 버전입니다.")
+    return raw
+
+
 def cap_field_labels() -> dict[str, str]:
     return dict(load_cap_manual_registry().get("field_labels") or {})
 
@@ -132,9 +144,11 @@ def cap_manual_source() -> dict[str, Any]:
 
 def psm_example_source() -> dict[str, Any]:
     raw = load_psm_example_registry()
+    supplement = load_psm_outline_supplement()
     return {
         "source": dict(raw.get("source") or {}),
         "outline_source": dict(raw.get("outline_source") or {}),
+        "outline_supplement_source": dict(supplement.get("source") or {}),
         "legal_reference": dict(raw.get("legal_reference") or {}),
     }
 
@@ -164,7 +178,7 @@ def _cap_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
     )
 
 
-def _psm_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
+def _psm_requirement_from_row(row: dict[str, Any], *, source_kind: str = "PSM_EXAMPLE") -> RequirementSpec:
     pages = tuple(int(v) for v in row.get("example_pages") or [])
     description = str(row.get("request") or row.get("label") or "").strip()
     return RequirementSpec(
@@ -183,7 +197,7 @@ def _psm_requirement_from_row(row: dict[str, Any]) -> RequirementSpec:
         suggested_evidence=tuple(str(v) for v in row.get("suggested_evidence") or []),
         automation=str(row.get("automation") or ""),
         request_text=str(row.get("request") or ""),
-        source_kind="PSM_EXAMPLE",
+        source_kind=source_kind,
         legal_status=str(row.get("legal_status") or ""),
         outline_checkbox_status=str(row.get("outline_checkbox_status") or ""),
         cross_checks=tuple(str(v) for v in row.get("cross_checks") or []),
@@ -203,7 +217,14 @@ def cap_requirement_specs(group: str) -> list[RequirementSpec]:
 
 def psm_requirement_specs() -> list[RequirementSpec]:
     registry = load_psm_example_registry()
-    return [_psm_requirement_from_row(row) for row in registry.get("requirements") or []]
+    supplement = load_psm_outline_supplement()
+    specs = [_psm_requirement_from_row(row) for row in registry.get("requirements") or []]
+    existing = {spec.key for spec in specs}
+    for row in supplement.get("requirements") or []:
+        if str(row.get("key") or "") in existing:
+            continue
+        specs.append(_psm_requirement_from_row(row, source_kind="PSM_OUTLINE_SUPPLEMENT"))
+    return specs
 
 
 def requirement_specs_for_project(project: Stage2Project) -> list[RequirementSpec]:
