@@ -11,6 +11,11 @@ from engine.stage2.intake import (
     build_program_input_workbook,
     intake_summary,
 )
+from engine.stage2.official_forms import (
+    list_official_forms_for_program,
+    official_form_bytes,
+    resolve_official_form,
+)
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 
 
@@ -48,6 +53,42 @@ def _project_selector() -> str | None:
     return selected
 
 
+def _download_form(form, *, key: str) -> None:
+    left, right = st.columns([4, 1])
+    left.write(f"**{form.form_reference}** · {form.source_title}")
+    meta = []
+    if form.effective_date:
+        meta.append(f"시행일 {form.effective_date}")
+    if form.issue_number:
+        meta.append(f"발령번호 {form.issue_number}")
+    meta.append(f"SHA-256 {form.sha256}")
+    left.caption(" · ".join(meta))
+    right.download_button(
+        "공식 PDF",
+        data=official_form_bytes(form),
+        file_name=form.file_name,
+        mime="application/pdf",
+        key=key,
+        width="stretch",
+    )
+
+
+def _render_reference_form(reference: str, *, key_prefix: str) -> None:
+    matches = resolve_official_form(reference)
+    if len(matches) == 1:
+        _download_form(matches[0], key=f"{key_prefix}_{matches[0].law_key}_{reference}")
+    elif len(matches) > 1:
+        st.warning(
+            f"{reference}: 현재 공식자료에서 둘 이상의 서식이 연결되어 자동 선택하지 않습니다. "
+            "법령 근거 화면에서 적용 법령·고시를 확인해 주세요."
+        )
+    else:
+        st.warning(
+            f"{reference}: 현재 법령감시에서 CURRENT로 확인된 공식 PDF를 찾지 못했습니다. "
+            "규정 DB 관리에서 최신 공식본 확인 후 다시 시도해 주세요."
+        )
+
+
 project_id = _project_selector()
 if not project_id:
     st.stop()
@@ -69,6 +110,27 @@ if project.psm_in_scope:
 if project.cap_in_scope:
     scope_labels.append(CAP_FULL)
 st.success("현재 작성범위: " + ", ".join(scope_labels))
+
+st.markdown("### 현행 공식 법정 서식")
+st.caption(
+    "법제처 공식자료에서 내려받아 현재 감시상태가 CURRENT인 별지서식 PDF만 제공합니다. "
+    "프로그램이 서식을 재작성하거나 임의 변환하지 않습니다."
+)
+form_count = 0
+for program in scope_labels:
+    forms = list_official_forms_for_program(program)
+    if not forms:
+        st.warning(
+            f"{program}: 현재 CURRENT 상태로 직접 제공할 공식 별지서식 PDF가 없습니다. "
+            "법령 최신성 또는 공식 첨부파일 상태를 확인해 주세요."
+        )
+        continue
+    with st.expander(f"{program} 공식 별지서식 {len(forms)}건", expanded=False):
+        for idx, form in enumerate(forms):
+            _download_form(form, key=f"scope_form_{program}_{idx}_{form.law_key}")
+            form_count += 1
+if form_count == 0:
+    st.info("공식 서식 다운로드가 비활성화된 경우에도 아래 작성근거와 부족자료 안내는 계속 확인할 수 있습니다.")
 
 summary = intake_summary(project)
 catalog = build_intake_catalog(project)
@@ -149,7 +211,7 @@ else:
             if item.form_references:
                 st.write("**관련 법정 서식**")
                 for form in item.form_references:
-                    st.write(f"- {form}")
+                    _render_reference_form(form, key_prefix=f"missing_{item.requirement_key}")
             if item.legal_basis:
                 st.write("**작성근거**")
                 st.code(item.legal_basis)
@@ -163,11 +225,7 @@ st.caption(
     "보유 중인 기존 자료를 먼저 올리세요. 별도 법정 서식으로 다시 작성해야 하는지는 접수자료와 작성근거를 비교한 뒤 부족항목에서 안내합니다."
 )
 
-if not unresolved:
-    upload_candidates = catalog
-else:
-    upload_candidates = unresolved
-
+upload_candidates = catalog if not unresolved else unresolved
 if not upload_candidates:
     st.info("업로드 대상 작성항목이 없습니다.")
 else:
@@ -175,9 +233,7 @@ else:
     requirement_key = st.selectbox(
         "자료와 연결할 작성항목",
         list(item_map),
-        format_func=lambda key: (
-            f"[{item_map[key].system_label}] {item_map[key].section} · {item_map[key].label}"
-        ),
+        format_func=lambda key: f"[{item_map[key].system_label}] {item_map[key].section} · {item_map[key].label}",
     )
     selected_item = item_map[requirement_key]
 
@@ -191,19 +247,11 @@ else:
         label_map = {
             key: label
             for key, label in zip(
-                selected_item.confirmed_fields
-                + selected_item.received_unconfirmed_fields
-                + selected_item.missing_fields,
-                selected_item.confirmed_labels
-                + selected_item.received_unconfirmed_labels
-                + selected_item.missing_labels,
+                selected_item.confirmed_fields + selected_item.received_unconfirmed_fields + selected_item.missing_fields,
+                selected_item.confirmed_labels + selected_item.received_unconfirmed_labels + selected_item.missing_labels,
             )
         }
-        field_key = st.selectbox(
-            "자료로 확인할 내용",
-            candidate_fields,
-            format_func=lambda key: label_map.get(key, key),
-        )
+        field_key = st.selectbox("자료로 확인할 내용", candidate_fields, format_func=lambda key: label_map.get(key, key))
         uploads = st.file_uploader(
             "회사 보유자료 업로드",
             accept_multiple_files=True,
@@ -238,16 +286,11 @@ else:
                     evidence.append(ref)
                     names.append(upload.name)
 
-                if existing is not None and existing.value not in (None, "", [], {}):
-                    stored_value = existing.value
-                else:
-                    stored_value = names
-
+                stored_value = existing.value if existing is not None and existing.value not in (None, "", [], {}) else names
                 status = "USER_CONFIRMED" if user_confirmed else "HOLD"
                 status_note = note
                 if not user_confirmed:
-                    prefix = "자료 접수됨. 파일 내용은 아직 확인되지 않아 사람 확인이 필요합니다."
-                    status_note = f"{prefix} {note}".strip()
+                    status_note = f"자료 접수됨. 파일 내용은 아직 확인되지 않아 사람 확인이 필요합니다. {note}".strip()
 
                 project.set_field(
                     field_key,
