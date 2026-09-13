@@ -121,6 +121,16 @@ class Stage2TextFirstWorkflowTests(unittest.TestCase):
         self.assertIn("텍스트·표 자료 준비 완료 → 4. 작성자료 교차검증 열기", intake)
         self.assertIn("교차검증 확인 완료 → 5. 작성·검토 열기", validation)
 
+    def test_reference_tools_are_not_numbered_workflow_stages(self):
+        app = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
+        legal_page = (PROJECT_ROOT / "ui/legal_evidence_page.py").read_text(encoding="utf-8")
+        self.assertIn('title="규정 DB 관리"', app)
+        self.assertIn('title="법령·근거 라이브러리"', app)
+        self.assertNotIn('title="6. 규정 DB 관리"', app)
+        self.assertNotIn('title="7. 법령·근거 라이브러리"', app)
+        self.assertNotIn('st.title("📚 7. 법령·근거 라이브러리")', legal_page)
+        self.assertIn('st.title("📚 법령·근거 라이브러리")', legal_page)
+
 
 if __name__ == "__main__":
     unittest.main()
