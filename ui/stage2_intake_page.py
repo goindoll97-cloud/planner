@@ -263,7 +263,8 @@ file_rows = [(i, g) for i, g, b in classified if b == BUCKET_FILE]
 review_rows = [(i, g) for i, g, b in classified if b == BUCKET_REVIEW]
 program_rows = [(i, g) for i, g, b in classified if b == BUCKET_PROGRAM]
 
-st.markdown("### 5. 텍스트·표 작성상태")
+st.markdown("### 추가로 필요한 항목")
+st.caption("회사 직접 입력, 로컬 AI 보강, 담당자 별도 첨부를 역할별로 나누어 표시합니다.")
 if core_rows:
     st.warning(f"교차검증 전에 회사가 직접 확인해야 할 핵심 텍스트·표 자료가 {len(core_rows)}건 남아 있습니다.")
     with st.expander(f"통합 Excel 보완 필요 · {len(core_rows)}건", expanded=True):
