@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from typing import Mapping
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -13,7 +14,7 @@ from docx.shared import Pt, RGBColor
 from .ai_drafting import ai_draft_field_key
 from .intake import selected_requirement_specs
 from .project import Stage2Project
-from .report_draft import build_report_draft
+from .report_draft import build_report_draft, draft_filename
 
 
 def _run_font(run, *, size: float = 9, bold: bool = False, color: str = "1F1F1F") -> None:
@@ -91,15 +92,13 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
             run = body.add_run(line)
             _run_font(run, size=9)
 
-        anchor = body
         if isinstance(suggestions, list) and suggestions:
-            note = _insert_after(anchor)
+            note = _insert_after(body)
             run = note.add_run("추가 확인하면 좋은 내용: " + " / ".join(str(v) for v in suggestions if str(v).strip()))
             _run_font(run, size=8, color="9C6500")
         inserted += 1
 
     if inserted:
-        # Add a front-page notice without altering the deterministic legal scope.
         target = doc.paragraphs[0] if doc.paragraphs else None
         if target is not None:
             note = OxmlElement("w:p")
@@ -111,4 +110,29 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
 
     out = BytesIO()
     doc.save(out)
+    return out.getvalue()
+
+
+def build_ai_enhanced_draft_bundle(project: Stage2Project) -> bytes:
+    systems: list[str] = []
+    if project.psm_in_scope:
+        systems.append("PSM")
+    if project.cap_in_scope:
+        systems.append("CAP")
+    if not systems:
+        raise ValueError("먼저 작성범위를 선택해야 보고서 초안을 생성할 수 있습니다.")
+
+    out = BytesIO()
+    with ZipFile(out, "w", compression=ZIP_DEFLATED) as archive:
+        manifest = [
+            "Stage 2 AI 문장 보강 검토용 보고서 묶음",
+            f"프로젝트 ID: {project.project_id}",
+            "주의: AI 보강문장은 회사 확인자료와 법정 작성구조를 바탕으로 한 검토용 초안이며 법정 최종본이 아닙니다.",
+            "",
+        ]
+        for system in systems:
+            filename = draft_filename(project, system).replace("_검토용_초안.docx", "_AI보강_검토용_초안.docx")
+            archive.writestr(filename, build_ai_enhanced_report_draft(project, system))
+            manifest.append(f"- {system}: AI 보강문장 {'있음' if has_ai_report_prose(project, system) else '없음'}")
+        archive.writestr("AI보강_생성상태.txt", "\n".join(manifest).encode("utf-8"))
     return out.getvalue()
