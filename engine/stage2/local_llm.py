@@ -26,6 +26,20 @@ class LocalLLMConfig:
     max_output_tokens: int = 12000
 
 
+@dataclass(frozen=True)
+class LocalLLMProbe:
+    connected: bool
+    provider: str
+    base_url: str
+    models: tuple[str, ...] = ()
+    selected_model_available: bool = False
+    message: str = ""
+
+    @property
+    def ready(self) -> bool:
+        return self.connected and self.selected_model_available
+
+
 def validate_local_base_url(base_url: str) -> str:
     """Allow only loopback endpoints so company data cannot be sent remotely."""
     value = str(base_url or "").strip().rstrip("/")
@@ -75,6 +89,127 @@ def local_llm_config_from_sources(values: Mapping[str, Any] | None = None) -> Lo
         base_url=base_url,
         timeout_seconds=timeout,
         max_output_tokens=max_tokens,
+    )
+
+
+def local_runtime_setup_steps(config: LocalLLMConfig) -> tuple[str, ...]:
+    if config.provider == "ollama":
+        return (
+            "Ollama가 설치되어 있지 않으면 먼저 이 PC에 설치합니다.",
+            "Ollama 앱을 실행합니다. 서버가 자동으로 시작되지 않으면 명령 프롬프트에서 `ollama serve`를 실행합니다.",
+            "명령 프롬프트에서 `ollama list`로 설치된 모델을 확인합니다.",
+            f"현재 설정 모델이 없으면 `ollama pull {config.model}`로 모델을 설치하거나, 프로그램의 모델 이름을 이미 설치된 모델명으로 바꿉니다.",
+            f"프로그램에서 로컬 주소가 `{config.base_url}`인지 확인한 뒤 '로컬 AI 연결 확인'을 누릅니다.",
+        )
+    return (
+        "LM Studio 등 OpenAI 호환 로컬 실행기를 이 PC에서 실행합니다.",
+        "로컬 서버 기능을 시작하고 외부 네트워크 공개가 아닌 로컬 PC 전용으로 사용합니다.",
+        "LM Studio에서 사용할 모델을 먼저 로드합니다.",
+        f"프로그램에서 로컬 주소가 `{config.base_url}`인지 확인한 뒤 '로컬 AI 연결 확인'을 누릅니다.",
+        "연결 후 프로그램에 표시되는 모델 ID를 로컬 모델 이름에 입력합니다.",
+    )
+
+
+def _extract_ollama_models(payload: Any) -> tuple[str, ...]:
+    if not isinstance(payload, Mapping):
+        return ()
+    rows = payload.get("models")
+    if not isinstance(rows, list):
+        return ()
+    names: list[str] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        name = str(row.get("name") or row.get("model") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def _extract_openai_models(payload: Any) -> tuple[str, ...]:
+    if not isinstance(payload, Mapping):
+        return ()
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        return ()
+    names: list[str] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        name = str(row.get("id") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
+def _model_matches(selected: str, available: tuple[str, ...]) -> bool:
+    target = str(selected or "").strip()
+    if not target:
+        return False
+    if target in available:
+        return True
+    # Ollama sometimes exposes an explicit :latest tag while users enter the
+    # base model name. Treat only this harmless alias as equivalent.
+    return f"{target}:latest" in available or (target.endswith(":latest") and target[:-7] in available)
+
+
+def probe_local_llm_runtime(config: LocalLLMConfig, *, timeout_seconds: float = 2.5) -> LocalLLMProbe:
+    """Check only the loopback runtime and list locally available models.
+
+    This probe never sends company/project content. It only calls the runtime's
+    local model-list endpoint.
+    """
+    base_url = validate_local_base_url(config.base_url)
+    endpoint = f"{base_url}/api/tags" if config.provider == "ollama" else f"{base_url}/v1/models"
+    try:
+        response = requests.get(endpoint, timeout=timeout_seconds)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.ConnectionError:
+        provider_label = "Ollama" if config.provider == "ollama" else "로컬 AI 서버"
+        return LocalLLMProbe(
+            connected=False,
+            provider=config.provider,
+            base_url=base_url,
+            message=f"{provider_label}에 연결할 수 없습니다. 이 PC에서 로컬 AI 서버를 먼저 실행하세요.",
+        )
+    except requests.Timeout:
+        return LocalLLMProbe(
+            connected=False,
+            provider=config.provider,
+            base_url=base_url,
+            message="로컬 AI 서버 응답 시간이 초과되었습니다. 서버가 정상 실행 중인지 확인하세요.",
+        )
+    except requests.RequestException as exc:
+        return LocalLLMProbe(
+            connected=False,
+            provider=config.provider,
+            base_url=base_url,
+            message=f"로컬 AI 서버 상태 확인에 실패했습니다: {type(exc).__name__}",
+        )
+    except (ValueError, json.JSONDecodeError):
+        return LocalLLMProbe(
+            connected=False,
+            provider=config.provider,
+            base_url=base_url,
+            message="로컬 AI 서버가 예상한 상태정보 형식으로 응답하지 않았습니다. 실행기 종류와 주소를 확인하세요.",
+        )
+
+    models = _extract_ollama_models(payload) if config.provider == "ollama" else _extract_openai_models(payload)
+    selected_available = _model_matches(config.model, models)
+    if not models:
+        message = "로컬 AI 서버에는 연결되었지만 사용할 수 있는 모델을 찾지 못했습니다. 모델을 설치하거나 로드하세요."
+    elif not selected_available:
+        message = f"로컬 AI 서버는 실행 중이지만 현재 설정 모델 '{config.model}'을 찾지 못했습니다. 설치·로드된 모델 중 하나를 선택하세요."
+    else:
+        message = f"로컬 AI 서버와 모델 '{config.model}'을 사용할 수 있습니다."
+    return LocalLLMProbe(
+        connected=True,
+        provider=config.provider,
+        base_url=base_url,
+        models=models,
+        selected_model_available=selected_available,
+        message=message,
     )
 
 
