@@ -1,0 +1,81 @@
+{
+  "schema_version": "legal-terminology-v1",
+  "checked_as_of": "2026-09-13",
+  "principle": "법령·시행령·시행규칙의 용어를 최우선으로 사용하고, 현행 행정규칙·별표·별지, 공식 작성매뉴얼·기술지침 순으로 보완한다. 법령에 정식 명칭이 있는 개념은 사용자 화면·registry label/section/request/legal_basis·XLSX·README에서 임의 축약·유사어로 바꾸지 않는다.",
+  "source_priority": [
+    "법률·시행령·시행규칙",
+    "현행 행정규칙·별표·별지",
+    "공식 작성매뉴얼·안전보건기술지침",
+    "내부 보조용어"
+  ],
+  "psm": {
+    "sources": [
+      "산업안전보건법 시행령 제44조",
+      "산업안전보건법 시행규칙 제50조",
+      "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정"
+    ],
+    "canonical": {
+      "program": "공정안전보고서",
+      "sections": [
+        "공정안전자료",
+        "공정위험성평가서",
+        "안전운전계획",
+        "비상조치계획"
+      ],
+      "fields": {
+        "chemical_inventory": "취급·저장하고 있거나 취급·저장하려는 유해·위험물질의 종류 및 수량",
+        "msds": "유해·위험물질에 대한 물질안전보건자료",
+        "equipment_list_specs": "유해하거나 위험한 설비의 목록 및 사양",
+        "process_drawing": "유해하거나 위험한 설비의 운전방법을 알 수 있는 공정도면",
+        "layout": "각종 건물·설비의 배치도",
+        "hazardous_area_single_line": "폭발위험장소 구분도 및 전기단선도",
+        "design_installation_guideline": "위험설비의 안전설계·제작 및 설치 관련 지침서",
+        "maintenance": "설비점검·검사 및 보수계획, 유지계획 및 지침서",
+        "work_permit": "안전작업허가",
+        "contractor": "도급업체 안전관리계획",
+        "training": "근로자 등 교육계획",
+        "prestartup": "가동 전 점검지침",
+        "moc": "변경요소 관리계획",
+        "audit_investigation": "자체감사 및 사고조사계획",
+        "emergency_resources": "비상조치를 위한 장비·인력 보유현황",
+        "emergency_contacts": "사고발생 시 각 부서·관련 기관과의 비상연락체계",
+        "emergency_roles": "사고발생 시 비상조치를 위한 조직의 임무 및 수행 절차",
+        "emergency_training": "비상조치계획에 따른 교육계획",
+        "public_information": "주민홍보계획"
+      }
+    }
+  },
+  "cap": {
+    "sources": [
+      "화학사고예방관리계획서 작성 등에 관한 규정 [시행 2026.4.22, 화학물질안전원고시 제2026-7호]"
+    ],
+    "canonical": {
+      "program": "화학사고예방관리계획서",
+      "sections": [
+        "기본정보",
+        "시설정보",
+        "장외평가정보",
+        "사전관리방침",
+        "내부 비상대응계획",
+        "외부 비상대응계획"
+      ],
+      "terms": {
+        "writing_level": "작성수준",
+        "group1": "1군 사업장",
+        "group2": "2군 사업장",
+        "major_handling_facility": "주요취급시설",
+        "maximum_inventory": "최대보유량",
+        "total_impact_range": "총괄영향범위",
+        "community_notice": "지역사회 고지"
+      }
+    }
+  },
+  "developer_only_terms": [
+    "VERIFIED",
+    "USER_CONFIRMED",
+    "CALCULATED",
+    "AI_DRAFT",
+    "HOLD"
+  ],
+  "developer_term_note": "개발 상태값은 법정 용어가 아니며 사용자에게 표시할 때에는 작성자료 상태 또는 시스템 상태임을 명확히 구분한다."
+}
