@@ -63,12 +63,31 @@ class Stage2WorkbookEnhancementTests(unittest.TestCase):
         self.assertIsNotNone(equipment["A4"].comment)
         self.assertIn("Tag No.", equipment["A4"].comment.text)
 
-    def test_input_workbook_minimizes_full_example_answers(self):
+    def test_input_workbook_has_no_example_column_or_canned_example_prose(self):
         wb = load_workbook(BytesIO(build_enhanced_integrated_authoring_workbook(self._project(), example=False)))
+
+        for sheet_name in ("01_사업장정보", "06_공정정보"):
+            ws = wb[sheet_name]
+            self.assertEqual(ws["C4"].value, "작성방법")
+            self.assertLessEqual(ws.max_column, 3)
+
         process = wb["06_공정정보"]
-        self.assertEqual(process["C4"].value, "입력 도움말")
-        self.assertIn("사실 위주", str(process["C5"].value))
-        self.assertNotIn("원료는 저장탱크에서", str(process["C5"].value))
+        self.assertIn("실제 사업장 사실", str(process["C5"].value))
+
+        all_text = []
+        for ws in wb.worksheets:
+            if ws.title.startswith("_"):
+                continue
+            for row in ws.iter_rows():
+                for cell in row:
+                    if isinstance(cell.value, str):
+                        all_text.append(cell.value)
+        joined = "\n".join(all_text)
+        self.assertNotIn("원료는 저장탱크에서 이송펌프로 혼합공정에 공급되고", joined)
+        self.assertNotIn("공정 내 잠재 유해·위험요인을 체계적으로 확인하고 필요한 개선대책을 도출하기 위함", joined)
+        self.assertNotIn("화기작업, 밀폐공간작업 등 위험작업은 안전작업허가 절차에 따라 승인 후 수행", joined)
+        self.assertNotIn("작성 예", joined)
+        self.assertNotIn("입력 도움말", joined)
 
     def test_example_workbook_contains_multiple_table_scenarios(self):
         wb = load_workbook(BytesIO(build_enhanced_integrated_authoring_workbook(self._project(), example=True)))
@@ -80,18 +99,21 @@ class Stage2WorkbookEnhancementTests(unittest.TestCase):
         tags = [equipment.cell(row=row, column=1).value for row in range(5, 10)]
         self.assertEqual(tags, ["TK-101", "R-201", "P-301", "E-401", "V-501"])
 
-    def test_example_workbook_has_multiple_narrative_variants(self):
+    def test_example_workbook_keeps_base_example_and_multiple_narrative_variants(self):
         wb = load_workbook(BytesIO(build_enhanced_integrated_authoring_workbook(self._project(), example=True)))
         process = wb["06_공정정보"]
         self.assertEqual(process["B4"].value, "예시 A")
         self.assertEqual(process["C4"].value, "예시 B")
         self.assertEqual(process["D4"].value, "예시 C")
-        self.assertEqual(process["E4"].value, "작성 포인트")
-        variants = [process.cell(row=5, column=col).value for col in (2, 3, 4)]
-        self.assertEqual(len(set(variants)), 3)
-        self.assertIn("저장·이송형", variants[0])
-        self.assertIn("반응공정형", variants[1])
-        self.assertIn("혼합·충전형", variants[2])
+        self.assertEqual(process["E4"].value, "예시 D")
+        self.assertEqual(process["F4"].value, "작성 포인트")
+
+        examples = [process.cell(row=5, column=col).value for col in (2, 3, 4, 5)]
+        self.assertEqual(len(set(examples)), 4)
+        self.assertTrue(any("원료는 저장탱크에서 이송펌프로 혼합공정에 공급되고" in str(value) for value in examples))
+        self.assertTrue(any("저장·이송형" in str(value) for value in examples))
+        self.assertTrue(any("반응공정형" in str(value) for value in examples))
+        self.assertTrue(any("혼합·충전형" in str(value) for value in examples))
 
     def test_enhanced_input_remains_importable(self):
         project = self._project()
