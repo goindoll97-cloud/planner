@@ -206,16 +206,36 @@ def _load_approved_monitor() -> dict[str, Any]:
     return _load_json_file(APPROVED_MONITOR_FILE)
 
 
+def _source_identity_matches(observed: dict[str, Any], approved: dict[str, Any]) -> bool:
+    """Compare the exact legal version and attachment hashes, ignoring stale UI status labels."""
+    for key in ("serial", "effective_date", "issue_date", "issue_number"):
+        if str(observed.get(key) or "").strip() != str(approved.get(key) or "").strip():
+            return False
+    return (observed.get("attachment_hashes") or {}) == (approved.get("attachment_hashes") or {})
+
+
 def approved_source_is_current(source_key: str) -> bool:
-    """True only when the latest observation says this approved source is CURRENT."""
-    payload = _load_json_file(OBSERVED_MONITOR_FILE)
-    rows = payload.get("rows") or []
-    if not isinstance(rows, list):
+    """True when the latest valid observation equals the approved local version.
+
+    Immediately after a human approves a BASELINE_UNAPPROVED/UPDATE_PENDING row,
+    the observation file may still carry that pre-approval label. Equality of
+    official version metadata and attachment hashes is therefore authoritative;
+    the user does not need to run the API check a second time just to unlock the
+    newly approved HWPX.
+    """
+    observed_payload = _load_json_file(OBSERVED_MONITOR_FILE)
+    rows = observed_payload.get("rows") or []
+    approved = ((_load_approved_monitor().get("sources") or {}).get(source_key) or {})
+    if not isinstance(rows, list) or not isinstance(approved, dict) or not approved:
         return False
     for row in rows:
         if not isinstance(row, dict) or str(row.get("key") or "") != source_key:
             continue
-        return bool(row.get("observation_valid")) and str(row.get("monitor_status") or "") == "CURRENT"
+        if not row.get("observation_valid"):
+            return False
+        if str(row.get("monitor_status") or "") == "CURRENT":
+            return True
+        return _source_identity_matches(row, approved)
     return False
 
 
@@ -227,8 +247,8 @@ def approved_source_files(
 ) -> list[Path]:
     """Return exact archived files for the approved version of a law source.
 
-    When ``require_current`` is true, no file is returned unless the most recent
-    official API observation is valid and matches the approved baseline.
+    When ``require_current`` is true, no file is returned unless the latest
+    valid official observation is identical to the approved local baseline.
     """
     if require_current and not approved_source_is_current(source_key):
         return []
