@@ -7,15 +7,17 @@ turns the existing conservative building blocks into one explicit admin action:
 
 1. query law.go.kr and download every configured PDF/HWP/HWPX attachment;
 2. build and validate every structured decision table from the observed PDFs;
-3. only if every automatic parser validation passes, approve the observed legal
-   version and version the exact official source files locally;
-4. approve all structured decision tables and synchronize their evidence PDFs;
+3. automatically promote only changes whose downstream mapping is machine-
+   verifiable; a real law revision that may change deterministic rule logic is
+   downloaded but held for program-rule review;
+4. approve all safe structured decision tables and synchronize evidence PDFs;
 5. write a human-readable Excel snapshot of the approved decision tables;
 6. run the same readiness gate used by diagnosis.
 
-The user's single ``최신본 업데이트`` click is the explicit approval action.
-Automatic parser validation is never bypassed. If any official attachment or
-parser is uncertain, the pipeline stops fail-closed and leaves diagnosis HOLD.
+The user's normal workflow remains one ``최신본 업데이트`` click. Automatic
+parser validation is never bypassed. If any official attachment, parser, or
+legal-rule mapping is uncertain, the pipeline stops fail-closed and leaves
+diagnosis HOLD instead of pretending that a software rule updated itself.
 """
 
 from datetime import datetime, timezone
@@ -52,6 +54,18 @@ REGULATORY_BUILDERS = (
     ("CAP_QTY_APP2", "화학사고예방관리계획서 별표 2", "화학사고_별표2", build_cap_appendix2_candidate),
     ("CAP_QTY_APP3", "화학사고예방관리계획서 별표 3", "화학사고_별표3", build_cap_accident_quantity_candidate),
     ("CAP_QTY_APP4", "화학사고예방관리계획서 별표 4", "화학사고_별표4", build_cap_appendix4_candidate),
+)
+
+# Only attachment-only changes in these two source sets are fully represented by
+# the five structured parsers above. Even for these sources, a changed official
+# serial/effective/issue metadata means an actual legal revision and therefore
+# requires deterministic rule mapping review before promotion.
+AUTO_ATTACHMENT_REFRESH_KEYS = {"PSM_DECREE", "CAP_QTY"}
+LEGAL_METADATA_CHANGE_PREFIXES = (
+    "법령/행정규칙 일련번호:",
+    "시행일:",
+    "공포·발령일:",
+    "공포·발령번호:",
 )
 
 
@@ -184,12 +198,41 @@ def _all_sources_current(rows: list[dict[str, Any]]) -> bool:
     )
 
 
+def _requires_rule_mapping_review(row: dict[str, Any]) -> bool:
+    """Return True when one-click cannot prove the software logic is current."""
+    if str(row.get("monitor_status") or "") != "UPDATE_PENDING":
+        return False
+    reasons = [str(value).strip() for value in (row.get("change_reason") or []) if str(value).strip()]
+    if any(reason.startswith(LEGAL_METADATA_CHANGE_PREFIXES) for reason in reasons):
+        return True
+    # An attachment-only update is auto-promotable only where dedicated current-
+    # PDF parsers provide downstream structural/anchor validation.
+    return str(row.get("key") or "") not in AUTO_ATTACHMENT_REFRESH_KEYS
+
+
+def _rule_mapping_review_blockers(rows: list[dict[str, Any]]) -> list[str]:
+    blockers: list[str] = []
+    for row in rows:
+        if not _requires_rule_mapping_review(row):
+            continue
+        title = str(row.get("title") or row.get("key") or "법령·규정")
+        reasons = " / ".join(str(v) for v in (row.get("change_reason") or []) if str(v).strip())
+        blockers.append(
+            f"{title}: 실제 법령·규정 개정 또는 자동 매핑 범위를 벗어난 첨부변경이 확인되었습니다. "
+            "최신 원본은 내려받았지만 판정·작성 규칙이 새 조문과 일치하는지 프로그램 규칙 매핑 검토가 필요하므로 자동 승인하지 않았습니다."
+            + (f" 변경내용: {reasons}" if reasons else "")
+        )
+    return blockers
+
+
 def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Refresh every legal asset behind one explicit administrator click.
 
-    Legal baseline approval is delayed until all five decision-table parsers have
-    passed their automatic structural/anchor checks. This prevents a changed PDF
-    layout from being promoted just because the network download succeeded.
+    The one-click flow automates downloads, parsing, source archiving, decision
+    DB refresh and audit outputs whenever those transformations are mechanically
+    verifiable. A genuine legal revision is still fail-closed because arbitrary
+    statutory changes cannot safely rewrite deterministic program logic by
+    themselves.
     """
     started = datetime.now(timezone.utc).isoformat(timespec="seconds")
     base: dict[str, Any] = {
@@ -236,9 +279,9 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
                 base["warnings"] = [str(excel.get("message") or "Excel 최신본 작성 상태를 확인하세요.")]
             return _write_report(base)
 
-        # Phase 1: build/validate every decision table BEFORE promoting the new
-        # legal baseline. A parser failure means the old approved baseline stays
-        # untouched and diagnosis remains HOLD.
+        # Build/validate all decision tables before considering promotion. This
+        # catches changed PDF/table layouts while the old approved baseline is
+        # still intact.
         candidate_summaries: list[dict[str, Any]] = []
         candidate_failures: list[str] = []
         for key, label, _sheet, builder in REGULATORY_BUILDERS:
@@ -269,9 +312,15 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
             base.update(status="HOLD", blockers=candidate_failures)
             return _write_report(base)
 
-        # Phase 2: the user already clicked '최신본 업데이트'. With every
-        # source valid and every parser validation passed, that click is the
-        # explicit approval to promote all non-current observed law sources.
+        # Even with clean table parsing, a genuine legal revision may alter
+        # deterministic scope/exemption/report-writing rules outside those five
+        # tables. Downloading the new source is automatic; declaring the old
+        # program logic current is not.
+        mapping_blockers = _rule_mapping_review_blockers(rows)
+        if mapping_blockers:
+            base.update(status="HOLD", blockers=mapping_blockers, requires_program_rule_review=True)
+            return _write_report(base)
+
         approvable_statuses = {"BASELINE_UNAPPROVED", "BASELINE_MIGRATION_REQUIRED", "UPDATE_PENDING"}
         law_keys = [
             str(row.get("key") or "")
@@ -281,7 +330,7 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
             and str(row.get("key") or "")
         ]
         if law_keys:
-            _emit(progress, "approve_law", "검증된 최신 법령과 PDF·HWP/HWPX 원본을 새 승인본으로 버전 보관하고 있습니다.")
+            _emit(progress, "approve_law", "검증 가능한 최신 법령과 PDF·HWP/HWPX 원본을 새 승인본으로 버전 보관하고 있습니다.")
             law_approval = approve_latest_observation(law_keys)
             base["law_approval"] = law_approval
             if law_approval.get("status") != "APPROVED" or int(law_approval.get("approved", 0) or 0) != len(law_keys):
@@ -293,9 +342,6 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
         else:
             base["law_approval"] = {"status": "NOT_NEEDED", "approved": 0, "message": "법령 기준선 변경 없음"}
 
-        # Phase 3: approve all five structured decision tables. The individual
-        # approve functions also keep their own audit files; a partial failure is
-        # safe because final readiness remains HOLD until every source hash joins.
         approvals: list[dict[str, Any]] = []
         approval_failures: list[str] = []
         for key, label, _sheet, _builder in REGULATORY_BUILDERS:
@@ -310,8 +356,6 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
             base.update(status="HOLD", blockers=approval_failures)
             return _write_report(base)
 
-        # Phase 4: evidence archive ties each approved structured table back to
-        # the exact current official PDF hash.
         _emit(progress, "evidence", "승인 규정 DB와 공식 PDF SHA-256 근거를 연결하고 있습니다.")
         evidence_results = sync_approved_evidence([item[0] for item in REGULATORY_BUILDERS])
         base["evidence_results"] = evidence_results
