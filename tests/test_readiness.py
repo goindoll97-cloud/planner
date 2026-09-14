@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from engine.readiness import evaluate_decision_readiness
 
@@ -31,6 +32,24 @@ class DecisionReadinessTests(unittest.TestCase):
             {"key": "CAP_QTY_APP1", "label": "CAP 별표1", "law_key": "CAP_QTY", "approved_exists": True, "source_hash": "cap1hash", "audit_hash": "cap1hash", "evidence_hash": ""},
         ]
         result = evaluate_decision_readiness(self._law_rows(), provenance)
+        self.assertEqual(result["decision"], "ALLOW")
+        self.assertEqual(result["blockers"], [])
+
+    def test_just_approved_identical_observation_is_effectively_current_without_second_api_run(self):
+        law_rows = [
+            {
+                "key": "CAP_QTY",
+                "monitor_status": "UPDATE_PENDING",
+                "monitor_status_ko": "변경 감지·재반영 필요",
+                "observation_valid": True,
+                "attachment_hashes": {"별표1::PDF": "cap1hash"},
+            }
+        ]
+        provenance = [
+            {"key": "CAP_QTY_APP1", "label": "CAP 별표1", "law_key": "CAP_QTY", "approved_exists": True, "source_hash": "cap1hash", "audit_hash": "cap1hash", "evidence_hash": ""},
+        ]
+        with patch("engine.readiness.approved_source_is_current", return_value=True):
+            result = evaluate_decision_readiness(law_rows, provenance)
         self.assertEqual(result["decision"], "ALLOW")
         self.assertEqual(result["blockers"], [])
 
