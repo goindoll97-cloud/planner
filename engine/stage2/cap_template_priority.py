@@ -13,14 +13,24 @@ is supported.
 from typing import Any, Mapping
 
 
+WRAPPER_MARKER = "_current_cap_template_priority_wrapper"
+
+
 def install_current_cap_template_priority() -> None:
     from ..law_attachment_archive import approved_source_is_current
     from . import cap_hwpx
 
-    if getattr(cap_hwpx, "_current_template_priority_installed", False):
+    # Streamlit/test hot reload executes cap_hwpx in the existing module object.
+    # Arbitrary old module attributes can survive that reload even though
+    # registered_cap_template itself has been recreated. Therefore the old
+    # boolean sentinel alone is not a reliable idempotency check. Inspect the
+    # actual callable that is installed instead.
+    current_registered = cap_hwpx.registered_cap_template
+    if bool(getattr(current_registered, WRAPPER_MARKER, False)):
+        cap_hwpx._current_template_priority_installed = True
         return
 
-    original_registered = cap_hwpx.registered_cap_template
+    original_registered = current_registered
 
     def registered_cap_template_current_first(project) -> Mapping[str, Any] | None:
         current = cap_hwpx._approved_current_cap_template_meta()
@@ -35,5 +45,8 @@ def install_current_cap_template_priority() -> None:
 
         return original_registered(project)
 
+    setattr(registered_cap_template_current_first, WRAPPER_MARKER, True)
     cap_hwpx.registered_cap_template = registered_cap_template_current_first
+    # Keep the legacy sentinel for compatibility/debugging, but correctness no
+    # longer depends on it surviving or disappearing across module reloads.
     cap_hwpx._current_template_priority_installed = True
