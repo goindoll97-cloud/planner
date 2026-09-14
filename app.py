@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
+from engine.stage2.local_ai_resilience import install_local_ai_resilience
 from engine.stage2.storage import load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
@@ -13,6 +14,12 @@ ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 # project-specific template remains only as a fallback while no CURRENT central
 # legal template is available.
 install_current_cap_template_priority()
+
+# Local 14B models can be healthy yet exceed the old 180-second single-request
+# limit when many report items are sent at once. Install small-batch generation,
+# longer local read timeouts, bounded output, checkpoint saves and Ollama
+# non-thinking mode before Streamlit imports the selected Stage 2 page.
+install_local_ai_resilience()
 
 
 def _stage2_progress() -> tuple[bool, bool]:
