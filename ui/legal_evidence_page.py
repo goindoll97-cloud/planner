@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from engine.law_attachment_archive import approved_source_archive_rows, approved_source_files
 from engine.legal_archive import evidence_rows, open_archive_folder
 from engine.stage2.guidance import all_requirement_specs_for_library, requirement_library_search_text
 from engine.stage2.intake import extract_form_references
@@ -21,7 +22,7 @@ st.set_page_config(page_title="법령·근거 라이브러리", page_icon="📚"
 st.title("📚 법령·근거 라이브러리")
 st.caption(
     "작성항목을 검색하면 그 항목에 현재 구조화되어 연결된 법적 근거, 세부 작성기준, 작성 참고자료를 먼저 보여줍니다. "
-    "승인 근거 PDF와 현행 공식 별지서식은 아래 전체 자료 보관영역에서 확인할 수 있습니다."
+    "승인 근거와 법제처에서 내려받은 현행 PDF·HWP·HWPX 원본은 아래 전체 자료 보관영역에서 확인할 수 있습니다."
 )
 
 
@@ -127,6 +128,40 @@ else:
 
 st.divider()
 
+source_archive = pd.DataFrame(approved_source_archive_rows())
+with st.expander("법제처 현행 법령·별표·별지 원본 로컬 보관현황", expanded=False):
+    st.caption(
+        "법제처 Open API에서 확인한 공식 첨부파일을 PDF와 HWP/HWPX 원본까지 내려받아 SHA-256으로 비교합니다. "
+        "개정이 감지된 새 파일은 바로 사용하지 않고 검토·승인된 버전만 이 보관소에 남습니다. 이전 승인 버전은 삭제하지 않습니다."
+    )
+    if source_archive.empty:
+        st.info("아직 승인되어 버전 보관된 법령 첨부원본이 없습니다. 최신 법령 확인 후 기준선을 검토·승인해 주세요.")
+    else:
+        st.dataframe(source_archive, width="stretch", hide_index=True)
+        for _, item in source_archive.iterrows():
+            key = str(item.get("key", ""))
+            title = str(item.get("법령·규정", ""))
+            files = approved_source_files(key)
+            if not files:
+                continue
+            st.write(f"**{title or key}**")
+            cols = st.columns(min(3, len(files)))
+            for idx, path in enumerate(files):
+                suffix = path.suffix.lower()
+                mime = {
+                    ".pdf": "application/pdf",
+                    ".hwp": "application/x-hwp",
+                    ".hwpx": "application/vnd.hancom.hwpx",
+                }.get(suffix, "application/octet-stream")
+                cols[idx % len(cols)].download_button(
+                    f"{suffix.lstrip('.').upper()} 원본",
+                    data=path.read_bytes(),
+                    file_name=path.name,
+                    mime=mime,
+                    key=f"law_source_file_{key}_{idx}",
+                    width="stretch",
+                )
+
 rows = evidence_rows()
 for row in rows:
     row["근거"] = (
@@ -136,7 +171,7 @@ for row in rows:
     )
 
 df = pd.DataFrame(rows)
-with st.expander("전체 승인 근거자료·PDF 보관현황", expanded=False):
+with st.expander("전체 승인 규정수량 근거 PDF 보관현황", expanded=False):
     if df.empty:
         st.info("아직 로컬에 보관된 승인 근거자료가 없습니다. ‘규정 DB 관리’에서 승인본 근거 PDF를 동기화하세요.")
     else:
@@ -177,7 +212,7 @@ with st.expander("전체 승인 근거자료·PDF 보관현황", expanded=False)
 
 with st.expander("전체 현행 공식 법정 별지서식 PDF", expanded=False):
     st.caption(
-        "법제처 공식 첨부파일 중 법령감시 결과가 CURRENT인 별지서식만 제공합니다. "
+        "법제처 공식 첨부파일 중 법령감시 결과가 CURRENT인 별지서식 PDF만 제공합니다. "
         "개정 감지 또는 최신성 미확인 상태의 파일은 제공하지 않습니다."
     )
     for program in ("공정안전보고서", "화학사고예방관리계획서"):
@@ -206,5 +241,5 @@ st.info(
     "직접 근거가 등록되지 않은 세부항목에는 임의의 조문을 만들어 붙이지 않습니다."
 )
 st.caption(
-    "승인 근거 PDF는 사람이 원문을 확인하기 위한 사본이며, 실제 판정 계산은 같은 공식 근거에서 검토·승인한 구조화 Regulatory DB를 사용합니다."
+    "법제처 첨부원본은 개정 추적과 법정서식 보존을 위한 버전 사본입니다. 실제 규제판정 계산은 같은 공식 근거에서 검토·승인한 구조화 규정 DB를 사용합니다."
 )
