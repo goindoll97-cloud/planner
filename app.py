@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import streamlit as st
 
+from engine.stage2.cap_template_priority import install_current_cap_template_priority
 from engine.stage2.storage import load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
+
+# The current approved law.go.kr CAP form is the layout authority. An older
+# project-specific template remains only as a fallback while no CURRENT central
+# legal template is available.
+install_current_cap_template_priority()
 
 
 def _stage2_progress() -> tuple[bool, bool]:
