@@ -13,20 +13,19 @@ def _law_rows():
 
 def _render_gate_hold(gate: dict[str, object]) -> None:
     st.title("✅ 1. 판정진단")
-    st.error("현재 법령·규정 DB 검증이 완료되지 않아 판정을 시작하지 않습니다.")
+    st.error("법령 개정 또는 최신 규정자료 미반영이 감지되어 판정을 잠시 보류합니다.")
     st.write(str(gate.get("message") or "공식 최신본과 승인 DB의 출처 확인이 필요합니다."))
     blockers = gate.get("blockers") or []
     if blockers:
-        st.markdown("**현재 확인이 필요한 항목**")
-        for blocker in blockers:
-            st.write(f"• {str(blocker).replace('화사계', '화학사고예방관리계획서')}")
+        with st.expander("관리자 확인사항", expanded=False):
+            for blocker in blockers:
+                st.write(f"• {str(blocker).replace('화사계', '화학사고예방관리계획서')}")
     st.info(
         "이 상태는 회사 Excel 입력 오류가 아니라 관리자 법령자료 준비상태입니다. "
-        "규정 DB 관리에서 ① 최신 법령·첨부원본(PDF·HWP/HWPX) 확인 → "
-        "② 필요 시 최신본 기준선 승인 → ③ 판정용 규정 DB 추출·검토·승인 → "
-        "④ 판정진단 준비상태 확인 순서로 처리하세요."
+        "‘규정 DB 관리’에서 **최신본 업데이트**를 한 번 실행하면 법제처 PDF·HWP/HWPX 원본, "
+        "판정용 규정 DB와 근거자료를 함께 갱신하고 다시 판정 가능 여부를 확인합니다."
     )
-    st.page_link("ui/regdb_page.py", label="규정 DB 관리에서 확인하기", icon="🗂️")
+    st.page_link("ui/regdb_page.py", label="규정 DB 관리에서 최신본 업데이트", icon="🗂️")
 
 
 rows = _law_rows()
