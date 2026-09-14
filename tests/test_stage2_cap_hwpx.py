@@ -3,12 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from hwpx import HwpxDocument
 
 from engine.stage2.cap_hwpx import (
     TEMPLATE_FIELD_KEY,
     build_cap_hwpx_draft,
+    load_registered_cap_template_bytes,
     normalize_cap_template_upload,
     register_cap_template,
     registered_cap_template,
@@ -94,8 +96,23 @@ class CAPHwpxTemplateTests(unittest.TestCase):
         meta = registered_cap_template(project)
         self.assertIsNotNone(meta)
         self.assertEqual(meta["sha256"], validation.sha256)
+        self.assertEqual(meta["template_source"], "PROJECT_UPLOAD")
         self.assertEqual(project.get_field(TEMPLATE_FIELD_KEY).status, "USER_CONFIRMED")
         self.assertEqual(project.get_field("business.company_name").value, "원본서식화학")
+
+    def test_current_approved_law_archive_is_used_without_project_upload(self):
+        data = _synthetic_official_like_hwpx()
+        project = self._project()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "법제처_CAP_별표별지.hwpx"
+            path.write_bytes(data)
+            with patch("engine.stage2.cap_hwpx.approved_source_files", return_value=[path]) as approved:
+                meta = registered_cap_template(project)
+                self.assertIsNotNone(meta)
+                self.assertEqual(meta["template_source"], "APPROVED_LAW_ARCHIVE")
+                self.assertIn("자동동기화", meta["source_format"])
+                self.assertEqual(load_registered_cap_template_bytes(project), data)
+                self.assertTrue(approved.call_args.kwargs["require_current"])
 
     def test_build_fills_only_existing_official_cells_without_redrawing_form(self):
         data = _synthetic_official_like_hwpx()
@@ -103,10 +120,6 @@ class CAPHwpxTemplateTests(unittest.TestCase):
         result = build_cap_hwpx_draft(project, template_bytes=data)
         self.assertGreaterEqual(result.applied_count, 3)
         self.assertTrue(result.data.startswith(b"PK"))
-        # Byte-preserving cell patch keeps the legal-form markers and writes the
-        # confirmed company values into the original package.
-        output_text = result.data.decode("utf-8", errors="ignore")
-        # ZIP bytes are compressed, so validate via the engine rather than raw text.
         self.assertTrue(validate_cap_hwpx_template(result.data).ok)
 
     def test_review_page_exposes_official_hwpx_primary_output(self):
