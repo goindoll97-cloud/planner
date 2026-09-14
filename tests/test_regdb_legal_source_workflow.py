@@ -33,12 +33,13 @@ class RegdbLegalSourceWorkflowTests(unittest.TestCase):
         self.assertIn("st.cache_data.clear()", source)
         self.assertIn('st.page_link("ui/diagnosis_entry.py"', source)
 
-    def test_diagnosis_hold_routes_user_to_admin_flow(self):
+    def test_diagnosis_hold_routes_user_to_one_click_admin_flow(self):
         source = (ROOT / "ui/diagnosis_entry.py").read_text(encoding="utf-8")
         self.assertIn("PDF·HWP/HWPX", source)
-        self.assertIn("규정 DB 관리에서 확인하기", source)
+        self.assertIn("규정 DB 관리에서 최신본 업데이트", source)
         self.assertIn('st.page_link("ui/regdb_page.py"', source)
         self.assertIn("회사 Excel 입력 오류가 아니라 관리자 법령자료 준비상태", source)
+        self.assertNotIn("① 최신 법령", source)
 
 
 if __name__ == "__main__":
