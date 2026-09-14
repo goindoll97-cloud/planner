@@ -197,7 +197,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         self.assertIn('"AI 문장 보강"', source)
         self.assertIn("generate_system_ai_drafts", source)
         self.assertIn("담당자 검토·승인", source)
-        self.assertIn("AI 보강 검토용 DOCX", source)
+        self.assertIn("AI 보강 보조 검토용 DOCX", source)
         self.assertIn("LOCAL_LLM_MODEL", source)
         self.assertIn("build_local_llm_client", source)
         self.assertIn("127.0.0.1", source)
