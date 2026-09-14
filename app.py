@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from engine.stage2.ai_response_runtime import install_ai_response_runtime
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
 from engine.stage2.storage import load_project
@@ -20,6 +21,12 @@ install_current_cap_template_priority()
 # longer local read timeouts, bounded output, checkpoint saves and Ollama
 # non-thinking mode before Streamlit imports the selected Stage 2 page.
 install_local_ai_resilience()
+
+# Local models may return equivalent JSON with `items`, `sentences`, a keyed
+# object, or a direct one-item object instead of the exact `drafts` array. Keep
+# validation strict on requirement keys/facts, but tolerate those harmless
+# response-shape differences.
+install_ai_response_runtime()
 
 
 def _stage2_progress() -> tuple[bool, bool]:
