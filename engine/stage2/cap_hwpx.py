@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Fill the official CAP annex HWPX without redrawing its layout.
 
-The legal form file itself is the presentation template.  The engine changes
+The legal form file itself is the presentation template. The engine changes
 only cells that can be addressed deterministically by a form title and a cell
-label.  Ambiguous/missing labels are never guessed.  Structured rows are filled
+label. Ambiguous/missing labels are never guessed. Structured rows are filled
 only where the official template already contains blank rows; a shortage is
 reported for human review instead of rebuilding the table.
 """
@@ -22,12 +22,14 @@ from zipfile import BadZipFile, ZipFile
 
 from hwpx.table_patch import fill_cells, resolve_cell_target
 
+from ..law_attachment_archive import approved_source_files
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = PROJECT_ROOT / "data" / "stage2" / "cap_hwpx_template_policy.json"
 TEMPLATE_FIELD_KEY = "reference.cap.official_hwpx_template"
+CAP_LAW_SOURCE_KEY = "CAP_DRAFT"
 
 
 @dataclass(frozen=True)
@@ -94,7 +96,7 @@ def validate_cap_hwpx_template(data: bytes) -> CAPTemplateValidation:
 def convert_hwp_to_hwpx(file_bytes: bytes, file_name: str) -> bytes:
     """Convert legacy HWP with local Hancom Office through pyhwpx.
 
-    This path is intentionally optional and Windows-only.  The preferred input
+    This path is intentionally optional and Windows-only. The preferred input
     is the National Law Information Center's original HWPX.
     """
     if platform.system() != "Windows":
@@ -167,6 +169,7 @@ def register_cap_template(
             "sha256": validation.sha256,
             "source_format": source_format,
             "form_markers": list(validation.found_markers),
+            "template_source": "PROJECT_UPLOAD",
         },
         "USER_CONFIRMED",
         evidence=[evidence],
@@ -178,25 +181,80 @@ def register_cap_template(
     return validation
 
 
+def _approved_current_cap_template_meta() -> Mapping[str, Any] | None:
+    """Resolve the current approved law.go.kr CAP form attachment.
+
+    The automatic source is available only when the latest law monitor result is
+    CURRENT. An UPDATE_PENDING/UNVERIFIED source therefore cannot silently feed
+    a stale statutory form into report generation.
+    """
+    hwpx_files = approved_source_files(CAP_LAW_SOURCE_KEY, {".hwpx"}, require_current=True)
+    valid_hwpx: list[tuple[Path, CAPTemplateValidation]] = []
+    for path in hwpx_files:
+        try:
+            validation = validate_cap_hwpx_template(path.read_bytes())
+        except Exception:
+            continue
+        if validation.ok:
+            valid_hwpx.append((path, validation))
+    if len(valid_hwpx) == 1:
+        path, validation = valid_hwpx[0]
+        return {
+            "file_name": path.name,
+            "stored_path": str(path),
+            "sha256": validation.sha256,
+            "source_format": "법제처 자동동기화 HWPX",
+            "form_markers": list(validation.found_markers),
+            "template_source": "APPROVED_LAW_ARCHIVE",
+        }
+    if len(valid_hwpx) > 1:
+        return None
+
+    # Legacy HWP cannot be structurally validated without Hancom conversion, but
+    # a single CURRENT approved HWP can be offered on Windows and is validated
+    # immediately after conversion in load_registered_cap_template_bytes().
+    hwp_files = approved_source_files(CAP_LAW_SOURCE_KEY, {".hwp"}, require_current=True)
+    if len(hwp_files) == 1 and platform.system() == "Windows":
+        path = hwp_files[0]
+        return {
+            "file_name": path.name,
+            "stored_path": str(path),
+            "sha256": sha256(path.read_bytes()).hexdigest(),
+            "source_format": "법제처 자동동기화 HWP→HWPX",
+            "form_markers": [],
+            "template_source": "APPROVED_LAW_ARCHIVE",
+        }
+    return None
+
+
 def registered_cap_template(project: Stage2Project) -> Mapping[str, Any] | None:
     rec = project.get_field(TEMPLATE_FIELD_KEY)
-    if rec is None or not isinstance(rec.value, Mapping):
-        return None
-    return rec.value
+    if rec is not None and isinstance(rec.value, Mapping):
+        return rec.value
+    return _approved_current_cap_template_meta()
 
 
 def load_registered_cap_template_bytes(project: Stage2Project) -> bytes:
     meta = registered_cap_template(project)
     if not meta:
-        raise FileNotFoundError("법제처 CAP 원본 HWPX 서식이 아직 등록되지 않았습니다.")
+        raise FileNotFoundError(
+            "현재 승인된 법제처 CAP HWPX 원본을 찾지 못했습니다. 법령 최신성 확인·첨부원본 승인 상태를 확인하거나 원본서식을 직접 등록해 주세요."
+        )
     path = Path(str(meta.get("stored_path") or ""))
     if not path.exists():
-        raise FileNotFoundError("등록된 CAP HWPX 원본 파일을 찾을 수 없습니다. 원본서식을 다시 등록해 주세요.")
-    data = path.read_bytes()
-    digest = sha256(data).hexdigest()
+        raise FileNotFoundError("등록 또는 자동동기화된 CAP 원본 파일을 찾을 수 없습니다.")
+    raw = path.read_bytes()
     expected = str(meta.get("sha256") or "")
-    if expected and digest != expected:
-        raise ValueError("등록된 CAP HWPX 원본의 해시가 달라졌습니다. 원본서식을 다시 확인해 주세요.")
+    if expected and sha256(raw).hexdigest() != expected:
+        raise ValueError("CAP 법정서식 원본의 해시가 승인 당시 값과 달라졌습니다. 사용을 중단합니다.")
+
+    if path.suffix.lower() == ".hwp":
+        data = convert_hwp_to_hwpx(raw, path.name)
+    else:
+        data = raw
+    validation = validate_cap_hwpx_template(data)
+    if not validation.ok:
+        raise ValueError("현재 승인된 CAP 첨부원본이 필요한 별지서식 구조 검증을 통과하지 못했습니다.")
     return data
 
 
@@ -335,7 +393,7 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     source = template_bytes if template_bytes is not None else load_registered_cap_template_bytes(project)
     validation = validate_cap_hwpx_template(source)
     if not validation.ok:
-        raise ValueError("등록된 HWPX가 현재 CAP 별지 원본서식 검증을 통과하지 못했습니다.")
+        raise ValueError("사용 중인 HWPX가 현재 CAP 별지 원본서식 검증을 통과하지 못했습니다.")
 
     applied = 0
     warnings: list[str] = []
@@ -496,9 +554,6 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     applied += count
     warnings.extend(warn)
 
-    # The exact statutory HWPX remains the primary output.  Narrative sections
-    # and diagrams that cannot be safely located in the blank annex are left for
-    # the existing manual/AI authoring workflow and human attachment process.
     warnings = list(dict.fromkeys(warnings))
     return CAPHwpxBuildResult(
         data=source,
