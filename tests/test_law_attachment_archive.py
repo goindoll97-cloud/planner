@@ -50,11 +50,13 @@ class LegalAttachmentArchiveTests(unittest.TestCase):
             pending = root / "data" / "runtime" / "law_pending"
             approved_root = root / "data" / "legal_archive" / "sources"
             monitor_file = root / "data" / "runtime" / "law_monitor_approved.json"
+            observed_file = root / "data" / "runtime" / "law_monitor_last_observed.json"
             with (
                 patch.object(archive, "PROJECT_ROOT", root),
                 patch.object(archive, "PENDING_ATTACHMENT_DIR", pending),
                 patch.object(archive, "APPROVED_SOURCE_ROOT", approved_root),
                 patch.object(archive, "APPROVED_MONITOR_FILE", monitor_file),
+                patch.object(archive, "OBSERVED_MONITOR_FILE", observed_file),
             ):
                 pdf = archive.save_pending_attachment(
                     source_key="CAP_DRAFT",
@@ -70,15 +72,21 @@ class LegalAttachmentArchiveTests(unittest.TestCase):
                     url="https://www.law.go.kr/a.hwpx",
                     content=self._hwpx_bytes(),
                 )
+                hashes = {
+                    "별지1::PDF": pdf["sha256"],
+                    "별지1::HWPX": hwpx["sha256"],
+                }
                 row = {
                     "key": "CAP_DRAFT",
                     "regime": "화학사고예방관리계획서",
                     "title": "화학사고예방관리계획서 작성 등에 관한 규정",
                     "target": "admrul",
                     "serial": "12345",
+                    "issue_date": "2026-04-09",
                     "effective_date": "2026-04-22",
                     "issue_number": "제2026-7호",
                     "attachment_required": True,
+                    "attachment_hashes": hashes,
                     "attachment_files": [pdf, hwpx],
                 }
                 result = archive.archive_approved_source(row)
@@ -89,16 +97,48 @@ class LegalAttachmentArchiveTests(unittest.TestCase):
                 manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
                 self.assertEqual({x["format"] for x in manifest["attachment_files"]}, {"PDF", "HWPX"})
 
-                # Once the approved monitor snapshot points to the archive, the
-                # report/template layer can resolve the exact current HWPX.
+                approved_snapshot = {
+                    **row,
+                    "approved_archive": result,
+                }
                 monitor_file.parent.mkdir(parents=True, exist_ok=True)
                 monitor_file.write_text(
-                    json.dumps({"sources": {"CAP_DRAFT": {"approved_archive": result}}}, ensure_ascii=False),
+                    json.dumps({"sources": {"CAP_DRAFT": approved_snapshot}}, ensure_ascii=False),
                     encoding="utf-8",
                 )
-                files = archive.approved_source_files("CAP_DRAFT", {".hwpx"})
+                # Observation still has its pre-approval label, but the exact
+                # official metadata and hashes now equal the approved baseline.
+                observed_file.write_text(
+                    json.dumps(
+                        {
+                            "rows": [
+                                {
+                                    **row,
+                                    "observation_valid": True,
+                                    "monitor_status": "BASELINE_UNAPPROVED",
+                                }
+                            ]
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                self.assertTrue(archive.approved_source_is_current("CAP_DRAFT"))
+                files = archive.approved_source_files("CAP_DRAFT", {".hwpx"}, require_current=True)
                 self.assertEqual(len(files), 1)
                 self.assertTrue(files[0].exists())
+
+                # Any official-version or attachment change immediately removes
+                # CURRENT authority and therefore blocks automatic template use.
+                changed = {
+                    **row,
+                    "observation_valid": True,
+                    "monitor_status": "UPDATE_PENDING",
+                    "attachment_hashes": {**hashes, "별지1::HWPX": "f" * 64},
+                }
+                observed_file.write_text(json.dumps({"rows": [changed]}, ensure_ascii=False), encoding="utf-8")
+                self.assertFalse(archive.approved_source_is_current("CAP_DRAFT"))
+                self.assertEqual(archive.approved_source_files("CAP_DRAFT", {".hwpx"}, require_current=True), [])
 
 
 if __name__ == "__main__":
