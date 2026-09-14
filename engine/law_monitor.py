@@ -16,6 +16,13 @@ from .law_api import (
     fetch_source_payload,
     search_current_source,
 )
+from .law_attachment_archive import (
+    PENDING_ATTACHMENT_DIR,
+    archive_approved_source,
+    prune_pending_source,
+    purge_deleted_placeholders,
+    save_pending_attachment,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -24,12 +31,14 @@ REGISTRY_FILE = DATA_DIR / "law_registry.json"
 RUNTIME_DIR = DATA_DIR / "runtime"
 OBSERVED_FILE = RUNTIME_DIR / "law_monitor_last_observed.json"
 APPROVED_FILE = RUNTIME_DIR / "law_monitor_approved.json"
-PENDING_PDF_DIR = RUNTIME_DIR / "law_pending"
+# Compatibility alias: older extraction code reads pending_pdf_files from the
+# observation.  The directory now stores PDF + HWP + HWPX, not only PDFs.
+PENDING_PDF_DIR = PENDING_ATTACHMENT_DIR
 
-# Increment whenever attachment extraction/normalization semantics change.
-# Old baselines with an earlier schema are NOT reported as real legal changes
-# unless official issue/effective metadata themselves changed.
-MONITOR_SCHEMA_VERSION = 3
+# v4 expands attachment monitoring from PDF-only to every official PDF/HWP/HWPX
+# representation exposed by law.go.kr.  Older baselines require a one-time
+# migration approval but are not falsely reported as legal amendments.
+MONITOR_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -104,17 +113,10 @@ def _select_attachments(items: list[dict[str, str]], selector: dict[str, str] | 
         appendix_title = str(item.get("appendix_title", "")).strip()
         if wanted_no and appendix_no != wanted_no:
             continue
-        # Appendix number is the primary identifier. If the API omits a title,
-        # do not reject an otherwise exact appendix-number match.
         if title_contains and appendix_title and title_contains not in appendix_title:
             continue
         selected.append(item)
     return selected
-
-
-def _safe_filename(value: str, fallback: str) -> str:
-    value = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", value).strip("_.")
-    return value[:100] or fallback
 
 
 def _attachment_id(item: dict[str, str], index: int) -> str:
@@ -132,43 +134,6 @@ def _attachment_id(item: dict[str, str], index: int) -> str:
     if branch and branch != "0":
         prefix += f"-{branch}"
     return f"{prefix} {title}".strip()
-
-
-def _save_pending_pdf(source_key: str, item_id: str, digest: str, content: bytes) -> str:
-    target_dir = PENDING_PDF_DIR / source_key
-    target_dir.mkdir(parents=True, exist_ok=True)
-    stem = _safe_filename(item_id, "appendix")
-    target = target_dir / f"{stem}__{digest[:16]}.pdf"
-    if not target.exists():
-        target.write_bytes(content)
-    return str(target.relative_to(PROJECT_ROOT))
-
-
-def _purge_deleted_placeholder_files(source_key: str) -> None:
-    """Remove stale '<삭제>'/'폐지' placeholder PDFs saved by older monitor versions."""
-    target_dir = PENDING_PDF_DIR / source_key
-    if not target_dir.exists():
-        return
-    for path in target_dir.glob("*.pdf"):
-        if "삭제" in path.name or "폐지" in path.name:
-            try:
-                path.unlink()
-            except OSError:
-                pass
-
-
-def _prune_pending_source_dir(source_key: str, keep_relative_paths: Iterable[str]) -> None:
-    """Keep only the current successfully observed candidate PDFs for one source."""
-    target_dir = PENDING_PDF_DIR / source_key
-    if not target_dir.exists():
-        return
-    keep_names = {Path(value).name for value in keep_relative_paths}
-    for path in target_dir.glob("*.pdf"):
-        if path.name not in keep_names:
-            try:
-                path.unlink()
-            except OSError:
-                pass
 
 
 def _baseline_sources() -> dict[str, Any]:
@@ -193,6 +158,8 @@ def _snapshot_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "ministry": row.get("ministry", ""),
         "attachment_hashes": row.get("attachment_hashes", {}),
         "attachment_titles": row.get("attachment_titles", {}),
+        "attachment_files": row.get("attachment_files", []),
+        "approved_archive": row.get("approved_archive", {}),
         "approved_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -216,8 +183,6 @@ def _compare_to_baseline(row: dict[str, Any], baseline: dict[str, Any] | None) -
     if not baseline:
         return "BASELINE_UNAPPROVED", ["프로그램 반영 기준선이 아직 승인되지 않았습니다."]
 
-    # Official version metadata changing is a genuine legal-change signal and
-    # takes priority over any monitor implementation migration.
     metadata_changes = _official_metadata_changes(row, baseline)
     if metadata_changes:
         return "UPDATE_PENDING", metadata_changes
@@ -232,7 +197,7 @@ def _compare_to_baseline(row: dict[str, Any], baseline: dict[str, Any] | None) -
             [
                 f"감시 로직 버전 변경: v{old_schema or 'legacy'} → v{MONITOR_SCHEMA_VERSION}. "
                 "공식 시행일·발령정보는 동일하므로 이를 실제 법령 개정으로 표시하지 않습니다. "
-                "현재 추출 방식으로 감시 기준선을 다시 등록해야 합니다."
+                "PDF·HWP·HWPX 원본을 포함하는 현재 추출 방식으로 감시 기준선을 다시 등록해야 합니다."
             ],
         )
 
@@ -247,27 +212,52 @@ def _compare_to_baseline(row: dict[str, Any], baseline: dict[str, Any] | None) -
             new = str(new_hashes.get(key, ""))
             if old != new:
                 if not old:
-                    changes.append(f"PDF 추가: {key}")
+                    changes.append(f"첨부파일 추가: {key}")
                 elif not new:
-                    changes.append(f"PDF 삭제/미확인: {key}")
+                    changes.append(f"첨부파일 삭제/미확인: {key}")
                 else:
-                    changes.append(f"PDF 내용 변경: {key} ({old[:10]}… → {new[:10]}…)")
+                    changes.append(f"첨부파일 내용 변경: {key} ({old[:10]}… → {new[:10]}…)")
 
     return ("UPDATE_PENDING", changes) if changes else ("CURRENT", [])
 
 
-def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
-    """Check official current versions and PDF hashes against approved local baselines.
+def _download_one_representation(
+    *,
+    source_key: str,
+    item_id: str,
+    declared_kind: str,
+    url: str,
+    timeout: int,
+) -> tuple[dict[str, str] | None, str | None]:
+    try:
+        content = download_binary(url, timeout=max(timeout, 60))
+        meta = save_pending_attachment(
+            source_key=source_key,
+            item_id=item_id,
+            declared_kind=declared_kind,
+            url=url,
+            content=content,
+        )
+        return meta, None
+    except Exception as exc:
+        host = urlparse(url).netloc or "law.go.kr"
+        return None, f"{declared_kind.upper()} 다운로드 실패({host}, {item_id}): {type(exc).__name__}"
 
-    The monitor NEVER auto-approves a changed source. New/changed PDFs are stored
-    under data/runtime/law_pending so they can be re-ingested and reviewed first.
+
+def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
+    """Check official current versions and all official attachment originals.
+
+    PDF and HWP/HWPX representations exposed by law.go.kr are downloaded to the
+    local pending area and SHA-256 compared with the approved baseline.  A
+    changed legal source is never auto-approved or auto-promoted into report
+    generation; review and explicit approval are required first.
     """
     sources = load_registry()
     baselines = _baseline_sources()
     rows: list[dict[str, Any]] = []
 
     for source in sources:
-        _purge_deleted_placeholder_files(source.key)
+        purge_deleted_placeholders(source.key)
         row: dict[str, Any] = {
             **asdict(source),
             "monitor_schema_version": MONITOR_SCHEMA_VERSION,
@@ -276,8 +266,11 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
             "monitor_status_ko": "확인 전",
             "change_reason": [],
             "attachment_count": 0,
+            "attachment_file_count": 0,
             "attachment_hashes": {},
             "attachment_titles": {},
+            "attachment_files": [],
+            "pending_attachment_files": [],
             "pending_pdf_files": [],
             "observation_valid": False,
         }
@@ -300,9 +293,6 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
             rows.append(row)
             continue
 
-        # Only monitor attachment hashes when this source explicitly needs an
-        # appendix/form.  Core laws with attachment_required=False are tracked
-        # by official serial/effective metadata and do not download every form.
         attachments = extract_attachments(payload)
         selected = (
             _select_attachments(attachments, source.attachment_selector)
@@ -314,33 +304,53 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
         attachment_problem = False
         if source.attachment_required and not selected:
             attachment_problem = True
-            row["change_reason"].append("감시가 필요한 별표·서식 PDF를 공식 본문에서 찾지 못했습니다.")
+            row["change_reason"].append("감시가 필요한 별표·별지 첨부파일을 공식 본문에서 찾지 못했습니다.")
 
         for index, item in enumerate(selected, 1):
             item_id = _attachment_id(item, index)
             row["attachment_titles"][item_id] = item.get("appendix_title", "")
-            pdf_url = str(item.get("pdf_url", "")).strip()
-            if not pdf_url:
+            representations = [
+                ("pdf", str(item.get("pdf_url", "")).strip()),
+                ("hwp", str(item.get("hwp_url", "")).strip()),
+            ]
+            available = [(kind, url) for kind, url in representations if url]
+            if not available:
                 attachment_problem = True
-                row["change_reason"].append(f"PDF 링크 없음(HWP만 제공 가능): {item_id}")
+                row["change_reason"].append(f"공식 첨부파일 다운로드 링크 없음: {item_id}")
                 continue
-            try:
-                content = download_binary(pdf_url, timeout=max(timeout, 60))
-                digest = bytes_sha256(content)
-                row["attachment_hashes"][item_id] = digest
-                row["pending_pdf_files"].append(_save_pending_pdf(source.key, item_id, digest, content))
-            except Exception as exc:
-                attachment_problem = True
-                host = urlparse(pdf_url).netloc or "law.go.kr"
-                row["change_reason"].append(f"PDF 다운로드 실패({host}, {item_id}): {type(exc).__name__}")
 
+            for declared_kind, url in available:
+                meta, error = _download_one_representation(
+                    source_key=source.key,
+                    item_id=item_id,
+                    declared_kind=declared_kind,
+                    url=url,
+                    timeout=timeout,
+                )
+                if error:
+                    attachment_problem = True
+                    row["change_reason"].append(error)
+                    continue
+                assert meta is not None
+                row["attachment_files"].append(meta)
+                row["pending_attachment_files"].append(meta["pending_file"])
+                if meta.get("format") == "PDF":
+                    row["pending_pdf_files"].append(meta["pending_file"])
+                hash_key = f"{item_id}::{meta.get('format') or declared_kind.upper()}"
+                # If law.go.kr exposes two different files that are both detected
+                # as the same format, preserve both instead of overwriting a hash.
+                if hash_key in row["attachment_hashes"]:
+                    hash_key = f"{hash_key}::{declared_kind.upper()}"
+                row["attachment_hashes"][hash_key] = meta["sha256"]
+
+        row["attachment_file_count"] = len(row["attachment_files"])
         if attachment_problem:
             row["monitor_status"] = "UNVERIFIED"
-            row["monitor_status_ko"] = "별표·서식 확인 필요"
+            row["monitor_status_ko"] = "별표·별지 원본 확인 필요"
             rows.append(row)
             continue
 
-        _prune_pending_source_dir(source.key, row["pending_pdf_files"])
+        prune_pending_source(source.key, row["pending_attachment_files"])
         row["observation_valid"] = True
         status, changes = _compare_to_baseline(row, baselines.get(source.key))
         row["monitor_status"] = status
@@ -349,7 +359,7 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
         elif status == "BASELINE_UNAPPROVED":
             row["monitor_status_ko"] = "최초 기준선 승인 필요"
         elif status == "BASELINE_MIGRATION_REQUIRED":
-            row["monitor_status_ko"] = "감시 로직 변경·기준선 재등록 필요"
+            row["monitor_status_ko"] = "첨부원본 감시 기준선 재등록 필요"
         else:
             row["monitor_status_ko"] = "변경 감지·재반영 필요"
         row["change_reason"].extend(changes)
@@ -368,11 +378,12 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
 
 
 def approve_latest_observation(keys: Iterable[str] | None = None) -> dict[str, Any]:
-    """Save valid current observations as the approved monitoring baseline.
+    """Approve reviewed observations and version their exact attachments locally.
 
-    For UPDATE_PENDING rows this should only be called after regulatory content
-    has been re-ingested/reviewed.  For BASELINE_UNAPPROVED or
-    BASELINE_MIGRATION_REQUIRED it is a monitoring-baseline operation only.
+    UPDATE_PENDING rows should be approved only after regulatory parsing/mapping
+    and template tests have been reviewed.  The approved source archive retains
+    the exact PDF/HWP/HWPX bytes for that legal version; prior version folders
+    remain untouched.
     """
     observed = _load_json(OBSERVED_FILE, {})
     rows = observed.get("rows", []) if isinstance(observed, dict) else []
@@ -386,14 +397,34 @@ def approve_latest_observation(keys: Iterable[str] | None = None) -> dict[str, A
         approved_sources = {}
 
     approved = 0
+    archived = 0
     skipped: list[str] = []
-    for row in rows:
+    archive_errors: list[str] = []
+    for raw_row in rows:
+        row = dict(raw_row)
         key = str(row.get("key", ""))
         if wanted is not None and key not in wanted:
             continue
         if not row.get("observation_valid"):
             skipped.append(key)
             continue
+
+        if row.get("attachment_required") or row.get("attachment_files"):
+            archive = archive_approved_source(row)
+            if archive.get("status") != "ARCHIVED":
+                skipped.append(key)
+                archive_errors.append(str(archive.get("message") or f"{key}: 첨부원본 보관 실패"))
+                continue
+            row["approved_archive"] = archive
+            archived += 1
+        else:
+            row["approved_archive"] = {
+                "status": "NO_ATTACHMENT_REQUIRED",
+                "archive_folder": "",
+                "manifest_file": "",
+                "files": [],
+            }
+
         approved_sources[key] = _snapshot_from_row(row)
         approved += 1
 
@@ -408,8 +439,13 @@ def approve_latest_observation(keys: Iterable[str] | None = None) -> dict[str, A
     return {
         "status": "APPROVED" if approved else "NOTHING_APPROVED",
         "approved": approved,
+        "archived_sources": archived,
         "skipped": skipped,
-        "message": f"검증 가능한 {approved}개 자료를 최신 감시 기준선으로 저장했습니다.",
+        "archive_errors": archive_errors,
+        "message": (
+            f"검증 가능한 {approved}개 자료를 최신 감시 기준선으로 저장했고, "
+            f"첨부원본이 있는 {archived}개 자료는 PDF·HWP/HWPX를 로컬 버전 보관했습니다."
+        ),
     }
 
 
@@ -419,7 +455,7 @@ def overall_sync_gate(status_rows: list[dict[str, object]] | None = None) -> dic
             "status": "MONITOR_NOT_RUN",
             "label": "법령 최신성 미확인",
             "decision": "HOLD",
-            "message": "법제처 Open API와 첨부 PDF 최신성 확인이 수행되지 않아 법적 확정판정을 보류합니다.",
+            "message": "법제처 Open API와 별표·별지 첨부원본 최신성 확인이 수행되지 않아 법적 확정판정을 보류합니다.",
         }
 
     bad = [row for row in status_rows if row.get("monitor_status") != "CURRENT"]
@@ -428,9 +464,9 @@ def overall_sync_gate(status_rows: list[dict[str, object]] | None = None) -> dic
         migrations = [row for row in bad if row.get("monitor_status") == "BASELINE_MIGRATION_REQUIRED"]
         unapproved = [row for row in bad if row.get("monitor_status") == "BASELINE_UNAPPROVED"]
         if changed:
-            label = f"법령/PDF 변경 {len(changed)}건"
+            label = f"법령/첨부원본 변경 {len(changed)}건"
         elif migrations:
-            label = f"감시 기준선 재등록 필요 {len(migrations)}건"
+            label = f"첨부원본 감시 기준선 재등록 필요 {len(migrations)}건"
         elif unapproved:
             label = f"최초 기준선 승인 필요 {len(unapproved)}건"
         else:
@@ -444,7 +480,7 @@ def overall_sync_gate(status_rows: list[dict[str, object]] | None = None) -> dic
 
     return {
         "status": "CURRENT",
-        "label": "법령·PDF 최신",
+        "label": "법령·첨부원본 최신",
         "decision": "ALLOW",
-        "message": "감시대상 법령과 별표·서식 PDF가 검증된 프로그램 반영본과 일치합니다.",
+        "message": "감시대상 법령과 별표·별지 PDF·HWP/HWPX 원본이 검증된 프로그램 반영본과 일치합니다.",
     }
