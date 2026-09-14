@@ -3,9 +3,9 @@ from __future__ import annotations
 """Local versioned storage for official law.go.kr attachment files.
 
 The law monitor downloads every official attachment representation exposed by the
-Open API (PDF and HWP/HWPX).  Files first land in a pending area.  Only after a
+Open API (PDF and HWP/HWPX). Files first land in a pending area. Only after a
 human approves the observed legal version are those exact bytes copied into the
-approved source archive.  Older approved versions are never overwritten.
+approved source archive. Older approved versions are never overwritten.
 """
 
 import json
@@ -25,6 +25,7 @@ RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
 PENDING_ATTACHMENT_DIR = RUNTIME_DIR / "law_pending"
 APPROVED_SOURCE_ROOT = PROJECT_ROOT / "data" / "legal_archive" / "sources"
 APPROVED_MONITOR_FILE = RUNTIME_DIR / "law_monitor_approved.json"
+OBSERVED_MONITOR_FILE = RUNTIME_DIR / "law_monitor_last_observed.json"
 
 
 def bytes_sha256(content: bytes) -> str:
@@ -57,7 +58,6 @@ def detect_official_attachment_format(content: bytes, url: str = "", declared_ki
         return "pdf"
     if _looks_like_hwpx(content):
         return "hwpx"
-    # Legacy HWP is an OLE Compound File Binary container.
     if content.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
         return "hwp"
 
@@ -192,18 +192,46 @@ def archive_approved_source(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _load_approved_monitor() -> dict[str, Any]:
-    if not APPROVED_MONITOR_FILE.exists():
+def _load_json_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
         return {}
     try:
-        payload = json.loads(APPROVED_MONITOR_FILE.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
 
 
-def approved_source_files(source_key: str, suffixes: Iterable[str] | None = None) -> list[Path]:
-    """Return exact archived files for the currently approved version of a law source."""
+def _load_approved_monitor() -> dict[str, Any]:
+    return _load_json_file(APPROVED_MONITOR_FILE)
+
+
+def approved_source_is_current(source_key: str) -> bool:
+    """True only when the latest observation says this approved source is CURRENT."""
+    payload = _load_json_file(OBSERVED_MONITOR_FILE)
+    rows = payload.get("rows") or []
+    if not isinstance(rows, list):
+        return False
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("key") or "") != source_key:
+            continue
+        return bool(row.get("observation_valid")) and str(row.get("monitor_status") or "") == "CURRENT"
+    return False
+
+
+def approved_source_files(
+    source_key: str,
+    suffixes: Iterable[str] | None = None,
+    *,
+    require_current: bool = False,
+) -> list[Path]:
+    """Return exact archived files for the approved version of a law source.
+
+    When ``require_current`` is true, no file is returned unless the most recent
+    official API observation is valid and matches the approved baseline.
+    """
+    if require_current and not approved_source_is_current(source_key):
+        return []
     source = ((_load_approved_monitor().get("sources") or {}).get(source_key) or {})
     if not isinstance(source, dict):
         return []
@@ -243,6 +271,7 @@ def approved_source_archive_rows() -> list[dict[str, Any]]:
             "법령·규정": source.get("title", ""),
             "시행일": source.get("effective_date", ""),
             "발령번호": source.get("issue_number", ""),
+            "최신확인": "CURRENT" if approved_source_is_current(str(key)) else "확인 필요",
             "첨부파일수": len(files),
             "보관형식": ", ".join(formats),
             "로컬보관폴더": archive.get("archive_folder", "") if isinstance(archive, dict) else "",
