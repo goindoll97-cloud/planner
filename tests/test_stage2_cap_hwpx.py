@@ -127,7 +127,9 @@ class CAPHwpxTemplateTests(unittest.TestCase):
         self.assertIn("법제처 원본서식 HWPX", text)
         self.assertIn("normalize_cap_template_upload", text)
         self.assertIn("build_cap_hwpx_draft", text)
-        self.assertIn("보조 검토용 DOCX", text)
+        self.assertIn("확인값 기준", text)
+        self.assertIn("비교용 DOCX 초안", text)
+        self.assertIn("AI 문장보강 비교본", text)
 
     def test_requirements_keep_pure_python_hwpx_and_windows_hancom_converter(self):
         text = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")

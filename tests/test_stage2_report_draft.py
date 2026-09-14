@@ -224,10 +224,11 @@ class Stage2ReportDraftTests(unittest.TestCase):
         source = Path("ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn('"보고서 초안 생성"', source)
         self.assertIn("build_report_draft", source)
-        self.assertIn("법정 작성구조", source)
-        self.assertIn("최종 제출 가능 상태를 의미하지는 않습니다", source)
+        self.assertIn("AI 보강 없음", source)
+        self.assertIn("AI 보강 포함", source)
         self.assertIn("법제처 원본서식 HWPX", source)
-        self.assertIn('"감사·검토자료"', source)
+        self.assertIn("검토용", source)
+        self.assertNotIn('"감사·검토자료"', source)
 
 
 if __name__ == "__main__":
