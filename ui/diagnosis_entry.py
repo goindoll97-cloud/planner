@@ -17,13 +17,16 @@ def _render_gate_hold(gate: dict[str, object]) -> None:
     st.write(str(gate.get("message") or "공식 최신본과 승인 DB의 출처 확인이 필요합니다."))
     blockers = gate.get("blockers") or []
     if blockers:
-        st.markdown("**관리자가 확인할 항목**")
+        st.markdown("**현재 확인이 필요한 항목**")
         for blocker in blockers:
-            st.write(f"• {blocker}")
-    st.caption(
-        "규정 DB 관리에서 최신 공식본 확인 → 후보표 재생성·검토 → 승인 → 근거 PDF 동기화를 완료한 뒤 다시 판정하세요. "
-        "불확실한 상태에서는 법령상 제출·작성 필요 여부를 추정하지 않습니다."
+            st.write(f"• {str(blocker).replace('화사계', '화학사고예방관리계획서')}")
+    st.info(
+        "이 상태는 회사 Excel 입력 오류가 아니라 관리자 법령자료 준비상태입니다. "
+        "규정 DB 관리에서 ① 최신 법령·첨부원본(PDF·HWP/HWPX) 확인 → "
+        "② 필요 시 최신본 기준선 승인 → ③ 판정용 규정 DB 추출·검토·승인 → "
+        "④ 판정진단 준비상태 확인 순서로 처리하세요."
     )
+    st.page_link("ui/regdb_page.py", label="규정 DB 관리에서 확인하기", icon="🗂️")
 
 
 rows = _law_rows()
