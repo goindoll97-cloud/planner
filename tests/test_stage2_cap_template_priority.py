@@ -15,8 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class CAPTemplatePriorityTests(unittest.TestCase):
     def setUp(self):
-        # Isolate the module-level installer so this test cannot inherit a
-        # wrapper installed by another Streamlit/app contract test.
         importlib.reload(cap_hwpx)
         importlib.reload(priority)
 
@@ -57,19 +55,31 @@ class CAPTemplatePriorityTests(unittest.TestCase):
             "source_format": "법제처 자동동기화 HWPX",
             "template_source": "APPROVED_LAW_ARCHIVE",
         }
-        priority.install_current_cap_template_priority()
+        with patch("engine.law_attachment_archive.approved_source_is_current", return_value=True):
+            priority.install_current_cap_template_priority()
         with patch.object(cap_hwpx, "_approved_current_cap_template_meta", return_value=current):
             chosen = cap_hwpx.registered_cap_template(project)
         self.assertEqual(chosen["file_name"], "current-law.hwpx")
         self.assertEqual(chosen["template_source"], "APPROVED_LAW_ARCHIVE")
 
-    def test_manual_project_template_remains_fallback_if_no_current_archive(self):
+    def test_manual_project_template_remains_fallback_before_central_source_is_current(self):
         project = self._project_with_old_manual_template()
-        priority.install_current_cap_template_priority()
+        with patch("engine.law_attachment_archive.approved_source_is_current", return_value=False):
+            priority.install_current_cap_template_priority()
         with patch.object(cap_hwpx, "_approved_current_cap_template_meta", return_value=None):
             chosen = cap_hwpx.registered_cap_template(project)
         self.assertEqual(chosen["file_name"], "old-project.hwpx")
         self.assertEqual(chosen["template_source"], "PROJECT_UPLOAD")
+
+    def test_current_central_source_never_falls_back_to_stale_project_template(self):
+        project = self._project_with_old_manual_template()
+        with patch("engine.law_attachment_archive.approved_source_is_current", return_value=True):
+            priority.install_current_cap_template_priority()
+        # Central source is CURRENT but the newly amended HWP/HWPX cannot be
+        # resolved by the current form-mapping engine. Fail closed.
+        with patch.object(cap_hwpx, "_approved_current_cap_template_meta", return_value=None):
+            chosen = cap_hwpx.registered_cap_template(project)
+        self.assertIsNone(chosen)
 
     def test_app_installs_current_template_priority_before_pages_run(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
