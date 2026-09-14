@@ -3,7 +3,7 @@ from __future__ import annotations
 """Central fail-closed gate before any CAP/PSM legal decision.
 
 The law monitor answers whether the official current source still matches the
-approved monitoring baseline.  This module adds the second half of the trust
+approved monitoring baseline. This module adds the second half of the trust
 chain: every decision DB must exist and must be traceable to a PDF hash that is
 still present in the current official observation.
 """
@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from .law_attachment_archive import approved_source_is_current
 from .law_monitor import overall_sync_gate
 from .legal_archive import EVIDENCE_CONFIG, evidence_for_key
 
@@ -35,7 +36,7 @@ def regulatory_provenance_rows(keys: Iterable[str] | None = None) -> list[dict[s
     New approvals record ``source_pdf_sha256`` directly in the approval audit.
     Older PSM/CAP3 approvals can still be accepted only when the legal evidence
     archive has already verified the approved CSV against the current candidate
-    and archived the exact supporting PDF.  That archived SHA then acts as the
+    and archived the exact supporting PDF. That archived SHA then acts as the
     legacy provenance bridge.
     """
     wanted = tuple(keys) if keys is not None else REQUIRED_REGULATORY_KEYS
@@ -88,12 +89,40 @@ def regulatory_provenance_rows(keys: Iterable[str] | None = None) -> list[dict[s
     return rows
 
 
+def _effective_law_rows(law_rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Normalize a just-approved observation without requiring a second API call.
+
+    `approve_latest_observation()` approves the exact observation that was just
+    reviewed. The observation JSON can still carry its pre-approval label such
+    as BASELINE_UNAPPROVED or UPDATE_PENDING. When its legal metadata and all
+    attachment hashes exactly equal the approved snapshot,
+    `approved_source_is_current()` treats it as CURRENT. Any actual mismatch or
+    invalid observation remains untouched and therefore HOLDs fail-closed.
+    """
+    out: list[dict[str, Any]] = []
+    for raw in law_rows or []:
+        row = dict(raw)
+        key = str(row.get("key") or "")
+        if (
+            key
+            and bool(row.get("observation_valid"))
+            and str(row.get("monitor_status") or "") != "CURRENT"
+            and approved_source_is_current(key)
+        ):
+            row["monitor_status"] = "CURRENT"
+            row["monitor_status_ko"] = "최신·반영본 일치"
+            row["change_reason"] = []
+        out.append(row)
+    return out
+
+
 def evaluate_decision_readiness(
     law_rows: list[dict[str, Any]] | None,
     provenance_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Pure readiness evaluation used by the UI and unit tests."""
-    law_gate = overall_sync_gate(law_rows)
+    effective_rows = _effective_law_rows(law_rows)
+    law_gate = overall_sync_gate(effective_rows)
     blockers: list[str] = []
 
     if law_gate.get("decision") != "ALLOW":
@@ -101,7 +130,7 @@ def evaluate_decision_readiness(
 
     source_map = {
         str(row.get("key") or ""): row
-        for row in (law_rows or [])
+        for row in effective_rows
         if str(row.get("key") or "")
     }
 
