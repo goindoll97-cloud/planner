@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-"""Runtime hardening for local report drafting on ordinary Windows PCs.
+"""Runtime hardening and speed tuning for local report drafting.
 
-The original Stage 2 AI path sent every eligible report item in one request and
-allowed up to 12,000 output tokens with a 180 second read timeout.  A 14B Ollama
-model can legitimately exceed that limit even though the server and model are
-healthy.  This module keeps the same local-only/fact-grounded drafting rules but
-uses smaller batches, a longer read window, bounded output, Ollama non-thinking
-mode, and checkpoint saves after each successful batch.
-
-It is installed once from ``app.py`` before Streamlit loads the selected page,
-so existing imports and tests remain compatible.
+The Stage 2 AI path must remain local-only and fact-grounded, but ordinary
+Windows PCs can take a long time when a 14B model is used for every automatic
+report-drafting pass.  This module therefore combines the existing timeout,
+small-batch and checkpoint protections with an optional fast automatic mode:
+when an installed 4B-8B Ollama model is available, automatic drafting may use
+that model while keeping the larger configured model available for manual
+precision use.  Missing requirements can also be regenerated selectively so a
+partial retry does not redo already completed prose.
 """
 
 from dataclasses import dataclass, replace
-import math
 import re
 from typing import Any, Mapping, Sequence
 
@@ -27,6 +25,10 @@ from . import local_llm
 DEFAULT_LOCAL_AI_TIMEOUT_SECONDS = 600
 DEFAULT_LOCAL_AI_MAX_OUTPUT_TOKENS = 3000
 DEFAULT_LOCAL_AI_BATCH_SIZE = 3
+FAST_AUTO_MODEL_MIN_B = 4.0
+FAST_AUTO_MODEL_MAX_B = 8.5
+FAST_AUTO_MAX_OUTPUT_TOKENS = 2200
+FAST_AUTO_BATCH_SIZE = 5
 OLLAMA_KEEP_ALIVE = "15m"
 
 
@@ -68,9 +70,58 @@ def _smaller_installed_models(selected: str, available: Sequence[str]) -> tuple[
             continue
         if selected_size is None or size < selected_size:
             candidates.append((size, name))
-    # Prefer the largest model that is still smaller: quality before raw speed.
     candidates.sort(key=lambda item: item[0], reverse=True)
     return tuple(name for _, name in candidates[:4])
+
+
+def select_fast_auto_config(
+    config: local_llm.LocalLLMConfig,
+    available_models: Sequence[str],
+) -> local_llm.LocalLLMConfig:
+    """Choose a faster installed Ollama model for automatic drafting.
+
+    The configured model is kept when it is already 8B-class or smaller, or
+    when no suitable 4B-8B model is installed.  For a heavier model such as
+    qwen3:14b, the largest installed model in the 4B-8B range is preferred.
+    This keeps quality materially above tiny sub-1B models while avoiding the
+    long latency of 14B automatic passes.
+    """
+    if config.provider != "ollama":
+        return config
+
+    selected_size = _model_size_billion(config.model)
+    if selected_size is not None and selected_size <= FAST_AUTO_MODEL_MAX_B:
+        return replace(
+            config,
+            max_output_tokens=min(config.max_output_tokens, FAST_AUTO_MAX_OUTPUT_TOKENS),
+        )
+
+    candidates: list[tuple[float, str]] = []
+    for name in available_models:
+        size = _model_size_billion(name)
+        if size is None:
+            continue
+        if FAST_AUTO_MODEL_MIN_B <= size <= FAST_AUTO_MODEL_MAX_B:
+            candidates.append((size, name))
+    if not candidates:
+        return config
+
+    # Prefer the largest fast model: this chooses qwen3:8b over 4b on the
+    # user's current installation, preserving more drafting quality.
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    _, model = candidates[0]
+    return replace(
+        config,
+        model=model,
+        max_output_tokens=min(config.max_output_tokens, FAST_AUTO_MAX_OUTPUT_TOKENS),
+    )
+
+
+def recommended_batch_size(model_name: str) -> int:
+    size = _model_size_billion(model_name)
+    if size is not None and size <= FAST_AUTO_MODEL_MAX_B:
+        return FAST_AUTO_BATCH_SIZE
+    return DEFAULT_LOCAL_AI_BATCH_SIZE
 
 
 def _timeout_message(config: local_llm.LocalLLMConfig, available_models: Sequence[str]) -> str:
@@ -109,9 +160,6 @@ class ResilientOllamaLocalClient:
                     ],
                     "stream": False,
                     "format": "json",
-                    # Qwen3-class models can spend a substantial amount of time
-                    # in reasoning mode.  For grounded form drafting we need
-                    # deterministic prose, not long hidden reasoning.
                     "think": False,
                     "keep_alive": OLLAMA_KEEP_ALIVE,
                     "options": {
@@ -119,8 +167,6 @@ class ResilientOllamaLocalClient:
                         "temperature": 0.1,
                     },
                 },
-                # Separate connect/read timeouts: connection problems fail fast,
-                # while local 14B generation is allowed enough time to finish.
                 timeout=(10, self.config.timeout_seconds),
             )
             response.raise_for_status()
@@ -139,8 +185,6 @@ class ResilientOllamaLocalClient:
 
 def _resilient_config_from_sources(values: Mapping[str, Any] | None = None) -> local_llm.LocalLLMConfig:
     config = _ORIGINAL_CONFIG_FROM_SOURCES(values)
-    # An explicitly lower output cap remains respected.  Large legacy/default
-    # caps are reduced because report drafting is now performed in small batches.
     return replace(
         config,
         timeout_seconds=max(config.timeout_seconds, DEFAULT_LOCAL_AI_TIMEOUT_SECONDS),
@@ -156,8 +200,6 @@ def _resilient_build_client(config: local_llm.LocalLLMConfig):
     if config.provider == "ollama":
         return ResilientOllamaLocalClient(config, available_models=probe.models)
     if config.provider == "openai_compatible":
-        # LM Studio/llama.cpp receives the same longer timeout and bounded token
-        # config; its standard local-only client is otherwise retained.
         return local_llm.OpenAICompatibleLocalClient(config)
     raise ValueError("지원하지 않는 로컬 AI 실행기입니다.")
 
@@ -241,8 +283,6 @@ def _process_one_batch(
 
 
 def _checkpoint_project(project) -> None:
-    # Import lazily to avoid coupling the reusable drafting engine to storage at
-    # import time.  A successful batch is persisted before the next slow call.
     from .storage import save_project
 
     save_project(project)
@@ -254,22 +294,26 @@ def generate_system_ai_drafts_batched(
     client,
     *,
     store_safe_drafts: bool = True,
-    batch_size: int = DEFAULT_LOCAL_AI_BATCH_SIZE,
+    batch_size: int | None = None,
+    requirement_keys: Sequence[str] | None = None,
 ) -> BatchedAIDraftPackResult:
     system = core._normalize_system(system)
-    specs = core.ai_draftable_specs(project, system)
+    draftable = core.ai_draftable_specs(project, system)
+    wanted = set(requirement_keys or ())
+    specs = [spec for spec in draftable if not wanted or spec.key in wanted]
     all_system_specs = [spec for spec in core.selected_requirement_specs(project) if spec.system == system]
     skipped = tuple(spec.key for spec in all_system_specs if spec not in specs)
     if not specs:
         raise ValueError("AI 문장 보강에 사용할 확인된 회사 사실이 없습니다.")
 
-    batches = _chunks(specs, batch_size)
+    effective_batch_size = batch_size or recommended_batch_size(getattr(client, "model", ""))
+    batches = _chunks(specs, effective_batch_size)
     generated: list[core.AIDraftItem] = []
     rejected: list[core.AIDraftItem] = []
     profile_summary = ""
     completed = 0
 
-    for batch_index, batch in enumerate(batches, 1):
+    for batch in batches:
         try:
             summary, good, bad = _process_one_batch(
                 project,
@@ -279,14 +323,12 @@ def generate_system_ai_drafts_batched(
                 store_safe_drafts=store_safe_drafts,
             )
         except LocalAIGenerationTimeout as batch_exc:
-            # A large batch can time out on CPU/RAM-bound 14B models. Retry the
-            # same work one requirement at a time before giving up.
             if len(batch) <= 1:
                 if store_safe_drafts and (generated or rejected):
                     _checkpoint_project(project)
                 raise LocalAIGenerationTimeout(
                     f"{batch_exc} 현재 {completed}/{len(batches)}개 배치는 완료되어 저장되었습니다. "
-                    "같은 버튼을 다시 누르면 남은 항목을 다시 시도할 수 있습니다."
+                    "다음 자동 시도에서는 남은 항목만 다시 처리합니다."
                 ) from batch_exc
 
             for spec in batch:

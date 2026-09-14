@@ -21,6 +21,7 @@ from engine.stage2.cap_hwpx import (
     registered_cap_template,
 )
 from engine.stage2.cap_requests import build_cap_data_requests
+from engine.stage2.local_ai_resilience import select_fast_auto_config
 from engine.stage2.local_llm import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
@@ -43,6 +44,7 @@ PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 SYSTEM_LABELS = {"PSM": PSM_FULL, "CAP": CAP_FULL}
+WORK_AREAS = ("부족자료", "AI 문장보강", "보고서 초안 생성")
 LOCAL_LLM_SETTING_KEYS = (
     "LOCAL_LLM_PROVIDER",
     "LOCAL_LLM_MODEL",
@@ -104,8 +106,6 @@ def _draft_exists(project, system: str, requirement_key: str) -> bool:
 
 
 def _ai_fingerprint(project, system: str, missing_keys: list[str], config: LocalLLMConfig) -> str:
-    # AI-generated fields are excluded so saving a successful batch does not
-    # trigger the same generation again. Any company/source fact change does.
     source_rows = []
     for key in sorted(project.fields):
         if key.startswith("ai_draft."):
@@ -156,7 +156,26 @@ def _render_shortages(project) -> None:
         st.success("현재 요청자료 기준으로 추가 확인할 부족자료가 없습니다.")
 
 
-def _build_local_config() -> tuple[LocalLLMConfig | None, object | None]:
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_runtime_probe(
+    provider: str,
+    model: str,
+    base_url: str,
+    timeout_seconds: int,
+    max_output_tokens: int,
+):
+    return probe_local_llm_runtime(
+        LocalLLMConfig(
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            max_output_tokens=max_output_tokens,
+        )
+    )
+
+
+def _build_local_config() -> tuple[LocalLLMConfig | None, object | None, str]:
     try:
         base = local_llm_config_from_sources(_local_llm_values())
     except Exception as exc:
@@ -182,20 +201,41 @@ def _build_local_config() -> tuple[LocalLLMConfig | None, object | None]:
             else (DEFAULT_OLLAMA_URL if provider == "ollama" else DEFAULT_OPENAI_COMPATIBLE_URL)
         )
         local_url = st.text_input("로컬 AI 주소", value=default_url, key="stage2_local_llm_url")
+        fast_mode = st.checkbox(
+            "자동 문장보강은 속도 우선 모델 사용",
+            value=True,
+            key="stage2_fast_auto_ai",
+            help="14B보다 빠른 4B~8B급 모델이 설치되어 있으면 자동 보강에만 더 빠른 모델을 사용합니다. 법적 판정과 사실검증 기준은 바뀌지 않습니다.",
+        )
 
     try:
-        config = LocalLLMConfig(
+        configured = LocalLLMConfig(
             provider=provider,
             model=model.strip() or DEFAULT_MODEL,
             base_url=validate_local_base_url(local_url),
             timeout_seconds=base.timeout_seconds,
             max_output_tokens=base.max_output_tokens,
         )
-        probe = probe_local_llm_runtime(config)
-        return config, probe
+        probe = _cached_runtime_probe(
+            configured.provider,
+            configured.model,
+            configured.base_url,
+            configured.timeout_seconds,
+            configured.max_output_tokens,
+        )
+        effective = select_fast_auto_config(configured, probe.models) if fast_mode and probe.ready else configured
+        if effective.model != configured.model:
+            probe = _cached_runtime_probe(
+                effective.provider,
+                effective.model,
+                effective.base_url,
+                effective.timeout_seconds,
+                effective.max_output_tokens,
+            )
+        return effective, probe, configured.model
     except Exception as exc:
         st.warning(str(exc))
-        return None, None
+        return None, None, model.strip() or DEFAULT_MODEL
 
 
 def _run_automatic_ai(project, config: LocalLLMConfig | None, probe) -> list[dict[str, object]]:
@@ -254,13 +294,17 @@ def _run_automatic_ai(project, config: LocalLLMConfig | None, probe) -> list[dic
             })
             continue
 
-        # Mark before the slow call so a Streamlit rerun cannot start an
-        # accidental duplicate generation for the same source facts.
         st.session_state[attempt_key] = fingerprint
         st.session_state.pop(error_key, None)
         try:
             client = build_local_llm_client(config)
-            result = generate_system_ai_drafts(project, system, client, store_safe_drafts=True)
+            result = generate_system_ai_drafts(
+                project,
+                system,
+                client,
+                store_safe_drafts=True,
+                requirement_keys=[spec.key for spec in missing],
+            )
             save_project(project)
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
@@ -290,15 +334,21 @@ def _run_automatic_ai(project, config: LocalLLMConfig | None, probe) -> list[dic
 
 def _render_ai_status(project) -> None:
     st.info(
-        "AI 문장보강은 별도 생성 버튼 없이 자동으로 수행됩니다. 법적 대상 여부와 작성수준은 다시 판단하지 않고, 확인된 회사자료만 문장으로 정리합니다."
+        "AI 문장보강은 별도 생성 버튼 없이 이 영역을 열면 자동으로 수행됩니다. 법적 대상 여부와 작성수준은 다시 판단하지 않고, 확인된 회사자료만 문장으로 정리합니다."
     )
-    config, probe = _build_local_config()
+    config, probe, configured_model = _build_local_config()
     if config is not None:
-        st.caption("현재 로컬 AI: " + local_runtime_label(config))
+        if config.model != configured_model:
+            st.success(
+                f"속도 최적화 적용: 자동 보강은 설치된 `{config.model}`을 사용합니다. "
+                f"기본 정밀 모델 `{configured_model}`은 변경하지 않습니다."
+            )
+        else:
+            st.caption("현재 자동 보강 모델: " + local_runtime_label(config))
     if probe is not None and getattr(probe, "ready", False):
-        st.success(str(getattr(probe, "message", "로컬 AI를 사용할 수 있습니다.")))
+        st.caption(str(getattr(probe, "message", "로컬 AI를 사용할 수 있습니다.")))
 
-    with st.spinner("필요한 항목의 로컬 AI 문장보강을 자동 확인하고 있습니다..."):
+    with st.spinner("필요한 항목만 빠른 로컬 AI로 자동 보강하고 있습니다..."):
         statuses = _run_automatic_ai(project, config, probe)
 
     for item in statuses:
@@ -307,7 +357,7 @@ def _render_ai_status(project) -> None:
         text = f"{label}: {item['generated']}/{item['total']}개 · {item['message']}"
         if state == "READY":
             st.success(text)
-        elif state in {"NO_CANDIDATE"}:
+        elif state == "NO_CANDIDATE":
             st.caption(text)
         elif state in {"PARTIAL", "RUNTIME_NOT_READY"}:
             st.warning(text)
@@ -368,7 +418,7 @@ def _render_docx_pair(project, system: str, label: str) -> None:
                 type="primary",
             )
     else:
-        right.info("아직 사용할 수 있는 AI 보강문장이 없어 기본 초안만 제공합니다.")
+        right.info("AI 보강 포함본은 `AI 문장보강` 영역을 열면 자동으로 준비됩니다.")
 
 
 def _render_cap_hwpx(project) -> None:
@@ -437,7 +487,7 @@ def _render_cap_hwpx(project) -> None:
 
 st.set_page_config(page_title="작성·검토", page_icon="📝", layout="wide")
 st.title("📝 5. 작성·검토")
-st.caption("부족자료를 확인하고, 로컬 AI가 자동으로 문장을 보강한 뒤, 기본 초안과 AI 보강 초안을 선택해 내려받습니다.")
+st.caption("부족자료를 확인하고, 필요한 경우 로컬 AI가 자동으로 문장을 보강한 뒤, 기본 초안과 AI 보강 초안을 선택해 내려받습니다.")
 
 project_id = _project_selector()
 if not project_id:
@@ -460,19 +510,31 @@ if not validation_confirmed(project):
 scope = [SYSTEM_LABELS[system] for system in _systems(project)]
 st.success("현재 작성범위: " + ", ".join(scope))
 
-shortage_tab, ai_tab, draft_tab = st.tabs(["부족자료", "AI 문장보강", "보고서 초안 생성"])
+# Unlike st.tabs, this selector executes only the chosen work area. The old tab
+# implementation evaluated the AI block even when the user was only checking
+# shortages or downloading a baseline draft, which made every Stage 5 visit wait
+# for Ollama unnecessarily.
+work_area = st.radio(
+    "작성·검토 작업",
+    WORK_AREAS,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="stage2_review_work_area",
+)
 
-with shortage_tab:
+if work_area == "부족자료":
     _render_shortages(project)
-
-with ai_tab:
+elif work_area == "AI 문장보강":
     _render_ai_status(project)
-
-with draft_tab:
-    st.info("같은 자료로 만든 기본 초안과 AI 보강 초안을 나란히 제공합니다. AI 보강본도 검토용이며 회사 확인자료를 대체하지 않습니다.")
+else:
+    st.info(
+        "법정 작성구조에 맞춘 기본 초안은 AI를 기다리지 않고 바로 만들 수 있습니다. "
+        "AI 보강 포함본이 필요하면 `AI 문장보강` 영역을 한 번 열면 별도 생성 버튼 없이 자동 준비됩니다. "
+        "검토용 초안은 최종 제출 가능 상태를 의미하지는 않습니다."
+    )
     if project.cap_in_scope:
         _render_cap_hwpx(project)
-        st.markdown("#### 화학사고예방관리계획서 · 비교용 DOCX 초안")
+        st.markdown("#### 화학사고예방관리계획서 · 보조 검토용 DOCX")
         _render_docx_pair(project, "CAP", CAP_FULL)
     if project.psm_in_scope:
         if project.cap_in_scope:

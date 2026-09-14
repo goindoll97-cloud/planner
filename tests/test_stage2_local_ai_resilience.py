@@ -37,6 +37,33 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertEqual(config.timeout_seconds, 900)
         self.assertEqual(config.max_output_tokens, 1800)
 
+    def test_fast_auto_prefers_installed_8b_over_14b(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        fast = resilience.select_fast_auto_config(
+            configured,
+            ("qwen3:14b", "qwen3:8b", "qwen3.5:4b", "qwen3.5:0.8b"),
+        )
+        self.assertEqual(fast.model, "qwen3:8b")
+        self.assertEqual(fast.max_output_tokens, 2200)
+        self.assertEqual(configured.model, "qwen3:14b")
+
+    def test_fast_auto_never_drops_to_tiny_sub_1b_model(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        fast = resilience.select_fast_auto_config(configured, ("qwen3:14b", "qwen3.5:0.8b"))
+        self.assertEqual(fast.model, "qwen3:14b")
+
     def test_ollama_payload_disables_thinking_and_keeps_model_loaded(self):
         config = LocalLLMConfig(
             provider="ollama",
@@ -109,6 +136,50 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertEqual(len(result.generated), 3)
         self.assertEqual(checkpoint.call_count, 3)
 
+    def test_8b_default_batch_processes_more_items_per_call(self):
+        specs = [SimpleNamespace(key=f"k{i}", system="CAP", label=f"항목{i}") for i in range(7)]
+        calls: list[list[str]] = []
+
+        def process(_project, _system, batch, _client, *, store_safe_drafts):
+            calls.append([spec.key for spec in batch])
+            return "요약", [SimpleNamespace(safe_to_store=True)], []
+
+        with (
+            patch.object(resilience.core, "ai_draftable_specs", return_value=specs),
+            patch.object(resilience.core, "selected_requirement_specs", return_value=specs),
+            patch.object(resilience, "_process_one_batch", side_effect=process),
+            patch.object(resilience, "_checkpoint_project"),
+        ):
+            result = resilience.generate_system_ai_drafts_batched(
+                object(),
+                "CAP",
+                SimpleNamespace(model="qwen3:8b"),
+            )
+        self.assertEqual(calls, [["k0", "k1", "k2", "k3", "k4"], ["k5", "k6"]])
+        self.assertEqual(result.total_batches, 2)
+
+    def test_selective_retry_only_regenerates_requested_missing_items(self):
+        specs = [SimpleNamespace(key=f"k{i}", system="CAP", label=f"항목{i}") for i in range(5)]
+        calls: list[list[str]] = []
+
+        def process(_project, _system, batch, _client, *, store_safe_drafts):
+            calls.append([spec.key for spec in batch])
+            return "요약", [SimpleNamespace(safe_to_store=True)], []
+
+        with (
+            patch.object(resilience.core, "ai_draftable_specs", return_value=specs),
+            patch.object(resilience.core, "selected_requirement_specs", return_value=specs),
+            patch.object(resilience, "_process_one_batch", side_effect=process),
+            patch.object(resilience, "_checkpoint_project"),
+        ):
+            resilience.generate_system_ai_drafts_batched(
+                object(),
+                "CAP",
+                SimpleNamespace(model="qwen3:8b"),
+                requirement_keys=["k3", "k4"],
+            )
+        self.assertEqual(calls, [["k3", "k4"]])
+
     def test_timed_out_multi_item_batch_retries_one_item_at_a_time(self):
         specs = [SimpleNamespace(key=f"k{i}", system="CAP", label=f"항목{i}") for i in range(3)]
         project = object()
@@ -138,7 +209,8 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertEqual(checkpoint.call_count, 3)
 
     def test_app_installs_resilience_before_page_execution(self):
-        source = open("app.py", encoding="utf-8").read()
+        with open("app.py", encoding="utf-8") as handle:
+            source = handle.read()
         self.assertIn("install_local_ai_resilience", source)
         self.assertIn("install_local_ai_resilience()", source)
 
