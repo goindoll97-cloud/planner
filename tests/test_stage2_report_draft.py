@@ -162,8 +162,12 @@ class Stage2ReportDraftTests(unittest.TestCase):
     def test_cap_draft_uses_statutory_forms_and_fixed_columns(self):
         project = self._project(psm=False, cap=True, cap_group="1군")
         data = build_report_draft(project, "CAP")
+        doc = Document(BytesIO(data))
         text = self._doc_text(data)
+        first_visible = next(p.text.strip() for p in doc.paragraphs if p.text.strip())
 
+        self.assertIn("별지 제1호서식", first_visible)
+        self.assertNotIn("법정서식 기반 검토용 작성본", first_visible)
         self.assertIn("별지 제1호서식", text)
         self.assertIn("사업장의 작성수준 구분", text)
         self.assertIn("별지 제3호서식", text)
@@ -186,7 +190,7 @@ class Stage2ReportDraftTests(unittest.TestCase):
         headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
         text = self._doc_text(data)
 
-        self.assertIn("기본정보", headings)
+        self.assertNotIn("기본정보", headings)
         self.assertIn("시설정보", headings)
         self.assertIn("내부 비상대응계획", headings)
         self.assertNotIn("외부 비상대응계획", headings)
