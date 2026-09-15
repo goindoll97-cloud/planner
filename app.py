@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import streamlit as st
 
+from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
 from engine.stage2.ai_response_runtime import install_ai_response_runtime
+from engine.stage2.cap_fragment_runtime import install_cap_fragment_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
@@ -21,6 +23,10 @@ install_current_cap_template_priority()
 # than one monolithic file. Treat the CURRENT approved set as one official form
 # bundle, fill each original independently, and package the written forms as ZIP.
 install_cap_multi_form_runtime()
+# Split official files intentionally contain only some statutory form markers.
+# Relax the monolithic validation only inside the approved split-form writer and
+# suppress pyhwpx's local DLL-path diagnostic noise during HWP conversion.
+install_cap_fragment_runtime()
 
 # Local 14B models can be healthy yet exceed the old 180-second single-request
 # limit when many report items are sent at once. Install small-batch generation,
@@ -33,6 +39,9 @@ install_local_ai_resilience()
 # validation strict on requirement keys/facts, but tolerate those harmless
 # response-shape differences.
 install_ai_response_runtime()
+# Surface each local-AI item immediately instead of leaving the page at 0/N
+# during the first multi-item model call. Grounding/validation stays unchanged.
+install_ai_live_progress_runtime()
 
 
 def _stage2_progress() -> tuple[bool, bool]:
