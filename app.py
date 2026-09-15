@@ -4,6 +4,7 @@ import streamlit as st
 
 from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
 from engine.stage2.ai_response_runtime import install_ai_response_runtime
+from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_fragment_runtime import install_cap_fragment_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
@@ -27,6 +28,10 @@ install_cap_multi_form_runtime()
 # Relax the monolithic validation only inside the approved split-form writer and
 # suppress pyhwpx's local DLL-path diagnostic noise during HWP conversion.
 install_cap_fragment_runtime()
+# Keep statutory checkbox/choice cells as full official option sets instead of
+# replacing them with short free text, and omit internal review notes from the
+# CAP final-facing DOCX. This runs after the split-form writer is installed.
+install_cap_final_form_runtime()
 
 # Local 14B models can be healthy yet exceed the old 180-second single-request
 # limit when many report items are sent at once. Install small-batch generation,
