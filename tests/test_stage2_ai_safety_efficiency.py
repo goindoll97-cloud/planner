@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from engine.stage2.ai_drafting import (
@@ -118,11 +119,13 @@ class Stage2AISafetyEfficiencyTests(unittest.TestCase):
             if spec.key == SAFETY_MANAGEMENT_REQUIREMENT
         )
         prompt, facts = _build_pack_prompt(project, "CAP", [spec])
+        payload = json.loads(prompt.split("\n\n", 1)[1])
 
-        self.assertIn('"confirmed_fact_catalog"', prompt)
-        self.assertIn('"confirmed_fact_keys"', prompt)
-        self.assertNotIn('"global_confirmed_facts"', prompt)
-        self.assertNotIn('"confirmed_facts"', prompt)
+        self.assertIn("confirmed_fact_catalog", payload)
+        self.assertIn("global_fact_keys", payload)
+        self.assertNotIn("global_confirmed_facts", payload)
+        self.assertIn("confirmed_fact_keys", payload["draft_items"][0])
+        self.assertNotIn("confirmed_facts", payload["draft_items"][0])
         self.assertIn("cap.prevention.safety_policy", facts)
 
 
