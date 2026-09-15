@@ -18,10 +18,33 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
 
     def test_ai_is_optional_and_explained_in_user_language(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("AI로 문장 다듬은 초안도 만들기", text)
+        self.assertIn("AI로 문장 다듬은 초안 만들기", text)
+        self.assertNotIn("AI로 문장 다듬은 초안도 만들기", text)
         self.assertIn("법적 판정이나 회사자료를 바꾸지 않고", text)
-        self.assertIn("기본 초안은 바로 내려받을 수", text)
+        self.assertIn("기본 초안은 먼저 바로 내려받을 수", text)
         self.assertNotIn("`AI 문장보강`", text)
+
+    def test_basic_downloads_render_before_optional_ai_work(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        download_index = text.index('st.markdown("## 보고서 초안 내려받기")')
+        ai_index = text.index('st.markdown("### AI로 문장 다듬기 · 선택사항")')
+        self.assertLess(download_index, ai_index)
+        self.assertIn("AI를 실행하지 않아도 아래 기본 초안을 바로 내려받을 수 있습니다.", text)
+
+    def test_ai_work_shows_count_progress_and_requires_explicit_start(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("AI로 정리할 설명문: {pending_total}개", text)
+        self.assertIn("AI 문장 다듬기 시작 · {pending_total}개", text)
+        self.assertIn("st.progress(0.0", text)
+        self.assertIn("progress.progress", text)
+        self.assertIn("AI_UI_BATCH_SIZE = 3", text)
+
+    def test_auto_ai_skips_already_confirmed_narrative(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("def _automatic_ai_candidates", text)
+        self.assertIn("CONFIRMED_STATUSES", text)
+        self.assertIn("if not has_confirmed_narrative", text)
+        self.assertIn("이미 입력된 회사 설명문과 표는 다시 생성하지 않습니다", text)
 
     def test_report_downloads_offer_plain_and_ai_enhanced_drafts(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
