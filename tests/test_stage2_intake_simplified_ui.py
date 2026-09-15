@@ -18,11 +18,11 @@ class Stage2IntakeSimplifiedUITests(unittest.TestCase):
         self.assertNotIn("법령·근거 라이브러리에서 이 항목 자세히 보기", self.source)
 
     def test_intake_keeps_compact_role_based_missing_items_after_upload_controls(self):
-        self.assertIn("### 추가로 필요한 항목", self.source)
+        self.assertIn("### 아직 준비가 필요한 자료", self.source)
         self.assertIn("통합 Excel 보완 필요", self.source)
-        self.assertIn("로컬 AI가 보고서 본문 초안으로 보완할 수 있는 항목", self.source)
+        self.assertIn("5단계에서 보고서 문장으로 정리할 항목", self.source)
         self.assertIn("담당자 별도 작성·첨부 예정", self.source)
-        self.assertIn("텍스트·표 자료 준비 완료 → 4. 작성자료 교차검증 열기", self.source)
+        self.assertIn("기본자료 입력 완료 → 4. 작성자료 점검·보완", self.source)
 
     def test_legal_form_download_logic_is_not_loaded_on_intake_page(self):
         self.assertNotIn("official_form_bytes", self.source)

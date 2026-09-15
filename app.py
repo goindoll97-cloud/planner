@@ -49,11 +49,11 @@ pages = [
 ]
 
 # Keep a novice user on the intended sequence. Stage 4 appears only after the
-# company confirms that the text/table source material in Stage 3 is ready.
+# company confirms that the source material in Stage 3 is ready.
 if intake_ready:
-    pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 교차검증", icon="🔎"))
+    pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
 if validation_ready:
-    pages.append(st.Page("ui/stage2_review_page.py", title="5. 작성·검토", icon="📝"))
+    pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
 
 # These are reference/administration tools rather than sequential workflow
 # stages. Keep them always available, but do not number them so hidden Stage 4

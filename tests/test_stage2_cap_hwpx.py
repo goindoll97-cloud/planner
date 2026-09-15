@@ -122,14 +122,15 @@ class CAPHwpxTemplateTests(unittest.TestCase):
         self.assertTrue(result.data.startswith(b"PK"))
         self.assertTrue(validate_cap_hwpx_template(result.data).ok)
 
-    def test_review_page_exposes_official_hwpx_primary_output(self):
+    def test_report_page_exposes_official_hwpx_primary_output(self):
         text = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("법제처 원본서식 HWPX", text)
         self.assertIn("normalize_cap_template_upload", text)
         self.assertIn("build_cap_hwpx_draft", text)
-        self.assertIn("확인값 기준", text)
-        self.assertIn("보조 검토용 DOCX", text)
-        self.assertIn("AI 문장보강 비교본", text)
+        self.assertIn("법제처 원본서식의 표·레이아웃을 유지", text)
+        self.assertIn("4단계까지 확인된 회사값만 입력", text)
+        self.assertIn("DOCX 초안", text)
+        self.assertIn("AI 문장 다듬기 포함 초안", text)
 
     def test_requirements_keep_pure_python_hwpx_and_windows_hancom_converter(self):
         text = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")

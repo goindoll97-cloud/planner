@@ -192,20 +192,18 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
         self.assertNotIn("외부 비상대응계획", headings)
 
-    def test_review_page_exposes_grounded_local_ai_workflow(self):
+    def test_report_page_exposes_grounded_optional_local_ai_workflow(self):
         source = Path("ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn('"AI 문장보강"', source)
+        self.assertIn("AI로 문장 다듬은 초안도 만들기", source)
         self.assertIn("_run_automatic_ai", source)
         self.assertIn("generate_system_ai_drafts", source)
-        self.assertIn("별도 생성 버튼 없이", source)
-        self.assertIn('elif work_area == "AI 문장보강":', source)
-        self.assertIn("AI 보강 없음", source)
-        self.assertIn("AI 보강 포함", source)
+        self.assertIn("if use_ai:", source)
+        self.assertIn("법적 판정이나 회사자료를 바꾸지 않고", source)
+        self.assertIn("기본 초안 다운로드", source)
+        self.assertIn("AI 문장 다듬기 포함 초안", source)
         self.assertIn("LOCAL_LLM_MODEL", source)
         self.assertIn("build_local_llm_client", source)
-        self.assertIn("127.0.0.1", source)
-        self.assertNotIn("담당자 검토·승인", source)
-        self.assertNotIn("로컬 AI 문장 보강 생성", source)
+        self.assertIn("validate_local_base_url", source)
         self.assertNotIn("OpenAI API Key", source)
         self.assertNotIn("OPENAI_API_KEY", source)
 
