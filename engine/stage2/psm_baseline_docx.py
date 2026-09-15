@@ -126,11 +126,14 @@ def load_psm_baseline_bytes() -> bytes:
     parts = sorted(TEMPLATE_DIR.glob(BASE64_GLOB))
     if not parts:
         raise FileNotFoundError("PSM 규정서식 baseline 파일이 준비되지 않았습니다.")
-    encoded = "".join(part.read_text(encoding="ascii").strip() for part in parts)
-    try:
-        data = base64.b64decode(encoded, validate=True)
-    except Exception as exc:
-        raise ValueError("PSM 규정서식 baseline 인코딩을 읽지 못했습니다.") from exc
+    decoded_parts: list[bytes] = []
+    for part in parts:
+        encoded = "".join(part.read_text(encoding="ascii").split())
+        try:
+            decoded_parts.append(base64.b64decode(encoded, validate=True))
+        except Exception as exc:
+            raise ValueError("PSM 규정서식 baseline 인코딩을 읽지 못했습니다.") from exc
+    data = b"".join(decoded_parts)
     expected = str(meta.get("sha256") or "").lower()
     actual = sha256(data).hexdigest()
     if expected and actual != expected:
