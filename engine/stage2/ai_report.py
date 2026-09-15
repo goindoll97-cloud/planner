@@ -11,7 +11,7 @@ from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from docx.shared import Pt, RGBColor
 
-from .ai_drafting import ai_draft_field_key
+from .ai_drafting import ai_draft_field_key, ai_draft_is_current
 from .intake import selected_requirement_specs
 from .language_policy import assert_public_prose
 from .project import Stage2Project
@@ -35,6 +35,11 @@ def _insert_after(paragraph: Paragraph) -> Paragraph:
 def _draft_payload(project: Stage2Project, system: str, requirement_key: str) -> tuple[Mapping[str, object], str] | None:
     record = project.get_field(ai_draft_field_key(system, requirement_key))
     if record is None or not isinstance(record.value, Mapping):
+        return None
+    # Never export prose generated from an older confirmed-fact snapshot. When
+    # company facts change, Stage 5 regenerates the item using the new input
+    # fingerprint before it can re-enter an AI-enhanced report.
+    if not ai_draft_is_current(project, system, requirement_key):
         return None
     text = str(record.value.get("draft_text") or "").strip()
     if not text:

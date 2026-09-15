@@ -4,11 +4,15 @@ from __future__ import annotations
 
 Local models often obey the requested JSON semantics but vary the container key
 (`drafts`, `items`, `sentences`), return a keyed object instead of an array, or
-emit a single draft object for a one-item batch.  The report pipeline should not
+emit a single draft object for a one-item batch. The report pipeline should not
 fail solely because of those harmless shape differences.
 
 This module is intentionally conservative: it only normalizes fields that map to
 known requested requirement keys. It never invents or reorders company facts.
+For multi-item batches, each row must carry an explicit requirement key (or be
+inside an object keyed by that requirement key). Positional fallback is allowed
+only for a true one-item request, because silently matching several unkeyed rows
+by array order can attach otherwise valid prose to the wrong statutory item.
 """
 
 from typing import Any, Mapping, Sequence
@@ -33,7 +37,11 @@ _PROFILE_KEYS = ("profile_summary", "summary", "site_summary", "사업장요약"
 
 
 def _known_keys(specs: Sequence[Any]) -> list[str]:
-    return [str(getattr(spec, "key", "") or "").strip() for spec in specs if str(getattr(spec, "key", "") or "").strip()]
+    return [
+        str(getattr(spec, "key", "") or "").strip()
+        for spec in specs
+        if str(getattr(spec, "key", "") or "").strip()
+    ]
 
 
 def _first(mapping: Mapping[str, Any], keys: Sequence[str]) -> Any:
@@ -99,12 +107,17 @@ def normalize_draft_response(raw: Mapping[str, Any], specs: Sequence[Any]) -> tu
     - {"requirement.key": "text", ...}
     - one direct {"requirement_key": ..., "draft_text": ...} object
     - nested {"data": {...}} containers
+
+    A one-item batch may omit ``requirement_key`` because there is no ambiguity.
+    Multi-item arrays may not use positional fallback; every retained row must be
+    explicitly keyed so model reordering cannot cross-wire statutory sections.
     """
     if not isinstance(raw, Mapping):
         raise ValueError("로컬 AI 응답 JSON의 최상위 값은 객체여야 합니다.")
 
     known = _known_keys(specs)
     known_set = set(known)
+    single_fallback = known[0] if len(known) == 1 else ""
     profile_summary = str(_first(raw, _PROFILE_KEYS) or "").strip()
 
     container: Any = None
@@ -119,27 +132,29 @@ def normalize_draft_response(raw: Mapping[str, Any], specs: Sequence[Any]) -> tu
 
     rows: list[dict[str, Any]] = []
     if isinstance(container, list):
-        for index, item in enumerate(container):
-            fallback = known[index] if len(container) == len(known) and index < len(known) else ""
-            normalized = _normalize_row(item, fallback_key=fallback)
+        for item in container:
+            # Never bind several unkeyed rows by their array position. Local
+            # models occasionally reorder outputs even when the row count is
+            # correct. Only a genuine one-item request has an unambiguous key.
+            normalized = _normalize_row(item, fallback_key=single_fallback)
             if normalized:
                 rows.append(normalized)
     elif isinstance(container, Mapping):
         # Keyed-by-requirement object is a common local-model variation.
         for key, item in container.items():
-            fallback = str(key) if str(key) in known_set else ""
+            fallback = str(key) if str(key) in known_set else single_fallback
             normalized = _normalize_row(item, fallback_key=fallback)
             if normalized:
                 rows.append(normalized)
     elif container not in (None, ""):
-        normalized = _normalize_row(container, fallback_key=known[0] if len(known) == 1 else "")
+        normalized = _normalize_row(container, fallback_key=single_fallback)
         if normalized:
             rows.append(normalized)
 
     if not rows:
         # Direct single-row response.
         if any(key in raw for key in _TEXT_KEYS) or any(key in raw for key in _KEY_KEYS):
-            normalized = _normalize_row(raw, fallback_key=known[0] if len(known) == 1 else "")
+            normalized = _normalize_row(raw, fallback_key=single_fallback)
             if normalized:
                 rows.append(normalized)
 
@@ -152,12 +167,15 @@ def normalize_draft_response(raw: Mapping[str, Any], specs: Sequence[Any]) -> tu
             if normalized:
                 rows.append(normalized)
 
-    # Keep only explicitly requested requirement keys.  For a one-item batch,
+    # Keep only explicitly requested requirement keys. For a one-item batch,
     # allow an omitted key and attach it to that sole requested item.
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
+    explicit_keys: set[str] = set()
     for row in rows:
         req = str(row.get("requirement_key") or "").strip()
+        if req:
+            explicit_keys.add(req)
         if not req and len(known) == 1:
             req = known[0]
             row["requirement_key"] = req
@@ -168,6 +186,18 @@ def normalize_draft_response(raw: Mapping[str, Any], specs: Sequence[Any]) -> tu
 
     if not out:
         keys = ", ".join(str(key) for key in raw.keys())
+        unknown = sorted(req for req in explicit_keys if req not in known_set)
+        if unknown:
+            raise ValueError(
+                "로컬 AI 응답에서 요청한 작성항목과 일치하지 않는 requirement_key가 반환되었습니다: "
+                + ", ".join(unknown[:8])
+            )
+        if len(known) > 1:
+            raise ValueError(
+                "로컬 AI 다중항목 응답에서 명시적인 requirement_key를 찾지 못했습니다. "
+                "항목 순서만으로는 법정 작성항목을 연결하지 않습니다. "
+                f"응답 키: {keys or '없음'}"
+            )
         raise ValueError(
             "로컬 AI 응답에서 요청한 작성항목의 문장을 찾지 못했습니다. "
             f"응답 키: {keys or '없음'}"

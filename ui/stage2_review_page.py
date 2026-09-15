@@ -6,6 +6,7 @@ import streamlit as st
 
 from engine.stage2.ai_drafting import (
     ai_draft_field_key,
+    ai_draft_is_current,
     ai_draftable_specs,
     generate_system_ai_drafts,
 )
@@ -17,7 +18,7 @@ from engine.stage2.cap_hwpx import (
     register_cap_template,
     registered_cap_template,
 )
-from engine.stage2.local_ai_resilience import select_fast_auto_config
+from engine.stage2.local_ai_resilience import recommended_batch_size, select_fast_auto_config
 from engine.stage2.local_llm import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
@@ -40,7 +41,6 @@ PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 SYSTEM_LABELS = {"PSM": PSM_FULL, "CAP": CAP_FULL}
-AI_UI_BATCH_SIZE = 3
 LOCAL_LLM_SETTING_KEYS = (
     "LOCAL_LLM_PROVIDER",
     "LOCAL_LLM_MODEL",
@@ -93,6 +93,8 @@ def _systems(project) -> list[str]:
 
 
 def _draft_exists(project, system: str, requirement_key: str) -> bool:
+    if not ai_draft_is_current(project, system, requirement_key):
+        return False
     record = project.get_field(ai_draft_field_key(system, requirement_key))
     return bool(
         record
@@ -141,6 +143,7 @@ def _pending_ai_plan(project) -> dict[str, list]:
 
 
 def _chunks(items: list, size: int) -> list[list]:
+    size = max(1, int(size))
     return [items[index : index + size] for index in range(0, len(items), size)]
 
 
@@ -284,7 +287,8 @@ def _run_automatic_ai(
         rejected_this_run = 0
         failed_message = ""
         client = build_local_llm_client(config)
-        for batch in _chunks(missing, AI_UI_BATCH_SIZE):
+        ui_batch_size = recommended_batch_size(getattr(client, "model", config.model))
+        for batch in _chunks(missing, ui_batch_size):
             batch_label = batch[-1].label if batch else SYSTEM_LABELS[system]
             try:
                 result = generate_system_ai_drafts(
@@ -351,6 +355,8 @@ def _render_ai_entries(project) -> None:
     for system in _systems(project):
         entries = []
         for spec in _automatic_ai_candidates(project, system):
+            if not _draft_exists(project, system, spec.key):
+                continue
             record = project.get_field(ai_draft_field_key(system, spec.key))
             if record and isinstance(record.value, dict) and str(record.value.get("draft_text") or "").strip():
                 entries.append((spec, record))

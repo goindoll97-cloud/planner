@@ -37,7 +37,9 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn("AI 문장 다듬기 시작 · {pending_total}개", text)
         self.assertIn("st.progress(0.0", text)
         self.assertIn("progress.progress", text)
-        self.assertIn("AI_UI_BATCH_SIZE = 3", text)
+        self.assertIn("recommended_batch_size", text)
+        self.assertIn("ui_batch_size = recommended_batch_size", text)
+        self.assertNotIn("AI_UI_BATCH_SIZE = 3", text)
 
     def test_auto_ai_skips_already_confirmed_narrative(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")

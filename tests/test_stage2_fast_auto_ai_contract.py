@@ -23,7 +23,13 @@ class Stage2FastAutoAIContractTests(unittest.TestCase):
         self.assertIn("CONFIRMED_STATUSES", source)
         self.assertIn("if not has_confirmed_narrative", source)
         self.assertIn("requirement_keys=[spec.key for spec in batch]", source)
-        self.assertIn("AI_UI_BATCH_SIZE = 3", source)
+        self.assertIn("ai_draft_is_current", source)
+
+    def test_stage5_uses_model_adaptive_batch_size(self):
+        source = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("recommended_batch_size", source)
+        self.assertIn("ui_batch_size = recommended_batch_size", source)
+        self.assertNotIn("AI_UI_BATCH_SIZE = 3", source)
 
     def test_stage5_shows_progress_during_ai_work(self):
         source = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
