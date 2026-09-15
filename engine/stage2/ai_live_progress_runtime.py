@@ -32,8 +32,12 @@ def install_ai_live_progress_runtime() -> None:
 
     original_select = resilience.select_fast_auto_config
     if not bool(getattr(original_select, WRAPPER_MARKER, False)):
-        def select_fast_with_compact_output(config, available_models):
-            selected = original_select(config, available_models)
+        def select_fast_with_compact_output(config, available_models, **kwargs):
+            # Keep this wrapper forward-compatible with the underlying selector.
+            # VRAM-aware selection adds keyword-only arguments such as
+            # available_model_sizes/gpu_vram_bytes; live-progress must not strip
+            # or reject them before the real model selector can use them.
+            selected = original_select(config, available_models, **kwargs)
             size = resilience._model_size_billion(selected.model)
             cap = 1200 if size is not None and size <= resilience.FAST_AUTO_MODEL_MAX_B else 1600
             return replace(selected, max_output_tokens=min(selected.max_output_tokens, cap))
