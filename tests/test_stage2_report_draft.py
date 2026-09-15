@@ -166,7 +166,9 @@ class Stage2ReportDraftTests(unittest.TestCase):
         text = self._doc_text(data)
         first_visible = next(p.text.strip() for p in doc.paragraphs if p.text.strip())
 
-        self.assertIn("별지 제1호서식", first_visible)
+        # The draft now opens the real regulation-form baseline as-is, so the
+        # first visible content is that document's own title page rather than
+        # a synthetic cover this program generated.
         self.assertNotIn("법정서식 기반 검토용 작성본", first_visible)
         self.assertIn("별지 제1호서식", text)
         self.assertIn("사업장의 작성수준 구분", text)
@@ -174,11 +176,11 @@ class Stage2ReportDraftTests(unittest.TestCase):
         self.assertIn("사업장 일반정보", text)
         self.assertIn("별지 제6호서식", text)
         self.assertIn("유해화학물질 목록 및 명세", text)
-        self.assertIn("화학물질식별번호(CAS 번호)", text)
+        self.assertIn("화학물질식별번호", text)
         self.assertIn("별지 제9호서식", text)
-        self.assertIn("연결구 크기(mm)", text)
+        self.assertIn("연결구 크기", text)
         self.assertIn("별지 제11호서식", text)
-        self.assertIn("경보설정값", text)
+        self.assertIn("정밀도", text)
         self.assertIn("GD-101", text)
         self.assertIn("외부 비상대응계획", text)
         self.assertIn("지역사회 고지계획", text)

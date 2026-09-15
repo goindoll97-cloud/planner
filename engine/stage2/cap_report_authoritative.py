@@ -42,7 +42,7 @@ def add_cap_source_declaration(doc: Document) -> None:
 
 
 def _add_review_table(doc: Document, title: str, headers: Sequence[str], rows: Sequence[Sequence[object]]) -> None:
-    heading = doc.add_heading(title, level=2)
+    heading = base._add_heading_safe(doc, title, level=2)
     base._set_keep_with_next(heading)
     if not rows:
         doc.add_paragraph("[자동입력 후보 없음 · 회사자료 및 제품 SDS 확인 필요]")
