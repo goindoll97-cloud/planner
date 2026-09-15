@@ -43,6 +43,18 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn("build_report_draft", text)
         self.assertIn("build_ai_enhanced_report_draft", text)
 
+    def test_ai_work_area_reference_uses_normal_text_not_inline_code_font(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertNotIn("`AI 문장보강`", text)
+        self.assertIn("AI 문장보강 영역을 한 번 열면", text)
+
+    def test_missing_cap_hwpx_guides_user_to_legal_db_update(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다", text)
+        self.assertIn('st.page_link(\n            "ui/regdb_page.py"', text)
+        self.assertIn("규정 DB 관리에서 법제처 최신 원본 준비", text)
+        self.assertIn("최신본 업데이트", text)
+
     def test_stage5_defensively_requires_stage4_confirmation(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("validation_confirmed", text)
