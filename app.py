@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from engine.stage2.ai_response_runtime import install_ai_response_runtime
+from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
 from engine.stage2.storage import load_project
@@ -15,6 +16,11 @@ ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 # project-specific template remains only as a fallback while no CURRENT central
 # legal template is available.
 install_current_cap_template_priority()
+
+# law.go.kr may publish CAP appendices as several approved HWP/HWPX files rather
+# than one monolithic file. Treat the CURRENT approved set as one official form
+# bundle, fill each original independently, and package the written forms as ZIP.
+install_cap_multi_form_runtime()
 
 # Local 14B models can be healthy yet exceed the old 180-second single-request
 # limit when many report items are sent at once. Install small-batch generation,
