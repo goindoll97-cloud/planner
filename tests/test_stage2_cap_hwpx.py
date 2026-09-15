@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from hwpx import HwpxDocument
 
+from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_hwpx import (
     TEMPLATE_FIELD_KEY,
     build_cap_hwpx_draft,
@@ -121,6 +122,30 @@ class CAPHwpxTemplateTests(unittest.TestCase):
         self.assertGreaterEqual(result.applied_count, 3)
         self.assertTrue(result.data.startswith(b"PK"))
         self.assertTrue(validate_cap_hwpx_template(result.data).ok)
+
+    def test_writing_level_checkbox_matches_the_project_group_in_final_hwpx(self):
+        # Regression: cap_hwpx.py once pre-rendered "작성수준" into a
+        # "■ 1군   □ 2군"-style string before handing it to the choice-field
+        # renderer, which then saw both "1군" and "2군" as substrings and
+        # checked both boxes in the actual submitted HWPX regardless of the
+        # project's real group. This exercises the full build pipeline (not
+        # just the renderer in isolation) so a future regression at either
+        # end is caught.
+        # This module's own test project relies on the choice-field renderer
+        # being installed (as it always is when the real app runs); make
+        # that explicit here instead of depending on test execution order.
+        install_cap_final_form_runtime()
+        with tempfile.TemporaryDirectory() as tmp:
+            for group, expected in (("1군", "☒ 1군   ☐ 2군"), ("2군", "☐ 1군   ☒ 2군")):
+                project = self._project()
+                project.cap_group = group
+                result = build_cap_hwpx_draft(project, template_bytes=_synthetic_official_like_hwpx())
+                path = Path(tmp) / f"{group}.hwpx"
+                path.write_bytes(result.data)
+                doc = HwpxDocument.open(str(path))
+                lines = [line for line in doc.text.plain().splitlines() if line.startswith("작성수준")]
+                self.assertEqual(len(lines), 1)
+                self.assertEqual(lines[0], f"작성수준\t{expected}")
 
     def test_report_page_exposes_official_hwpx_primary_output(self):
         text = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")

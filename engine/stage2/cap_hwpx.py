@@ -407,7 +407,7 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
         ("사업장 일반정보", "산업단지", _confirmed_value(project, "cap.business.industrial_complex")),
         ("사업장 일반정보", "대표전화", _confirmed_value(project, "cap.business.contact")),
         ("사업장 일반정보", "제출구분", _confirmed_value(project, "cap.business.submission_type")),
-        ("사업장 일반정보", "작성수준", f"{'■' if level == '1군' else '□'} 1군   {'■' if level == '2군' else '□'} 2군"),
+        ("사업장 일반정보", "작성수준", level),
         ("사업장 일반정보", "공동비상대응계획 수립 여부", _confirmed_value(project, "cap.business.joint_emergency_plan")),
         ("사업장 일반정보", "유사제도 심사결과 활용", _confirmed_value(project, "cap.business.other_system_review")),
         ("사업장 일반정보", "총괄영향범위내 주민여부", _confirmed_value(project, "cap.business.residents_in_overall_range")),

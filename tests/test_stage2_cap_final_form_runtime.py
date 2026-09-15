@@ -8,6 +8,7 @@ from engine.stage2.cap_final_form_runtime import (
     render_other_system_review,
     render_protected_target_groups,
     render_submission_type,
+    render_writing_level,
     render_yes_no,
 )
 
@@ -47,6 +48,23 @@ class CAPFinalFormRuntimeTests(unittest.TestCase):
         self.assertEqual(render_yes_no(""), "☐ 있음   ☐ 없음")
         self.assertEqual(render_yes_no("있음"), "☒ 있음   ☐ 없음")
         self.assertEqual(render_yes_no("없음"), "☐ 있음   ☒ 없음")
+
+    def test_writing_level_checks_only_the_matching_group(self):
+        # Regression: cap_hwpx.py must hand this function the raw group
+        # value (e.g. "1군"), not a pre-rendered checkbox string. A
+        # pre-rendered "■ 1군   □ 2군" string contains both "1군" and "2군"
+        # as substrings, which previously caused both boxes to render as
+        # checked regardless of the actual group.
+        self.assertEqual(render_writing_level("1군"), "☒ 1군   ☐ 2군")
+        self.assertEqual(render_writing_level("2군"), "☐ 1군   ☒ 2군")
+        self.assertEqual(render_writing_level(""), "☐ 1군   ☐ 2군")
+
+    def test_writing_level_rejects_a_pre_rendered_checkbox_string(self):
+        # Guards against the exact regression above: if some caller ever
+        # again hands this an already-rendered "■ ... □ ..." string instead
+        # of the raw group, it must fail closed (neither box checked) rather
+        # than falsely showing both as selected.
+        self.assertEqual(render_writing_level("■ 1군   □ 2군"), "☐ 1군   ☐ 2군")
 
     def test_protected_target_groups_show_every_option_and_select_matches(self):
         a, b, env = render_protected_target_groups("의료시설 하천")

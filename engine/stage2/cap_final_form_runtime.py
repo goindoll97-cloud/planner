@@ -69,7 +69,15 @@ def render_submission_type(value: object) -> str:
 
 def render_writing_level(value: object) -> str:
     n = _norm(value)
-    return f"{_checked('1군' in n, '1군')}   {_checked('2군' in n, '2군')}"
+    is_1 = "1군" in n
+    is_2 = "2군" in n
+    if is_1 and is_2:
+        # Ambiguous input (e.g. an already-rendered "■ 1군 □ 2군" checkbox
+        # string textually contains both labels): fail closed rather than
+        # falsely marking both official options as selected. See
+        # test_writing_level_rejects_a_pre_rendered_checkbox_string.
+        is_1 = is_2 = False
+    return f"{_checked(is_1, '1군')}   {_checked(is_2, '2군')}"
 
 
 def render_joint_emergency(value: object) -> str:
