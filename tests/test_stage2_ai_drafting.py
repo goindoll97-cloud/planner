@@ -194,13 +194,16 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
 
     def test_report_page_exposes_grounded_optional_local_ai_workflow(self):
         source = Path("ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("AI로 문장 다듬은 초안도 만들기", source)
+        self.assertIn("AI로 문장 다듬은 초안 만들기", source)
         self.assertIn("_run_automatic_ai", source)
         self.assertIn("generate_system_ai_drafts", source)
         self.assertIn("if use_ai:", source)
         self.assertIn("법적 판정이나 회사자료를 바꾸지 않고", source)
         self.assertIn("기본 초안 다운로드", source)
         self.assertIn("AI 문장 다듬기 포함 초안", source)
+        self.assertIn("AI 문장 다듬기 시작", source)
+        self.assertIn("st.progress", source)
+        self.assertIn("기본 초안에서 설명이 비어 있는 부분만", source)
         self.assertIn("LOCAL_LLM_MODEL", source)
         self.assertIn("build_local_llm_client", source)
         self.assertIn("validate_local_base_url", source)
