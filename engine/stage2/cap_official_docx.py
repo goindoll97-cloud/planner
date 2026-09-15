@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Convert the already-filled official CAP HWPX forms to Word without redrawing them.
 
-The legal HWP/HWPX attachment remains the layout authority.  We first let the
+The legal HWP/HWPX attachment remains the layout authority. We first let the
 existing CAP writer fill that official form, then ask local Hancom Office to
-export the completed HWPX as OOXML (.docx).  This is Windows/Hancom-only by
+export the completed HWPX as OOXML (.docx). This is Windows/Hancom-only by
 design; a synthetic python-docx report must never be presented as layout-
 equivalent to the statutory original.
 """
@@ -19,6 +19,10 @@ import tempfile
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from . import cap_hwpx
+
+
+WRAPPER_MARKER = "_cap_official_word_runtime_wrapper"
+ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 
 
 @dataclass(frozen=True)
@@ -102,7 +106,10 @@ def build_cap_official_word(project) -> CAPOfficialWordResult:
     company = _safe_name(project.company_name or project.project_id, "사업장")
 
     if _is_hwpx(written.data):
-        docx = _convert_one_hwpx_to_docx(written.data, f"{company}_화학사고예방관리계획서_법제처원본서식_작성본")
+        docx = _convert_one_hwpx_to_docx(
+            written.data,
+            f"{company}_화학사고예방관리계획서_법제처원본서식_작성본",
+        )
         return CAPOfficialWordResult(
             data=docx,
             file_name=f"{company}_화학사고예방관리계획서_법제처원본서식_Word변환본.docx",
@@ -123,7 +130,10 @@ def build_cap_official_word(project) -> CAPOfficialWordResult:
                 hwpx_data = source_zip.read(name)
                 stem = Path(name).stem
                 docx_data = _convert_one_hwpx_to_docx(hwpx_data, stem)
-                target_zip.writestr(f"{_safe_name(stem, f'공식서식_{index:02d}')}.docx", docx_data)
+                target_zip.writestr(
+                    f"{_safe_name(stem, f'공식서식_{index:02d}')}.docx",
+                    docx_data,
+                )
             if "원본서식_자동작성_안내.txt" in names:
                 target_zip.writestr(
                     "원본서식_자동작성_안내.txt",
@@ -146,3 +156,90 @@ def build_cap_official_word(project) -> CAPOfficialWordResult:
         mime="application/zip",
         form_count=len(hwpx_names),
     )
+
+
+def install_cap_official_word_runtime() -> None:
+    """Add an official-layout Word export and clearly demote synthetic CAP DOCX files."""
+    try:
+        import streamlit as st
+        from .storage import load_project
+    except Exception:
+        return
+
+    current_markdown = st.markdown
+    if bool(getattr(current_markdown, WRAPPER_MARKER, False)):
+        return
+    current_download = st.download_button
+
+    def render_official_word_ui() -> None:
+        project_id = str(st.session_state.get(ACTIVE_PROJECT_KEY) or "").strip()
+        if not project_id:
+            return
+        try:
+            project = load_project(project_id)
+        except Exception:
+            return
+
+        current_markdown("### 화학사고예방관리계획서 · 법제처 원본서식 Word 변환본")
+        st.caption(
+            "프로그램이 Word 표를 새로 만드는 방식이 아닙니다. 회사값이 입력된 법제처 원본 HWPX를 "
+            "한컴오피스에서 DOCX로 변환하므로 원본의 표 구조·병합셀·글꼴·크기·여백을 최대한 유지합니다."
+        )
+        cache_key = f"_cap_official_word_result_{project_id}"
+        if st.button(
+            "법제처 원본서식 Word 변환본 만들기",
+            key=f"build_cap_official_word_{project_id}",
+            width="stretch",
+        ):
+            try:
+                with st.spinner("법제처 원본서식 작성본을 Word로 변환하고 있습니다..."):
+                    result = build_cap_official_word(project)
+            except Exception as exc:
+                st.error(f"법제처 원본서식 Word 변환본을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+            else:
+                st.session_state[cache_key] = {
+                    "data": result.data,
+                    "file_name": result.file_name,
+                    "mime": result.mime,
+                    "form_count": result.form_count,
+                }
+
+        cached = st.session_state.get(cache_key)
+        if isinstance(cached, dict) and cached.get("data"):
+            current_download(
+                "화학사고예방관리계획서 법제처 원본서식 Word 변환본 다운로드",
+                data=cached["data"],
+                file_name=str(cached["file_name"]),
+                mime=str(cached["mime"]),
+                key=f"download_cap_official_word_{project_id}",
+                width="stretch",
+                type="primary",
+            )
+            st.caption(f"법제처 원본서식 기준 Word 변환 완료 · {int(cached.get('form_count') or 0)}개 파일")
+
+    def markdown_official_word(body, *args, **kwargs):
+        text = str(body or "")
+        if text == "### 화학사고예방관리계획서 · DOCX 초안":
+            render_official_word_ui()
+            result = current_markdown("### 화학사고예방관리계획서 · 내부 검토용 통합 DOCX", *args, **kwargs)
+            st.caption(
+                "이 파일은 여러 작성항목을 한 문서에서 검토하기 위해 프로그램이 재구성한 내부 검토용입니다. "
+                "법제처 원본과 표 형식·글꼴·크기·여백이 같지 않으며 최종 법정서식으로 사용하지 않습니다."
+            )
+            return result
+        return current_markdown(body, *args, **kwargs)
+
+    def download_official_word(label, *args, **kwargs):
+        key = str(kwargs.get("key") or "")
+        if key.startswith("draft_plain_") and key.endswith("_CAP"):
+            label = "화학사고예방관리계획서 · 내부 검토용 DOCX 다운로드"
+            kwargs["type"] = "secondary"
+        elif key.startswith("draft_ai_") and key.endswith("_CAP"):
+            label = "화학사고예방관리계획서 · AI 문장 검토용 내부 DOCX"
+            kwargs["type"] = "secondary"
+        return current_download(label, *args, **kwargs)
+
+    setattr(markdown_official_word, WRAPPER_MARKER, True)
+    setattr(download_official_word, WRAPPER_MARKER, True)
+    st.markdown = markdown_official_word
+    st.download_button = download_official_word
