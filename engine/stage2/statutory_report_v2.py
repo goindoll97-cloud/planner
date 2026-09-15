@@ -228,6 +228,95 @@ def _render_cap(doc: Document, project: Stage2Project) -> None:
     base._cap_form16(doc, project)
 
 
+def _render_cap_narrative(doc: Document, project: Stage2Project) -> None:
+    """Append CAP content that has no annex-form cell onto an existing document.
+
+    Forms 1~16 (사업장의 작성수준 구분, 사업장 일반정보, 취급시설 개요,
+    유해화학물질 목록, 장외평가정보 표, 비상대응분야 요약서 등) are the
+    regulation-form baseline itself, filled separately by
+    ``cap_baseline_docx.build_cap_baseline_draft``. This only adds the
+    surrounding content the statute also requires but that has no annex-form
+    counterpart: process/PFD references, 공정위험성 분석·운전책임자 현황,
+    예비시나리오 선정 근거, and the free-text 사전관리방침/내부·외부
+    비상대응계획 chapters.
+    """
+    doc.add_page_break()
+    caption = doc.add_paragraph("법정서식 기반 검토용 작성본 · 별지서식에 없는 서술형 작성항목")
+    caption.runs[0].italic = True
+
+    base._add_heading_safe(doc, "시설정보", level=1)
+    base._add_attachment_line(doc, "공정흐름도(PFD)", base._doc_value(project, "documents.pfd"))
+    base._add_attachment_line(doc, "공정배관계장도(P&ID)", base._doc_value(project, "documents.pid"))
+    add_cap_form6_msds_candidate_review(doc, project)
+    add_cap_form7_msds_candidate_review(doc, project)
+    base._add_heading_safe(doc, "공정위험성 분석 자료", level=2)
+    doc.add_paragraph(base._text(project, "cap.facility.process_hazard_analysis", default=base.MISSING))
+    base._add_heading_safe(doc, "운전책임자 및 작업자 현황", level=2)
+    doc.add_paragraph(base._text(project, "cap.facility.operator_staffing", default=base.MISSING))
+    base._add_attachment_line(doc, "안전밸브 및 파열판 명세", base._text(project, "cap.safety.relief_device_specs", default=base.MISSING))
+    base._add_attachment_line(doc, "배출물질 처리시설 현황", base._text(project, "cap.safety.waste_treatment", default=base.MISSING))
+
+    base._add_heading_safe(doc, "장외평가정보", level=1)
+    base._add_heading_safe(doc, "예비시나리오 및 사고시나리오 선정", level=2)
+    for label, key in (
+        ("예비시나리오 대상 설비 선정", "cap.offsite.target_facility_selection"),
+        ("대상 설비 취급량 산정", "cap.offsite.target_holding_calculation"),
+        ("누출조건", "cap.offsite.release_conditions"),
+        ("기상조건", "cap.offsite.weather_conditions"),
+        ("영향범위 평가결과", "cap.offsite.impact_range_result"),
+    ):
+        p = doc.add_paragraph()
+        p.add_run(label + ": ").bold = True
+        p.add_run(base._text(project, key, default=base.MISSING))
+
+    specs = [s for s in base.selected_requirement_specs(project) if s.system == "CAP"]
+    by_key = {s.key: s for s in specs}
+
+    doc.add_page_break()
+    base._add_heading_safe(doc, "사전관리방침", level=1)
+    for key in (
+        "cap.prevention.safety_management",
+        "cap.prevention.training",
+        "cap.prevention.self_inspection",
+        "cap.prevention.change_management",
+        "cap.prevention.emergency_contact",
+        "cap.prevention.emergency_org",
+        "cap.prevention.command_center",
+    ):
+        spec = by_key.get(key)
+        if spec is not None:
+            base._add_narrative_requirement(doc, spec, project, article_items=CAP_ARTICLE_ITEMS.get(key, ()))
+
+    doc.add_page_break()
+    base._add_heading_safe(doc, "내부 비상대응계획", level=1)
+    for key in (
+        "cap.internal.shutdown",
+        "cap.internal.resources",
+        "cap.internal.communication",
+        "cap.internal.facility_response",
+        "cap.internal.investigation",
+        "cap.internal.recovery",
+    ):
+        spec = by_key.get(key)
+        if spec is not None:
+            base._add_narrative_requirement(doc, spec, project, article_items=CAP_ARTICLE_ITEMS.get(key, ()))
+
+    if project.cap_group == "1군":
+        doc.add_page_break()
+        base._add_heading_safe(doc, "외부 비상대응계획", level=1)
+        for key in (
+            "cap.external.communication",
+            "cap.external.mutual_aid",
+            "cap.external.evacuation",
+            "cap.external.public_notice",
+        ):
+            spec = by_key.get(key)
+            if spec is not None:
+                base._add_narrative_requirement(doc, spec, project, article_items=CAP_ARTICLE_ITEMS.get(key, ()))
+    else:
+        doc.add_paragraph("2군 사업장은 외부 비상대응계획 내용을 생략할 수 있으므로 이 작성본에는 포함하지 않습니다.")
+
+
 def build_statutory_report_draft(project: Stage2Project, system: str, status) -> bytes:
     system = str(system or "").strip().upper()
     if system == "PSM" and not project.psm_in_scope:
@@ -243,9 +332,10 @@ def build_statutory_report_draft(project: Stage2Project, system: str, status) ->
         doc = Document(BytesIO(build_psm_baseline_draft(project)))
         base._render_psm_narrative(doc, project)
     else:
-        doc = Document()
-        base._configure_doc(doc)
-        _render_cap(doc, project)
+        from .cap_baseline_docx import build_cap_baseline_draft
+
+        doc = Document(BytesIO(build_cap_baseline_draft(project)))
+        _render_cap_narrative(doc, project)
     base._add_review_appendix(doc, project, system, status)
     out = BytesIO()
     doc.save(out)

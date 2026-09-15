@@ -477,17 +477,26 @@ _HEADING_SIZES = {1: 14, 2: 11, 3: 10}
 
 
 def _add_heading_safe(doc: Document, text: str, level: int = 1):
-    """Add a heading without depending on the doc having Word's named Heading
-    styles registered. A statutory-form baseline docx loaded from disk (rather
-    than built via ``_configure_doc``) may not define "Heading N" at all."""
+    """Add a heading even when the doc has no Word "Heading N" styles.
+
+    A statutory-form baseline docx loaded from disk (rather than built via
+    ``_configure_doc``) may not define "Heading N" at all, so plain
+    ``doc.add_heading`` raises ``KeyError``. Register the missing style
+    (matching python-docx's own default) instead of falling back to a bold
+    paragraph, so callers that check ``paragraph.style.name`` still see a
+    real "Heading N" style.
+    """
+    style_name = f"Heading {level}"
     try:
-        return doc.add_heading(text, level=level)
+        doc.styles[style_name]
     except KeyError:
-        p = doc.add_paragraph()
-        run = p.add_run(text)
-        run.bold = True
-        run.font.size = Pt(_HEADING_SIZES.get(level, 10))
-        return p
+        from docx.enum.style import WD_STYLE_TYPE
+
+        style = doc.styles.add_style(style_name, WD_STYLE_TYPE.PARAGRAPH)
+        style.base_style = doc.styles["Normal"]
+        style.font.bold = True
+        style.font.size = Pt(_HEADING_SIZES.get(level, 10))
+    return doc.add_heading(text, level=level)
 
 
 def _add_narrative_requirement(doc: Document, spec, project: Stage2Project, *, article_items: Sequence[str] = ()) -> None:

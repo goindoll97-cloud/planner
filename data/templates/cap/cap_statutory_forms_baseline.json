@@ -1,0 +1,26 @@
+{
+  "schema_version": "cap-statutory-form-layout-baseline-v1",
+  "role": "LAYOUT_BASELINE",
+  "template_file": "cap_statutory_forms_baseline.docx.b64.00",
+  "encoding": "base64",
+  "sha256": "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d",
+  "source_description": "사용자가 국가 규정의 HWP 서식 원본을 DOCX로 변환한 뒤 규정서식 외 내용을 제거하여 제공한 CAP 별표·별지 서식 묶음",
+  "authority_note": "이 파일은 표·병합셀·폰트·페이지 배치의 작성 baseline이다. 법적 최신성·효력의 권위는 기존 law.go.kr 규정 업데이트 및 승인 상태가 담당한다.",
+  "required_table_count": 44,
+  "required_markers": [
+    "별지 제1호서식",
+    "별지 제2호서식",
+    "별지 제3호서식",
+    "별지 제4호서식",
+    "별지 제5호서식",
+    "별지 제6호서식",
+    "별지 제7호서식",
+    "별지 제8호서식",
+    "별지 제9호서식",
+    "별지 제10호서식",
+    "별지 제11호서식",
+    "별지 제12호서식",
+    "별지 제15호서식",
+    "별지 제16호서식"
+  ]
+}

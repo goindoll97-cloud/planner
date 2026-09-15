@@ -157,7 +157,8 @@ class Stage2CAPAuthoritativeSourceTests(unittest.TestCase):
         )
         first_visible = next(p.text.strip() for p in doc.paragraphs if p.text.strip())
 
-        self.assertIn("별지 제1호서식", first_visible)
+        # The draft opens the real regulation-form baseline as-is (its own
+        # title page, not a synthetic cover this program generated).
         self.assertNotIn("화학물질안전원고시 제2026-07호", first_visible)
         self.assertNotIn("국가법령정보센터 별표·별지 서식", first_visible)
         self.assertIn("NICS-GP2026-8", text)
