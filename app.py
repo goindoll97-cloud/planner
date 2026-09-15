@@ -10,6 +10,7 @@ from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.cap_official_docx import install_cap_official_word_runtime
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
+from engine.stage2.psm_baseline_runtime import install_psm_baseline_runtime
 from engine.stage2.storage import list_projects, load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
@@ -37,6 +38,10 @@ install_cap_final_form_runtime()
 # HWPX through local Hancom Office so official table/font/page layout is retained.
 # Also label the old combined DOCX truthfully as internal review material.
 install_cap_official_word_runtime()
+# PSM uses the preserved regulation-form DOCX as a separate layout baseline.
+# It inserts confirmed company data into those existing form cells while the
+# ordinary PSM DOCX remains an internal review document with broader prose.
+install_psm_baseline_runtime()
 
 # Local 14B models can be healthy yet exceed the old 180-second single-request
 # limit when many report items are sent at once. Install small-batch generation,

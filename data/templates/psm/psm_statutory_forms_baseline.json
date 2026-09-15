@@ -1,0 +1,27 @@
+{
+  "schema_version": "psm-statutory-form-layout-baseline-v1",
+  "role": "LAYOUT_BASELINE",
+  "template_file": "psm_statutory_forms_baseline.docx.b64.00",
+  "encoding": "base64",
+  "sha256": "7432f9b266c5e8ea0e5c02fe0e5ce74ffdbfd3774c16e8be58c7b1f8546c1419",
+  "source_description": "사용자가 국가 규정의 HWP 서식 원본을 DOCX로 변환한 뒤 규정서식 외 내용을 제거하여 제공한 PSM 서식 묶음",
+  "authority_note": "이 파일은 표·병합셀·폰트·페이지 배치의 작성 baseline이다. 법적 최신성·효력의 권위는 기존 law.go.kr 규정 업데이트 및 승인 상태가 담당한다.",
+  "required_table_count": 15,
+  "required_markers": [
+    "별지 제12호서식",
+    "별지 제13호서식",
+    "별지 제14호서식",
+    "별지 제15호서식",
+    "별지 제16호서식",
+    "별지 제17",
+    "별지 제17호의2",
+    "별지 제17호의3",
+    "별지 제17호의4",
+    "별지 제17호의5",
+    "별지 제18호",
+    "별지 제19호",
+    "별지 제19호의2",
+    "별지 제20호",
+    "별지 제21호서식"
+  ]
+}
