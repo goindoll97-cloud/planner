@@ -211,7 +211,11 @@ def _build_local_config() -> tuple[LocalLLMConfig | None, object | None, str]:
             configured.timeout_seconds,
             configured.max_output_tokens,
         )
-        effective = select_fast_auto_config(configured, probe.models) if fast_mode and probe.ready else configured
+        effective = (
+            select_fast_auto_config(configured, probe.models, available_model_sizes=probe.model_sizes)
+            if fast_mode and probe.ready
+            else configured
+        )
         if effective.model != configured.model:
             probe = _cached_runtime_probe(
                 effective.provider,

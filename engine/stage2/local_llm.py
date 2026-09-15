@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from typing import Any, Mapping
@@ -34,6 +34,11 @@ class LocalLLMProbe:
     models: tuple[str, ...] = ()
     selected_model_available: bool = False
     message: str = ""
+    # Ollama model file size in bytes, keyed by model name. Empty for
+    # openai_compatible servers (no equivalent endpoint) or when the /api/tags
+    # response omits the size field. Lets callers judge GPU VRAM fit without a
+    # second network round-trip.
+    model_sizes: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def ready(self) -> bool:
@@ -126,6 +131,29 @@ def _extract_ollama_models(payload: Any) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _extract_ollama_model_sizes(payload: Any) -> dict[str, int]:
+    """Read each model's on-disk file size (bytes) from an /api/tags payload.
+
+    This is the same payload already fetched for model names, so no extra
+    request is needed. Entries without a usable integer size are skipped.
+    """
+    if not isinstance(payload, Mapping):
+        return {}
+    rows = payload.get("models")
+    if not isinstance(rows, list):
+        return {}
+    sizes: dict[str, int] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        name = str(row.get("name") or row.get("model") or "").strip()
+        size = row.get("size")
+        if not name or not isinstance(size, (int, float)) or size <= 0:
+            continue
+        sizes[name] = int(size)
+    return sizes
+
+
 def _extract_openai_models(payload: Any) -> tuple[str, ...]:
     if not isinstance(payload, Mapping):
         return ()
@@ -194,6 +222,7 @@ def probe_local_llm_runtime(config: LocalLLMConfig, *, timeout_seconds: float = 
         )
 
     models = _extract_ollama_models(payload) if config.provider == "ollama" else _extract_openai_models(payload)
+    model_sizes = _extract_ollama_model_sizes(payload) if config.provider == "ollama" else {}
     selected_available = _model_matches(config.model, models)
     if not models:
         message = "로컬 AI 서버에는 연결되었지만 사용할 수 있는 모델을 찾지 못했습니다. 모델을 설치하거나 로드하세요."
@@ -208,6 +237,7 @@ def probe_local_llm_runtime(config: LocalLLMConfig, *, timeout_seconds: float = 
         models=models,
         selected_model_available=selected_available,
         message=message,
+        model_sizes=model_sizes,
     )
 
 

@@ -64,6 +64,106 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         fast = resilience.select_fast_auto_config(configured, ("qwen3:14b", "qwen3.5:0.8b"))
         self.assertEqual(fast.model, "qwen3:14b")
 
+    def test_parameter_heuristic_is_used_when_gpu_is_not_detectable(self):
+        # No available_model_sizes/gpu_vram_bytes supplied, and nvidia-smi is
+        # not present in this environment, so this exercises the same
+        # fallback path a non-NVIDIA machine would take.
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        with patch.object(resilience, "_detect_gpu_vram_bytes", return_value=None):
+            fast = resilience.select_fast_auto_config(
+                configured, ("qwen3:14b", "qwen3:8b", "qwen3.5:4b")
+            )
+        self.assertEqual(fast.model, "qwen3:8b")
+
+    def test_vram_fit_downgrades_model_that_does_not_fit_6gb_gpu(self):
+        # Mirrors an RTX 2060 6GB: qwen3:14b (9.3GB) cannot fully load, which
+        # is what `ollama ps` reports as a CPU/GPU split. qwen3.5:4b (3.4GB)
+        # fits, so it should be preferred even though a bigger 8B model is
+        # also installed but does not fit.
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        six_gb = 6 * 1024 * 1024 * 1024
+        sizes = {
+            "qwen3:14b": 9_300_000_000,
+            "qwen3:8b": 5_800_000_000,  # exceeds the 6GB*0.85 safety budget
+            "qwen3.5:4b": 3_400_000_000,
+        }
+        fast = resilience.select_fast_auto_config(
+            configured,
+            ("qwen3:14b", "qwen3:8b", "qwen3.5:4b"),
+            available_model_sizes=sizes,
+            gpu_vram_bytes=six_gb,
+        )
+        self.assertEqual(fast.model, "qwen3.5:4b")
+        self.assertEqual(fast.max_output_tokens, 2200)
+
+    def test_vram_fit_keeps_configured_model_when_it_already_fits(self):
+        # A 24GB GPU can run qwen3:14b fully in VRAM, so it should not be
+        # needlessly downgraded to a smaller/lower-quality model.
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        twenty_four_gb = 24 * 1024 * 1024 * 1024
+        sizes = {"qwen3:14b": 9_300_000_000, "qwen3.5:4b": 3_400_000_000}
+        fast = resilience.select_fast_auto_config(
+            configured,
+            ("qwen3:14b", "qwen3.5:4b"),
+            available_model_sizes=sizes,
+            gpu_vram_bytes=twenty_four_gb,
+        )
+        self.assertEqual(fast.model, "qwen3:14b")
+
+    def test_vram_fit_keeps_configured_model_when_nothing_installed_fits(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        two_gb = 2 * 1024 * 1024 * 1024
+        sizes = {"qwen3:14b": 9_300_000_000, "qwen3:8b": 5_400_000_000}
+        fast = resilience.select_fast_auto_config(
+            configured,
+            ("qwen3:14b", "qwen3:8b"),
+            available_model_sizes=sizes,
+            gpu_vram_bytes=two_gb,
+        )
+        self.assertEqual(fast.model, "qwen3:14b")
+
+    def test_detect_gpu_vram_bytes_parses_nvidia_smi_output(self):
+        resilience._GPU_VRAM_CACHE.clear()
+        completed = SimpleNamespace(stdout="6144\n", returncode=0)
+        with (
+            patch.object(resilience.shutil, "which", return_value="/usr/bin/nvidia-smi"),
+            patch.object(resilience.subprocess, "run", return_value=completed),
+        ):
+            result = resilience._detect_gpu_vram_bytes()
+        self.assertEqual(result, 6144 * 1024 * 1024)
+        resilience._GPU_VRAM_CACHE.clear()
+
+    def test_detect_gpu_vram_bytes_returns_none_without_nvidia_smi(self):
+        resilience._GPU_VRAM_CACHE.clear()
+        with patch.object(resilience.shutil, "which", return_value=None):
+            result = resilience._detect_gpu_vram_bytes()
+        self.assertIsNone(result)
+        resilience._GPU_VRAM_CACHE.clear()
+
     def test_ollama_payload_disables_thinking_and_keeps_model_loaded(self):
         config = LocalLLMConfig(
             provider="ollama",

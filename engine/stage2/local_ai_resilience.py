@@ -14,6 +14,8 @@ partial retry does not redo already completed prose.
 
 from dataclasses import dataclass, replace
 import re
+import shutil
+import subprocess
 from typing import Any, Mapping, Sequence
 
 import requests
@@ -30,6 +32,50 @@ FAST_AUTO_MODEL_MAX_B = 8.5
 FAST_AUTO_MAX_OUTPUT_TOKENS = 2200
 FAST_AUTO_BATCH_SIZE = 5
 OLLAMA_KEEP_ALIVE = "15m"
+
+# A model whose file size exceeds the GPU's VRAM does not simply run slightly
+# slower: Ollama offloads the overflow layers to CPU, which is dramatically
+# slower than a full GPU load (this is what `ollama ps` reports as a
+# CPU/GPU split, e.g. "35%/65% CPU/GPU"). The parameter-count heuristic below
+# (FAST_AUTO_MODEL_MIN_B/MAX_B) is a portable fallback for when we cannot
+# measure the GPU, but whenever we can measure it, an actual VRAM-fit check is
+# more accurate: it correctly keeps a heavy model on a large GPU instead of
+# needlessly downgrading it, and correctly downgrades a "fits the B-range"
+# model that still does not fit this specific GPU's VRAM.
+GPU_VRAM_SAFETY_MARGIN = 0.85  # headroom for KV-cache/context beyond model weights
+_GPU_VRAM_CACHE: dict[str, int | None] = {}
+
+
+def _detect_gpu_vram_bytes() -> int | None:
+    """Best-effort NVIDIA GPU VRAM detection via nvidia-smi.
+
+    Returns None when nvidia-smi is missing or detection fails for any reason,
+    so callers fall back to the parameter-count heuristic instead of guessing.
+    Cached for the process lifetime since GPU hardware does not change mid-run.
+    """
+    if "value" in _GPU_VRAM_CACHE:
+        return _GPU_VRAM_CACHE["value"]
+    detected: int | None = None
+    if shutil.which("nvidia-smi"):
+        try:
+            output = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=True,
+            )
+            totals = [int(line.strip()) for line in output.stdout.splitlines() if line.strip()]
+            if totals:
+                detected = max(totals) * 1024 * 1024
+        except (subprocess.SubprocessError, OSError, ValueError):
+            detected = None
+    _GPU_VRAM_CACHE["value"] = detected
+    return detected
+
+
+def _fits_in_vram(size_bytes: int, vram_bytes: int) -> bool:
+    return size_bytes <= vram_bytes * GPU_VRAM_SAFETY_MARGIN
 
 
 class LocalAIGenerationTimeout(RuntimeError):
@@ -77,8 +123,36 @@ def _smaller_installed_models(selected: str, available: Sequence[str]) -> tuple[
 def select_fast_auto_config(
     config: local_llm.LocalLLMConfig,
     available_models: Sequence[str],
+    *,
+    available_model_sizes: Mapping[str, int] | None = None,
+    gpu_vram_bytes: int | None = None,
 ) -> local_llm.LocalLLMConfig:
     """Choose a faster installed Ollama model for automatic drafting.
+
+    When actual model file sizes and a detected GPU VRAM size are available,
+    selection is based on whether a model's weights actually fit in VRAM
+    (``_select_by_vram_fit``): this is more accurate than guessing from the
+    model's parameter count, since VRAM capacity differs across GPUs. When
+    either is unavailable (no nvidia-smi, non-NVIDIA GPU, or an /api/tags
+    response without size fields), this falls back to the original
+    parameter-count heuristic (``_select_by_parameter_count``) so behavior on
+    unmeasured setups is unchanged.
+    """
+    if config.provider != "ollama":
+        return config
+
+    sizes = dict(available_model_sizes or {})
+    vram_bytes = gpu_vram_bytes if gpu_vram_bytes is not None else _detect_gpu_vram_bytes()
+    if vram_bytes and sizes:
+        return _select_by_vram_fit(config, available_models, sizes, vram_bytes)
+    return _select_by_parameter_count(config, available_models)
+
+
+def _select_by_parameter_count(
+    config: local_llm.LocalLLMConfig,
+    available_models: Sequence[str],
+) -> local_llm.LocalLLMConfig:
+    """Portable fallback: pick a faster model by parameter-count range only.
 
     The configured model is kept when it is already 8B-class or smaller, or
     when no suitable 4B-8B model is installed.  For a heavier model such as
@@ -86,9 +160,6 @@ def select_fast_auto_config(
     This keeps quality materially above tiny sub-1B models while avoiding the
     long latency of 14B automatic passes.
     """
-    if config.provider != "ollama":
-        return config
-
     selected_size = _model_size_billion(config.model)
     if selected_size is not None and selected_size <= FAST_AUTO_MODEL_MAX_B:
         return replace(
@@ -110,6 +181,43 @@ def select_fast_auto_config(
     # user's current installation, preserving more drafting quality.
     candidates.sort(key=lambda item: item[0], reverse=True)
     _, model = candidates[0]
+    return replace(
+        config,
+        model=model,
+        max_output_tokens=min(config.max_output_tokens, FAST_AUTO_MAX_OUTPUT_TOKENS),
+    )
+
+
+def _select_by_vram_fit(
+    config: local_llm.LocalLLMConfig,
+    available_models: Sequence[str],
+    sizes: Mapping[str, int],
+    vram_bytes: int,
+) -> local_llm.LocalLLMConfig:
+    configured_size = sizes.get(config.model)
+    if configured_size is not None and _fits_in_vram(configured_size, vram_bytes):
+        # Already fits fully in VRAM (e.g. a large-VRAM GPU running qwen3:14b):
+        # no need to downgrade quality, just keep the output-length cap.
+        return replace(
+            config,
+            max_output_tokens=min(config.max_output_tokens, FAST_AUTO_MAX_OUTPUT_TOKENS),
+        )
+
+    fitting: list[tuple[int, str]] = []
+    for name in available_models:
+        size = sizes.get(name)
+        if size is None or not _fits_in_vram(size, vram_bytes):
+            continue
+        fitting.append((size, name))
+
+    if not fitting:
+        # Nothing is confirmed to fit in VRAM: keep the configured model
+        # rather than guessing at an even less capable one.
+        return config
+
+    # Prefer the largest model that still fits fully in VRAM.
+    fitting.sort(key=lambda item: item[0], reverse=True)
+    _, model = fitting[0]
     return replace(
         config,
         model=model,

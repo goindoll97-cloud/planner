@@ -82,6 +82,32 @@ class Stage2LocalLLMTests(unittest.TestCase):
         self.assertTrue(probe.ready)
         self.assertEqual(probe.models, ("qwen3:14b", "gemma3:12b"))
 
+    def test_probe_extracts_ollama_model_byte_sizes_from_same_payload(self):
+        config = LocalLLMConfig(provider="ollama", model="qwen3:14b", base_url="http://127.0.0.1:11434")
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "models": [
+                {"name": "qwen3:14b", "size": 9_300_000_000},
+                {"name": "qwen3.5:4b", "size": 3_400_000_000},
+                {"name": "qwen3.5:0.8b"},  # missing size is skipped, not an error
+            ]
+        }
+        with patch("engine.stage2.local_llm.requests.get", return_value=response):
+            probe = probe_local_llm_runtime(config)
+        self.assertEqual(probe.model_sizes["qwen3:14b"], 9_300_000_000)
+        self.assertEqual(probe.model_sizes["qwen3.5:4b"], 3_400_000_000)
+        self.assertNotIn("qwen3.5:0.8b", probe.model_sizes)
+
+    def test_openai_compatible_probe_has_no_model_sizes(self):
+        config = LocalLLMConfig(provider="openai_compatible", model="local-test", base_url="http://127.0.0.1:1234")
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"data": [{"id": "local-test"}]}
+        with patch("engine.stage2.local_llm.requests.get", return_value=response):
+            probe = probe_local_llm_runtime(config)
+        self.assertEqual(probe.model_sizes, {})
+
     def test_missing_selected_model_message_shows_available_models_and_setup(self):
         config = LocalLLMConfig(provider="ollama", model="qwen3:14b", base_url="http://127.0.0.1:11434")
         response = Mock()
