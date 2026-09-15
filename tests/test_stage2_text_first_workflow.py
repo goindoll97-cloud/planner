@@ -115,11 +115,14 @@ class Stage2TextFirstWorkflowTests(unittest.TestCase):
         app = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
         intake = (PROJECT_ROOT / "ui/stage2_intake_page.py").read_text(encoding="utf-8")
         validation = (PROJECT_ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
+        review = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("if intake_ready:", app)
         self.assertIn("if validation_ready:", app)
+        self.assertIn('title="4. 작성자료 점검·보완"', app)
+        self.assertIn('title="5. 보고서 작성"', app)
         self.assertIn("도면·이미지·첨부자료는 담당자가 별도 작성·취합", intake)
-        self.assertIn("텍스트·표 자료 준비 완료 → 4. 작성자료 교차검증 열기", intake)
-        self.assertIn("교차검증 확인 완료 → 5. 작성·검토 열기", validation)
+        self.assertIn("작성자료 확인 완료 → 5. 보고서 작성", validation)
+        self.assertIn('st.title("📝 5. 보고서 작성")', review)
 
     def test_reference_tools_are_not_numbered_workflow_stages(self):
         app = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
