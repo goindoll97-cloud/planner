@@ -9,9 +9,13 @@ section, mirroring the CAP split between official-layout forms and review prose.
 
 WRAPPER_MARKER = "_psm_baseline_runtime_wrapper"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
+_INSTALLED = False
 
 
 def install_psm_baseline_runtime() -> None:
+    global _INSTALLED
+    if _INSTALLED:
+        return
     try:
         import streamlit as st
         from . import psm_baseline_docx as baseline
@@ -29,8 +33,6 @@ def install_psm_baseline_runtime() -> None:
     )
 
     current_markdown = st.markdown
-    if bool(getattr(current_markdown, WRAPPER_MARKER, False)):
-        return
     current_download = st.download_button
 
     def render_psm_regulation_form() -> None:
@@ -73,3 +75,4 @@ def install_psm_baseline_runtime() -> None:
 
     setattr(markdown_with_psm_baseline, WRAPPER_MARKER, True)
     st.markdown = markdown_with_psm_baseline
+    _INSTALLED = True
