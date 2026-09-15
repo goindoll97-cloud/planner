@@ -8,3 +8,4 @@ outputs/
 data/runtime/
 data/legal_archive/
 *.log
+.claude/settings.local.json
