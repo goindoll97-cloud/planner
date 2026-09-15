@@ -75,6 +75,39 @@ class AILiveProgressRuntimeTests(unittest.TestCase):
             resilience.recommended_batch_size = original_recommended
             resilience._ai_live_progress_runtime_installed = installed
 
+    def test_compact_fast_selection_forwards_vram_keywords(self):
+        original_select = resilience.select_fast_auto_config
+        original_process = resilience._process_one_batch
+        original_recommended = resilience.recommended_batch_size
+        installed = getattr(resilience, "_ai_live_progress_runtime_installed", False)
+        try:
+            resilience._ai_live_progress_runtime_installed = False
+            ai_live.install_ai_live_progress_runtime()
+            configured = LocalLLMConfig(
+                provider="ollama",
+                model="qwen3:14b",
+                base_url="http://127.0.0.1:11434",
+                timeout_seconds=600,
+                max_output_tokens=3000,
+            )
+            selected = resilience.select_fast_auto_config(
+                configured,
+                ("qwen3:14b", "qwen3:8b", "qwen3.5:4b"),
+                available_model_sizes={
+                    "qwen3:14b": 9_300_000_000,
+                    "qwen3:8b": 5_800_000_000,
+                    "qwen3.5:4b": 3_400_000_000,
+                },
+                gpu_vram_bytes=6 * 1024 * 1024 * 1024,
+            )
+            self.assertEqual(selected.model, "qwen3.5:4b")
+            self.assertLessEqual(selected.max_output_tokens, 1200)
+        finally:
+            resilience.select_fast_auto_config = original_select
+            resilience._process_one_batch = original_process
+            resilience.recommended_batch_size = original_recommended
+            resilience._ai_live_progress_runtime_installed = installed
+
     def test_app_installs_live_progress_after_response_normalizer(self):
         text = open("app.py", encoding="utf-8").read()
         normalizer_pos = text.index("install_ai_response_runtime()")
