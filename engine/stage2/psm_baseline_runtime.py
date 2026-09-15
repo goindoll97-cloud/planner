@@ -67,7 +67,7 @@ def install_psm_baseline_runtime() -> None:
 
     def markdown_with_psm_baseline(body, *args, **kwargs):
         text = str(body or "")
-        if text == "### 공정안전보고서 · DOCX 초안":
+        if text == "### 공정안전보고서 · 내부 검토용":
             render_psm_regulation_form()
         return current_markdown(body, *args, **kwargs)
 
