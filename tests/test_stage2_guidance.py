@@ -69,7 +69,7 @@ class Stage2GuidanceTests(unittest.TestCase):
         self.assertNotIn("법적 의무 근거", intake)
         self.assertNotIn("_legal_focus_requirement_key", intake)
         self.assertNotIn("st.switch_page(\"ui/legal_evidence_page.py\")", intake)
-        self.assertIn("추가로 필요한 항목", intake)
+        self.assertIn("아직 준비가 필요한 자료", intake)
 
         self.assertIn("작성항목 근거 검색", library)
         self.assertIn("_legal_focus_requirement_key", library)
