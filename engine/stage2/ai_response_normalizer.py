@@ -171,8 +171,11 @@ def normalize_draft_response(raw: Mapping[str, Any], specs: Sequence[Any]) -> tu
     # allow an omitted key and attach it to that sole requested item.
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
+    explicit_keys: set[str] = set()
     for row in rows:
         req = str(row.get("requirement_key") or "").strip()
+        if req:
+            explicit_keys.add(req)
         if not req and len(known) == 1:
             req = known[0]
             row["requirement_key"] = req
@@ -183,6 +186,12 @@ def normalize_draft_response(raw: Mapping[str, Any], specs: Sequence[Any]) -> tu
 
     if not out:
         keys = ", ".join(str(key) for key in raw.keys())
+        unknown = sorted(req for req in explicit_keys if req not in known_set)
+        if unknown:
+            raise ValueError(
+                "로컬 AI 응답에서 요청한 작성항목과 일치하지 않는 requirement_key가 반환되었습니다: "
+                + ", ".join(unknown[:8])
+            )
         if len(known) > 1:
             raise ValueError(
                 "로컬 AI 다중항목 응답에서 명시적인 requirement_key를 찾지 못했습니다. "
