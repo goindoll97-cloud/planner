@@ -418,14 +418,26 @@ def _render_docx_pair(project, system: str, label: str) -> None:
                 type="primary",
             )
     else:
-        right.info("AI 보강 포함본은 `AI 문장보강` 영역을 열면 자동으로 준비됩니다.")
+        right.info("AI 보강 포함본은 AI 문장보강 영역을 열면 자동으로 준비됩니다.")
 
 
 def _render_cap_hwpx(project) -> None:
     st.markdown("#### 화학사고예방관리계획서 · 법제처 원본서식 HWPX")
     template_meta = registered_cap_template(project)
     if not template_meta:
-        st.warning("현재 승인된 법제처 원본 HWPX를 찾지 못했습니다. 최신 법령자료를 확인하거나 원본서식을 등록해야 합니다.")
+        st.warning(
+            "법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다. "
+            "처음 설치한 환경이면 규정 DB 관리에서 최신본 업데이트를 한 번 실행해 법제처 원본을 준비해 주세요."
+        )
+        st.page_link(
+            "ui/regdb_page.py",
+            label="규정 DB 관리에서 법제처 최신 원본 준비",
+            icon="🗂️",
+        )
+        st.caption(
+            "최신본 업데이트가 완료되면 법령 최신성과 첨부원본을 검증한 뒤 승인된 HWPX/HWP만 사용합니다. "
+            "자동 준비가 어려운 경우에만 아래에서 법제처 원본서식을 직접 등록하세요."
+        )
         with st.expander("법제처 원본서식 직접 등록 · 필요한 경우만", expanded=False):
             upload = st.file_uploader(
                 "법제처 CAP 별표·별지 원본 HWPX/HWP",
@@ -529,7 +541,7 @@ elif work_area == "AI 문장보강":
 else:
     st.info(
         "법정 작성구조에 맞춘 기본 초안은 AI를 기다리지 않고 바로 만들 수 있습니다. "
-        "AI 보강 포함본이 필요하면 `AI 문장보강` 영역을 한 번 열면 별도 생성 버튼 없이 자동 준비됩니다. "
+        "AI 보강 포함본이 필요하면 AI 문장보강 영역을 한 번 열면 별도 생성 버튼 없이 자동 준비됩니다. "
         "검토용 초안은 최종 제출 가능 상태를 의미하지는 않습니다."
     )
     if project.cap_in_scope:
