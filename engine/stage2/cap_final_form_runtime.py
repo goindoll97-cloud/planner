@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-"""Final-output hardening for CAP statutory forms.
+"""Keep CAP statutory choice fields recognizable in final-facing outputs.
 
-The official annex files contain many checkbox/choice cells.  Those cells must
-remain recognizable as the statutory form: a confirmed company value selects
-an option, but it must not replace the option set with a short free-text value.
-
-This module intentionally performs only deterministic formatting from confirmed
-project data.  It does not infer an unconfirmed sub-choice and does not call AI.
+The official forms use many checkbox/choice cells. Confirmed company data may
+select an option, but must not collapse the entire official option set into a
+short free-text value. This module uses text checkboxes (☒/☐), which survive
+DOCX/HWPX conversion reliably and do not require graphical form controls.
 """
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
 import re
-from typing import Any
 
 from . import cap_hwpx
 from . import statutory_report as report
@@ -41,9 +38,8 @@ def _truth_state(value: object) -> bool | None:
 
 
 def render_submission_type(value: object) -> str:
-    """Render all Annex 3 submission choices, selecting only explicit facts."""
-    raw = str(value or "").strip()
-    n = _norm(raw)
+    """Annex 3: preserve all submission choices and check only explicit facts."""
+    n = _norm(value)
     primary = ""
     if "이행점검" in n and "불이행" in n:
         primary = "이행점검불이행"
@@ -54,23 +50,21 @@ def render_submission_type(value: object) -> str:
     elif "신규제출" in n or "신규" in n:
         primary = "신규제출"
 
-    # A parent choice such as "신규" never proves the nested reason.
     first = "최초" in n
     unsuitable = "부적합" in n
-    rows = []
+    lines = []
     for key, label in (
         ("신규제출", "신규제출"),
         ("변경제출", "변경제출"),
         ("재제출", "재제출"),
         ("이행점검불이행", "이행점검 불이행"),
     ):
-        nested_first = primary == key and first
-        nested_unsuitable = primary == key and unsuitable
-        rows.append(
+        lines.append(
             f"{_checked(primary == key, label)} "
-            f"( {_checked(nested_first, '최초')}   {_checked(nested_unsuitable, '부적합')} )"
+            f"( {_checked(primary == key and first, '최초')}   "
+            f"{_checked(primary == key and unsuitable, '부적합')} )"
         )
-    return "\n".join(rows)
+    return "\n".join(lines)
 
 
 def render_writing_level(value: object) -> str:
@@ -80,22 +74,22 @@ def render_writing_level(value: object) -> str:
 
 def render_joint_emergency(value: object) -> str:
     n = _norm(value)
-    joint = "공동제출" in n or n == "공동"
-    single = "단독제출" in n or n == "단독"
-    # Generic yes/no answers do not establish which statutory submission mode.
-    return f"{_checked(joint, '공동제출')}   {_checked(single, '단독제출')}"
+    return (
+        f"{_checked('공동제출' in n or n == '공동', '공동제출')}   "
+        f"{_checked('단독제출' in n or n == '단독', '단독제출')}"
+    )
 
 
 def render_other_system_review(value: object) -> str:
     n = _norm(value)
-    explicit_no = _truth_state(value) is False or "미해당" in n
+    no = _truth_state(value) is False or "미해당" in n
     psm = "공정안전보고서" in n
     safety = "안전성향상계획" in n
-    explicit_yes = (_truth_state(value) is True or "해당" in n or psm or safety) and not explicit_no
+    yes = (_truth_state(value) is True or "해당" in n or psm or safety) and not no
     return (
-        f"{_checked(explicit_yes, '해당')}"
+        f"{_checked(yes, '해당')}"
         f"( {_checked(psm, '공정안전보고서')}   {_checked(safety, '안전성향상계획')} )\n"
-        f"{_checked(explicit_no, '미해당')}"
+        f"{_checked(no, '미해당')}"
     )
 
 
@@ -119,11 +113,8 @@ _FACILITY_CHOICES: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 def _facility_choice_key(value: object) -> str:
     n = _norm(value)
-    if not n:
-        return "기타"
-    # More specific storage-tank check precedes general storage/facility terms.
     for label, aliases in _FACILITY_CHOICES[:-1]:
-        if any(_norm(alias) and _norm(alias) in n for alias in aliases):
+        if any(_norm(alias) in n for alias in aliases if _norm(alias)):
             return label
     return "기타"
 
@@ -135,17 +126,15 @@ def render_facility_type_counts(project: Stage2Project) -> str:
         name = cap_hwpx._row_value(row, "설비종류", "설비형태", "장치·설비 종류", "설비명")
         if name:
             counts[_facility_choice_key(name)] += 1
-    rendered = []
-    for label, _aliases in _FACILITY_CHOICES:
-        count = counts.get(label, 0)
-        rendered.append(f"{_checked(count > 0, label)} ({count if count else ' '})기")
-    return "\n".join(rendered)
+    return "\n".join(
+        f"{_checked(counts.get(label, 0) > 0, label)} ({counts.get(label, 0) or ' '})기"
+        for label, _aliases in _FACILITY_CHOICES
+    )
 
 
 def _extract_count(raw: str, *tokens: str) -> int | None:
     for token in tokens:
-        pattern = rf"{re.escape(token)}[^0-9]{{0,12}}([0-9]+)\s*기?"
-        m = re.search(pattern, raw, flags=re.I)
+        m = re.search(rf"{re.escape(token)}[^0-9]{{0,12}}([0-9]+)\s*기?", raw, flags=re.I)
         if m:
             return int(m.group(1))
     return None
@@ -155,12 +144,12 @@ def render_loading_transport(value: object) -> str:
     raw = str(value or "").strip()
     n = _norm(raw)
     loading = any(token in n for token in ("입출하", "출하시설", "입하시설"))
-    tank_lorry = "탱크로리" in n or "tanklorry" in n or "tanktruck" in n
+    lorry = "탱크로리" in n or "tanklorry" in n or "tanktruck" in n
     loading_n = _extract_count(raw, "입·출하", "입출하", "출하시설", "입하시설")
     lorry_n = _extract_count(raw, "탱크로리", "tank lorry", "tank truck")
     return (
         f"{_checked(loading, '입·출하 시설')} ({loading_n if loading_n is not None else ' '})기   "
-        f"{_checked(tank_lorry, '보유 탱크로리')} ({lorry_n if lorry_n is not None else ' '})기"
+        f"{_checked(lorry, '보유 탱크로리')} ({lorry_n if lorry_n is not None else ' '})기"
     )
 
 
@@ -176,7 +165,6 @@ _ENV_RECEPTORS = (
 
 
 def _selected_value_text(value: object) -> str:
-    """Flatten selected values without treating every mapping key as selected."""
     parts: list[str] = []
     if isinstance(value, Mapping):
         for key, item in value.items():
@@ -187,10 +175,8 @@ def _selected_value_text(value: object) -> str:
             state = _truth_state(item) if isinstance(item, (str, int, float)) else None
             if state is True:
                 parts.append(str(key))
-                continue
-            if state is False:
-                continue
-            parts.append(_selected_value_text(item))
+            elif state is not False:
+                parts.append(_selected_value_text(item))
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         parts.extend(_selected_value_text(item) for item in value)
     elif value not in (None, ""):
@@ -199,36 +185,29 @@ def _selected_value_text(value: object) -> str:
 
 
 def _confirmed_selected_text(project: Stage2Project, *keys: str) -> str:
-    parts: list[str] = []
+    parts = []
     for key in keys:
         rec = project.get_field(key)
-        if rec is None or rec.status not in CONFIRMED_STATUSES:
-            continue
-        parts.append(_selected_value_text(rec.value))
+        if rec is not None and rec.status in CONFIRMED_STATUSES:
+            parts.append(_selected_value_text(rec.value))
     return " ".join(parts)
 
 
-def _render_option_group(title: str, options: Sequence[str], selected_text: str) -> str:
+def _render_group(title: str, options: Sequence[str], selected_text: str) -> str:
     n = _norm(selected_text)
-    rendered = [_checked(_norm(option) in n, option) for option in options]
-    return f"{title}\n" + "   ".join(rendered)
+    return title + "\n" + "   ".join(_checked(_norm(option) in n, option) for option in options)
 
 
 def render_protected_target_groups(selected_text: str) -> tuple[str, str, str]:
     return (
-        _render_option_group("갑종 보호대상 (적용되는 모든 것에 표시)", _PROTECTED_A, selected_text),
-        _render_option_group("을종 보호대상 (적용되는 모든 것에 표시)", _PROTECTED_B, selected_text),
-        _render_option_group("환경수용체 (적용되는 모든 것에 표시)", _ENV_RECEPTORS, selected_text),
+        _render_group("갑종 보호대상 (적용되는 모든 것에 표시)", _PROTECTED_A, selected_text),
+        _render_group("을종 보호대상 (적용되는 모든 것에 표시)", _PROTECTED_B, selected_text),
+        _render_group("환경수용체 (적용되는 모든 것에 표시)", _ENV_RECEPTORS, selected_text),
     )
 
 
 def _docx_form3(doc, project: Stage2Project) -> None:
     level = project.cap_group or report._text(project, "cap.business.writing_level", default=report.MISSING)
-    submission = report._text(project, "cap.business.submission_type", default="")
-    joint = report._text(project, "cap.business.joint_emergency_plan", default="")
-    other_review = report._text(project, "cap.business.other_system_review", default="")
-    residents = report._text(project, "cap.business.residents_in_overall_range", default="")
-    accident = report._text(project, "cap.business.recent_accident", default="")
     rows = (
         ("사업장명", project.company_name or report.MISSING),
         ("단위공장명", report._text(project, "cap.business.unit_plant_name", default=report.MISSING)),
@@ -237,12 +216,12 @@ def _docx_form3(doc, project: Stage2Project) -> None:
         ("우편번호/주소", report._text(project, "business.address", default=report.MISSING)),
         ("산업단지", report._text(project, "cap.business.industrial_complex", default=report.MISSING)),
         ("대표전화", report._text(project, "cap.business.contact", default=report.MISSING)),
-        ("제출구분", render_submission_type(submission)),
+        ("제출구분", render_submission_type(report._text(project, "cap.business.submission_type", default=""))),
         ("작성수준", render_writing_level(level)),
-        ("공동비상대응계획 수립 여부", render_joint_emergency(joint)),
-        ("유사제도 심사결과 활용", render_other_system_review(other_review)),
-        ("총괄영향범위내 주민여부", render_yes_no(residents)),
-        ("최근 3년간 화학사고 발생 여부", render_yes_no(accident)),
+        ("공동비상대응계획 수립 여부", render_joint_emergency(report._text(project, "cap.business.joint_emergency_plan", default=""))),
+        ("유사제도 심사결과 활용", render_other_system_review(report._text(project, "cap.business.other_system_review", default=""))),
+        ("총괄영향범위내 주민여부", render_yes_no(report._text(project, "cap.business.residents_in_overall_range", default=""))),
+        ("최근 3년간 화학사고 발생 여부", render_yes_no(report._text(project, "cap.business.recent_accident", default=""))),
         ("화학사고예방관리계획서 작성자", report._text(project, "cap.business.writer_info", default=report.MISSING)),
         ("담당자 연락처", report._text(project, "cap.business.writer_contact", default=report.MISSING)),
         ("담당자 메일주소", report._text(project, "cap.business.writer_email", default=report.MISSING)),
@@ -252,28 +231,30 @@ def _docx_form3(doc, project: Stage2Project) -> None:
 
 def _docx_facility_overview(doc, project: Stage2Project, *, detailed: bool) -> None:
     chemicals = report._chemical_rows(project)
-    chem_lines = []
-    for row in chemicals[:12]:
-        chem_lines.append(
-            f"{report._row_value(row, '물질명', '유해화학물질명')} / "
-            f"{report._row_value(row, 'CAS 번호', '화학물질식별번호')} / "
-            f"{report._row_value(row, '최대보유량', '최대보유량(kg)')}"
-        )
-    loading = report._text(project, "cap.basic.loading_transport", default="")
+    chem_lines = [
+        f"{report._row_value(row, '물질명', '유해화학물질명')} / "
+        f"{report._row_value(row, 'CAS 번호', '화학물질식별번호')} / "
+        f"{report._row_value(row, '최대보유량', '최대보유량(kg)')}"
+        for row in chemicals[:12]
+    ]
+    overview_key = "cap.basic.unit_facility_overview" if detailed else "cap.basic.total_facility_overview"
     rows = (
-        ("단위공장 구성", report._text(project, "cap.basic.unit_facility_overview", default=report.MISSING)),
+        ("단위공장 구성", report._text(project, overview_key, default=report.MISSING)),
         ("공정개요", report._text(project, "process.description", default=report.MISSING)),
         ("장치·설비 종류 및 수량", render_facility_type_counts(project)),
-        ("입·출하 및 운반시설", render_loading_transport(loading)),
+        ("입·출하 및 운반시설", render_loading_transport(report._text(project, "cap.basic.loading_transport", default=""))),
         ("유해화학물질 및 취급량", "\n".join(chem_lines) if chem_lines else report.MISSING),
     )
-    reference = "별지 제5호서식" if detailed else "별지 제4호서식"
-    title = "세부 취급시설 개요" if detailed else "총괄 취급시설 개요"
-    report._add_key_value_form(doc, reference, title, rows)
+    report._add_key_value_form(
+        doc,
+        "별지 제5호서식" if detailed else "별지 제4호서식",
+        "세부 취급시설 개요" if detailed else "총괄 취급시설 개요",
+        rows,
+    )
 
 
-def _docx_protected_blocks(doc, selected_text: str) -> None:
-    for block in render_protected_target_groups(selected_text):
+def _add_protected_groups(doc, selected: str) -> None:
+    for block in render_protected_target_groups(selected):
         doc.add_paragraph(block)
 
 
@@ -281,25 +262,16 @@ def _docx_form8(doc, project: Stage2Project) -> None:
     report._add_form_heading(doc, "별지 제8호서식", "사업장 주변 환경 정보")
     doc.add_paragraph("1. 사업장 입지현황")
     selected = _confirmed_selected_text(project, "cap.site.surrounding_environment", "cap.offsite.population_and_protected_targets")
-    _docx_protected_blocks(doc, selected)
+    _add_protected_groups(doc, selected)
     spec = report.FormSpec("", "", ("일련번호", "보호대상 종류", "보호대상 명칭", "거리(m)"))
-    rows = report._generic_form_rows(
-        project,
-        "cap.site.surrounding_environment",
-        spec,
-        (("일련번호", "연번"), ("보호대상 종류", "종류"), ("보호대상 명칭", "명칭"), ("거리", "거리(m)")),
-    )
+    rows = report._generic_form_rows(project, "cap.site.surrounding_environment", spec, (("일련번호", "연번"), ("보호대상 종류", "종류"), ("보호대상 명칭", "명칭"), ("거리", "거리(m)")))
     report._add_form_table(doc, spec, rows)
     report._add_attachment_line(doc, "보호대상 위치도", report._doc_value(project, "cap.site.surrounding_map"))
 
 
-def _industrial_location_value(project: Stage2Project) -> str:
-    # Only an explicit inside/outside statement may select this checkbox.
-    explicit = _confirmed_selected_text(project, "cap.offsite.business_location", "cap.offsite.site_location")
-    n = _norm(explicit)
-    inside = "산업단지내" in n
-    outside = "산업단지외" in n
-    return f"{_checked(inside, '산업단지 내')}   {_checked(outside, '산업단지 외')}"
+def _industrial_location(project: Stage2Project) -> str:
+    n = _norm(_confirmed_selected_text(project, "cap.offsite.business_location", "cap.offsite.site_location"))
+    return f"{_checked('산업단지내' in n, '산업단지 내')}   {_checked('산업단지외' in n, '산업단지 외')}"
 
 
 def _docx_form12(doc, project: Stage2Project) -> None:
@@ -308,15 +280,14 @@ def _docx_form12(doc, project: Stage2Project) -> None:
         ("사고시나리오", report._text(project, "cap.offsite.target_facility_selection", default=report.MISSING)),
         ("영향범위", report._text(project, "cap.offsite.impact_range_result", default=report.MISSING)),
         ("영향범위 내 주민의 수", report._text(project, "cap.offsite.population_and_protected_targets", default=report.MISSING)),
-        ("사업장 위치", _industrial_location_value(project)),
+        ("사업장 위치", _industrial_location(project)),
     )
     table = doc.add_table(rows=len(rows), cols=2)
     report._set_table_borders(table)
     for i, (label, value) in enumerate(rows):
         report._set_cell_text(table.rows[i].cells[0], label, bold=True, size=8)
         report._set_cell_text(table.rows[i].cells[1], value, size=8)
-    selected = _confirmed_selected_text(project, "cap.offsite.population_and_protected_targets", "cap.offsite.surrounding_impact_result")
-    _docx_protected_blocks(doc, selected)
+    _add_protected_groups(doc, _confirmed_selected_text(project, "cap.offsite.population_and_protected_targets", "cap.offsite.surrounding_impact_result"))
     report._add_attachment_line(doc, "주요 보호대상 위치", report._doc_value(project, "cap.offsite.protected_target_map"))
     p = doc.add_paragraph()
     p.add_run("사고원점의 좌표: ").bold = True
@@ -325,20 +296,14 @@ def _docx_form12(doc, project: Stage2Project) -> None:
 
 def _docx_form13(doc, project: Stage2Project) -> None:
     report._add_form_heading(doc, "별지 제13호서식", "총괄영향범위 사업장 주변지역 영향 평가")
-    selected = _confirmed_selected_text(project, "cap.offsite.population_and_protected_targets", "cap.offsite.surrounding_impact_result")
-    _docx_protected_blocks(doc, selected)
+    _add_protected_groups(doc, _confirmed_selected_text(project, "cap.offsite.population_and_protected_targets", "cap.offsite.surrounding_impact_result"))
     report._add_attachment_line(doc, "주요 보호대상 위치", report._doc_value(project, "cap.offsite.protected_target_map"))
     spec = report.FormSpec("", "", ("일련번호", "보호대상 명칭", "보호대상 종류"))
-    rows = report._generic_form_rows(
-        project,
-        "cap.offsite.population_and_protected_targets",
-        spec,
-        (("일련번호", "연번"), ("보호대상 명칭", "명칭"), ("보호대상 종류", "종류")),
-    )
+    rows = report._generic_form_rows(project, "cap.offsite.population_and_protected_targets", spec, (("일련번호", "연번"), ("보호대상 명칭", "명칭"), ("보호대상 종류", "종류")))
     report._add_form_table(doc, spec, rows)
 
 
-def _choice_scalar_value(label: str, value: object) -> str:
+def _choice_scalar(label: str, value: object) -> str:
     if label == "제출구분":
         return render_submission_type(value)
     if label == "작성수준":
@@ -361,31 +326,28 @@ def install_cap_final_form_runtime() -> None:
     original_fill_scalar_batch = cap_hwpx._fill_scalar_batch
     original_review_appendix = report._add_review_appendix
 
-    def fill_scalar_batch_with_statutory_choices(source: bytes, specs):
-        normalized = []
-        for table_anchor, label, value in specs:
-            if label in {
-                "제출구분", "작성수준", "공동비상대응계획 수립 여부", "유사제도 심사결과 활용",
-                "총괄영향범위내 주민여부", "최근 3년간 화학사고 발생 여부", "입·출하 및 운반시설",
-            }:
-                value = _choice_scalar_value(label, value)
-            normalized.append((table_anchor, label, value))
+    def fill_scalar_batch_with_choices(source: bytes, specs):
+        choice_labels = {
+            "제출구분", "작성수준", "공동비상대응계획 수립 여부", "유사제도 심사결과 활용",
+            "총괄영향범위내 주민여부", "최근 3년간 화학사고 발생 여부", "입·출하 및 운반시설",
+        }
+        normalized = [
+            (anchor, label, _choice_scalar(label, value) if label in choice_labels else value)
+            for anchor, label, value in specs
+        ]
         return original_fill_scalar_batch(source, normalized)
 
-    def review_appendix_final_output(doc, project, system: str, status) -> None:
-        if str(system or "").strip().upper() == "CAP":
-            return
-        original_review_appendix(doc, project, system, status)
+    def review_appendix_without_cap(doc, project, system: str, status) -> None:
+        if str(system or "").strip().upper() != "CAP":
+            original_review_appendix(doc, project, system, status)
 
-    cap_hwpx._fill_scalar_batch = fill_scalar_batch_with_statutory_choices
+    cap_hwpx._fill_scalar_batch = fill_scalar_batch_with_choices
     cap_hwpx._facility_count_text = render_facility_type_counts
-
-    # v2 CAP renderer calls these helpers from this module dynamically.
     report._cap_form3 = _docx_form3
     report._cap_facility_overview = _docx_facility_overview
     report._cap_form8 = _docx_form8
     report._cap_form12 = _docx_form12
     report._cap_form13 = _docx_form13
-    report._add_review_appendix = review_appendix_final_output
+    report._add_review_appendix = review_appendix_without_cap
 
     setattr(cap_hwpx, _INSTALL_MARKER, True)
