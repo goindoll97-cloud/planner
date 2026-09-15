@@ -125,7 +125,7 @@ if manual_mode:
         "CAS 기반 KOSHA MSDS 참고자료는 아래에서 별도로 조회할 수 있지만 실제 제품 MSDS를 대체하지 않습니다."
     )
 else:
-    st.info("현재는 첨부자료까지 프로젝트에서 함께 관리합니다. 실제 도면·PDF·제품 MSDS를 아래에서 업로드하면 검토자료에 연결됩니다.")
+    st.info("현재는 첨부자료까지 프로젝트에서 함께 관리합니다. 실제 도면·PDF·제품 MSDS를 아래에서 업로드하면 작성자료 점검에 함께 반영됩니다.")
 
 st.markdown("### 2. 통합 작성자료 내려받기")
 st.write(
@@ -190,7 +190,7 @@ else:
     st.info(
         "이 기능은 **CAS 번호만** 한국산업안전보건공단 MSDS 조회 서비스로 전송합니다. "
         "회사명, 보유량, 공정명, 설비정보, 사업장 주소와 첨부파일 내용은 외부 API로 보내지 않습니다. "
-        "조회 결과는 MSDS 작성·검토 참고자료이며 공급자·제조자·수입자의 실제 제품 MSDS를 대체하지 않습니다."
+        "조회 결과는 MSDS 작성 참고자료이며 공급자·제조자·수입자의 실제 제품 MSDS를 대체하지 않습니다."
     )
     available_cas = [item.cas for item in chemicals]
     name_by_cas = {item.cas: item.chemical_name or item.product_name for item in chemicals}
@@ -254,9 +254,9 @@ else:
             bundle = None
         if bundle:
             st.download_button(
-                "KOSHA MSDS 검토용 참고자료 ZIP 다운로드",
+                "KOSHA MSDS 참고자료 ZIP 다운로드",
                 data=bundle,
-                file_name=f"{project.project_id}_KOSHA_MSDS_검토용_참고자료.zip",
+                file_name=f"{project.project_id}_KOSHA_MSDS_참고자료.zip",
                 mime="application/zip",
                 width="stretch",
                 key=f"download_kosha_msds_{project.project_id}",
@@ -320,10 +320,10 @@ else:
             st.success(f"첨부자료 {len(attachments)}개를 접수했습니다. 목록 자동연결 {linked}개, 연결대상 확인 필요 {unlinked}개입니다.")
             st.rerun()
 
-with st.expander("회사/공급자 MSDS의 CAS 자동 비교검토", expanded=False):
+with st.expander("회사/공급자 MSDS의 CAS 자동 비교", expanded=False):
     st.caption(
         "업로드한 PDF·DOCX·TXT·CSV MSDS에서 CAS 번호를 **로컬 PC 안에서만** 읽어 화학물질 목록과 비교합니다. "
-        "파일 내용은 KOSHA API나 로컬 AI로 전송하지 않습니다. CAS 일치만 확인하는 보조검토이며 MSDS 전체 내용의 법적 적정성을 자동 확정하지 않습니다."
+        "파일 내용은 KOSHA API나 로컬 AI로 전송하지 않습니다. CAS 일치만 확인하는 보조 확인이며 MSDS 전체 내용의 법적 적정성을 자동 확정하지 않습니다."
     )
     if st.button("업로드한 제품 MSDS와 CAS 비교", width="stretch", key=f"compare_supplier_sds_{project.project_id}"):
         result = store_supplier_sds_comparison(project)
@@ -355,21 +355,22 @@ file_rows = [(i, g) for i, g, b in classified if b == BUCKET_FILE]
 review_rows = [(i, g) for i, g, b in classified if b == BUCKET_REVIEW]
 program_rows = [(i, g) for i, g, b in classified if b == BUCKET_PROGRAM]
 
-st.markdown("### 추가로 필요한 항목")
-st.caption("회사 직접 입력, 로컬 AI 보강, 담당자 별도 첨부를 역할별로 나누어 표시합니다.")
+st.markdown("### 아직 준비가 필요한 자료")
+st.caption("회사에서 직접 입력할 자료, 5단계에서 보고서 문장으로 정리할 항목, 담당자가 별도로 준비할 첨부자료를 구분해 표시합니다.")
 if core_rows:
-    st.warning(f"교차검증 전에 회사가 직접 확인해야 할 핵심 텍스트·표 자료가 {len(core_rows)}건 남아 있습니다.")
+    st.warning(f"4단계 작성자료 점검 전에 회사가 직접 확인해야 할 핵심 텍스트·표 자료가 {len(core_rows)}건 남아 있습니다.")
     with st.expander(f"통합 Excel 보완 필요 · {len(core_rows)}건", expanded=True):
         for item, guidance in core_rows:
             st.markdown(_line(item, guidance))
 else:
-    st.success("교차검증에 필요한 핵심 회사 사실·구조화 표가 준비되었습니다.")
+    st.success("4단계 작성자료 점검에 필요한 핵심 회사 사실·구조화 표가 준비되었습니다.")
 
 if ai_rows:
-    with st.expander(f"로컬 AI가 보고서 본문 초안으로 보완할 수 있는 항목 · {len(ai_rows)}건", expanded=False):
+    with st.expander(f"5단계에서 보고서 문장으로 정리할 항목 · {len(ai_rows)}건", expanded=False):
         st.caption(
-            "이 항목은 회사가 직접 입력해야 하는 핵심 원자료가 아니라 보고서용 서술항목입니다. 5단계에서 확인된 회사 사실과 법정 용어지침을 바탕으로 로컬 AI가 초안을 작성합니다. "
-            "확인되지 않은 사업장 사실은 만들어 넣지 않고 확인 필요 사항으로 남깁니다."
+            "이 항목은 회사가 직접 입력해야 하는 핵심 원자료가 아니라 보고서 설명문에 해당합니다. "
+            "5단계에서 기본 초안으로 작성되며, 원하면 확인된 회사 사실을 바탕으로 로컬 AI가 문장을 자연스럽게 다듬을 수 있습니다. "
+            "확인되지 않은 사업장 사실은 만들어 넣지 않습니다."
         )
         for item, guidance in ai_rows:
             st.markdown(_line(item, guidance))
@@ -377,7 +378,7 @@ if ai_rows:
 if manual_rows:
     with st.expander(f"담당자 별도 작성·첨부 예정 · {len(manual_rows)}건", expanded=False):
         st.caption(
-            "현재 운영방식에서는 아래 도면·이미지·계산서·제품 MSDS 원본이 프로그램의 텍스트 작성 진행을 막지 않습니다. "
+            "현재 운영방식에서는 아래 도면·이미지·계산서·제품 MSDS 원본이 프로그램의 보고서 본문 작성 진행을 막지 않습니다. "
             "최종 제출 전에는 담당자가 실제 자료를 작성·확인하여 결합해야 합니다."
         )
         for item, guidance in manual_rows:
@@ -389,27 +390,27 @@ if file_rows:
             st.markdown(_line(item, guidance))
 
 if review_rows:
-    with st.expander(f"4단계에서 확인할 접수자료 · {len(review_rows)}건", expanded=False):
+    with st.expander(f"4단계 작성자료 점검에서 확인할 자료 · {len(review_rows)}건", expanded=False):
         for item, guidance in review_rows:
             st.markdown(_line(item, guidance))
 
 st.info(
     "KOSHA CAS 조회자료와 도면·첨부자료를 별도 관리하더라도 법정 제출자료에서 실제 제품 MSDS나 필요한 도면이 없어지는 것은 아닙니다. "
-    "프로그램에서는 텍스트·표 작성, 공공 참고자료, 최종 회사 첨부자료의 역할을 분리해 관리합니다."
+    "프로그램에서는 보고서 본문용 회사자료, 공공 참고자료, 최종 회사 첨부자료의 역할을 나누어 관리합니다."
 )
 
 st.divider()
 if core_rows:
     mark_intake_confirmed(project, False)
     save_project(project)
-    st.button("텍스트·표 자료 준비 완료 → 4. 작성자료 교차검증 열기", disabled=True, width="stretch")
+    st.button("기본자료 입력 완료 → 4. 작성자료 점검·보완", disabled=True, width="stretch")
     st.caption("위의 통합 Excel 보완 필요 항목을 먼저 작성해 주세요.")
 else:
     if not intake_confirmed(project):
-        if st.button("텍스트·표 자료 준비 완료 → 4. 작성자료 교차검증 열기", type="primary", width="stretch"):
+        if st.button("기본자료 입력 완료 → 4. 작성자료 점검·보완", type="primary", width="stretch"):
             mark_intake_confirmed(project, True)
             save_project(project)
             st.rerun()
     else:
-        st.success("3단계 완료: 4. 작성자료 교차검증이 열렸습니다.")
-        st.page_link("ui/stage2_validation_page.py", label="다음: 4. 작성자료 교차검증", icon="🔎")
+        st.success("3단계 완료: 작성자료 점검·보완 단계로 진행할 수 있습니다.")
+        st.page_link("ui/stage2_validation_page.py", label="다음: 4. 작성자료 점검·보완", icon="🔎")
