@@ -10,7 +10,7 @@ from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.cap_official_docx import install_cap_official_word_runtime
 from engine.stage2.cap_template_priority import install_current_cap_template_priority
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
-from engine.stage2.storage import load_project
+from engine.stage2.storage import list_projects, load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
 
@@ -55,14 +55,39 @@ install_ai_live_progress_runtime()
 
 
 def _stage2_progress() -> tuple[bool, bool]:
-    project_id = str(st.session_state.get(ACTIVE_PROJECT_KEY) or "").strip()
-    if not project_id:
-        return False, False
+    """Return whether Stage 4/5 should be registered in this app run.
+
+    Streamlit builds the navigation before the selected page executes.  If page
+    registration depends only on the session's previously active project, a user
+    can switch projects inside Stage 3/4 and immediately render a page_link to a
+    page that was not registered at app start.  Register a gated page whenever
+    at least one stored project is legitimately ready for it; each destination
+    page still enforces the selected project's own gate before showing content.
+    """
+    project_ids: list[str] = []
+    active_id = str(st.session_state.get(ACTIVE_PROJECT_KEY) or "").strip()
+    if active_id:
+        project_ids.append(active_id)
     try:
-        project = load_project(project_id)
+        for row in list_projects():
+            project_id = str(row.get("project_id") or "").strip()
+            if project_id and project_id not in project_ids:
+                project_ids.append(project_id)
     except Exception:
-        return False, False
-    return intake_confirmed(project), validation_confirmed(project)
+        pass
+
+    intake_ready = False
+    validation_ready = False
+    for project_id in project_ids:
+        try:
+            project = load_project(project_id)
+        except Exception:
+            continue
+        intake_ready = intake_ready or intake_confirmed(project)
+        validation_ready = validation_ready or validation_confirmed(project)
+        if intake_ready and validation_ready:
+            break
+    return intake_ready, validation_ready
 
 
 intake_ready, validation_ready = _stage2_progress()
@@ -73,8 +98,10 @@ pages = [
     st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥"),
 ]
 
-# Keep a novice user on the intended sequence. Stage 4 appears only after the
-# company confirms that the source material in Stage 3 is ready.
+# Keep a novice user on the intended sequence. Stage 4/5 are registered only
+# when at least one stored project can legitimately enter them. The page itself
+# re-checks the currently selected project's gate, so switching projects cannot
+# bypass Stage 3 or Stage 4 validation.
 if intake_ready:
     pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
 if validation_ready:
