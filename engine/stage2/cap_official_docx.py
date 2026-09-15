@@ -21,6 +21,7 @@ from . import cap_hwpx
 
 
 WRAPPER_MARKER = "_cap_official_word_runtime_wrapper"
+_INSTALLED = False
 
 
 @dataclass(frozen=True)
@@ -158,14 +159,15 @@ def build_cap_official_word(project) -> CAPOfficialWordResult:
 
 def install_cap_official_word_runtime() -> None:
     """Label Stage 5 review DOCX outputs without exposing a Word-conversion UI."""
+    global _INSTALLED
+    if _INSTALLED:
+        return
     try:
         import streamlit as st
     except Exception:
         return
 
     current_markdown = st.markdown
-    if bool(getattr(current_markdown, WRAPPER_MARKER, False)):
-        return
     current_download = st.download_button
 
     def markdown_review_labels(body, *args, **kwargs):
@@ -201,3 +203,4 @@ def install_cap_official_word_runtime() -> None:
     setattr(download_review_labels, WRAPPER_MARKER, True)
     st.markdown = markdown_review_labels
     st.download_button = download_review_labels
+    _INSTALLED = True
