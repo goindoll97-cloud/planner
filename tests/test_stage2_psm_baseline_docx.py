@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -36,6 +37,18 @@ def _set(project: Stage2Project, key: str, value, label: str | None = None) -> N
 
 class PSMBaselineDocxTests(unittest.TestCase):
     def test_baseline_bytes_match_uploaded_layout_snapshot(self):
+        template_dir = PROJECT_ROOT / "data" / "templates" / "psm"
+        encoded = "".join(
+            path.read_text(encoding="ascii").strip()
+            for path in sorted(template_dir.glob("psm_statutory_forms_baseline.docx.b64.*"))
+        )
+        raw = base64.b64decode(encoded, validate=True)
+        self.assertEqual(
+            sha256(raw).hexdigest(),
+            EXPECTED_SHA256,
+            msg=f"stored_base64_chars={len(encoded)} decoded_bytes={len(raw)}",
+        )
+
         data = load_psm_baseline_bytes()
         self.assertEqual(sha256(data).hexdigest(), EXPECTED_SHA256)
         doc = Document(BytesIO(data))
