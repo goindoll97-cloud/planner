@@ -14,10 +14,19 @@ ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 def install_psm_baseline_runtime() -> None:
     try:
         import streamlit as st
+        from . import psm_baseline_docx as baseline
         from .psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
         from .storage import load_project
     except Exception:
         return
+
+    # Reuse the already-established Stage 2 field used by the existing PSM
+    # renderer. Keep legacy aliases only as fallback; never infer interlock data.
+    baseline.LATER_FORM_FIELDS["17-2"] = (
+        "psm.psi.interlock_conditions",
+        "psm.psi.interlock_specs",
+        "psm.psi.interlocks",
+    )
 
     current_markdown = st.markdown
     if bool(getattr(current_markdown, WRAPPER_MARKER, False)):
