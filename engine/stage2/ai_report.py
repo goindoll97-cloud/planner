@@ -107,7 +107,10 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
                 _run_font(run, size=8, color="9C6500")
         inserted += 1
 
-    if inserted:
+    # PSM keeps the existing review banner. CAP intentionally starts with the
+    # statutory annex set itself, so no AI/review banner may be inserted ahead
+    # of Annex Form 1.
+    if inserted and system != "CAP":
         target = doc.paragraphs[0] if doc.paragraphs else None
         if target is not None:
             note = OxmlElement("w:p")

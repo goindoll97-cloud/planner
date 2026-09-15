@@ -148,15 +148,18 @@ class Stage2CAPAuthoritativeSourceTests(unittest.TestCase):
         self.assertIn("강산화제", rows[0]["물리적 위험성 후보"])
         self.assertIn("수생생물", rows[0]["환경유해성 후보"])
 
-    def test_cap_report_declares_both_authoritative_sources_and_separates_candidates(self):
+    def test_cap_report_starts_with_form1_and_separates_candidates(self):
         data = build_report_draft(self._project(), "CAP")
         doc = Document(BytesIO(data))
         text = "\n".join(
             [p.text for p in doc.paragraphs]
             + [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
         )
-        self.assertIn("화학물질안전원고시 제2026-07호", text)
-        self.assertIn("국가법령정보센터 별표·별지 서식", text)
+        first_visible = next(p.text.strip() for p in doc.paragraphs if p.text.strip())
+
+        self.assertIn("별지 제1호서식", first_visible)
+        self.assertNotIn("화학물질안전원고시 제2026-07호", first_visible)
+        self.assertNotIn("국가법령정보센터 별표·별지 서식", first_visible)
         self.assertIn("NICS-GP2026-8", text)
         self.assertIn("별지 제6호 자동입력 후보 검토", text)
         self.assertIn("법정서식 외 검토자료", text)
