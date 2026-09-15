@@ -116,7 +116,7 @@ class PSMBaselineDocxTests(unittest.TestCase):
     def test_stage5_runtime_inserts_regulation_form_before_psm_review_heading(self):
         text = (PROJECT_ROOT / "engine/stage2/psm_baseline_runtime.py").read_text(encoding="utf-8")
         self.assertIn("공정안전보고서 · 규정서식 작성본", text)
-        self.assertIn('text == "### 공정안전보고서 · DOCX 초안"', text)
+        self.assertIn('text == "### 공정안전보고서 · 내부 검토용"', text)
         self.assertIn("공정안전보고서 규정서식 작성본 DOCX 다운로드", text)
 
 
