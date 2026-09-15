@@ -8,11 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Stage2FastAutoAIContractTests(unittest.TestCase):
-    def test_stage5_does_not_run_ai_for_other_work_areas(self):
+    def test_stage5_runs_ai_only_when_user_enables_optional_toggle(self):
         source = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn('elif work_area == "AI 문장보강":', source)
-        self.assertIn("_render_ai_status(project)", source)
-        self.assertIn("AI를 기다리지 않고 바로", source)
+        self.assertIn("st.toggle(", source)
+        self.assertIn("AI로 문장 다듬은 초안도 만들기", source)
+        self.assertIn("if use_ai:", source)
+        self.assertIn("_render_ai_assistance(project)", source)
+        self.assertIn("선택하지 않아도 아래에서 기본 초안을 바로", source)
 
     def test_auto_drafting_requests_only_missing_requirement_keys(self):
         source = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
