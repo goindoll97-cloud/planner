@@ -473,8 +473,25 @@ def _add_attachment_line(doc: Document, label: str, value: str) -> None:
     p.add_run(value)
 
 
+_HEADING_SIZES = {1: 14, 2: 11, 3: 10}
+
+
+def _add_heading_safe(doc: Document, text: str, level: int = 1):
+    """Add a heading without depending on the doc having Word's named Heading
+    styles registered. A statutory-form baseline docx loaded from disk (rather
+    than built via ``_configure_doc``) may not define "Heading N" at all."""
+    try:
+        return doc.add_heading(text, level=level)
+    except KeyError:
+        p = doc.add_paragraph()
+        run = p.add_run(text)
+        run.bold = True
+        run.font.size = Pt(_HEADING_SIZES.get(level, 10))
+        return p
+
+
 def _add_narrative_requirement(doc: Document, spec, project: Stage2Project, *, article_items: Sequence[str] = ()) -> None:
-    heading = doc.add_heading(spec.label, level=2)
+    heading = _add_heading_safe(doc, spec.label, level=2)
     _set_keep_with_next(heading)
     if article_items:
         p = doc.add_paragraph()
@@ -790,6 +807,77 @@ def _render_psm(doc: Document, project: Stage2Project) -> None:
 
     doc.add_page_break()
     doc.add_heading("비상조치계획", level=1)
+    emergency_specs = [s for s in specs if s.section == "비상조치계획"]
+    if emergency_specs:
+        for spec in emergency_specs:
+            items = PSM_ARTICLE_ITEMS.get("psm.emergency.core", ()) if spec.key in {"psm.emergency.core", "psm.emergency.roles_procedures"} else ()
+            _add_narrative_requirement(doc, spec, project, article_items=items)
+    else:
+        p = doc.add_paragraph()
+        p.add_run("법정 작성항목: ").bold = True
+        p.add_run(" / ".join(PSM_ARTICLE_ITEMS["psm.emergency.core"]))
+        doc.add_paragraph(MISSING)
+
+
+def _render_psm_narrative(doc: Document, project: Stage2Project) -> None:
+    """Append PSM content that has no annex-form cell onto an existing document.
+
+    Forms 12~21 (사업개요, 공정안전자료 표, 공정위험성평가서 표, 위험성평가
+    참여 전문가 명단) are the regulation-form baseline itself and are filled
+    separately by ``psm_baseline_docx.build_psm_baseline_draft``. This only
+    adds the surrounding content the statute also requires but that has no
+    annex-form counterpart: process description, referenced drawings, and the
+    free-text 안전운전계획/비상조치계획 chapters.
+    """
+    doc.add_page_break()
+    caption = doc.add_paragraph("법정서식 기반 검토용 작성본 · 별지서식에 없는 서술형 작성항목")
+    caption.runs[0].italic = True
+
+    _add_heading_safe(doc, "공정개요 및 공정도면", level=1)
+    doc.add_paragraph(_text(project, "process.description", default=MISSING))
+    _add_attachment_line(doc, "공정흐름도(PFD)", _doc_value(project, "documents.pfd"))
+    _add_attachment_line(doc, "공정배관·계장도(P&ID)", _doc_value(project, "documents.pid"))
+    _add_attachment_line(doc, "유틸리티 계통도·배관계장도(UFD)", _doc_value(project, "psm.psi.ufd"))
+    _add_attachment_line(doc, "물질안전보건자료(MSDS)", _doc_value(project, "psm.psi.msds"))
+    _add_attachment_line(doc, "공장 전체배치도", _doc_value(project, "documents.site_plan"))
+    _add_attachment_line(doc, "설비배치도", _doc_value(project, "psm.psi.equipment_layout"))
+    _add_attachment_line(doc, "건물·철구조물 평면도 및 입면도", _doc_value(project, "psm.psi.building_structure"))
+    _add_attachment_line(doc, "세안·세척시설 및 안전보호장구 설치계획", _text(project, "psm.psi.wash_facility", "psm.psi.ppe", default=MISSING))
+    _add_attachment_line(doc, "폭발위험장소 구분도", _doc_value(project, "psm.psi.hazardous_area"))
+    _add_attachment_line(doc, "전기단선도", _doc_value(project, "psm.psi.single_line"))
+    _add_attachment_line(doc, "단락용량 계산서", _doc_value(project, "psm.psi.short_circuit"))
+    _add_attachment_line(doc, "비상전원 설비용량 자료", _doc_value(project, "psm.psi.emergency_power"))
+    _add_attachment_line(doc, "접지계획·배치도", _doc_value(project, "psm.psi.grounding"))
+
+    _add_heading_safe(doc, "안전설계·제작 및 설치 관련 지침서", level=1)
+    doc.add_paragraph(_text(project, "psm.psi.design_installation_guideline", default=MISSING))
+
+    _add_heading_safe(doc, "공정위험성평가서", level=1)
+    risk_items = (
+        ("위험성 평가의 목적", "psm.risk.purpose"),
+        ("공정 위험특성", "psm.risk.characteristics"),
+        ("위험성 평가결과에 따른 잠재위험의 종류", "psm.risk.report"),
+        ("사고빈도 최소화 및 사고시 피해 최소화 대책", "psm.risk.mitigation"),
+        ("위험성 평가 수행 및 평가절차", "psm.risk.procedure"),
+    )
+    for label, key in risk_items:
+        _add_heading_safe(doc, label, level=2)
+        doc.add_paragraph(_text(project, key, default=MISSING))
+
+    specs = [s for s in selected_requirement_specs(project) if s.system == "PSM"]
+    by_key = {s.key: s for s in specs}
+    doc.add_page_break()
+    _add_heading_safe(doc, "안전운전계획", level=1)
+    for key in (
+        "psm.operation.sop", "psm.operation.maintenance", "psm.operation.work_permit", "psm.operation.contractor",
+        "psm.operation.training", "psm.operation.prestartup", "psm.operation.moc", "psm.operation.audit", "psm.operation.incident_investigation",
+    ):
+        spec = by_key.get(key)
+        if spec is not None:
+            _add_narrative_requirement(doc, spec, project, article_items=PSM_ARTICLE_ITEMS.get(key, ()))
+
+    doc.add_page_break()
+    _add_heading_safe(doc, "비상조치계획", level=1)
     emergency_specs = [s for s in specs if s.section == "비상조치계획"]
     if emergency_specs:
         for spec in emergency_specs:
@@ -1171,7 +1259,7 @@ def _render_cap(doc: Document, project: Stage2Project) -> None:
 
 def _add_review_appendix(doc: Document, project: Stage2Project, system: str, status) -> None:
     doc.add_page_break()
-    doc.add_heading("검토 참고사항 (법정서식 외)", level=1)
+    _add_heading_safe(doc, "검토 참고사항 (법정서식 외)", level=1)
     doc.add_paragraph(
         "아래 내용은 자동작성 상태를 확인하기 위한 내부 검토용 정보이며 법정서식의 일부가 아닙니다. "
         "최종 제출 전 회사 담당자가 [확인 필요], 도면·첨부자료 및 AI 보강문장을 모두 검토해야 합니다."
