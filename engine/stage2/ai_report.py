@@ -67,6 +67,7 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
     specs = [spec for spec in selected_requirement_specs(project) if spec.system == system]
     by_label = {spec.label: spec for spec in specs}
     inserted = 0
+    first_ai_heading: Paragraph | None = None
 
     for paragraph in list(doc.paragraphs):
         spec = by_label.get(paragraph.text.strip())
@@ -75,6 +76,8 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
         payload_status = _draft_payload(project, system, spec.key)
         if payload_status is None:
             continue
+        if first_ai_heading is None:
+            first_ai_heading = paragraph
         payload, status = payload_status
         draft_text = assert_public_prose(str(payload.get("draft_text") or "").strip(), system)
         suggestions = payload.get("suggested_additions")
@@ -107,11 +110,12 @@ def build_ai_enhanced_report_draft(project: Stage2Project, system: str) -> bytes
                 _run_font(run, size=8, color="9C6500")
         inserted += 1
 
-    # PSM keeps the existing review banner. CAP intentionally starts with the
-    # statutory annex set itself, so no AI/review banner may be inserted ahead
-    # of Annex Form 1.
-    if inserted and system != "CAP":
-        target = doc.paragraphs[0] if doc.paragraphs else None
+    # Both systems now open on the real regulation-form baseline itself (its
+    # own title page, not a synthetic cover this program generated), so the
+    # banner must never land ahead of that. Insert it right before the first
+    # AI-touched heading instead of unconditionally at paragraph 0.
+    if inserted and first_ai_heading is not None:
+        target = first_ai_heading
         if target is not None:
             note = OxmlElement("w:p")
             target._p.addprevious(note)

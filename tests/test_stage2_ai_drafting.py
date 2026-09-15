@@ -75,6 +75,37 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         )
         return project
 
+    def _psm_project(self) -> Stage2Project:
+        project = Stage2Project(
+            project_id="S2-AI-PSM",
+            company_name="테스트정밀화학",
+            psm_required=True,
+            cap_required=False,
+            scope_confirmed=True,
+            psm_selected=True,
+            cap_selected=False,
+        )
+        project.set_field("business.company_name", "회사명", "테스트정밀화학", "VERIFIED")
+        project.set_field(
+            "inventory.chemicals",
+            "화학물질 목록",
+            [{"물질명": "톨루엔", "CAS 번호": "108-88-3", "최대보유량": 15000, "단위": "kg"}],
+            "VERIFIED",
+        )
+        project.set_field(
+            "psm.psi.equipment_specs",
+            "장치 및 설비명세",
+            [{"설비번호": "TK-101", "설비명": "톨루엔 저장탱크"}],
+            "VERIFIED",
+        )
+        project.set_field(
+            "psm.operation.sop",
+            "안전운전지침서",
+            "최초 시운전, 정상운전, 비상정지 절차를 안전운전지침서에 따라 수행한다.",
+            "USER_CONFIRMED",
+        )
+        return project
+
     def test_group2_scope_is_fixed_and_external_emergency_is_not_draftable(self):
         project = self._cap_group2_project()
         specs = ai_draftable_specs(project, "CAP")
@@ -191,6 +222,36 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         self.assertIn("누출·화재·폭발 사고 예방", text)
         headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
         self.assertNotIn("외부 비상대응계획", headings)
+
+    def test_ai_enhanced_docx_never_inserts_banner_ahead_of_regulation_form(self):
+        # Both PSM and CAP review drafts now open on the real regulation-form
+        # baseline itself (its own title page), so the "AI 문장 보강 적용"
+        # banner must never land ahead of that — it belongs right before the
+        # first AI-touched narrative heading instead.
+        project = self._psm_project()
+        client = FakeLLMClient({
+            "profile_summary": "",
+            "drafts": [
+                {
+                    "requirement_key": "psm.operation.sop",
+                    "draft_text": "최초 시운전, 정상운전, 비상정지 절차를 안전운전지침서에 따라 수행한다.",
+                    "suggested_additions": [],
+                    "used_fact_keys": ["psm.operation.sop"],
+                }
+            ],
+        })
+        generate_system_ai_drafts(project, "PSM", client)
+
+        doc = Document(BytesIO(build_ai_enhanced_report_draft(project, "PSM")))
+        first_paragraph = next(p.text for p in doc.paragraphs if p.text.strip())
+        self.assertNotIn("AI 문장 보강 적용", first_paragraph)
+        self.assertIn("별지 제12호서식", first_paragraph)
+
+        banner_index = next(
+            i for i, p in enumerate(doc.paragraphs)
+            if p.text.strip() == "AI 문장 보강 적용 · 회사 확인자료는 원문 표/필드로 함께 보존"
+        )
+        self.assertEqual(doc.paragraphs[banner_index + 1].text.strip(), "안전운전지침서")
 
     def test_report_page_exposes_grounded_optional_local_ai_workflow(self):
         source = Path("ui/stage2_review_page.py").read_text(encoding="utf-8")
