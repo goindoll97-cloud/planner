@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import re
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping, Protocol, Sequence
 
 from .guidance import STATIC_WORKBOOK_LOCATIONS
 from .intake import selected_requirement_specs
@@ -367,29 +367,29 @@ def _language_warnings(text: str, system: str, label: str) -> list[str]:
     return [f"{label}: {warning}" for warning in validate_public_prose(text, system)]
 
 
-def generate_system_ai_drafts(
+def build_pack_result_from_rows(
     project: Stage2Project,
     system: str,
+    specs: Sequence[RequirementSpec],
+    global_facts: Mapping[str, Any],
+    raw_profile_summary: Any,
+    draft_rows: list[Any],
     client: JSONLLMClient,
     *,
-    store_safe_drafts: bool = True,
-) -> AIDraftPackResult:
-    system = _normalize_system(system)
-    specs = ai_draftable_specs(project, system)
-    all_system_specs = [spec for spec in selected_requirement_specs(project) if spec.system == system]
-    skipped = tuple(spec.key for spec in all_system_specs if spec not in specs)
-    if not specs:
-        raise ValueError("AI 문장 보강에 사용할 확인된 회사 사실이 없습니다.")
+    store_safe_drafts: bool,
+) -> tuple[str, list[AIDraftItem], list[AIDraftItem]]:
+    """Validate LLM draft rows against confirmed facts and language policy.
 
-    prompt, global_facts = _build_pack_prompt(project, system, specs)
-    raw = client.generate_json(instructions=_system_prompt(system), prompt=prompt)
-    profile_summary = normalize_public_prose(str(raw.get("profile_summary") or "").strip(), system)
+    Shared by the non-batched (``generate_system_ai_drafts``), batched
+    (``local_ai_resilience._process_one_batch``), and tolerant-JSON-shape
+    (``ai_response_runtime._process_one_batch_flexible``) callers, which
+    otherwise differ only in how they obtain ``draft_rows``/the profile
+    summary from the raw LLM response. Keeping this in one place means a
+    validation-rule change cannot land in only one or two of the three.
+    """
+    profile_summary = normalize_public_prose(str(raw_profile_summary or "").strip(), system)
     if validate_public_prose(profile_summary, system):
         profile_summary = ""
-
-    draft_rows = raw.get("drafts")
-    if not isinstance(draft_rows, list):
-        raise ValueError("로컬 AI 응답에 문장 배열이 없습니다.")
 
     spec_map = {spec.key: spec for spec in specs}
     generated: list[AIDraftItem] = []
@@ -443,6 +443,34 @@ def generate_system_ai_drafts(
                 store_ai_draft(project, item)
         else:
             rejected.append(item)
+
+    return profile_summary, generated, rejected
+
+
+def generate_system_ai_drafts(
+    project: Stage2Project,
+    system: str,
+    client: JSONLLMClient,
+    *,
+    store_safe_drafts: bool = True,
+) -> AIDraftPackResult:
+    system = _normalize_system(system)
+    specs = ai_draftable_specs(project, system)
+    all_system_specs = [spec for spec in selected_requirement_specs(project) if spec.system == system]
+    skipped = tuple(spec.key for spec in all_system_specs if spec not in specs)
+    if not specs:
+        raise ValueError("AI 문장 보강에 사용할 확인된 회사 사실이 없습니다.")
+
+    prompt, global_facts = _build_pack_prompt(project, system, specs)
+    raw = client.generate_json(instructions=_system_prompt(system), prompt=prompt)
+    draft_rows = raw.get("drafts")
+    if not isinstance(draft_rows, list):
+        raise ValueError("로컬 AI 응답에 문장 배열이 없습니다.")
+
+    profile_summary, generated, rejected = build_pack_result_from_rows(
+        project, system, specs, global_facts, raw.get("profile_summary"), draft_rows, client,
+        store_safe_drafts=store_safe_drafts,
+    )
 
     return AIDraftPackResult(
         system=system,
