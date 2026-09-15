@@ -237,11 +237,14 @@ def build_statutory_report_draft(project: Stage2Project, system: str, status) ->
     if system not in {"PSM", "CAP"}:
         raise ValueError(f"지원하지 않는 보고서 종류입니다: {system}")
 
-    doc = Document()
-    base._configure_doc(doc)
     if system == "PSM":
-        base._render_psm(doc, project)
+        from .psm_baseline_docx import build_psm_baseline_draft
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        base._render_psm_narrative(doc, project)
     else:
+        doc = Document()
+        base._configure_doc(doc)
         _render_cap(doc, project)
     base._add_review_appendix(doc, project, system, status)
     out = BytesIO()
