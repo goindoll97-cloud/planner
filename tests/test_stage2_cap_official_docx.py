@@ -113,10 +113,13 @@ class CAPOfficialWordTests(unittest.TestCase):
             text.index("install_cap_final_form_runtime()"),
         )
 
-    def test_runtime_labels_synthetic_cap_docx_as_internal_review(self):
+    def test_stage5_hides_word_conversion_ui_and_uses_review_only_titles(self):
         text = (PROJECT_ROOT / "engine/stage2/cap_official_docx.py").read_text(encoding="utf-8")
-        self.assertIn("법제처 원본서식 Word 변환본", text)
-        self.assertIn("내부 검토용 통합 DOCX", text)
+        self.assertNotIn("법제처 원본서식 Word 변환본 만들기", text)
+        self.assertNotIn("render_official_word_ui", text)
+        self.assertIn("### 화학사고예방관리계획서 · 내부 검토용", text)
+        self.assertIn("### 공정안전보고서 · 내부 검토용", text)
+        self.assertNotIn("### 화학사고예방관리계획서 · 내부 검토용 통합 DOCX", text)
         self.assertIn("법제처 원본과 표 형식·글꼴·크기·여백이 같지 않으며", text)
 
 
