@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
-import json
 from pathlib import Path
 
 import streamlit as st
@@ -32,6 +30,7 @@ from engine.stage2.local_llm import (
     probe_local_llm_runtime,
     validate_local_base_url,
 )
+from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.report_draft import build_report_draft, draft_filename
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 from engine.stage2.workflow import validation_confirmed
@@ -41,6 +40,7 @@ PSM_FULL = "공정안전보고서"
 CAP_FULL = "화학사고예방관리계획서"
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 SYSTEM_LABELS = {"PSM": PSM_FULL, "CAP": CAP_FULL}
+AI_UI_BATCH_SIZE = 3
 LOCAL_LLM_SETTING_KEYS = (
     "LOCAL_LLM_PROVIDER",
     "LOCAL_LLM_MODEL",
@@ -101,24 +101,47 @@ def _draft_exists(project, system: str, requirement_key: str) -> bool:
     )
 
 
-def _ai_fingerprint(project, system: str, missing_keys: list[str], config: LocalLLMConfig) -> str:
-    source_rows = []
-    for key in sorted(project.fields):
-        if key.startswith("ai_draft."):
+def _nonempty(value) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _automatic_ai_candidates(project, system: str):
+    """Return only missing narrative items that still benefit from AI prose.
+
+    Confirmed company narrative/table values already appear in the basic report and
+    should not be sent through the local model again. Mixed attachment items may
+    still receive prose only when their non-attachment narrative value is missing.
+    """
+    candidates = []
+    for spec in ai_draftable_specs(project, system):
+        narrative_keys = [
+            key
+            for key in spec.field_keys
+            if not key.startswith("documents.") and key != "psm.psi.msds"
+        ]
+        if not narrative_keys:
             continue
-        record = project.fields[key]
-        source_rows.append((key, record.status, record.value))
-    payload = {
-        "project": project.project_id,
-        "system": system,
-        "missing": sorted(missing_keys),
-        "provider": config.provider,
-        "model": config.model,
-        "url": config.base_url,
-        "facts": source_rows,
-    }
-    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-    return sha256(raw).hexdigest()
+        has_confirmed_narrative = any(
+            (record := project.get_field(key)) is not None
+            and record.status in CONFIRMED_STATUSES
+            and _nonempty(record.value)
+            for key in narrative_keys
+        )
+        if not has_confirmed_narrative:
+            candidates.append(spec)
+    return candidates
+
+
+def _pending_ai_plan(project) -> dict[str, list]:
+    plan: dict[str, list] = {}
+    for system in _systems(project):
+        specs = _automatic_ai_candidates(project, system)
+        plan[system] = [spec for spec in specs if not _draft_exists(project, system, spec.key)]
+    return plan
+
+
+def _chunks(items: list, size: int) -> list[list]:
+    return [items[index : index + size] for index in range(0, len(items), size)]
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -170,7 +193,7 @@ def _build_local_config() -> tuple[LocalLLMConfig | None, object | None, str]:
             "문장 다듬기는 속도 우선 모델 사용",
             value=True,
             key="stage2_fast_auto_ai",
-            help="더 빠른 로컬 모델이 설치되어 있으면 문장 다듬기에만 사용합니다. 법적 판정과 회사자료는 바꾸지 않습니다.",
+            help="설치된 4B~8B급 로컬 모델이 있으면 문장 다듬기에 우선 사용합니다. 법적 판정과 회사자료는 바꾸지 않습니다.",
         )
 
     try:
@@ -203,21 +226,28 @@ def _build_local_config() -> tuple[LocalLLMConfig | None, object | None, str]:
         return None, None, model.strip() or DEFAULT_MODEL
 
 
-def _run_automatic_ai(project, config: LocalLLMConfig | None, probe) -> list[dict[str, object]]:
+def _run_automatic_ai(
+    project,
+    config: LocalLLMConfig | None,
+    probe,
+    plan: dict[str, list],
+    *,
+    progress_callback=None,
+) -> list[dict[str, object]]:
     statuses: list[dict[str, object]] = []
-    for system in _systems(project):
-        try:
-            candidates = ai_draftable_specs(project, system)
-        except Exception as exc:
-            statuses.append({"system": system, "state": "ERROR", "message": str(exc), "generated": 0, "total": 0})
-            continue
+    total_pending = sum(len(items) for items in plan.values())
+    completed_pending = 0
 
-        missing = [spec for spec in candidates if not _draft_exists(project, system, spec.key)]
+    for system in _systems(project):
+        candidates = _automatic_ai_candidates(project, system)
+        missing = list(plan.get(system, []))
+        already_generated = len(candidates) - len(missing)
+
         if not candidates:
             statuses.append({
                 "system": system,
                 "state": "NO_CANDIDATE",
-                "message": "현재 자료에서는 AI로 추가 작성할 설명문이 없습니다.",
+                "message": "현재 자료에서는 AI로 추가 정리할 설명문이 없습니다.",
                 "generated": 0,
                 "total": 0,
             })
@@ -241,79 +271,64 @@ def _run_automatic_ai(project, config: LocalLLMConfig | None, probe) -> list[dic
                 "system": system,
                 "state": "RUNTIME_NOT_READY",
                 "message": message,
-                "generated": len(candidates) - len(missing),
+                "generated": already_generated,
                 "total": len(candidates),
             })
             continue
 
-        fingerprint = _ai_fingerprint(project, system, [spec.key for spec in missing], config)
-        attempt_key = f"stage2_auto_ai_attempt::{project.project_id}::{system}"
-        error_key = f"stage2_auto_ai_error::{project.project_id}::{system}"
-        if st.session_state.get(attempt_key) == fingerprint:
-            statuses.append({
-                "system": system,
-                "state": "PARTIAL" if len(missing) < len(candidates) else "FAILED",
-                "message": str(st.session_state.get(error_key) or "같은 자료에 대한 AI 문장 작성을 이미 시도했습니다."),
-                "generated": len(candidates) - len(missing),
-                "total": len(candidates),
-            })
-            continue
+        generated_this_run = 0
+        rejected_this_run = 0
+        failed_message = ""
+        client = build_local_llm_client(config)
+        for batch in _chunks(missing, AI_UI_BATCH_SIZE):
+            batch_label = batch[-1].label if batch else SYSTEM_LABELS[system]
+            try:
+                result = generate_system_ai_drafts(
+                    project,
+                    system,
+                    client,
+                    store_safe_drafts=True,
+                    requirement_keys=[spec.key for spec in batch],
+                )
+                save_project(project)
+                generated_this_run += len(result.generated)
+                rejected_this_run += len(result.rejected)
+            except Exception as exc:
+                failed_message = f"{type(exc).__name__}: {exc}"
+                completed_pending += len(batch)
+                if progress_callback is not None:
+                    progress_callback(completed_pending, total_pending, batch_label)
+                break
 
-        st.session_state[attempt_key] = fingerprint
-        st.session_state.pop(error_key, None)
-        try:
-            client = build_local_llm_client(config)
-            result = generate_system_ai_drafts(
-                project,
-                system,
-                client,
-                store_safe_drafts=True,
-                requirement_keys=[spec.key for spec in missing],
-            )
-            save_project(project)
-        except Exception as exc:
-            message = f"{type(exc).__name__}: {exc}"
-            st.session_state[error_key] = message
-            now_generated = sum(1 for spec in candidates if _draft_exists(project, system, spec.key))
+            completed_pending += len(batch)
+            if progress_callback is not None:
+                progress_callback(completed_pending, total_pending, batch_label)
+
+        now_generated = sum(1 for spec in candidates if _draft_exists(project, system, spec.key))
+        if failed_message:
             statuses.append({
                 "system": system,
                 "state": "PARTIAL" if now_generated else "FAILED",
-                "message": message,
+                "message": failed_message,
                 "generated": now_generated,
                 "total": len(candidates),
             })
-        else:
-            now_generated = sum(1 for spec in candidates if _draft_exists(project, system, spec.key))
-            statuses.append({
-                "system": system,
-                "state": "READY" if now_generated == len(candidates) else "PARTIAL",
-                "message": (
-                    f"문장 다듬기 완료 · {len(result.generated)}개 항목 반영"
-                    + (f" · 추가 확인 필요 {len(result.rejected)}개" if result.rejected else "")
-                ),
-                "generated": now_generated,
-                "total": len(candidates),
-            })
+            continue
+
+        statuses.append({
+            "system": system,
+            "state": "READY" if now_generated == len(candidates) else "PARTIAL",
+            "message": (
+                f"문장 다듬기 완료 · {generated_this_run}개 항목 반영"
+                + (f" · 추가 확인 필요 {rejected_this_run}개" if rejected_this_run else "")
+            ),
+            "generated": now_generated,
+            "total": len(candidates),
+        })
     return statuses
 
 
-def _render_ai_assistance(project) -> None:
-    st.info(
-        "AI는 4단계에서 확인된 회사자료를 바꾸지 않고 보고서의 설명문만 자연스럽게 정리합니다. "
-        "AI를 사용하지 않아도 기본 초안은 바로 내려받을 수 있습니다."
-    )
-    config, probe, configured_model = _build_local_config()
-    if config is not None:
-        if config.model != configured_model:
-            st.caption(f"문장 다듬기에는 설치된 빠른 로컬 모델 {config.model}을 사용합니다.")
-        else:
-            st.caption("현재 로컬 AI: " + local_runtime_label(config))
-    if probe is not None and getattr(probe, "ready", False):
-        st.caption(str(getattr(probe, "message", "로컬 AI를 사용할 수 있습니다.")))
-
-    with st.spinner("확인된 회사자료를 바탕으로 필요한 설명문을 정리하고 있습니다..."):
-        statuses = _run_automatic_ai(project, config, probe)
-
+def _render_ai_statuses(statuses: list[dict[str, object]]) -> None:
     for item in statuses:
         label = SYSTEM_LABELS.get(str(item["system"]), str(item["system"]))
         state = str(item["state"])
@@ -327,9 +342,11 @@ def _render_ai_assistance(project) -> None:
         else:
             st.error(text)
 
+
+def _render_ai_entries(project) -> None:
     for system in _systems(project):
         entries = []
-        for spec in ai_draftable_specs(project, system):
+        for spec in _automatic_ai_candidates(project, system):
             record = project.get_field(ai_draft_field_key(system, spec.key))
             if record and isinstance(record.value, dict) and str(record.value.get("draft_text") or "").strip():
                 entries.append((spec, record))
@@ -345,15 +362,99 @@ def _render_ai_assistance(project) -> None:
                 st.divider()
 
 
-def _render_docx_pair(project, system: str, label: str) -> None:
+def _render_ai_downloads(project) -> None:
+    available = [system for system in _systems(project) if has_ai_report_prose(project, system)]
+    if not available:
+        return
+    st.markdown("#### AI 문장 다듬은 초안 내려받기")
+    for system in available:
+        label = SYSTEM_LABELS[system]
+        try:
+            enhanced = build_ai_enhanced_report_draft(project, system)
+        except Exception as exc:
+            st.warning(f"{label} AI 문장 포함 초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+            continue
+        st.download_button(
+            f"{label} · AI 문장 다듬기 포함 초안",
+            data=enhanced,
+            file_name=draft_filename(project, system).replace("_검토용_초안.docx", "_AI보강_검토용_초안.docx"),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key=f"draft_ai_{project.project_id}_{system}",
+            width="stretch",
+        )
+
+
+def _render_ai_assistance(project) -> None:
+    st.info(
+        "AI는 4단계에서 확인된 회사자료를 바꾸지 않고, 기본 초안에서 설명이 비어 있는 부분만 정리합니다. "
+        "이미 입력된 회사 설명문과 표는 다시 생성하지 않습니다."
+    )
+    plan = _pending_ai_plan(project)
+    pending_total = sum(len(items) for items in plan.values())
+    pending_parts = [
+        f"{SYSTEM_LABELS[system]} {len(items)}개"
+        for system, items in plan.items()
+        if items
+    ]
+
+    if pending_total:
+        st.caption(
+            f"AI로 정리할 설명문: {pending_total}개"
+            + (" · " + " / ".join(pending_parts) if pending_parts else "")
+        )
+        config, probe, configured_model = _build_local_config()
+        if config is not None:
+            if config.model != configured_model:
+                st.caption(f"문장 다듬기에는 설치된 빠른 로컬 모델 {config.model}을 사용합니다.")
+            else:
+                st.caption("현재 로컬 AI: " + local_runtime_label(config))
+        ready = config is not None and probe is not None and getattr(probe, "ready", False)
+        if probe is not None and ready:
+            st.caption(str(getattr(probe, "message", "로컬 AI를 사용할 수 있습니다.")))
+        elif config is not None and probe is not None:
+            st.warning(local_runtime_not_ready_message(config, probe))
+
+        if st.button(
+            f"AI 문장 다듬기 시작 · {pending_total}개",
+            type="primary",
+            width="stretch",
+            disabled=not ready,
+            key=f"stage2_start_ai_{project.project_id}",
+        ):
+            progress = st.progress(0.0, text=f"0/{pending_total}개 · 준비 중")
+
+            def update_progress(done: int, total: int, label: str) -> None:
+                ratio = 1.0 if total <= 0 else min(1.0, done / total)
+                progress.progress(ratio, text=f"{done}/{total}개 · {label}")
+
+            statuses = _run_automatic_ai(
+                project,
+                config,
+                probe,
+                plan,
+                progress_callback=update_progress,
+            )
+            progress.progress(1.0, text=f"{pending_total}/{pending_total}개 · 처리 완료")
+            _render_ai_statuses(statuses)
+    else:
+        candidate_total = sum(len(_automatic_ai_candidates(project, system)) for system in _systems(project))
+        if candidate_total:
+            st.success("추가로 AI가 정리할 설명문이 없습니다. 기존 AI 문장을 사용할 수 있습니다.")
+        else:
+            st.caption("현재 기본 초안에서 AI가 추가로 정리할 빈 설명문이 없습니다.")
+
+    _render_ai_entries(project)
+    _render_ai_downloads(project)
+
+
+def _render_basic_docx(project, system: str, label: str) -> None:
     try:
         baseline = build_report_draft(project, system)
     except Exception as exc:
         st.error(f"{label} 기본 초안을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
-    left, right = st.columns(2)
-    left.download_button(
+    st.download_button(
         f"{label} · 기본 초안 다운로드",
         data=baseline,
         file_name=draft_filename(project, system),
@@ -362,23 +463,6 @@ def _render_docx_pair(project, system: str, label: str) -> None:
         width="stretch",
         type="primary",
     )
-
-    if has_ai_report_prose(project, system):
-        try:
-            enhanced = build_ai_enhanced_report_draft(project, system)
-        except Exception as exc:
-            right.warning(f"AI 문장 포함 초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
-        else:
-            right.download_button(
-                f"{label} · AI 문장 다듬기 포함 초안",
-                data=enhanced,
-                file_name=draft_filename(project, system).replace("_검토용_초안.docx", "_AI보강_검토용_초안.docx"),
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key=f"draft_ai_{project.project_id}_{system}",
-                width="stretch",
-            )
-    else:
-        right.info("AI 문장 다듬기 포함 초안이 필요하면 위의 선택사항을 켜 주세요.")
 
 
 def _render_cap_hwpx(project) -> None:
@@ -459,7 +543,7 @@ st.set_page_config(page_title="보고서 작성", page_icon="📝", layout="wide
 st.title("📝 5. 보고서 작성")
 st.caption(
     "4단계에서 확인한 회사자료를 바탕으로 보고서 초안을 만듭니다. "
-    "기본 초안은 바로 내려받을 수 있고, 필요하면 로컬 AI로 설명문을 다듬은 초안도 함께 만들 수 있습니다."
+    "기본 초안은 먼저 바로 내려받을 수 있고, 필요하면 아래에서 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
 )
 
 project_id = _project_selector()
@@ -483,31 +567,32 @@ if not validation_confirmed(project):
 scope = [SYSTEM_LABELS[system] for system in _systems(project)]
 st.success("현재 작성 문서: " + ", ".join(scope))
 
-st.markdown("### AI로 문장 다듬기 · 선택사항")
-use_ai = st.toggle(
-    "AI로 문장 다듬은 초안도 만들기",
-    value=any(has_ai_report_prose(project, system) for system in _systems(project)),
-    key=f"stage2_use_ai_drafting_{project.project_id}",
-    help="법적 판정이나 회사자료를 바꾸지 않고, 확인된 내용을 보고서 문장으로 정리하는 기능입니다.",
-)
-if use_ai:
-    _render_ai_assistance(project)
-else:
-    st.caption("선택하지 않아도 아래에서 기본 초안을 바로 내려받을 수 있습니다.")
-
-st.divider()
 st.markdown("## 보고서 초안 내려받기")
+st.caption("AI를 실행하지 않아도 아래 기본 초안을 바로 내려받을 수 있습니다.")
 
 if project.cap_in_scope:
     _render_cap_hwpx(project)
     st.markdown("### 화학사고예방관리계획서 · DOCX 초안")
-    _render_docx_pair(project, "CAP", CAP_FULL)
+    _render_basic_docx(project, "CAP", CAP_FULL)
 
 if project.psm_in_scope:
     if project.cap_in_scope:
         st.divider()
     st.markdown("### 공정안전보고서 · DOCX 초안")
-    _render_docx_pair(project, "PSM", PSM_FULL)
+    _render_basic_docx(project, "PSM", PSM_FULL)
+
+st.divider()
+st.markdown("### AI로 문장 다듬기 · 선택사항")
+use_ai = st.toggle(
+    "AI로 문장 다듬은 초안 만들기",
+    value=any(has_ai_report_prose(project, system) for system in _systems(project)),
+    key=f"stage2_use_ai_drafting_{project.project_id}",
+    help="법적 판정이나 회사자료를 바꾸지 않고, 기본 초안에서 설명이 비어 있는 부분만 보고서 문장으로 정리합니다.",
+)
+if use_ai:
+    _render_ai_assistance(project)
+else:
+    st.caption("선택하지 않아도 위에서 기본 초안을 바로 내려받을 수 있습니다.")
 
 st.caption(
     "자동으로 만든 초안은 담당자가 회사 사실, 수치, 도면·제품 MSDS 등 최종 제출자료와 대조한 뒤 제출본으로 확정해야 합니다."
