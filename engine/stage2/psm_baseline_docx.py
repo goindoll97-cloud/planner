@@ -3,8 +3,8 @@ from __future__ import annotations
 """Write confirmed PSM company data into the preserved statutory-form DOCX baseline.
 
 The bundled DOCX is a layout baseline derived from the regulation forms supplied
-by the user.  It is deliberately not treated as the legal-currentness authority;
-that remains the existing law.go.kr monitoring/approval path.  This writer only
+by the user. It is deliberately not treated as the legal-currentness authority;
+that remains the existing law.go.kr monitoring/approval path. This writer only
 preserves the supplied form geometry and inserts already-confirmed project data.
 Unknown values stay blank.
 """
@@ -23,30 +23,16 @@ from docx import Document
 from . import statutory_report as base
 from .project import Stage2Project
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_DIR = PROJECT_ROOT / "data" / "templates" / "psm"
 METADATA_PATH = TEMPLATE_DIR / "psm_statutory_forms_baseline.json"
 BASE64_GLOB = "psm_statutory_forms_baseline.docx.b64.*"
 MISSING = base.MISSING
 
-
 FORM_TABLE_INDEX = {
-    "12": 0,
-    "13": 1,
-    "14": 2,
-    "15": 3,
-    "16": 4,
-    "17": 5,
-    "17-2": 6,
-    "17-3": 7,
-    "17-4": 8,
-    "17-5": 9,
-    "18": 10,
-    "19": 11,
-    "19-2": 12,
-    "20": 13,
-    "21": 14,
+    "12": 0, "13": 1, "14": 2, "15": 3, "16": 4, "17": 5,
+    "17-2": 6, "17-3": 7, "17-4": 8, "17-5": 9,
+    "18": 10, "19": 11, "19-2": 12, "20": 13, "21": 14,
 }
 
 LATER_FORM_FIELDS: dict[str, tuple[str, ...]] = {
@@ -113,6 +99,17 @@ HEADER_ALIASES: dict[str, tuple[str, ...]] = {
     "소속회사": ("소속회사", "소속", "회사"),
     "직책": ("직책", "직위"),
     "주요경력": ("주요경력", "경력"),
+}
+
+# The uploaded statutory Form 19 places the explosion-proof type before the
+# exhaust/treatment sequence. Keep this baseline-specific output ordering here
+# so the shared PSM_FORMS schema can remain backward compatible elsewhere.
+FORM_OUTPUT_HEADERS: dict[str, tuple[str, ...]] = {
+    "19": (
+        "공정 또는 작업장명", "실내외 구분", "발생원", "유해물질 종류", "후드형식",
+        "후드 제어풍속(m/s)", "덕트내 반송속도(m/s)", "배풍량(m3/min)",
+        "전동기용량(kW)", "방폭형식", "배기 및 처리순서",
+    ),
 }
 
 
@@ -278,34 +275,69 @@ def _project_type_options(project: Stage2Project) -> str:
     install = bool(raw and ("설치" in normalized or "이전" in normalized))
     change = bool(raw and "변경" in normalized)
     existing = bool(raw and "기존" in normalized)
-    return "\n".join(
-        (
-            ("☒" if install else "☐") + " 설치·이전",
-            ("☒" if change else "☐") + " 변경",
-            ("☒" if existing else "☐") + " 기존설비",
+    return "\n".join((
+        ("☒" if install else "☐") + " 설치·이전",
+        ("☒" if change else "☐") + " 변경",
+        ("☒" if existing else "☐") + " 기존설비",
+    ))
+
+
+def _mapping_lookup(mapping: Mapping[str, object], *keys: str) -> object:
+    normalized = {base._norm(key): value for key, value in mapping.items()}
+    for key in keys:
+        value = normalized.get(base._norm(key))
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def _form12_site_parts(project: Stage2Project) -> tuple[str, str, str, str]:
+    address = _field_text(project, "business.address")
+    site_area = _field_text(project, "psm.business.site_area", "business.site_area")
+    main_building = _field_text(project, "psm.business.main_building", "business.main_building")
+    site_building = base._value(project, "psm.business.site_building", default="")
+    if isinstance(site_building, Mapping):
+        address = address or _clean(_mapping_lookup(site_building, "위치", "주소", "location", "address"))
+        site_area = site_area or _clean(_mapping_lookup(site_building, "부지", "부지면적", "site_area", "area"))
+        main_building = main_building or _clean(
+            _mapping_lookup(site_building, "주요건물", "건물", "main_building", "building")
         )
-    )
+    else:
+        main_building = main_building or _clean(site_building)
+    phone = _field_text(project, "business.phone", "psm.business.phone")
+    fax = _field_text(project, "business.fax", "psm.business.fax")
+    contact = f"전화번호: {phone}\n전송번호: {fax}".rstrip() if phone or fax else ""
+    return address, contact, site_area, main_building
+
+
+def _form12_schedule_parts(project: Stage2Project) -> tuple[str, str, str]:
+    schedule = base._value(project, "psm.business.schedule", default="")
+    total = _field_text(project, "psm.business.total_period")
+    start = _field_text(project, "psm.business.start_date")
+    commissioning = _field_text(project, "psm.business.commissioning_period")
+    if isinstance(schedule, Mapping):
+        total = total or _clean(_mapping_lookup(schedule, "총사업기간", "사업기간", "total_period"))
+        start = start or _clean(_mapping_lookup(schedule, "착공예정일", "착공일", "start_date"))
+        commissioning = commissioning or _clean(
+            _mapping_lookup(schedule, "시운전기간", "시운전", "commissioning_period")
+        )
+    elif schedule not in (None, "", MISSING):
+        total = total or _clean(schedule)
+    return total, start, commissioning
 
 
 def _fill_form12(table, project: Stage2Project) -> None:
     chemicals = base._rows(project, "inventory.chemicals")
     raw_materials = ", ".join(
-        value
-        for row in chemicals[:8]
+        value for row in chemicals[:8]
         if (value := _clean(base._row_value(row, "물질명", "화학물질", "유해화학물질명")))
     )
     writer, qualification = _writer_parts(project)
 
     _append_value(_unique_cells(table.rows[3])[0], project.company_name)
     _write_cell(_unique_cells(table.rows[3])[2], _project_type_options(project))
-    _append_value(
-        _unique_cells(table.rows[4])[0],
-        _field_text(project, "business.registration_no", "cap.business.registration_no"),
-    )
-    _append_value(
-        _unique_cells(table.rows[5])[0],
-        _field_text(project, "business.representative", "cap.business.representative"),
-    )
+    _append_value(_unique_cells(table.rows[4])[0], _field_text(project, "business.registration_no", "cap.business.registration_no"))
+    _append_value(_unique_cells(table.rows[5])[0], _field_text(project, "business.representative", "cap.business.representative"))
     _write_cell(_unique_cells(table.rows[5])[2], _field_text(project, "psm.business.target_facility"))
     _append_value(_unique_cells(table.rows[6])[0], _field_text(project, "business.ksic"))
     _append_value(_unique_cells(table.rows[7])[0], _field_text(project, "business.employee_count"))
@@ -317,16 +349,24 @@ def _fill_form12(table, project: Stage2Project) -> None:
     _write_cell(_unique_cells(table.rows[11])[2], raw_materials)
     _write_cell(_unique_cells(table.rows[12])[2], _field_text(project, "business.main_products"))
     _write_cell(_unique_cells(table.rows[13])[2], _field_text(project, "psm.business.overview"))
-    _write_cell(
-        _unique_cells(table.rows[16])[2],
-        _field_text(project, "business.address") or _field_text(project, "psm.business.site_building"),
-    )
-    site_building = _field_text(project, "psm.business.site_building")
-    if site_building and not _field_text(project, "business.address"):
-        _write_cell(_unique_cells(table.rows[18])[2], site_building)
-    schedule = _field_text(project, "psm.business.schedule")
-    if schedule:
-        _write_cell(_unique_cells(table.rows[19])[2], schedule)
+
+    address, contact, site_area, main_building = _form12_site_parts(project)
+    if address:
+        _write_cell(_unique_cells(table.rows[14])[2], address)
+    if contact:
+        _write_cell(_unique_cells(table.rows[14])[3], contact)
+    if site_area:
+        _write_cell(_unique_cells(table.rows[15])[2], site_area)
+    if main_building:
+        _write_cell(_unique_cells(table.rows[16])[2], main_building)
+
+    total_period, start_date, commissioning_period = _form12_schedule_parts(project)
+    if total_period:
+        _write_cell(_unique_cells(table.rows[17])[2], total_period)
+    if start_date:
+        _write_cell(_unique_cells(table.rows[18])[2], start_date)
+    if commissioning_period:
+        _write_cell(_unique_cells(table.rows[19])[2], commissioning_period)
 
 
 def _sanitize_rows(rows: Sequence[Sequence[object]]) -> list[list[str]]:
@@ -339,20 +379,8 @@ def _aliases(header: str) -> tuple[str, ...]:
 
 def _structured_rows(project: Stage2Project, form_key: str, field_keys: Sequence[str]) -> list[list[str]]:
     rows = base._rows(project, *field_keys)
-    headers = base.PSM_FORMS[form_key].headers
-    return [
-        [_clean(base._row_value(row, *_aliases(header))) for header in headers]
-        for row in rows
-    ]
-
-
-def _mapping_lookup(mapping: Mapping[str, object], *keys: str) -> object:
-    normalized = {base._norm(key): value for key, value in mapping.items()}
-    for key in keys:
-        value = normalized.get(base._norm(key))
-        if value not in (None, ""):
-            return value
-    return ""
+    headers = FORM_OUTPUT_HEADERS.get(form_key, base.PSM_FORMS[form_key].headers)
+    return [[_clean(base._row_value(row, *_aliases(header))) for header in headers] for row in rows]
 
 
 def _option_text(value: object, options: Sequence[tuple[str, Sequence[str]]], *, suffix: str = "") -> str:
@@ -374,18 +402,9 @@ def _threshold_values(case: Mapping[str, object], group: str, thresholds: Sequen
     nested = value if isinstance(value, Mapping) else {}
     output: list[str] = []
     for threshold in thresholds:
-        direct = _mapping_lookup(
-            nested,
-            threshold,
-            threshold.replace(" ", ""),
-        ) if nested else ""
+        direct = _mapping_lookup(nested, threshold, threshold.replace(" ", "")) if nested else ""
         if direct in (None, ""):
-            direct = _mapping_lookup(
-                case,
-                f"{group}-{threshold}",
-                f"{group} {threshold}",
-                threshold,
-            )
+            direct = _mapping_lookup(case, f"{group}-{threshold}", f"{group} {threshold}", threshold)
         output.append(_clean(direct))
     return output
 
@@ -402,36 +421,18 @@ def _fill_form19_2(table, project: Stage2Project) -> None:
         return
 
     direct_rows = {
-        4: "풍속(m/s)",
-        5: "대기안정도(A~F)",
-        6: "대기온도(℃)",
-        7: "습도(%)",
-        10: "물질명",
-        12: "설비명(또는 배관부위)",
-        13: "운전압력(MPa)",
-        14: "운전온도(℃)",
-        15: "누출구의 크기(mm2)",
-        16: "웅덩이 크기(m2)",
-        18: "누출결과",
-        19: "직접계산(kg/s or kg)",
-        20: "웅덩이(kg/s)",
-        21: "설비/배관(kg/s)",
+        4: "풍속(m/s)", 5: "대기안정도(A~F)", 6: "대기온도(℃)", 7: "습도(%)",
+        10: "물질명", 12: "설비명(또는 배관부위)", 13: "운전압력(MPa)", 14: "운전온도(℃)",
+        15: "누출구의 크기(mm2)", 16: "웅덩이 크기(m2)", 18: "누출결과",
+        19: "직접계산(kg/s or kg)", 20: "웅덩이(kg/s)", 21: "설비/배관(kg/s)",
     }
     for row_index, label in direct_rows.items():
         cells = _unique_cells(table.rows[row_index])
         _write_cell(cells[1], _mapping_lookup(worst, label))
         _write_cell(cells[2], _mapping_lookup(alternative, label))
 
-    surface_options = (
-        ("시골", ("시골", "rural")),
-        ("도시", ("도시", "urban")),
-        ("물위", ("물위", "water")),
-    )
-    state_options = (
-        ("기체", ("기체", "gas")),
-        ("액체", ("액체", "liquid")),
-        ("2상(액체+기체)", ("2상", "two phase", "two-phase")),
-    )
+    surface_options = (("시골", ("시골", "rural")), ("도시", ("도시", "urban")), ("물위", ("물위", "water")))
+    state_options = (("기체", ("기체", "gas")), ("액체", ("액체", "liquid")), ("2상(액체+기체)", ("2상", "two phase", "two-phase")))
     row8 = _unique_cells(table.rows[8])
     _write_cell(row8[1], _option_text(_mapping_lookup(worst, "표면거칠기(m)", "표면거칠기"), surface_options))
     _write_cell(row8[2], _option_text(_mapping_lookup(alternative, "표면거칠기(m)", "표면거칠기"), surface_options))
@@ -470,11 +471,9 @@ def build_psm_baseline_draft(project: Stage2Project) -> bytes:
     _fill_table_rows(doc.tables[FORM_TABLE_INDEX["17"]], _sanitize_rows(base._psm_form17_rows(project)))
 
     for form_key, field_keys in LATER_FORM_FIELDS.items():
-        rows = _structured_rows(project, form_key, field_keys)
-        _fill_table_rows(doc.tables[FORM_TABLE_INDEX[form_key]], rows)
+        _fill_table_rows(doc.tables[FORM_TABLE_INDEX[form_key]], _structured_rows(project, form_key, field_keys))
 
     _fill_form19_2(doc.tables[FORM_TABLE_INDEX["19-2"]], project)
-
     out = BytesIO()
     doc.save(out)
     return out.getvalue()
