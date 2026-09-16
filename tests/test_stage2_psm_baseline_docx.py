@@ -17,7 +17,7 @@ from engine.stage2.psm_baseline_docx import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_SHA256 = "7432f9b266c5e8ea0e5c02fe0e5ce74ffdbfd3774c16e8be58c7b1f8546c1419"
+EXPECTED_SHA256 = "82457f0775850d95abd166fa6e63aae67da8fdc2ae27349d7efdb8bbc9501335"
 
 
 def _project() -> Stage2Project:
@@ -33,6 +33,18 @@ def _project() -> Stage2Project:
 
 def _set(project: Stage2Project, key: str, value, label: str | None = None) -> None:
     project.set_field(key, label or key, value, "USER_CONFIRMED")
+
+
+def _unique_cells(row):
+    seen = set()
+    cells = []
+    for cell in row.cells:
+        marker = id(cell._tc)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        cells.append(cell)
+    return cells
 
 
 class PSMBaselineDocxTests(unittest.TestCase):
@@ -99,6 +111,36 @@ class PSMBaselineDocxTests(unittest.TestCase):
         self.assertIn("624-83-9", form13)
         self.assertIn("C2H3NO", form13)
         self.assertIn("500 kg", form13)
+
+    def test_form12_uses_uploaded_location_building_and_schedule_rows(self):
+        project = _project()
+        _set(project, "business.address", "충청북도 충주시 산업로 100")
+        _set(project, "psm.business.site_building", "반응동 2동 / 연면적 1,200㎡")
+        _set(project, "psm.business.schedule", "2026-10-01 ~ 2027-03-31")
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        table = doc.tables[0]
+        self.assertIn("충청북도 충주시 산업로 100", _unique_cells(table.rows[14])[2].text)
+        self.assertIn("반응동 2동", _unique_cells(table.rows[16])[2].text)
+        self.assertIn("2026-10-01", _unique_cells(table.rows[17])[2].text)
+        self.assertNotIn("반응동 2동", _unique_cells(table.rows[18])[2].text)
+
+    def test_form19_matches_uploaded_explosion_proof_then_exhaust_sequence_order(self):
+        project = _project()
+        _set(project, "psm.psi.local_exhaust", [
+            {
+                "공정 또는 작업장명": "혼합공정",
+                "전동기용량": "7.5 kW",
+                "방폭형식": "Ex d IIB T4",
+                "배기 및 처리순서": "후드 → 세정기 → 배기구",
+            }
+        ])
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        row = _unique_cells(doc.tables[11].rows[5])
+        self.assertEqual(row[8].text, "7.5 kW")
+        self.assertEqual(row[9].text, "Ex d IIB T4")
+        self.assertEqual(row[10].text, "후드 → 세정기 → 배기구")
 
     def test_unconfirmed_values_stay_blank_in_regulation_forms(self):
         project = _project()
