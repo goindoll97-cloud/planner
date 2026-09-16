@@ -2,6 +2,41 @@
 
 from __future__ import annotations
 
+import os
+
+
+_KOSHA_LEGACY_BASE_URL = "https://apis.data.go.kr/B552468/msds_api"
+_KOSHA_CURRENT_BASE_URL = "https://apis.data.go.kr/B552468/msdschem"
+
+
+def _install_kosha_msds_endpoint_migration() -> None:
+    """Migrate the retired KOSHA MSDS OpenAPI endpoints in existing .env files.
+
+    The public-data service moved from ``/msds_api`` to ``/msdschem`` in 2026.
+    Existing installations may still carry the retired URL in ``.env``.  This
+    compatibility layer upgrades only missing values and the exact legacy
+    defaults; deliberately customised endpoints are left untouched.
+    """
+    base = os.getenv("KOSHA_MSDS_BASE_URL", "").strip().rstrip("/")
+    if not base or base == _KOSHA_LEGACY_BASE_URL:
+        os.environ["KOSHA_MSDS_BASE_URL"] = _KOSHA_CURRENT_BASE_URL
+
+    search = os.getenv("KOSHA_MSDS_SEARCH_URL", "").strip()
+    if not search or search == f"{_KOSHA_LEGACY_BASE_URL}/msdslist":
+        os.environ["KOSHA_MSDS_SEARCH_URL"] = f"{_KOSHA_CURRENT_BASE_URL}/getChemList"
+
+    for number in range(1, 17):
+        padded = f"{number:02d}"
+        key = f"KOSHA_MSDS_SECTION_{padded}_URL"
+        value = os.getenv(key, "").strip()
+        legacy = f"{_KOSHA_LEGACY_BASE_URL}/chemdetail{padded}"
+        if not value or value == legacy:
+            os.environ[key] = f"{_KOSHA_CURRENT_BASE_URL}/getChemDetail{padded}"
+
+    legacy_section2 = os.getenv("KOSHA_MSDS_SECTION2_URL", "").strip()
+    if legacy_section2 == f"{_KOSHA_LEGACY_BASE_URL}/chemdetail02":
+        os.environ.pop("KOSHA_MSDS_SECTION2_URL", None)
+
 
 def _install_company_input_guide_hook() -> None:
     """Attach the canonical generated example/guide workbook to the main uploader.
@@ -58,4 +93,5 @@ def _install_company_input_guide_hook() -> None:
     st.file_uploader = guided_file_uploader
 
 
+_install_kosha_msds_endpoint_migration()
 _install_company_input_guide_hook()
