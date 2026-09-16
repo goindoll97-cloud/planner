@@ -102,11 +102,14 @@ st.success("입력파일의 판정 필수정보가 확인되었습니다.")
 
 # Stage 2는 Stage 1의 확정결과와 동일한 회사 입력원본만 승계한다.
 # 여기서 새로운 법적 판단을 만들지 않고, 판정결과와 회사 사실의 snapshot만 저장한다.
+# 혼합물 구성성분도 별도 구조로 함께 저장하여 Stage 2 Excel과 MSDS 검증에서
+# 어떤 성분이 승계되었는지 숨기지 않고 확인할 수 있게 한다.
 st.session_state[STAGE2_SNAPSHOT_KEY] = {
     "source_fingerprint": intake.source_fingerprint,
     "business": dict(intake.business),
     "documents": dict(intake.documents),
     "chemicals": _records(intake.chemicals),
+    "mixture_components": _records(getattr(intake, "mixture_components", None)),
     "facilities": _records(intake.facilities),
     "decision": asdict(decision),
 }
@@ -126,7 +129,10 @@ stage2_target = (
     or "2군" in str(decision.cap_status)
 )
 if stage2_target:
-    st.success("작성 대상이 확인되었습니다. Stage 1의 확정자료를 승계해 이번 프로젝트에서 작성할 문서를 선택할 수 있습니다.")
+    st.success(
+        "작성 대상이 확인되었습니다. Stage 2 파일은 Stage 1과 별도로 유지하되, "
+        "승계된 회사확정값은 Stage 2 Excel의 '00A_Stage1승계정보'에서 출처와 함께 확인할 수 있습니다."
+    )
     st.page_link("ui/stage2_scope_page.py", label="2. 작성범위 선택으로 이동", icon="🧭")
 else:
     st.caption("현재 판정결과에서는 작성 대상이 확인되지 않아 Stage 2 문서작성으로 자동 전환하지 않습니다.")
