@@ -94,4 +94,13 @@ def _install_company_input_guide_hook() -> None:
 
 
 _install_kosha_msds_endpoint_migration()
+
+# Keep the initial company workbook synchronized with the facts that the final
+# statutory-form writers need, while leaving AI-draftable narrative and
+# rule-engine calculations out of the company-direct input burden.
+from .company_intake_contract import install_company_intake_contract
+from .company_intake_fullname_runtime import install_company_intake_fullname_runtime
+
+install_company_intake_contract()
+install_company_intake_fullname_runtime()
 _install_company_input_guide_hook()
