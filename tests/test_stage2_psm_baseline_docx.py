@@ -9,15 +9,16 @@ import unittest
 from docx import Document
 
 from engine.stage2.project import Stage2Project
-from engine.stage2.psm_baseline_docx import (
+from engine.stage2.psm_baseline_docx import load_psm_baseline_bytes
+from engine.stage2.psm_baseline_v2 import (
+    EXPECTED_TABLE_ROWS,
     build_psm_baseline_draft,
-    load_psm_baseline_bytes,
     psm_baseline_filename,
 )
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_SHA256 = "7432f9b266c5e8ea0e5c02fe0e5ce74ffdbfd3774c16e8be58c7b1f8546c1419"
+EXPECTED_SHA256 = "82457f0775850d95abd166fa6e63aae67da8fdc2ae27349d7efdb8bbc9501335"
 
 
 def _project() -> Stage2Project:
@@ -33,6 +34,18 @@ def _project() -> Stage2Project:
 
 def _set(project: Stage2Project, key: str, value, label: str | None = None) -> None:
     project.set_field(key, label or key, value, "USER_CONFIRMED")
+
+
+def _unique_cells(row) -> list:
+    seen: set[int] = set()
+    cells = []
+    for cell in row.cells:
+        marker = id(cell._tc)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        cells.append(cell)
+    return cells
 
 
 class PSMBaselineDocxTests(unittest.TestCase):
@@ -53,6 +66,7 @@ class PSMBaselineDocxTests(unittest.TestCase):
         self.assertEqual(sha256(data).hexdigest(), EXPECTED_SHA256)
         doc = Document(BytesIO(data))
         self.assertEqual(len(doc.tables), 15)
+        self.assertEqual(tuple(len(table.rows) for table in doc.tables), EXPECTED_TABLE_ROWS)
         text = "\n".join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
         for marker in (
             "별지 제12호서식",
@@ -100,6 +114,29 @@ class PSMBaselineDocxTests(unittest.TestCase):
         self.assertIn("C2H3NO", form13)
         self.assertIn("500 kg", form13)
 
+    def test_form12_site_and_schedule_values_follow_replacement_layout(self):
+        project = _project()
+        _set(project, "business.address", "충청북도 충주시 산업로 100")
+        _set(project, "psm.business.site_area", "1234")
+        _set(project, "psm.business.site_building", "A동 2층 연면적 500㎡")
+        _set(project, "psm.business.schedule", {
+            "총사업기간": "2026-01-01 ~ 2026-12-31",
+            "착공예정일": "2026-02-01",
+            "시운전기간": "2026-10-01 ~ 2026-11-30",
+        })
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        table = doc.tables[0]
+
+        self.assertEqual(_unique_cells(table.rows[14])[2].text, "충청북도 충주시 산업로 100")
+        self.assertEqual(_unique_cells(table.rows[15])[2].text, "1234")
+        self.assertEqual(_unique_cells(table.rows[16])[2].text, "A동 2층 연면적 500㎡")
+        self.assertEqual(_unique_cells(table.rows[17])[2].text, "2026-01-01 ~ 2026-12-31")
+        self.assertEqual(_unique_cells(table.rows[18])[2].text, "2026-02-01")
+        self.assertEqual(_unique_cells(table.rows[19])[2].text, "2026-10-01 ~ 2026-11-30")
+        self.assertNotIn("충청북도 충주시 산업로 100", _unique_cells(table.rows[16])[2].text)
+        self.assertNotIn("A동 2층 연면적 500㎡", _unique_cells(table.rows[18])[2].text)
+
     def test_unconfirmed_values_stay_blank_in_regulation_forms(self):
         project = _project()
         out = build_psm_baseline_draft(project)
@@ -126,8 +163,9 @@ class PSMBaselineDocxTests(unittest.TestCase):
             text.index("install_local_ai_resilience()"),
         )
 
-    def test_stage5_runtime_inserts_regulation_form_before_psm_review_heading(self):
+    def test_stage5_runtime_uses_replacement_writer_before_psm_review_heading(self):
         text = (PROJECT_ROOT / "engine/stage2/psm_baseline_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("from .psm_baseline_v2 import build_psm_baseline_draft", text)
         self.assertIn("공정안전보고서 · 규정서식 작성본", text)
         self.assertIn('text == "### 공정안전보고서 · 내부 검토용"', text)
         self.assertIn("공정안전보고서 규정서식 작성본 DOCX 다운로드", text)
