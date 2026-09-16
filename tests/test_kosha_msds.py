@@ -1,7 +1,15 @@
+import os
 import unittest
+from unittest.mock import Mock, patch
 
 from engine.cap_sds_app1 import SDSApp1Option
-from engine.kosha_msds import match_app1_options, parse_search_xml, parse_section2_xml
+from engine.kosha_msds import (
+    _credential,
+    _request_xml,
+    match_app1_options,
+    parse_search_xml,
+    parse_section2_xml,
+)
 
 
 class KOSHAMSDSParsingTests(unittest.TestCase):
@@ -51,6 +59,56 @@ class KOSHAMSDSParsingTests(unittest.TestCase):
         matched, unmatched = match_app1_options(["급성 독성(흡입)"], options)
         self.assertEqual(matched, [])
         self.assertEqual(unmatched, [])
+
+
+class KOSHAMSDSCredentialTests(unittest.TestCase):
+    def test_raw_decoding_key_is_used_as_is(self):
+        with patch.dict(os.environ, {"KOSHA_MSDS_SERVICE_KEY": "abcDEF123raw"}, clear=False):
+            self.assertEqual(_credential(), "abcDEF123raw")
+
+    def test_percent_encoded_encoding_key_is_decoded_once(self):
+        # data.go.kr's "Encoding" key form; pasting it as-is would otherwise
+        # get double-encoded by requests and rejected by the gateway with a
+        # bare HTTP 403 before it ever reaches the XML business-error path.
+        with patch.dict(
+            os.environ,
+            {"KOSHA_MSDS_SERVICE_KEY": "abcDEF123%2Bxyz%3D%3D"},
+            clear=False,
+        ):
+            self.assertEqual(_credential(), "abcDEF123+xyz==")
+
+
+class KOSHAMSDSRequestErrorTests(unittest.TestCase):
+    def test_xml_business_error_is_surfaced_even_on_403_status(self):
+        # data.go.kr returns its own XML error body (e.g. an unregistered or
+        # not-yet-approved service key) alongside a non-200 HTTP status. The
+        # real reason must reach the caller instead of a bare "403 Forbidden"
+        # that raise_for_status() would raise before the body is ever read.
+        response = Mock()
+        response.text = (
+            "<OpenAPI_ServiceResponse><cmmMsgHeader>"
+            "<errMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</errMsg>"
+            "<returnAuthMsg>등록되지 않은 서비스키</returnAuthMsg>"
+            "<returnReasonCode>30</returnReasonCode>"
+            "</cmmMsgHeader></OpenAPI_ServiceResponse>"
+        )
+        response.raise_for_status.side_effect = AssertionError(
+            "raise_for_status should not be reached when the XML body already explains the error"
+        )
+        with patch("engine.kosha_msds.requests.get", return_value=response):
+            with self.assertRaises(RuntimeError) as ctx:
+                _request_xml("https://example.test/x", {}, timeout=5, key="k")
+        self.assertIn("30", str(ctx.exception))
+        self.assertIn("등록되지 않은 서비스키", str(ctx.exception))
+
+    def test_opaque_non_api_failure_still_raises_via_raise_for_status(self):
+        response = Mock()
+        response.text = "<html>not an api response</html>"
+        response.raise_for_status.side_effect = RuntimeError("boom")
+        with patch("engine.kosha_msds.requests.get", return_value=response):
+            with self.assertRaises(RuntimeError):
+                _request_xml("https://example.test/x", {}, timeout=5, key="k")
+        response.raise_for_status.assert_called_once()
 
 
 if __name__ == "__main__":

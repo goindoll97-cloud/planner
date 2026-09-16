@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote
 
 import requests
 
@@ -141,14 +142,31 @@ def _load_local_env() -> None:
             continue
 
 
+def _normalize_service_key(key: str) -> str:
+    """Undo data.go.kr's "Encoding" (URL-encoded) key format if present.
+
+    ``requests`` URL-encodes query params itself, so pasting the portal's
+    percent-encoded key (as opposed to its "Decoding"/raw key) makes the
+    ``%`` characters get encoded a second time (``%2B`` -> ``%252B``),
+    corrupting the key. The gateway then rejects the mangled key with a bare
+    HTTP 403 before it ever reaches the XML business-error path. Decoding a
+    key that looks percent-encoded once, up front, makes either key format
+    work regardless of which one the user copied.
+    """
+    if re.search(r"%[0-9A-Fa-f]{2}", key):
+        return unquote(key)
+    return key
+
+
 def _credential() -> str:
     _load_local_env()
-    return (
+    key = (
         os.getenv("KOSHA_MSDS_SERVICE_KEY", "").strip()
         or os.getenv("KOSHA_SERVICE_KEY", "").strip()
         or os.getenv("KOSHA_API_KEY", "").strip()
         or os.getenv("KOSHA_SERVICE_KEY_DECODED", "").strip()
     )
+    return _normalize_service_key(key)
 
 
 def credential_status() -> dict[str, str]:
@@ -338,13 +356,28 @@ def _api_error_text(xml_text: str) -> str:
     return ""
 
 
+_REQUEST_HEADERS = {
+    # data.go.kr's gateway WAF blocks the default python-requests User-Agent
+    # as a bot with a bare HTTP 403 (no XML body), independent of whether the
+    # service key itself is valid and approved.
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
+
+
 def _request_xml(url: str, params: dict[str, Any], *, timeout: int, key: str) -> str:
-    response = requests.get(url, params=params, timeout=timeout)
-    response.raise_for_status()
+    response = requests.get(url, params=params, timeout=timeout, headers=_REQUEST_HEADERS)
     text = response.text or ""
+    # data.go.kr returns its XML business error (e.g. "등록되지 않은 서비스키")
+    # alongside a non-200 HTTP status for key/quota problems. Read the body
+    # before raise_for_status() would discard it, so the real reason reaches
+    # the user instead of a bare "403 Forbidden".
     api_error = _api_error_text(text)
     if api_error:
         raise RuntimeError(api_error)
+    response.raise_for_status()
     return text
 
 
