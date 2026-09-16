@@ -23,7 +23,23 @@ from typing import Any, Mapping, Sequence
 from docx import Document
 
 from . import statutory_report as base
+from .cap_authoritative import (
+    cap_form6_msds_candidates,
+    cap_form7_reference_candidates,
+)
 from .project import Stage2Project
+
+
+MSDS_REFERENCE_SUFFIX = " (KOSHA 참고값·확인필요)"
+
+# Intake workbook templates have used different header wording for the same
+# fields over time (e.g. an older "물질명" column vs. a newer
+# "물질명(알면 입력)"/"제품명" pair). Company data is confirmed either way, so
+# every chemical-identity lookup in this module accepts all known spellings
+# rather than silently rendering a blank cell for a template it wasn't
+# written against.
+_CHEMICAL_NAME_ALIASES = ("물질명", "화학물질명", "유해화학물질명", "물질명(알면 입력)", "제품명", "상품명")
+_CAS_ALIASES = ("CAS 번호", "CAS No.", "CAS No", "CAS", "화학물질식별번호(CAS 번호)", "화학물질식별번호")
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -227,7 +243,7 @@ def _fill_form1(tables, project: Stage2Project) -> None:
     t1, t2, t3 = tables
     facilities = base._facility_rows(project)
     chemicals = base._chemical_rows(project)
-    chem_by_name = {base._norm(base._row_value(c, "물질명", "유해화학물질명")): c for c in chemicals}
+    chem_by_name = {base._norm(base._row_value(c, *_CHEMICAL_NAME_ALIASES)): c for c in chemicals}
     t1_rows = []
     for facility in facilities:
         material = base._row_value(facility, "취급물질", "물질명")
@@ -235,7 +251,7 @@ def _fill_form1(tables, project: Stage2Project) -> None:
         t1_rows.append([
             base._row_value(facility, "단위공장·공정", "단위공장", "공정"),
             material,
-            base._row_value(chem, "CAS 번호", "화학물질식별번호"),
+            base._row_value(chem, *_CAS_ALIASES),
             base._row_value(chem, "함량(%)", "함량"),
             base._row_value(facility, "설비번호", "구분기호"),
             base._row_value(facility, "설비명", "취급시설"),
@@ -247,8 +263,8 @@ def _fill_form1(tables, project: Stage2Project) -> None:
     t2_rows = []
     for chem in chemicals:
         t2_rows.append([
-            base._row_value(chem, "물질명", "유해화학물질명"),
-            base._row_value(chem, "CAS 번호", "화학물질식별번호"),
+            base._row_value(chem, *_CHEMICAL_NAME_ALIASES),
+            base._row_value(chem, *_CAS_ALIASES),
             base._row_value(chem, "물질구분"),
             base._row_value(chem, "최대보유량", "최대보유량(kg)"),
             project.cap_group or "",
@@ -325,26 +341,55 @@ def _fill_facility_overview(table, project: Stage2Project) -> None:
     _fill_label_rows(table, mapping, start=1)
 
 
+def _form6_msds_lookup(project: Stage2Project) -> dict[str, dict[str, str]]:
+    """Map CAS -> {FORM6_FIELDS field: KOSHA reference value}.
+
+    Only fields this project has never received a confirmed company value for
+    reach this lookup (see ``_fill_form6``); it never overrides company data.
+    """
+    lookup: dict[str, dict[str, str]] = {}
+    for candidate in cap_form6_msds_candidates(project):
+        lookup.setdefault(candidate.cas, {})[candidate.field] = candidate.value
+    return lookup
+
+
+def _cell_value_with_msds_fallback(company_value: str, cas: str, field: str, lookup: Mapping[str, Mapping[str, str]]) -> str:
+    # base._row_value() returns the "[확인 필요]" placeholder, not "", when no
+    # company alias matched — treat that the same as blank for fallback.
+    if company_value and company_value != MISSING:
+        return company_value
+    reference = (lookup.get(cas) or {}).get(field)
+    if not reference:
+        return ""
+    return reference + MSDS_REFERENCE_SUFFIX
+
+
 def _fill_form6(table, project: Stage2Project) -> None:
+    msds_lookup = _form6_msds_lookup(project)
     rows = []
     for idx, row in enumerate(base._chemical_rows(project), 1):
+        cas = base._row_value(row, *_CAS_ALIASES)
+
+        def field(company_alias_field: str, msds_field: str) -> str:
+            return _cell_value_with_msds_fallback(company_alias_field, cas, msds_field, msds_lookup)
+
         rows.append([
             str(idx),
-            base._row_value(row, "물질명", "유해화학물질명"),
+            base._row_value(row, *_CHEMICAL_NAME_ALIASES),
             base._row_value(row, "물질구분"),
-            base._row_value(row, "CAS 번호", "화학물질식별번호"),
+            cas,
             base._row_value(row, "고유번호"),
-            base._row_value(row, "물리적 상태", "물질상태"),
+            field(base._row_value(row, "물리적 상태", "물질상태"), "물질상태"),
             base._row_value(row, "함량(%)", "함량"),
-            base._row_value(row, "비중"),
-            base._row_value(row, "폭발한계 하한", "폭발하한"),
-            base._row_value(row, "폭발한계 상한", "폭발상한"),
-            base._row_value(row, "독성구분 항목", "독성구분-항목"),
-            base._row_value(row, "독성구분", "독성구분-구분"),
-            base._row_value(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"),
-            base._row_value(row, "허용농도값", "TWA", "노출기준"),
-            base._row_value(row, "증기압", "증기압(20℃, mmHg)"),
-            base._row_value(row, "부식성", "부식성(유, 무)"),
+            field(base._row_value(row, "비중"), "비중"),
+            field(base._row_value(row, "폭발한계 하한", "폭발하한"), "폭발한계 하한(%)"),
+            field(base._row_value(row, "폭발한계 상한", "폭발상한"), "폭발한계 상한(%)"),
+            field(base._row_value(row, "독성구분 항목", "독성구분-항목"), "독성구분-항목"),
+            field(base._row_value(row, "독성구분", "독성구분-구분"), "독성구분-구분"),
+            field(base._row_value(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"), "위험노출수준"),
+            field(base._row_value(row, "허용농도값", "TWA", "노출기준"), "허용농도값"),
+            field(base._row_value(row, "증기압", "증기압(20℃, mmHg)"), "증기압(20℃, mmHg)"),
+            field(base._row_value(row, "부식성", "부식성(유, 무)"), "부식성(유, 무)"),
         ])
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
 
@@ -356,20 +401,46 @@ def _fill_form7(table, project: Stage2Project) -> None:
         items = [dict(v) for v in source if isinstance(v, Mapping)]
     elif isinstance(source, Mapping):
         items = [dict(source)]
-    if not items:
+
+    if items:
+        row = items[0]
+        mapping = {
+            "물질명": base._row_value(row, *_CHEMICAL_NAME_ALIASES),
+            "화학물질식별번호(CAS 번호)": base._row_value(row, *_CAS_ALIASES),
+            "유해화학물질 고유번호": base._row_value(row, "고유번호"),
+            "농도(또는 함량 %)": base._row_value(row, "농도", "함량"),
+            "최대보유량": base._row_value(row, "최대보유량"),
+            "인체유해성": base._row_value(row, "인체유해성"),
+            "물리적 위험성": base._row_value(row, "물리적 위험성"),
+            "환경유해성": base._row_value(row, "환경유해성"),
+            "출처": base._row_value(row, "출처"),
+            "선정 사유": base._row_value(row, "선정 사유", "선정사유"),
+        }
+        _fill_single_column_labels(table, mapping)
         return
-    row = items[0]
+
+    # No company-selected representative substance. Never guess which
+    # chemical to feature (that selection and its reason are the company's
+    # judgment call), but when there is exactly one confirmed chemical the
+    # "selection" is unambiguous, so surface its KOSHA hazard reference text
+    # while still requiring the company to confirm 선정 사유 explicitly.
+    chemicals = base._chemical_rows(project)
+    if len(chemicals) != 1:
+        return
+    all_candidates = cap_form7_reference_candidates(project)
+    if not all_candidates:
+        return
+    reference = all_candidates[0]
+
+    def as_reference(text: str) -> str:
+        return text + MSDS_REFERENCE_SUFFIX if text else ""
+
     mapping = {
-        "물질명": base._row_value(row, "물질명"),
-        "화학물질식별번호(CAS 번호)": base._row_value(row, "CAS 번호", "화학물질식별번호"),
-        "유해화학물질 고유번호": base._row_value(row, "고유번호"),
-        "농도(또는 함량 %)": base._row_value(row, "농도", "함량"),
-        "최대보유량": base._row_value(row, "최대보유량"),
-        "인체유해성": base._row_value(row, "인체유해성"),
-        "물리적 위험성": base._row_value(row, "물리적 위험성"),
-        "환경유해성": base._row_value(row, "환경유해성"),
-        "출처": base._row_value(row, "출처"),
-        "선정 사유": base._row_value(row, "선정 사유", "선정사유"),
+        "물질명": reference.get("유해화학물질명", ""),
+        "화학물질식별번호(CAS 번호)": reference.get("CAS 번호", ""),
+        "인체유해성": as_reference(reference.get("인체유해성 후보", "")),
+        "물리적 위험성": as_reference(reference.get("물리적 위험성 후보", "")),
+        "환경유해성": as_reference(reference.get("환경유해성 후보", "")),
     }
     _fill_single_column_labels(table, mapping)
 
@@ -386,7 +457,7 @@ def _fill_form8(tables, project: Stage2Project) -> None:
 
 
 def _fill_form9(table, project: Stage2Project) -> None:
-    chemicals = {base._norm(base._row_value(c, "물질명", "유해화학물질명")): c for c in base._chemical_rows(project)}
+    chemicals = {base._norm(base._row_value(c, *_CHEMICAL_NAME_ALIASES)): c for c in base._chemical_rows(project)}
     rows = []
     for idx, row in enumerate(base._facility_rows(project), 1):
         material = base._row_value(row, "취급물질", "물질명")
@@ -396,7 +467,7 @@ def _fill_form9(table, project: Stage2Project) -> None:
             base._row_value(row, "설비번호", "구분기호", "장치번호"),
             base._row_value(row, "설비명", "장치·설비명", "장치명"),
             material,
-            base._row_value(chem, "CAS 번호", "화학물질식별번호"),
+            base._row_value(chem, *_CAS_ALIASES),
             base._row_value(chem, "물리적 상태", "물질상태"),
             base._row_value(chem, "함량(%)", "함량"),
             base._row_value(row, "연결구 크기", "호칭경"),
@@ -533,8 +604,8 @@ def _fill_form16(tables, project: Stage2Project) -> None:
     for idx, row in enumerate(base._chemical_rows(project), 1):
         chem_rows.append([
             str(idx),
-            base._row_value(row, "물질명", "유해화학물질명"),
-            base._row_value(row, "CAS 번호", "화학물질식별번호"),
+            base._row_value(row, *_CHEMICAL_NAME_ALIASES),
+            base._row_value(row, *_CAS_ALIASES),
             base._row_value(row, "함량(%)", "최대함량"),
             base._row_value(row, "최대보유량", "최대보유량(kg)"),
             base._row_value(row, "사고유형"),
