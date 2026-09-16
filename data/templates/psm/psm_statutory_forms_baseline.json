@@ -1,10 +1,10 @@
 {
-  "schema_version": "psm-statutory-form-layout-baseline-v1",
+  "schema_version": "psm-statutory-form-layout-baseline-v2",
   "role": "LAYOUT_BASELINE",
   "template_file": "psm_statutory_forms_baseline.docx.b64.00",
   "encoding": "base64",
-  "sha256": "7432f9b266c5e8ea0e5c02fe0e5ce74ffdbfd3774c16e8be58c7b1f8546c1419",
-  "source_description": "사용자가 국가 규정의 HWP 서식 원본을 DOCX로 변환한 뒤 규정서식 외 내용을 제거하여 제공한 PSM 서식 묶음",
+  "sha256": "82457f0775850d95abd166fa6e63aae67da8fdc2ae27349d7efdb8bbc9501335",
+  "source_description": "사용자가 제공한 「공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 일부개정안 전문-서식」 DOCX의 별지 제12호~제21호 서식 묶음",
   "authority_note": "이 파일은 표·병합셀·폰트·페이지 배치의 작성 baseline이다. 법적 최신성·효력의 권위는 기존 law.go.kr 규정 업데이트 및 승인 상태가 담당한다.",
   "required_table_count": 15,
   "required_markers": [
