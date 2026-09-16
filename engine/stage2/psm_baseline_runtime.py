@@ -19,7 +19,7 @@ def install_psm_baseline_runtime() -> None:
     try:
         import streamlit as st
         from . import psm_baseline_docx as baseline
-        from .psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
+        from .psm_baseline_v2 import build_psm_baseline_draft, psm_baseline_filename
         from .storage import load_project
     except Exception:
         return
