@@ -115,6 +115,39 @@ class CAPBaselineDocxTests(unittest.TestCase):
         self.assertIn("홍길동", example_text)
         self.assertIn("장치 설비 목록 및 명세", example_text)
 
+    def test_form6_fills_kosha_reference_only_where_company_left_it_unconfirmed(self):
+        project = _project()
+        _set(project, "inventory.chemicals", [
+            {
+                "물질명": "톨루엔",
+                "CAS 번호": "108-88-3",
+                "물질구분": "사고대비물질",
+                # 물질상태 deliberately left unconfirmed so the KOSHA reference
+                # should fill it in; 비중 is company-confirmed and must win.
+                "비중": "0.87 (회사 확인값)",
+            }
+        ])
+        project.set_field(
+            "reference.kosha_msds.108883",
+            "KOSHA MSDS 참고자료 · 108-88-3",
+            {
+                "cas": "108-88-3",
+                "chemical_name": "톨루엔",
+                "sections": {
+                    "9": {"items": [["성상", "액체"], ["비중", "1.0 (KOSHA 값 · 회사값과 다름)"]]},
+                },
+            },
+            "HOLD",
+        )
+
+        out = build_cap_baseline_draft(project)
+        doc = Document(BytesIO(out))
+        form6_text = "\n".join(cell.text for row in doc.tables[15].rows for cell in row.cells)
+
+        self.assertIn("액체 (KOSHA 참고값·확인필요)", form6_text)
+        self.assertIn("0.87 (회사 확인값)", form6_text)
+        self.assertNotIn("1.0 (KOSHA 값", form6_text)
+
     def test_cap_regulation_filename_is_distinct_from_internal_review(self):
         name = cap_baseline_filename(_project())
         self.assertTrue(name.endswith("_화학사고예방관리계획서_규정서식_작성본.docx"))
