@@ -1,0 +1,195 @@
+{
+  "schema_version": "cap-manual-field-guidance-v1",
+  "source": {
+    "title": "화학사고예방관리계획서 작성 매뉴얼",
+    "document_code": "NICS-GP2026-8",
+    "reg_no": "11-1482042-100081-01",
+    "pdf_created": "2026-07-16",
+    "extraction_note": "PDF 텍스트 레이어 없음(스캔본) — 페이지 이미지를 비전으로 직접 판독하여 구조화. 원문자(①②③)·체크박스가 많아 일반 OCR 대신 이 방식을 사용."
+  },
+  "relationship_to_cap_manual_registry": "이 파일은 data/stage2/cap_manual_registry.json과 같은 매뉴얼(NICS-GP2026-8)을 출처로 하되 다른 계층을 다룬다. registry는 '이 섹션에 어떤 자료가 필요한가'(인테이크 요청 단위)를 다루고, 이 파일은 'registry의 각 field_keys 안에서 실제로 서식 한 칸 한 칸을 어떻게 채우는가'(문구 지침 단위)를 다룬다. 가능한 경우 registry와 동일한 field_keys를 그대로 사용해 두 레이어가 연결되도록 했다.",
+  "coverage": "3.1 기본정보 전체 (별지 제3~8호서식, 매뉴얼 p.36-48). 3.2~3.6은 아직 미작성.",
+  "fields": {
+    "business.company_name": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar",
+      "guidance": "사업자등록증을 기준으로 한 사업장명을 작성하되, 지역단위 등으로 구분이 필요한 경우 구분할 수 있는 공장명 등을 같이 작성"
+    },
+    "business.address": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar",
+      "guidance": "유해화학물질을 사용하는 소재지의 도로명 주소를 작성"
+    },
+    "cap.business.unit_plant_name": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar",
+      "guidance": "화학사고예방관리계획서 작성·제출 대상 단위공장을 모두 작성 (예: 1공장, 반응공정, 충전공정 등)"
+    },
+    "cap.business.representative": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar", "guidance": null,
+      "note": "매뉴얼에 별도 작성요령 없음 — 자명한 항목"
+    },
+    "cap.business.registration_no": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar", "guidance": null,
+      "note": "매뉴얼에 별도 작성요령 없음 — 자명한 항목"
+    },
+    "cap.business.industrial_complex": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar",
+      "guidance": "사업장이 입주해 있는 산업단지명을 작성. 한국산업단지공단 산업입지정보시스템(www.industryland.or.kr)에 등록된 국가산업단지·일반산업단지·외국인투자지역·농공단지 우선 확인.",
+      "fallback": "일반공업지역·준공업지역 내 조성된 공업지역 등 산업입지정보시스템에서 검색되지 않는 경우, 기타 증빙자료(해당 지자체 홈페이지 도시관리계획 내 공업지역 지정 현황 등)를 제출"
+    },
+    "cap.business.contact": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar", "guidance": null,
+      "note": "매뉴얼에 별도 작성요령 없음 — 자명한 항목 (사업장 대표전화)"
+    },
+    "cap.business.submission_type": {
+      "form": "별지 제3호서식", "manual_pages": [38], "type": "choice",
+      "options": ["신규제출", "변경제출", "재제출", "이행점검 불이행"], "sub_options": ["최초", "부적합"],
+      "guidance": "작성 규정을 확인하여 신규(제10조), 변경(제11조), 재제출(제12조) 중 해당하는 부분에 표시",
+      "legal_refs": ["작성규정 제10조", "작성규정 제11조", "작성규정 제12조"],
+      "code_reference": "engine/stage2/cap_final_form_runtime.py::render_submission_type"
+    },
+    "cap.business.writing_level": {
+      "form": "별지 제3호서식", "manual_pages": [38], "type": "choice", "options": ["1군", "2군"],
+      "guidance": "작성 규정 제4조에 따른 최대보유량을 기준으로 1군, 2군 중 해당하는 부분에 표시",
+      "legal_refs": ["작성규정 제4조"],
+      "code_reference": "engine/stage2/cap_final_form_runtime.py::render_writing_level — 2026-09-16 버그 수정 완료(둘 다 체크되던 문제)",
+      "downstream_rule": "이 값이 '2군'이면 group_rules에 의해 3.6 외부비상대응계획 섹션 자체가 생략됨 (화학물질관리법 시행규칙 별표4 비고3)"
+    },
+    "cap.business.joint_emergency_plan": {
+      "form": "별지 제3호서식", "manual_pages": [38], "type": "choice", "options": ["공동제출", "단독제출"],
+      "guidance": "작성 규정 제15조에 따라 제출한 경우에 표시",
+      "legal_refs": ["작성규정 제15조"],
+      "additional_attachment": "규칙 별지 제31호의2서식 (공동비상대응계획 작성·제출에 관한 자료) — 원본 미확보, 별도 확보 필요",
+      "code_reference": "engine/stage2/cap_final_form_runtime.py::render_joint_emergency"
+    },
+    "cap.business.other_system_review": {
+      "form": "별지 제3호서식", "manual_pages": [38], "type": "choice",
+      "options": ["해당(공정안전보고서/안전성향상계획)", "미해당"],
+      "guidance": "작성 규정 제16조에 따라 제출한 경우에 표시",
+      "legal_refs": ["작성규정 제16조"],
+      "additional_attachment": "해당 시 공정안전보고서 또는 안전성향상계획 2부 + 심사기관 심사결과통지서 사본 + 규칙 별지 제31호의3서식 (원본 미확보)",
+      "exception_note": "심사기관이 화학물질안전원으로 송부한 경우, 그 서류에 규칙 별표4 제1호나목·제2호 해당 내용이 있으면 그 내용은 제외하고 작성 가능",
+      "cross_system_note": "이 사업장에 PSM(공정안전보고서) 프로젝트가 함께 진행 중이면 그 산출물을 참조할 수 있음 — 현재 두 시스템 간 연결 없음",
+      "code_reference": "engine/stage2/cap_final_form_runtime.py::render_other_system_review"
+    },
+    "cap.business.residents_in_overall_range": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "yes_no", "guidance": null,
+      "note": "매뉴얼에 별도 작성요령 없음 — 자명한 항목"
+    },
+    "cap.business.recent_accident": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "yes_no",
+      "label_ko_confirmed": "최근 3년간 화학사고 발생 여부",
+      "guidance": null,
+      "resolved_flag": {
+        "issue": "연수(年數) 불일치 — 매뉴얼 PDF는 '5년', 규정 docx(260409)·현재 코드 3곳은 '3년'",
+        "decision": "3년 (Han 확인, 2026-09-16). 매뉴얼의 '5년' 서술은 오기/구버전 참조로 간주하고 사용하지 않음",
+        "code_impact": "변경 불필요 — 기존 코드가 이미 3년으로 규정과 일치"
+      }
+    },
+    "cap.business.writer_info": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar", "guidance": null
+    },
+    "cap.business.writer_contact": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar", "guidance": null
+    },
+    "cap.business.writer_email": {
+      "form": "별지 제3호서식", "manual_pages": [37], "type": "scalar", "guidance": null
+    },
+    "cap.basic.total_facility_overview": {
+      "form": "별지 제4호서식", "title": "총괄 취급시설 개요", "manual_pages": [39, 40], "type": "form_table",
+      "note": "별지 제5호서식(세부)과 필드 구조 완전히 동일 — 매뉴얼도 작성요령을 별지5호 쪽에서 한 번만 서술하고 공유. 차이는 총괄(사업장 전체 합산) vs 세부(단위공장별)뿐.",
+      "sub_items": "cap.basic.unit_facility_overview 항목과 동일 (아래 참고)",
+      "caution": "제출단위 심의 결과에 따라 화학사고 '예방·대비·대응·복구' 체계를 구분하여 제출할 경우, 사업장 전체 총괄 취급시설 개요와 제출 단위의 총괄 취급시설 개요를 각각 제출"
+    },
+    "cap.basic.unit_facility_overview": {
+      "form": "별지 제5호서식", "title": "세부 취급시설 개요", "manual_pages": [40], "type": "form_table",
+      "sub_items": [
+        {"item": "단위공장 구성", "guidance": "유해화학물질이 사용되는 단위공장명을 작성"},
+        {"item": "공정개요", "type": "narrative", "guidance": "단위공장에서 유해화학물질을 사용하는 공정의 간략한 개요를 작성"},
+        {"item": "장치·설비 종류 및 수량", "type": "checklist_with_count",
+         "options": ["저장탱크", "저장·보관소", "혼합시설", "고압시설", "반응시설", "탑조류(증류탑 등)", "열교환기", "사외배관", "기타"],
+         "guidance": "저장시설, 반응시설 등 단위공장에서 사용되는 시설의 종류를 표시하고, 수량을 표기",
+         "caution": "사외배관의 안전관리 및 비상대응계획 수립을 위하여 사외배관 개수를 작성해야 하며, 사외배관 개수는 하나로 연속 연결된 배관을 1개로 산정"},
+        {"item": "입·출하 및 운반시설", "type": "checklist_with_count", "options": ["입·출하 시설", "보유 탱크로리"],
+         "guidance": "해당되는 경우 표시(탱크로리 입·출하 시설 및 운반차량의 상·하차구역 포함), 보유 탱크로리는 자사에서 탱크로리를 보유한 경우에만 표시"},
+        {"item": "화학물질명", "guidance": "「화학물질의 분류 및 표시 등에 관한 규정」 별표4에 따른 고유 화학물질 명칭을 국문으로 작성"},
+        {"item": "화학물질식별번호(CAS 번호)", "guidance": "유해화학물질에 해당하는 함량기준 이상인 화학물질의 화학물질식별번호를 작성"},
+        {"item": "최대보유량(ton)", "guidance": "작성 규정 제4조 및 별표1에 따른 유해화학물질별 최대보유량을 작성", "legal_refs": ["작성규정 제4조", "작성규정 별표1"]}
+      ]
+    },
+    "cap.chemical.details": {
+      "form": "별지 제6호서식", "title": "유해화학물질 목록 및 명세", "manual_pages": [41, 42], "type": "table",
+      "sub_items": [
+        {"item": "유해화학물질명", "guidance": "가능한 한글로 작성하고, 「화학물질의 분류 및 표시 등에 관한 규정」에 따른 고유의 화학물질 명칭으로 작성"},
+        {"item": "물질구분", "options": ["급성", "만성", "생태", "사고대비"], "guidance": "「인체급성유해성물질, 인체만성유해성물질 및 생태유해성물질의 지정고시」, 「사고대비물질의 지정」에 따른 분류로 작성"},
+        {"item": "화학물질식별번호(CAS 번호)/고유번호", "guidance": "함량기준 이상 화학물질의 CAS 번호를 입력하며, '고유번호'는 「화학물질의 분류 및 표시 등에 관한 규정」에 따른 고유번호를 입력"},
+        {"item": "물질상태", "options": ["기체", "액체", "고체"], "guidance": "취급물질의 상온, 상압에서의 상태로 구분하여 작성"},
+        {"item": "함량(%)", "guidance": "취급물질의 입·출하, 저장·보관, 사용 및 제조 등의 공정에서 함량기준 이상으로 존재하는 물질의 농도 범위와 단위를 작성"},
+        {"item": "비중", "guidance": "취급물질의 상온에서의 비중을 작성 (근거자료 제출 필요)"},
+        {"item": "폭발한계(%) 하한/상한", "guidance": "공기 중에서 연소 및 폭발이 발생할 수 있는 농도(%)를 하한값과 상한값 구분하여 작성"},
+        {"item": "독성구분(항목/구분)", "guidance": "「화학물질의 분류 및 표시 등에 관한 규정」 별표4의 유해성 분류를 기준으로 항목과 구분을 모두 작성"},
+        {"item": "위험노출수준", "guidance": "ERPG값을 우선으로 작성하고 ERPG 값이 없는 경우 AEGL, PAC, IDHL 순서로 사업장에서 확인가능한 값을 작성"},
+        {"item": "허용농도값", "guidance": "TWA 값을 작성"},
+        {"item": "증기압(20℃, mmHg)", "guidance": "20℃에서의 증기압을 기재하거나 증기압과 해당온도를 함께 작성"},
+        {"item": "부식성(유/무)", "guidance": "금속부식성 여부를 작성"}
+      ],
+      "cautions": [
+        "취급하는 유해화학물질을 누락하여 제출하는 경우, 「화학물질관리법」 제58조제3호의2에 따라 거짓 제출자에 해당될 수 있음 — 법적 리스크, 최우선 검증 대상",
+        "시험·검사·연구용 시약 등 사업장에서 취급하는 모든 유해화학물질을 포함하여 작성",
+        "연안법(연구실 안전환경 조성에 관한 법)에 따라 지정된 연구실은 작성 면제 대상 — 해당 연구실 사용 물질은 제외",
+        "연안법 제외 실험실의 시험·검사·연구용 시약(기체 5kg 미만, 액체·고체 20kg 미만)은 물질명·CAS번호 등 목록만 제출 가능"
+      ]
+    },
+    "cap.chemical.hazard_information": {
+      "form": "별지 제7호서식", "title": "유해화학물질의 유해성 정보", "manual_pages": [43, 44, 45], "type": "narrative_table",
+      "guidance_overview": "사고유형별 유해성이 큰 대표 2가지 물질(화재·폭발 2가지, 독성 2가지)에 대해 작성. 중복 시 중복 물질 포함 (예: 화재·폭발 2종+독성 2종 중 1종 중복 → 총 3종 작성)",
+      "sub_items": [
+        {"item": "취급물질 일반정보(물질명/CAS번호/고유번호/농도/최대보유량)", "guidance": "최대보유량은 별지 제1호서식(작성수준 구분)과 동일하게 작성"},
+        {"item": "인체유해성", "type": "narrative", "guidance": "경구, 흡입, 경피 등의 노출 경로를 통하여 접촉 시의 영향을 작성"},
+        {"item": "물리적 위험성", "type": "narrative", "guidance": "화학물질과의 접촉 및 반응에 의한 폭발, 열, 흄 등의 발생에 대하여 작성"},
+        {"item": "환경유해성", "type": "narrative", "guidance": "분해성, 생물농축성, 수생환경유해성에 대한 내용을 작성"},
+        {"item": "출처", "guidance": null},
+        {"item": "선정 사유", "type": "narrative", "guidance": "대표 유해성 물질로 선정한 사유를 작성 (필수)"}
+      ],
+      "cautions": ["물질안전보건자료(MSDS)로 대체하여 제출하는 자료는 인정하지 않음 — 반드시 이 서식 형태로 재작성"]
+    },
+    "cap.site.unit_plant_layout": {
+      "form": "별지 제8호서식", "title": "단위공장 배치도", "manual_pages": [46], "type": "drawing_attachment",
+      "guidance": "건물과 유해화학물질 취급시설의 위치, 건물과 건물 사이 거리, 단위공정 간 거리, 유해화학물질 보관·저장시설 위치, 조정실·사무실 등 기타시설 위치를 포함하여 작성"
+    },
+    "cap.site.equipment_layout": {
+      "form": "별지 제8호서식", "title": "설비 배치도", "manual_pages": [46], "type": "drawing_attachment",
+      "guidance": "단위공장 내 유해화학물질 취급시설의 명칭, 위치, 높이, 설비 간 거리를 표기. 전체 구성→개별 공정→세부 설비 순으로 제출 (예: 사업장→단위공장→건물→층)",
+      "sub_item": {
+        "item": "보관구획(보관시설 배치도)", "type": "table",
+        "columns": ["유해화학물질명", "성상", "규격", "용기", "수량", "총 보관량", "비고"],
+        "guidance": "보관시설은 물질명, 용기 규격, 성상, 수량, 총 보관량 등을 포함한 보관구획도(혹은 적재배치도)를 제출",
+        "caution": "화학사고예방관리계획서 작성 당시의 적재 현황이 아닌, 보관시설 내 유해화학물질별 최대 보관 가능량 기준으로 작성"
+      }
+    },
+    "cap.site.surrounding_environment": {
+      "form": "별지 제8호서식", "title": "사업장 주변 환경 정보", "manual_pages": [47, 48], "type": "form_table",
+      "guidance": "사업장 경계선 기준 500m 범위 내에 있는 공공수용체, 환경수용체 등 보호대상 정보를 작성",
+      "sub_items": [
+        {"item": "사업장 입지현황(지도)", "type": "drawing_attachment"},
+        {"item": "갑종 보호대상", "type": "checklist", "options": ["문화·집회시설", "종교시설", "판매시설", "운수시설", "의료시설", "교육·연구시설", "노유자시설", "숙박시설", "관광휴게시설", "수련시설", "주택"]},
+        {"item": "을종 보호대상", "type": "checklist", "options": ["주택 업무시설", "근린 생활시설", "위험물 저장 및 처리시설", "기타 건축물", "공업시설"]},
+        {"item": "환경수용체", "type": "checklist", "options": ["생태·경관보호지역", "산림지 및 유적지", "하천", "자연공원", "습지보호지역", "상수원 및 취수원", "농경지", "기타 환경수용체"]},
+        {"item": "취급시설 입지 내 보호대상 목록 및 명세", "type": "table",
+         "columns": ["일련번호", "보호대상 종류", "보호대상 명칭", "거리(m)"],
+         "guidance": "'사업장 입지 현황의 보호대상 위치'는 이 목록 일련번호로 지도 위에 표기. '보호대상 종류'는 별표4의 갑종/을종 보호대상 및 환경수용체 세부 구분 중 선택. '거리'는 사업장 경계선에서 보호대상까지의 거리"}
+      ],
+      "official_tool": {
+        "name": "화학사고예방관리계획서 작성 지원 프로그램 (KORA)",
+        "note": "매뉴얼이 이 항목 작성 시 KORA 프로그램 이용을 명시함 — 자체 개발보다 KORA 연동/산출물 임포트가 나을 수 있음. 추가 확인 필요."
+      },
+      "cautions": [
+        "제출단위 심의 결과에 따라 구분 제출 시, 전체배치도는 사업장 전체배치도와 제출 단위의 전체배치도를 각각 제출",
+        "작성·제출시점의 최근 상황을 반영한 사업장 주변정보를 모두 표기해야 한다"
+      ]
+    },
+    "documents.site_plan": {
+      "form": "별지 제8호서식", "title": "전체배치도", "manual_pages": [45, 46], "type": "drawing_attachment",
+      "guidance": "건물 단위로 단위공장, 사무동, 복지동, 자재동, 근무자 체류시설, 화학물질 보관·저장시설 등의 위치 및 거리를 개략적으로 작성. 사업장 부지경계선 명확히 표시, 경계선으로부터 주변 보호대상과의 거리 표시",
+      "caution": "사업장이 2개 이상의 운영단위로 구성된 경우, 운영 단위 간 거리를 확인할 수 있는 배치도를 제출해야 함"
+    }
+  }
+}
