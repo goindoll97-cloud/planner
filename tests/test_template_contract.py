@@ -19,6 +19,7 @@ class CompanyTemplateContractTests(unittest.TestCase):
                 "00_작성가이드",
                 "01_사업장기본정보",
                 "02_화학물질목록",
+                "02A_혼합물구성성분",
                 "03_기존문서보유여부",
                 "04_시설별최대보유량",
                 "05_최종판정조건",
@@ -28,7 +29,7 @@ class CompanyTemplateContractTests(unittest.TestCase):
 
     def test_chemical_sheet_contains_current_screening_columns(self) -> None:
         ws = self.workbook["02_화학물질목록"]
-        headers = [ws.cell(3, col).value for col in range(1, 16)]
+        headers = [ws.cell(3, col).value for col in range(1, 17)]
         self.assertEqual(
             headers,
             [
@@ -47,6 +48,24 @@ class CompanyTemplateContractTests(unittest.TestCase):
                 "최대보유량 법정 산정 여부",
                 "회사/제품 SDS 제2항 보유·확인 여부",
                 "SDS 제2항 유해성·위험성 분류(선택 입력)",
+                "혼합물 여부",
+            ],
+        )
+        component = self.workbook["02A_혼합물구성성분"]
+        component_headers = [component.cell(3, col).value for col in range(1, 11)]
+        self.assertEqual(
+            component_headers,
+            [
+                "적용여부",
+                "제품목록행번호",
+                "제품명(확인용)",
+                "구성성분명",
+                "CAS No.",
+                "함량(%)",
+                "함량 최저(%)",
+                "함량 최고(%)",
+                "SDS 제3항 근거",
+                "비고",
             ],
         )
 
@@ -56,6 +75,7 @@ class CompanyTemplateContractTests(unittest.TestCase):
         note8 = self.workbook["06_공정안전보고서_비고8제외수량"]
         self.assertEqual(facility["A3"].value, "적용여부")
         self.assertEqual(facility["V3"].value, "비고")
+        self.assertEqual(facility["W3"].value, "규제성분 CAS(혼합물)")
         self.assertEqual(final_conditions["A2"].value, "제도")
         self.assertEqual(final_conditions["F2"].value, "판정에 미치는 영향")
         self.assertEqual(note8["A3"].value, "적용여부")
