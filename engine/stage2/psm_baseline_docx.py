@@ -36,7 +36,10 @@ FORM_TABLE_INDEX = {
 }
 
 LATER_FORM_FIELDS: dict[str, tuple[str, ...]] = {
-    "17-2": ("psm.psi.interlock_specs", "psm.psi.interlocks"),
+    # Reuse the already-established Stage 2 field used by the existing PSM
+    # renderer first; keep the older aliases only as fallback so no interlock
+    # data is inferred that the company never confirmed.
+    "17-2": ("psm.psi.interlock_conditions", "psm.psi.interlock_specs", "psm.psi.interlocks"),
     "17-3": ("psm.psi.fire_protection",),
     "17-4": ("psm.psi.fire_detection",),
     "17-5": ("psm.psi.gas_detection",),

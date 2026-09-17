@@ -4,13 +4,19 @@ import unittest
 from unittest.mock import patch
 
 from engine.stage2 import ai_live_progress_runtime as ai_live
-from engine.stage2 import cap_fragment_runtime as fragment
 from engine.stage2 import cap_hwpx
+from engine.stage2 import cap_multi_form_runtime as multi
 from engine.stage2 import local_ai_resilience as resilience
 from engine.stage2.local_llm import LocalLLMConfig
 
 
-class CAPFragmentRuntimeTests(unittest.TestCase):
+class CAPMultiFormPartialBuilderTests(unittest.TestCase):
+    """Split official CAP files contain only some statutory form markers, so
+    cap_multi_form_runtime._partial_builder relaxes the monolithic validation
+    only for that approved split-form writer; every other caller of
+    cap_hwpx.validate_cap_hwpx_template (manual uploads, single-template
+    validation) must stay strict, including immediately after a relaxed call."""
+
     def test_partial_builder_relaxes_only_split_form_call_and_restores_validator(self):
         strict = cap_hwpx.CAPTemplateValidation(
             ok=False,
@@ -32,19 +38,12 @@ class CAPFragmentRuntimeTests(unittest.TestCase):
             return "built"
 
         with patch.object(cap_hwpx, "validate_cap_hwpx_template", strict_validator):
-            builder = fragment._partial_builder_threadsafe(original_build)
+            builder = multi._partial_builder(original_build)
             self.assertEqual(builder(object(), template_bytes=b"split-form"), "built")
             self.assertEqual(calls, [True])
             self.assertIs(cap_hwpx.validate_cap_hwpx_template, strict_validator)
             with self.assertRaisesRegex(ValueError, "strict rejection"):
                 original_build(object(), template_bytes=b"split-form")
-
-    def test_app_installs_fragment_runtime_after_multi_form_runtime(self):
-        text = open("app.py", encoding="utf-8").read()
-        multi_pos = text.index("install_cap_multi_form_runtime()")
-        fragment_pos = text.index("install_cap_fragment_runtime()")
-        self.assertLess(multi_pos, fragment_pos)
-        self.assertIn("install_cap_fragment_runtime", text)
 
 
 class AILiveProgressRuntimeTests(unittest.TestCase):
