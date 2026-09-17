@@ -99,14 +99,12 @@ _install_kosha_msds_endpoint_migration()
 # statutory-form writers need, while leaving AI-draftable narrative and
 # rule-engine calculations out of the company-direct input burden.
 from .company_intake_contract import install_company_intake_contract
-from .company_intake_fullname_runtime import install_company_intake_fullname_runtime
 from .cap_mixture_runtime import install_cap_mixture_runtime
 from .cap_mixture_display_runtime import install_cap_mixture_display_runtime
 from .stage1_request_detail_runtime import install_stage1_request_detail_runtime
 from .stage2_visible_handoff_runtime import install_stage2_visible_handoff_runtime
 
 install_company_intake_contract()
-install_company_intake_fullname_runtime()
 # Install the mixture/component contract before Stage-1 is imported by the
 # detailed-request hook, so Stage-1 captures the mixture-aware CAP functions.
 install_cap_mixture_runtime()
