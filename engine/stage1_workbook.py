@@ -13,11 +13,9 @@ from typing import Any
 
 import pandas as pd
 
-from .cap_engine import assess_cap
 from .cap_final_decision import assess_cap_final, exemption_options, normalize_quantity_evidence
-from .cap_holding import app4_db_ready, assess_cap_holding
-from .cap_holding_screen import screen_facility_stage
-from .cap_quick_holding import compare_confirmed_declared_holding
+from .cap_holding import app4_db_ready
+from .cap_mixture import assess_cap, assess_cap_holding, compare_confirmed_declared_holding, screen_facility_stage
 from .cap_sds_app1 import assess_sds_app1_row
 from .consulting_guidance import get_guide
 from .inventory import (
@@ -84,6 +82,16 @@ def _answer_bool(value: object) -> bool | None:
 
 def _request(sheet: str, text: str) -> str:
     return f"{sheet}: {text}"
+
+
+def _facility_blocker_requests(blockers: list[str]) -> list[str]:
+    """Name each exact missing company fact that Appendix-4 calculation
+    already identified (a facility row, capacity, density, a confirmed
+    direct holding mass, ...) instead of one generic correction sentence."""
+    clean = list(dict.fromkeys(str(v).strip() for v in blockers if str(v or "").strip()))
+    if not clean:
+        return [_request("04_시설별최대보유량", "시설별 최대보유량 산정에 필요한 용량·밀도·직접확인 최대보유량 등 누락 항목을 확인하여 작성해 주세요.")]
+    return [_request("04_시설별최대보유량", blocker) for blocker in clean]
 
 
 def _row_label(intake: IntakeData, row_no: int) -> str:
@@ -439,7 +447,7 @@ def assess_stage1_from_workbook(intake: IntakeData) -> Stage1WorkbookDecision:
             quantity_rows.extend(facility_result.comparison_rows)
             if facility_result.blockers:
                 cap_unresolved.extend(facility_result.blockers)
-                requests.append(_request("04_시설별최대보유량", "시설별 최대보유량 산정에 필요한 용량·밀도·직접확인 최대보유량 등 누락 항목을 확인하여 작성해 주세요."))
+                requests.extend(_facility_blocker_requests(facility_result.blockers))
         elif _all_direct_holding_confirmed(intake, cap_screen.row_numbers):
             quick = compare_confirmed_declared_holding(intake, cap_screen.legal_hits)
             quantity_rows.extend(quick.comparison_rows)

@@ -2,19 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from engine.company_intake_fullname_runtime import LABEL_ALIASES
+from engine.company_intake_contract import LABEL_ALIASES
 from engine.stage2.project import create_project_from_stage1_snapshot
 
 
-class CompanyIntakeFullnameRuntimeTests(unittest.TestCase):
-    """Characterization tests for the pre-release abbreviation alias fallback.
-
-    ``install_company_intake_fullname_runtime`` renames ``COMPANY_FACT_SPECS``
-    to full legal-document labels but still accepts older workbook snapshots
-    that carry the pre-release ``PSM``/``CAP`` abbreviations. These tests pin
-    that backward-compatible behavior down before any consolidation of the
-    runtime-installer modules.
-    """
+class CompanyIntakeFullnameAliasTests(unittest.TestCase):
+    """COMPANY_FACT_SPECS uses full legal-document labels directly, but
+    seed_company_facts still accepts older workbook snapshots that carry the
+    pre-release PSM/CAP abbreviations (see company_intake_contract.LABEL_ALIASES
+    / _aliased_business)."""
 
     def _snapshot_with_old_labels(self):
         return {
@@ -35,8 +31,7 @@ class CompanyIntakeFullnameRuntimeTests(unittest.TestCase):
         }
 
     def test_full_labels_replace_abbreviations_in_specs(self):
-        # After the runtime installs, no spec should still be keyed by the
-        # bare PSM/CAP abbreviation form.
+        # No spec is keyed by the bare PSM/CAP abbreviation form.
         from engine.company_intake_contract import COMPANY_FACT_SPECS
 
         current_labels = {spec.label for spec in COMPANY_FACT_SPECS}

@@ -8,7 +8,6 @@ from engine.stage2.ai_drafting import (
     ai_draft_field_key,
     ai_draft_is_current,
     ai_draftable_specs,
-    generate_system_ai_drafts,
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
 from engine.stage2.cap_hwpx import (
@@ -18,20 +17,25 @@ from engine.stage2.cap_hwpx import (
     register_cap_template,
     registered_cap_template,
 )
-from engine.stage2.local_ai_resilience import recommended_batch_size, select_fast_auto_config
+from engine.stage2.local_ai_resilience import (
+    build_local_llm_client,
+    generate_system_ai_drafts,
+    local_llm_config_from_sources,
+    recommended_batch_size,
+    select_fast_auto_config,
+)
 from engine.stage2.local_llm import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OPENAI_COMPATIBLE_URL,
     LocalLLMConfig,
-    build_local_llm_client,
-    local_llm_config_from_sources,
     local_runtime_label,
     local_runtime_not_ready_message,
     probe_local_llm_runtime,
     validate_local_base_url,
 )
 from engine.stage2.project import CONFIRMED_STATUSES
+from engine.stage2.psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from engine.stage2.report_draft import build_report_draft, draft_filename
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 from engine.stage2.workflow import validation_confirmed
@@ -290,6 +294,11 @@ def _run_automatic_ai(
         ui_batch_size = recommended_batch_size(getattr(client, "model", config.model))
         for batch in _chunks(missing, ui_batch_size):
             batch_label = batch[-1].label if batch else SYSTEM_LABELS[system]
+            if progress_callback is not None:
+                # Move the bar's text before the (possibly slow) model call
+                # starts, so it doesn't sit frozen on the previous batch's
+                # label for the whole duration of this one.
+                progress_callback(completed_pending, total_pending, f"{batch_label} 묶음 정리 중")
             try:
                 result = generate_system_ai_drafts(
                     project,
@@ -385,7 +394,7 @@ def _render_ai_downloads(project) -> None:
             st.warning(f"{label} AI 문장 포함 초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
             continue
         st.download_button(
-            f"{label} · AI 문장 다듬기 포함 초안",
+            f"{label} · AI 문장 검토용 내부 DOCX",
             data=enhanced,
             file_name=draft_filename(project, system).replace("_검토용_초안.docx", "_AI보강_검토용_초안.docx"),
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -464,12 +473,43 @@ def _render_basic_docx(project, system: str, label: str) -> None:
         st.error(f"{label} 기본 초안을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
+    # This combined DOCX is a program-reconstructed review copy, not the
+    # official statutory layout (that is the CAP HWPX / PSM regulation-form
+    # download above), so it is labeled and styled as secondary here.
     st.download_button(
-        f"{label} · 기본 초안 다운로드",
+        f"{label} · 내부 검토용 DOCX 다운로드",
         data=baseline,
         file_name=draft_filename(project, system),
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"draft_plain_{project.project_id}_{system}",
+        width="stretch",
+        type="secondary",
+    )
+
+
+def _render_psm_regulation_form(project) -> None:
+    """Fill the preserved PSM regulation-form DOCX with confirmed company data.
+
+    Mirrors the CAP split between the official-layout form (this) and the
+    internal-review prose DOCX rendered separately by _render_basic_docx.
+    """
+    st.markdown("### 공정안전보고서 · 규정서식 작성본")
+    st.caption(
+        "규정서식 baseline의 표·병합셀·글꼴·페이지 구성을 유지하고, 4단계까지 확인된 회사자료만 해당 칸에 입력합니다. "
+        "확인되지 않은 값은 추정하지 않고 빈칸으로 둡니다."
+    )
+    try:
+        data = build_psm_baseline_draft(project)
+    except Exception as exc:
+        st.error(f"공정안전보고서 규정서식 작성본을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
+        return
+
+    st.download_button(
+        "공정안전보고서 규정서식 작성본 DOCX 다운로드",
+        data=data,
+        file_name=psm_baseline_filename(project),
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        key=f"download_psm_regulation_form_{project.project_id}",
         width="stretch",
         type="primary",
     )
@@ -582,13 +622,18 @@ st.caption("AI를 실행하지 않아도 아래 기본 초안을 바로 내려�
 
 if project.cap_in_scope:
     _render_cap_hwpx(project)
-    st.markdown("### 화학사고예방관리계획서 · DOCX 초안")
+    st.markdown("### 화학사고예방관리계획서 · 내부 검토용")
+    st.caption(
+        "이 파일은 여러 작성항목을 한 문서에서 검토하기 위해 프로그램이 재구성한 내부 검토용입니다. "
+        "법제처 원본과 표 형식·글꼴·크기·여백이 같지 않으며 최종 법정서식으로 사용하지 않습니다."
+    )
     _render_basic_docx(project, "CAP", CAP_FULL)
 
 if project.psm_in_scope:
     if project.cap_in_scope:
         st.divider()
-    st.markdown("### 공정안전보고서 · DOCX 초안")
+    _render_psm_regulation_form(project)
+    st.markdown("### 공정안전보고서 · 내부 검토용")
     _render_basic_docx(project, "PSM", PSM_FULL)
 
 st.divider()

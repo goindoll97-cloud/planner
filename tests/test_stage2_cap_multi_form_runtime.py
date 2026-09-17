@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 import tempfile
+from threading import Event, Thread
 import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -14,6 +15,7 @@ from engine.stage2.cap_multi_form_runtime import (
     BUNDLE_SOURCE,
     _build_bundle_zip,
     _bundle_meta,
+    _partial_builder,
     resolve_current_cap_form_bundle,
 )
 from engine.stage2.project import Stage2Project
@@ -128,6 +130,87 @@ class CAPMultiOfficialFormTests(unittest.TestCase):
         self.assertIn("법제처 원본서식 작성본 ZIP 다운로드", source)
         self.assertIn('kwargs["mime"] = "application/zip"', source)
         self.assertNotIn("여러 원본을 하나의 새 법정서식으로 임의 병합", "")
+
+
+class CAPMultiFormPartialBuilderTests(unittest.TestCase):
+    """Split official CAP files contain only some statutory form markers, so
+    cap_multi_form_runtime._partial_builder relaxes the monolithic validation
+    only for that approved split-form writer; every other caller of
+    cap_hwpx.validate_cap_hwpx_template (manual uploads, single-template
+    validation) must stay strict, including immediately after a relaxed call."""
+
+    def _strict_validation(self):
+        return cap_hwpx.CAPTemplateValidation(
+            ok=False,
+            sha256="a" * 64,
+            found_markers=("[별지 제1호서식]",),
+            missing_markers=("[별지 제3호서식]",),
+            section_paths=("Contents/section0.xml",),
+        )
+
+    def test_partial_builder_relaxes_only_split_form_call_and_restores_validator(self):
+        strict = self._strict_validation()
+        calls = []
+
+        def strict_validator(_data):
+            return strict
+
+        def original_build(project, template_bytes=None):
+            result = cap_hwpx.validate_cap_hwpx_template(template_bytes or b"")
+            calls.append(result.ok)
+            if not result.ok:
+                raise ValueError("strict rejection")
+            return "built"
+
+        with patch.object(cap_hwpx, "validate_cap_hwpx_template", strict_validator):
+            builder = _partial_builder(original_build)
+            self.assertEqual(builder(object(), template_bytes=b"split-form"), "built")
+            self.assertEqual(calls, [True])
+            self.assertIs(cap_hwpx.validate_cap_hwpx_template, strict_validator)
+            with self.assertRaisesRegex(ValueError, "strict rejection"):
+                original_build(object(), template_bytes=b"split-form")
+
+    def test_concurrent_unrelated_validation_stays_strict_during_partial_build(self):
+        strict = self._strict_validation()
+        build_entered = Event()
+        allow_build_to_finish = Event()
+        build_errors = []
+
+        def strict_validator(_data):
+            return strict
+
+        def original_build(project, template_bytes=None):
+            result = cap_hwpx.validate_cap_hwpx_template(template_bytes or b"")
+            if not result.ok:
+                raise ValueError("split build was not relaxed")
+            build_entered.set()
+            if not allow_build_to_finish.wait(timeout=5):
+                raise TimeoutError("test did not release partial build")
+            return "built"
+
+        def run_partial_build(builder):
+            try:
+                builder(object(), template_bytes=b"split-form")
+            except Exception as exc:
+                build_errors.append(exc)
+
+        with patch.object(cap_hwpx, "validate_cap_hwpx_template", strict_validator):
+            builder = _partial_builder(original_build)
+            worker = Thread(target=run_partial_build, args=(builder,))
+            worker.start()
+            self.assertTrue(build_entered.wait(timeout=5))
+
+            # While another session/thread is inside the relaxed split-form
+            # build, unrelated callers must still observe strict validation.
+            concurrent = cap_hwpx.validate_cap_hwpx_template(b"manual-upload")
+            self.assertFalse(concurrent.ok)
+            self.assertEqual(concurrent.missing_markers, strict.missing_markers)
+
+            allow_build_to_finish.set()
+            worker.join(timeout=5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(build_errors, [])
+            self.assertIs(cap_hwpx.validate_cap_hwpx_template, strict_validator)
 
 
 if __name__ == "__main__":

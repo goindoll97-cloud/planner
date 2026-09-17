@@ -12,7 +12,7 @@ from engine.stage2.local_llm import LocalLLMConfig
 
 class Stage2LocalAIResilienceTests(unittest.TestCase):
     def test_legacy_heavy_defaults_are_tuned_for_local_14b(self):
-        config = resilience._resilient_config_from_sources(
+        config = resilience.local_llm_config_from_sources(
             {
                 "LOCAL_LLM_PROVIDER": "ollama",
                 "LOCAL_LLM_MODEL": "qwen3:14b",
@@ -25,7 +25,7 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertEqual(config.max_output_tokens, 3000)
 
     def test_explicit_longer_timeout_and_lower_token_cap_are_respected(self):
-        config = resilience._resilient_config_from_sources(
+        config = resilience.local_llm_config_from_sources(
             {
                 "LOCAL_LLM_PROVIDER": "ollama",
                 "LOCAL_LLM_MODEL": "qwen3:14b",
@@ -308,11 +308,53 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertEqual(len(result.generated), 3)
         self.assertEqual(checkpoint.call_count, 3)
 
-    def test_app_installs_resilience_before_page_execution(self):
-        with open("app.py", encoding="utf-8") as handle:
+    def test_review_page_imports_resilient_client_and_drafting(self):
+        # ui/stage2_review_page.py imports build_local_llm_client/
+        # local_llm_config_from_sources/generate_system_ai_drafts directly
+        # from local_ai_resilience (not the plain local_llm/ai_drafting
+        # versions), so there is no install step needed to make the real app
+        # use the resilient behavior.
+        with open("ui/stage2_review_page.py", encoding="utf-8") as handle:
             source = handle.read()
-        self.assertIn("install_local_ai_resilience", source)
-        self.assertIn("install_local_ai_resilience()", source)
+        self.assertIn("from engine.stage2.local_ai_resilience import (", source)
+        self.assertIn("build_local_llm_client", source)
+        self.assertIn("generate_system_ai_drafts", source)
+        self.assertIn("local_llm_config_from_sources", source)
+
+    def test_fast_auto_selection_picks_smaller_installed_model_and_batch(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        selected = resilience.select_fast_auto_config(configured, ("qwen3:14b", "qwen3:8b"))
+        self.assertEqual(selected.model, "qwen3:8b")
+        self.assertLessEqual(selected.max_output_tokens, resilience.FAST_AUTO_MAX_OUTPUT_TOKENS)
+        self.assertEqual(resilience.recommended_batch_size(selected.model), resilience.FAST_AUTO_BATCH_SIZE)
+
+    def test_fast_auto_selection_is_vram_aware_when_model_sizes_are_known(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        selected = resilience.select_fast_auto_config(
+            configured,
+            ("qwen3:14b", "qwen3:8b", "qwen3.5:4b"),
+            available_model_sizes={
+                "qwen3:14b": 9_300_000_000,
+                "qwen3:8b": 5_800_000_000,
+                "qwen3.5:4b": 3_400_000_000,
+            },
+            gpu_vram_bytes=6 * 1024 * 1024 * 1024,
+        )
+        self.assertEqual(selected.model, "qwen3.5:4b")
+        self.assertLessEqual(selected.max_output_tokens, resilience.FAST_AUTO_MAX_OUTPUT_TOKENS)
+        self.assertEqual(resilience.recommended_batch_size(selected.model), resilience.FAST_AUTO_BATCH_SIZE)
 
 
 if __name__ == "__main__":

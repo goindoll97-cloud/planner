@@ -2,13 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
-from engine.stage2.cap_fragment_runtime import install_cap_fragment_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
-from engine.stage2.cap_official_docx import install_cap_official_word_runtime
-from engine.stage2.local_ai_resilience import install_local_ai_resilience
-from engine.stage2.psm_baseline_runtime import install_psm_baseline_runtime
 from engine.stage2.storage import list_projects, load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
@@ -23,36 +18,30 @@ ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 # law.go.kr may publish CAP appendices as several approved HWP/HWPX files rather
 # than one monolithic file. Treat the CURRENT approved set as one official form
 # bundle, fill each original independently, and package the written forms as ZIP.
+# (Split official files intentionally contain only some statutory form markers;
+# cap_multi_form_runtime._partial_builder relaxes the monolithic validation only
+# for that approved split-form writer, and cap_hwpx.convert_hwp_to_hwpx quiets
+# pyhwpx's local DLL-path diagnostic noise during HWP conversion.)
 install_cap_multi_form_runtime()
-# Split official files intentionally contain only some statutory form markers.
-# Relax the monolithic validation only inside the approved split-form writer and
-# suppress pyhwpx's local DLL-path diagnostic noise during HWP conversion.
-install_cap_fragment_runtime()
 # Keep statutory checkbox/choice cells as full official option sets instead of
 # replacing them with short free text, and omit internal review notes from the
 # CAP final-facing DOCX. This runs after the split-form writer is installed.
 install_cap_final_form_runtime()
-# The legal Word output is not a python-docx redraw. Export the completed law.go.kr
-# HWPX through local Hancom Office so official table/font/page layout is retained.
-# Also label the old combined DOCX truthfully as internal review material.
-install_cap_official_word_runtime()
-# PSM uses the preserved regulation-form DOCX as a separate layout baseline.
-# It inserts confirmed company data into those existing form cells while the
-# ordinary PSM DOCX remains an internal review document with broader prose.
-install_psm_baseline_runtime()
+# The legal Word output (engine.stage2.cap_official_docx.build_cap_official_word)
+# is not a python-docx redraw: it exports the completed law.go.kr HWPX through
+# local Hancom Office so official table/font/page layout is retained. It is
+# invoked explicitly rather than through Stage 5, which renders its own
+# internal-review-labeled DOCX and the PSM regulation-form baseline directly
+# (see ui/stage2_review_page.py).
 
-# Local 14B models can be healthy yet exceed the old 180-second single-request
-# limit when many report items are sent at once. Install small-batch generation,
-# longer local read timeouts, bounded output, checkpoint saves and Ollama
-# non-thinking mode before Streamlit imports the selected Stage 2 page.
-# Local models may also return equivalent JSON with `items`, `sentences`, a
-# keyed object, or a direct one-item object instead of the exact `drafts`
-# array; local_ai_resilience tolerates those harmless response-shape
-# differences while keeping validation strict on requirement keys/facts.
-install_local_ai_resilience()
-# Surface each local-AI item immediately instead of leaving the page at 0/N
-# during the first multi-item model call. Grounding/validation stays unchanged.
-install_ai_live_progress_runtime()
+# ui/stage2_review_page.py imports build_local_llm_client/
+# local_llm_config_from_sources/generate_system_ai_drafts directly from
+# engine.stage2.local_ai_resilience (small-batch generation with
+# checkpointing, longer local read timeouts, bounded output, and tolerant
+# JSON-shape parsing for local Ollama models) instead of the plain
+# local_llm/ai_drafting versions, so no install step is needed here.
+# _run_automatic_ai's own progress_callback (called both before and after
+# each batch) surfaces progress directly, with no separate runtime needed.
 
 
 def _stage2_progress() -> tuple[bool, bool]:

@@ -14,13 +14,14 @@ This module keeps the existing fail-closed rules:
 - incomplete coverage, failed HWP conversion, or unrecognised forms stay HOLD.
 """
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 import platform
 import re
-from types import FunctionType
+from threading import RLock
 from typing import Any, Mapping, Sequence
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -32,6 +33,11 @@ WRAPPER_MARKER = "_cap_multi_form_runtime_wrapper"
 CACHE_DIR = cap_hwpx.PROJECT_ROOT / "data" / "runtime" / "cap_hwpx_converted"
 BUNDLE_SOURCE = "APPROVED_LAW_ARCHIVE_BUNDLE"
 BUNDLE_INCOMPLETE_SOURCE = "APPROVED_LAW_ARCHIVE_BUNDLE_INCOMPLETE"
+_VALIDATION_LOCK = RLock()
+_PARTIAL_VALIDATION_ALLOWED: ContextVar[bool] = ContextVar(
+    "cap_multi_form_partial_validation_allowed",
+    default=False,
+)
 
 
 @dataclass(frozen=True)
@@ -221,8 +227,8 @@ def _bundle_meta(bundle: CAPOfficialFormBundle) -> Mapping[str, Any]:
     }
 
 
-def _relaxed_validation(data: bytes):
-    validation = cap_hwpx.validate_cap_hwpx_template(data)
+def _relaxed_validation(strict_validate, data: bytes):
+    validation = strict_validate(data)
     if validation.found_markers:
         return cap_hwpx.CAPTemplateValidation(
             ok=True,
@@ -235,22 +241,38 @@ def _relaxed_validation(data: bytes):
 
 
 def _partial_builder(original_build):
-    """Clone the existing builder with validation relaxed only for one approved split form.
+    """Relax validation only inside one approved split-form build context.
 
-    Cloning the function globals avoids mutating cap_hwpx.validate_cap_hwpx_template
-    process-wide, so manual uploads and ordinary single-template validation remain strict.
+    ``cap_hwpx.build_cap_hwpx_draft`` resolves ``validate_cap_hwpx_template``
+    from the module at call time, so the split-form path still needs a temporary
+    wrapper there.  The wrapper is context-local: only the thread/task that set
+    ``_PARTIAL_VALIDATION_ALLOWED`` sees partial-form validation as acceptable.
+    Any concurrent Streamlit session sees the same temporary wrapper but its
+    ContextVar remains false, so it still executes the captured strict validator.
+    The module binding is restored in ``finally`` for compatibility with callers
+    that expect the ordinary validator object outside the split-form call.
     """
-    globals_copy = dict(original_build.__globals__)
-    globals_copy["validate_cap_hwpx_template"] = _relaxed_validation
-    cloned = FunctionType(
-        original_build.__code__,
-        globals_copy,
-        name=original_build.__name__,
-        argdefs=original_build.__defaults__,
-        closure=original_build.__closure__,
-    )
-    cloned.__kwdefaults__ = original_build.__kwdefaults__
-    return cloned
+
+    def build_partial(project, template_bytes: bytes | None = None):
+        if template_bytes is None:
+            return original_build(project)
+        with _VALIDATION_LOCK:
+            current = cap_hwpx.validate_cap_hwpx_template
+            token = _PARTIAL_VALIDATION_ALLOWED.set(True)
+
+            def contextual_validate(data: bytes):
+                if not _PARTIAL_VALIDATION_ALLOWED.get():
+                    return current(data)
+                return _relaxed_validation(current, data)
+
+            cap_hwpx.validate_cap_hwpx_template = contextual_validate
+            try:
+                return original_build(project, template_bytes=template_bytes)
+            finally:
+                cap_hwpx.validate_cap_hwpx_template = current
+                _PARTIAL_VALIDATION_ALLOWED.reset(token)
+
+    return build_partial
 
 
 def _meaningful_warnings(values: Sequence[str]) -> tuple[str, ...]:

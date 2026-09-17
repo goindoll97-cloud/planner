@@ -292,8 +292,15 @@ class ResilientOllamaLocalClient:
         return local_llm._parse_json_object(text)
 
 
-def _resilient_config_from_sources(values: Mapping[str, Any] | None = None) -> local_llm.LocalLLMConfig:
-    config = _ORIGINAL_CONFIG_FROM_SOURCES(values)
+def local_llm_config_from_sources(values: Mapping[str, Any] | None = None) -> local_llm.LocalLLMConfig:
+    """Resilient drop-in for local_llm.local_llm_config_from_sources.
+
+    Ordinary Windows PCs can take a long time when a 14B model drafts many
+    report items in one call, so the resulting config always gets at least
+    DEFAULT_LOCAL_AI_TIMEOUT_SECONDS and at most
+    DEFAULT_LOCAL_AI_MAX_OUTPUT_TOKENS, regardless of the configured/env values.
+    """
+    config = local_llm.local_llm_config_from_sources(values)
     return replace(
         config,
         timeout_seconds=max(config.timeout_seconds, DEFAULT_LOCAL_AI_TIMEOUT_SECONDS),
@@ -301,7 +308,10 @@ def _resilient_config_from_sources(values: Mapping[str, Any] | None = None) -> l
     )
 
 
-def _resilient_build_client(config: local_llm.LocalLLMConfig):
+def build_local_llm_client(config: local_llm.LocalLLMConfig):
+    """Resilient drop-in for local_llm.build_local_llm_client: an Ollama
+    client gets checkpoint/retry/timeout hardening (ResilientOllamaLocalClient)
+    instead of the plain OllamaLocalClient."""
     local_llm.validate_local_base_url(config.base_url)
     probe = local_llm.probe_local_llm_runtime(config)
     if not probe.ready:
@@ -432,16 +442,7 @@ def generate_system_ai_drafts_batched(
     )
 
 
-_ORIGINAL_CONFIG_FROM_SOURCES = local_llm.local_llm_config_from_sources
-_ORIGINAL_BUILD_CLIENT = local_llm.build_local_llm_client
-_ORIGINAL_GENERATE_SYSTEM_DRAFTS = core.generate_system_ai_drafts
-
-
-def install_local_ai_resilience() -> None:
-    """Install the resilient runtime once, before Streamlit page imports."""
-    if getattr(local_llm, "_local_ai_resilience_installed", False):
-        return
-    local_llm.local_llm_config_from_sources = _resilient_config_from_sources
-    local_llm.build_local_llm_client = _resilient_build_client
-    core.generate_system_ai_drafts = generate_system_ai_drafts_batched
-    local_llm._local_ai_resilience_installed = True
+# Resilient drop-in for ai_drafting.generate_system_ai_drafts: small-batch
+# generation with checkpointing and tolerant JSON-shape parsing instead of
+# one large single-shot call.
+generate_system_ai_drafts = generate_system_ai_drafts_batched
