@@ -11,9 +11,9 @@ threshold test, not a mass multiplier).
 This module exports drop-in, mixture-aware replacements for
 cap_holding_screen.screen_facility_stage, cap_engine.assess_cap,
 cap_holding.assess_cap_holding, and cap_quick_holding.compare_confirmed_declared_holding
-— callers that need mixture support (currently engine.stage1_workbook and
-engine.stage1_request_detail_runtime) import these names from here instead of
-from the base modules directly. Each one is fail-closed and behaves exactly
+— callers that need mixture support (currently engine.stage1_workbook) import
+these names from here instead of from the base modules directly. Each one
+is fail-closed and behaves exactly
 like the base function when the intake has no mixtures at all: old workbooks
 without the 02A sheet keep their current behaviour; explicit mixtures require
 component CAS/concentration/evidence; a concentration range that crosses a
