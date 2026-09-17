@@ -13,9 +13,8 @@ from engine.cap_mixture_runtime import (
     MIXTURE_FLAG_COLUMN,
     _prepare_mixture_facilities,
     _screen_component_direct,
-    _validate_components,
 )
-from engine.inventory import IntakeData
+from engine.inventory import IntakeData, _mixture_validation_issues
 from engine.template import build_minimal_input_workbook
 
 
@@ -37,7 +36,6 @@ class CAPMixtureRuntimeTests(unittest.TestCase):
             }
         ])
         data = IntakeData(business={}, chemicals=chemicals, documents={})
-        data.mixture_parent_rows = {1}
         data.mixture_components = pd.DataFrame([
             {
                 "적용여부": "해당", "제품목록행번호": 1, "제품명(확인용)": "혼합제품 A",
@@ -65,7 +63,7 @@ class CAPMixtureRuntimeTests(unittest.TestCase):
     def test_marked_mixture_requires_component_rows(self) -> None:
         data = self._intake()
         data.mixture_components = pd.DataFrame()
-        issues = _validate_components(data)
+        issues = _mixture_validation_issues(data)
         self.assertTrue(any("구성성분을 한 줄 이상" in issue for issue in issues))
 
     def test_storage_uses_component_pct_without_reducing_facility_mass(self) -> None:

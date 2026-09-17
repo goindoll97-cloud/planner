@@ -16,7 +16,6 @@ process concentration belongs to.
 """
 
 from io import BytesIO
-import re
 from typing import Any, Callable, Iterable
 
 import pandas as pd
@@ -34,7 +33,6 @@ COMPONENT_COLUMNS = [
     "적용여부", "제품목록행번호", "제품명(확인용)", "구성성분명", "CAS No.",
     "함량(%)", "함량 최저(%)", "함량 최고(%)", "SDS 제3항 근거", "비고",
 ]
-CAS_RE = re.compile(r"^\d{2,7}-\d{2}-\d$")
 
 TITLE_FILL = PatternFill("solid", fgColor="1F4E78")
 HEADER_FILL = PatternFill("solid", fgColor="5B9BD5")
@@ -87,19 +85,7 @@ def _component_frame(intake: Any) -> pd.DataFrame:
 
 
 def _mixture_rows(intake: Any) -> set[int]:
-    rows = set(getattr(intake, "mixture_parent_rows", set()) or set())
-    frame = _component_frame(intake)
-    if not frame.empty and "제품목록행번호" in frame.columns:
-        for value in frame["제품목록행번호"].tolist():
-            row_no = _int(value)
-            if row_no and row_no > 0:
-                rows.add(row_no)
-    chemicals = getattr(intake, "chemicals", pd.DataFrame())
-    if MIXTURE_FLAG_COLUMN in chemicals.columns:
-        for row_no, value in enumerate(chemicals[MIXTURE_FLAG_COLUMN].tolist(), start=1):
-            if _yes(value):
-                rows.add(row_no)
-    return rows
+    return set(intake.mixture_parent_rows())
 
 
 def _components_for_parent(intake: Any, parent: int) -> pd.DataFrame:
@@ -125,18 +111,16 @@ def _concentration_values(component: pd.Series) -> tuple[list[float], str]:
 def _clone_intake(intake: Any, *, chemicals: pd.DataFrame | None = None, facilities: pd.DataFrame | None = None):
     from .inventory import IntakeData
 
-    clone = IntakeData(
+    return IntakeData(
         business=dict(getattr(intake, "business", {}) or {}),
         chemicals=(chemicals.copy() if chemicals is not None else intake.chemicals.copy()),
         documents=dict(getattr(intake, "documents", {}) or {}),
         facilities=(facilities.copy() if facilities is not None else getattr(intake, "facilities", pd.DataFrame()).copy()),
         final_conditions=dict(getattr(intake, "final_conditions", {}) or {}),
         psm_note8_exclusions=getattr(intake, "psm_note8_exclusions", pd.DataFrame()).copy(),
+        mixture_components=_component_frame(intake).copy(),
         source_fingerprint=str(getattr(intake, "source_fingerprint", "") or ""),
     )
-    setattr(clone, "mixture_components", _component_frame(intake).copy())
-    setattr(clone, "mixture_parent_rows", set(_mixture_rows(intake)))
-    return clone
 
 
 def _single_component_intake(intake: Any, parent: int, component: pd.Series, pct: float):
@@ -200,86 +184,6 @@ def _screen_component_direct(original_screen: Callable[[Any], Any], intake: Any,
     for run in runs:
         blockers.extend(str(v) for v in (getattr(run, "blockers", []) or []))
     return (mapped[-1] if mapped else []), list(dict.fromkeys(blockers)), claimed, True
-
-
-def _read_components(file_bytes: bytes) -> pd.DataFrame:
-    try:
-        xls = pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
-    except Exception:
-        return pd.DataFrame(columns=COMPONENT_COLUMNS)
-    if COMPONENT_SHEET not in xls.sheet_names:
-        return pd.DataFrame(columns=COMPONENT_COLUMNS)
-    frame = pd.read_excel(xls, sheet_name=COMPONENT_SHEET, header=2).dropna(how="all").copy()
-    if frame.empty:
-        return pd.DataFrame(columns=COMPONENT_COLUMNS)
-    if "적용여부" in frame.columns:
-        status = frame["적용여부"].map(_clean)
-        frame = frame[~status.isin(["해당없음", "미해당", "N", "n"])].copy()
-    for col in COMPONENT_COLUMNS:
-        if col not in frame.columns:
-            frame[col] = None
-    value_cols = ["제품목록행번호", "구성성분명", "CAS No.", "함량(%)", "함량 최저(%)", "함량 최고(%)"]
-    frame = frame[frame[value_cols].notna().any(axis=1)].copy()
-    return frame[COMPONENT_COLUMNS].reset_index(drop=True)
-
-
-def _add_component_summary(data: Any) -> None:
-    frame = _component_frame(data)
-    if frame.empty:
-        return
-    data.chemicals["혼합물 구성성분 요약"] = ""
-    summaries: dict[int, list[str]] = {}
-    for _, component in frame.iterrows():
-        parent = _int(component.get("제품목록행번호"))
-        if not parent or parent > len(data.chemicals):
-            continue
-        values, mode = _concentration_values(component)
-        pct = ""
-        if values:
-            pct = f"{values[0]:g}%" if mode == "exact" else f"{values[0]:g}~{values[-1]:g}%"
-        text = " / ".join(v for v in [_clean(component.get("구성성분명")), _clean(component.get("CAS No.")), pct] if v)
-        if text:
-            summaries.setdefault(parent, []).append(text)
-    for parent, values in summaries.items():
-        data.chemicals.at[parent - 1, "혼합물 구성성분 요약"] = "; ".join(values)
-
-
-def _validate_components(data: Any) -> list[str]:
-    issues: list[str] = []
-    frame = _component_frame(data)
-    for parent in sorted(_mixture_rows(data)):
-        if parent <= 0 or parent > len(data.chemicals):
-            issues.append(f"혼합물 구성성분: 제품목록행번호 {parent}가 02_화학물질목록에 없습니다.")
-            continue
-        if _components_for_parent(data, parent).empty:
-            product = _clean(data.chemicals.iloc[parent - 1].get("제품명"))
-            issues.append(f"혼합물 {parent}행({product or '제품'}): 02A_혼합물구성성분에 구성성분을 한 줄 이상 작성해 주세요.")
-
-    seen: set[tuple[int, str]] = set()
-    for idx, row in frame.iterrows():
-        excel_row = idx + 4
-        parent = _int(row.get("제품목록행번호"))
-        if not parent or parent > len(data.chemicals):
-            issues.append(f"02A_혼합물구성성분 {excel_row}행: 유효한 제품목록행번호가 필요합니다.")
-            continue
-        if MIXTURE_FLAG_COLUMN in data.chemicals.columns and _no(data.chemicals.iloc[parent - 1].get(MIXTURE_FLAG_COLUMN)):
-            issues.append(f"02A_혼합물구성성분 {excel_row}행: 구성성분이 입력된 제품 {parent}행의 '혼합물 여부'를 Y로 확인해 주세요.")
-        name = _clean(row.get("구성성분명"))
-        cas = _clean(row.get("CAS No."))
-        if not name:
-            issues.append(f"02A_혼합물구성성분 {excel_row}행: 구성성분명이 필요합니다.")
-        if not CAS_RE.fullmatch(cas):
-            issues.append(f"02A_혼합물구성성분 {excel_row}행({name or '성분'}): CAS No.를 확인해 주세요.")
-        if not _concentration_values(row)[0]:
-            issues.append(f"02A_혼합물구성성분 {excel_row}행({name or cas}): 함량(%) 또는 유효한 함량 최저·최고 범위가 필요합니다.")
-        if not _clean(row.get("SDS 제3항 근거")):
-            issues.append(f"02A_혼합물구성성분 {excel_row}행({name or cas}): SDS 제3항 등 함량근거를 작성해 주세요.")
-        key = (parent, cas)
-        if cas and key in seen:
-            issues.append(f"02A_혼합물구성성분 {excel_row}행: 제품 {parent}행에 동일 CAS {cas}가 중복 입력되었습니다.")
-        if cas:
-            seen.add(key)
-    return list(dict.fromkeys(issues))
 
 
 def _replace_short_name(value: Any) -> Any:
@@ -489,31 +393,9 @@ def install_cap_mixture_runtime() -> None:
 
     template_module.build_minimal_input_workbook = _patch_template(template_module.build_minimal_input_workbook)
 
-    original_read = inventory_module.read_intake_workbook
-    original_validate = inventory_module.validate_intake
-
-    def read_with_components(file_bytes: bytes):
-        data = original_read(file_bytes)
-        components = _read_components(file_bytes)
-        setattr(data, "mixture_components", components)
-        rows: set[int] = set()
-        if MIXTURE_FLAG_COLUMN in data.chemicals.columns:
-            for row_no, value in enumerate(data.chemicals[MIXTURE_FLAG_COLUMN].tolist(), start=1):
-                if _yes(value):
-                    rows.add(row_no)
-        for value in components.get("제품목록행번호", pd.Series(dtype=object)).tolist():
-            row_no = _int(value)
-            if row_no and row_no > 0:
-                rows.add(row_no)
-        setattr(data, "mixture_parent_rows", rows)
-        _add_component_summary(data)
-        return data
-
-    def validate_with_components(data):
-        return list(dict.fromkeys(list(original_validate(data)) + _validate_components(data)))
-
-    inventory_module.read_intake_workbook = read_with_components
-    inventory_module.validate_intake = validate_with_components
+    # inventory.read_intake_workbook/validate_intake already read and validate
+    # mixture_components directly (it is a real IntakeData field); only the
+    # downstream CAP screening/scope/holding functions still need patching.
 
     original_screen = screen_module.screen_facility_stage
     original_scope = cap_scope_module.assess_cap_scope
