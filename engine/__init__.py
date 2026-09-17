@@ -101,7 +101,6 @@ _install_kosha_msds_endpoint_migration()
 from .company_intake_contract import install_company_intake_contract
 from .company_intake_fullname_runtime import install_company_intake_fullname_runtime
 from .cap_mixture_runtime import install_cap_mixture_runtime
-from .cap_mixture_display_runtime import install_cap_mixture_display_runtime
 from .stage1_request_detail_runtime import install_stage1_request_detail_runtime
 from .stage2_visible_handoff_runtime import install_stage2_visible_handoff_runtime
 
@@ -110,7 +109,6 @@ install_company_intake_fullname_runtime()
 # Install the mixture/component contract before Stage-1 is imported by the
 # detailed-request hook, so Stage-1 captures the mixture-aware CAP functions.
 install_cap_mixture_runtime()
-install_cap_mixture_display_runtime()
 install_stage1_request_detail_runtime()
 # Keep Stage 1/2 files separate but make carried facts visible, immutable in
 # Stage 2, and available to mixture-aware MSDS reference/validation logic.

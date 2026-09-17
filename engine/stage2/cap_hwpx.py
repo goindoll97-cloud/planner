@@ -22,7 +22,7 @@ from zipfile import BadZipFile, ZipFile
 
 from hwpx.table_patch import fill_cells, resolve_cell_target
 
-from ..law_attachment_archive import approved_source_files
+from ..law_attachment_archive import approved_source_files, approved_source_is_current
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -228,10 +228,26 @@ def _approved_current_cap_template_meta() -> Mapping[str, Any] | None:
 
 
 def registered_cap_template(project: Stage2Project) -> Mapping[str, Any] | None:
+    """Resolve the CAP layout template, preferring the CURRENT approved form.
+
+    The CURRENT approved law.go.kr CAP template is the layout authority. A
+    project-uploaded official template is allowed only as a fallback while the
+    central CAP legal source is not CURRENT. Once law.go.kr has been refreshed
+    and approved as CURRENT, an older project copy must never silently
+    reappear merely because the new official HWP/HWPX cannot be mapped by the
+    current template engine — report generation fails closed (returns None)
+    until the new form mapping is supported.
+    """
+    current = _approved_current_cap_template_meta()
+    if current is not None:
+        return current
+    if approved_source_is_current(CAP_LAW_SOURCE_KEY):
+        return None
+
     rec = project.get_field(TEMPLATE_FIELD_KEY)
     if rec is not None and isinstance(rec.value, Mapping):
         return rec.value
-    return _approved_current_cap_template_meta()
+    return None
 
 
 def load_registered_cap_template_bytes(project: Stage2Project) -> bytes:

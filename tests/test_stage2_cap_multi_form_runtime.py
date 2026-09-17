@@ -123,14 +123,6 @@ class CAPMultiOfficialFormTests(unittest.TestCase):
             self.assertIn("임의 병합하지 않습니다", guide)
             self.assertIn("원본 SHA-256", guide)
 
-    def test_app_installs_multi_form_support_after_current_template_priority(self):
-        source = Path("app.py").read_text(encoding="utf-8")
-        self.assertIn("install_cap_multi_form_runtime", source)
-        self.assertLess(
-            source.index("install_current_cap_template_priority()"),
-            source.index("install_cap_multi_form_runtime()"),
-        )
-
     def test_runtime_exposes_truthful_zip_download_label(self):
         source = Path("engine/stage2/cap_multi_form_runtime.py").read_text(encoding="utf-8")
         self.assertIn("법제처 원본서식 작성본 ZIP 다운로드", source)

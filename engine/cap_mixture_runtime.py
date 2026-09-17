@@ -28,6 +28,8 @@ from openpyxl.worksheet.datavalidation import DataValidation
 COMPONENT_SHEET = "02A_혼합물구성성분"
 MIXTURE_FLAG_COLUMN = "혼합물 여부"
 FACILITY_COMPONENT_CAS_COLUMN = "규제성분 CAS(혼합물)"
+_SHORT_NAME = "화사계"
+_FULL_NAME = "화학사고예방관리계획서"
 COMPONENT_COLUMNS = [
     "적용여부", "제품목록행번호", "제품명(확인용)", "구성성분명", "CAS No.",
     "함량(%)", "함량 최저(%)", "함량 최고(%)", "SDS 제3항 근거", "비고",
@@ -280,12 +282,51 @@ def _validate_components(data: Any) -> list[str]:
     return list(dict.fromkeys(issues))
 
 
+def _replace_short_name(value: Any) -> Any:
+    if isinstance(value, str) and _SHORT_NAME in value:
+        return value.replace(_SHORT_NAME, _FULL_NAME)
+    return value
+
+
+def _cleanup_company_workbook(raw: bytes) -> bytes:
+    """Final user-facing pass: full legal names only, and blank future input
+    rows are not left flagged as non-mixtures by the new mixture column."""
+    wb = load_workbook(BytesIO(raw), data_only=False)
+
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                replacement = _replace_short_name(cell.value)
+                if replacement != cell.value:
+                    cell.value = replacement
+
+    if "02_화학물질목록" in wb.sheetnames:
+        ws = wb["02_화학물질목록"]
+        headers = {
+            str(ws.cell(3, col).value or "").strip(): col
+            for col in range(1, ws.max_column + 1)
+        }
+        mix_col = headers.get(MIXTURE_FLAG_COLUMN)
+        if mix_col:
+            for row_no in range(4, ws.max_row + 1):
+                has_product_data = any(
+                    ws.cell(row_no, col).value not in (None, "")
+                    for col in (2, 3, 4, 5)  # 제품명, CAS, 물질명, 함량
+                )
+                if not has_product_data:
+                    ws.cell(row_no, mix_col).value = None
+
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
 def _patch_template(original: Callable[[], bytes]) -> Callable[[], bytes]:
     def wrapped() -> bytes:
         raw = original()
         wb = load_workbook(BytesIO(raw))
         if COMPONENT_SHEET in wb.sheetnames:
-            return raw
+            return _cleanup_company_workbook(raw)
 
         chem = wb["02_화학물질목록"]
         mix_col = chem.max_column + 1
@@ -382,7 +423,7 @@ def _patch_template(original: Callable[[], bytes]) -> Callable[[], bytes]:
 
         out = BytesIO()
         wb.save(out)
-        return out.getvalue()
+        return _cleanup_company_workbook(out.getvalue())
 
     wrapped._planner_cap_mixture_template = True
     return wrapped

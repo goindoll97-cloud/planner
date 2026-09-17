@@ -108,11 +108,14 @@ class AILiveProgressRuntimeTests(unittest.TestCase):
             resilience.recommended_batch_size = original_recommended
             resilience._ai_live_progress_runtime_installed = installed
 
-    def test_app_installs_live_progress_after_response_normalizer(self):
+    def test_app_installs_live_progress_after_local_ai_resilience(self):
+        # install_ai_live_progress_runtime wraps resilience._process_one_batch,
+        # so it must install after local_ai_resilience (which now also owns the
+        # tolerant-JSON-shape normalization that used to be a separate step).
         text = open("app.py", encoding="utf-8").read()
-        normalizer_pos = text.index("install_ai_response_runtime()")
+        resilience_pos = text.index("install_local_ai_resilience()")
         progress_pos = text.index("install_ai_live_progress_runtime()")
-        self.assertLess(normalizer_pos, progress_pos)
+        self.assertLess(resilience_pos, progress_pos)
         self.assertIn("install_ai_live_progress_runtime", text)
 
 
