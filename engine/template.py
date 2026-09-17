@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from .company_intake_contract import COMPANY_FACT_SPECS
 from .inventory import (
     FACILITY_COMPONENT_CAS_COLUMN,
     MIXTURE_COMPONENT_COLUMNS,
@@ -75,8 +76,9 @@ def _build_guide_sheet(wb: Workbook) -> None:
 
     ws.merge_cells("A3:H3")
     ws["A3"] = (
-        "이 파일은 누가 미리 작성해 놓은 예시입니다. 초록색 예시값을 귀사 정보로 바꾸고, "
-        "선택형 항목은 드롭다운에서 고르세요."
+        "이 파일은 회사가 직접 확인해야 하는 사실과 판정에 필요한 수량·물질정보를 받는 파일입니다. "
+        "서술형 공정개요, 주요사업 내용, 규정수량 계산, 작성수준, 사고시나리오 설명 등은 회사가 문장으로 작성하지 않아도 되며 "
+        "확인자료를 바탕으로 AI/시스템이 초안을 만들고 검토 단계에서 확인합니다."
     )
     ws["A3"].fill = EXAMPLE_FILL
     ws["A3"].font = Font(bold=True)
@@ -113,30 +115,43 @@ def _build_guide_sheet(wb: Workbook) -> None:
 
 
 def _build_business_sheet(wb: Workbook) -> None:
+    """The 01_사업장기본정보 sheet asks only for the company-fact contract.
+
+    Narrative overview, regulatory calculations, applicability decisions and
+    writing level stay out of the company-direct input burden (see
+    engine.company_intake_contract.COMPANY_FACT_SPECS) — those are AI-draftable
+    or rule-engine-derived, not facts only the company can confirm.
+    """
     ws = wb.create_sheet("01_사업장기본정보")
     ws.merge_cells("A1:E1")
-    ws["A1"] = "1. 사업장 기본정보 — 초록색 예시값을 귀사 정보로 수정"
+    ws["A1"] = "1. 사업장·최종보고서 회사확정정보 — 회사만 확정할 수 있는 사실을 입력"
     ws["A1"].fill = TITLE_FILL
     ws["A1"].font = Font(color="FFFFFF", bold=True, size=13)
 
+    ws.merge_cells("A2:E2")
+    ws["A2"] = (
+        "공정개요·주요사업 내용·사고시나리오 설명·작성수준·규정수량 등은 자료와 규정을 바탕으로 AI/시스템이 작성·계산하므로 여기서 요구하지 않습니다. "
+        "대표자·등록번호·설비명·연락처·일정처럼 회사가 아니면 확정할 수 없는 사실만 작성하세요. 대상 여부가 아직 정해지지 않은 전용항목은 '모름'으로 둘 수 있습니다."
+    )
+    ws["A2"].fill = NOTE_FILL
+    ws["A2"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws.row_dimensions[2].height = 44
+
     _write_row(ws, 3, ["항목", "입력값", "필수", "프로그램 활용", "작성예시/설명"])
     _style_header(ws, "A3:E3")
-    rows = [
-        ["사업장명", "한빛정밀화학(주) 울산공장 (가상)", "Y", "공통", "귀사 사업장명을 입력"],
-        ["사업장 주소", "울산광역시 남구 산업로 000 (가상)", "Y", "화학사고예방관리계획서", "실제 주소 입력"],
-        ["업종 또는 주요 생산품", "석유화학계 기초화학물질 및 정밀화학 중간체 제조", "Y", "공정안전보고서", "주요 생산품까지 적으면 판정에 도움"],
-        ["한국표준산업분류(KSIC) 코드", "20111", "N", "공정안전보고서", "모르면 '모름' 입력 가능"],
-        ["기존 공정안전보고서 보유 여부", "Y", "Y", "공통", "Y / N / 해당없음 / 모름"],
-        ["기존 장외영향평가서 보유 여부", "Y", "Y", "화학사고예방관리계획서", "Y / N / 해당없음 / 모름"],
-        ["기존 화학사고예방관리계획서 보유 여부", "N", "Y", "화학사고예방관리계획서", "Y / N / 해당없음 / 모름"],
-        ["현재 목적", "신규 사전진단", "Y", "공통", "신규 사전진단 / 변경검토 / 재제출검토"],
-    ]
-    for r_idx, row in enumerate(rows, start=4):
-        _write_row(ws, r_idx, row)
-        ws.cell(r_idx, 2).fill = EXAMPLE_FILL
-    _wrap_range(ws, "A3:E11")
-    _add_list_validation(ws, "B8:B10", ["Y", "N", "해당없음", "모름"])
-    _add_list_validation(ws, "B11", ["신규 사전진단", "변경검토", "재제출검토"])
+
+    for row_index, spec in enumerate(COMPANY_FACT_SPECS, start=4):
+        _write_row(ws, row_index, [spec.label, spec.example, spec.required, spec.usage, spec.help_text])
+        ws.cell(row_index, 2).fill = EXAMPLE_FILL
+        if spec.choices:
+            _add_list_validation(ws, f"B{row_index}", list(spec.choices))
+
+    end_row = 3 + len(COMPANY_FACT_SPECS)
+    _wrap_range(ws, f"A1:E{end_row}")
+    widths = [38, 48, 12, 32, 62]
+    for index, width in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64 + index)].width = width
+    ws.freeze_panes = "A4"
 
     widths = [34, 46, 10, 26, 52]
     for i, width in enumerate(widths, 1):

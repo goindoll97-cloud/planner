@@ -95,15 +95,11 @@ def _install_company_input_guide_hook() -> None:
 
 _install_kosha_msds_endpoint_migration()
 
-# Keep the initial company workbook synchronized with the facts that the final
-# statutory-form writers need, while leaving AI-draftable narrative and
-# rule-engine calculations out of the company-direct input burden.
-from .company_intake_contract import install_company_intake_contract
-from .company_intake_fullname_runtime import install_company_intake_fullname_runtime
+# engine.company_intake_contract.COMPANY_FACT_SPECS/seed_company_facts drive
+# the "01_사업장기본정보" sheet (engine.template) and Stage 2 field carryover
+# (engine.stage2.project.create_project_from_stage1_snapshot) directly.
 from .stage2_visible_handoff_runtime import install_stage2_visible_handoff_runtime
 
-install_company_intake_contract()
-install_company_intake_fullname_runtime()
 # engine.cap_mixture exports mixture-aware screen_facility_stage/assess_cap/
 # assess_cap_holding/compare_confirmed_declared_holding directly; Stage 1
 # (engine.stage1_workbook) imports those by name instead of the plain

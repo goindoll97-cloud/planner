@@ -6,6 +6,8 @@ from typing import Any, Mapping
 import re
 import uuid
 
+from ..company_intake_contract import seed_company_facts
+
 
 EVIDENCE_STATUSES = (
     "VERIFIED",
@@ -329,5 +331,10 @@ def create_project_from_stage1_snapshot(snapshot: Mapping[str, Any]) -> Stage2Pr
         "VERIFIED" if snapshot.get("facilities") else "HOLD",
         evidence=base_evidence if snapshot.get("facilities") else [],
     )
+
+    # Carry the company-fact intake contract (engine.company_intake_contract)
+    # into Stage 2 project fields so the PSM/CAP statutory-form writers can
+    # reuse those company-confirmed facts without asking again.
+    seed_company_facts(project, business)
 
     return project
