@@ -18,6 +18,7 @@ PREF_KEY = "stage2_workflow"
 ATTACHMENT_MODE_MANUAL = "MANUAL_SEPARATE"
 ATTACHMENT_MODE_PROGRAM = "PROGRAM_MANAGED"
 ATTACHMENT_MODES = {ATTACHMENT_MODE_MANUAL, ATTACHMENT_MODE_PROGRAM}
+DRAFT_WITH_HOLDS_KEY = "draft_with_holds_acknowledged"
 
 BUCKET_CORE_INPUT = "CORE_INPUT"
 BUCKET_AI_TEXT = "AI_TEXT"
@@ -56,6 +57,7 @@ def set_attachment_mode(project: Stage2Project, mode: str) -> None:
     prefs["attachment_mode"] = mode
     prefs["intake_confirmed"] = False
     prefs["validation_confirmed"] = False
+    prefs[DRAFT_WITH_HOLDS_KEY] = False
     project.touch()
 
 
@@ -67,17 +69,40 @@ def validation_confirmed(project: Stage2Project) -> bool:
     return bool(_prefs(project).get("validation_confirmed", False))
 
 
+def draft_with_holds_acknowledged(project: Stage2Project) -> bool:
+    return bool(_prefs(project).get(DRAFT_WITH_HOLDS_KEY, False))
+
+
+def draft_authoring_allowed(project: Stage2Project) -> bool:
+    """Allow Stage 5 either after clean validation or explicit draft-only acknowledgement.
+
+    This does not change final validation state.  The override exists only so a
+    user can build review drafts while unresolved HOLD/REVIEW items remain
+    visible and fail-closed for final submission readiness.
+    """
+    return validation_confirmed(project) or draft_with_holds_acknowledged(project)
+
+
 def mark_intake_confirmed(project: Stage2Project, value: bool = True) -> None:
     prefs = _prefs(project)
     prefs["intake_confirmed"] = bool(value)
     if not value:
         prefs["validation_confirmed"] = False
+        prefs[DRAFT_WITH_HOLDS_KEY] = False
     project.touch()
 
 
 def mark_validation_confirmed(project: Stage2Project, value: bool = True) -> None:
     prefs = _prefs(project)
     prefs["validation_confirmed"] = bool(value)
+    if value:
+        prefs[DRAFT_WITH_HOLDS_KEY] = False
+    project.touch()
+
+
+def mark_draft_with_holds_acknowledged(project: Stage2Project, value: bool = True) -> None:
+    prefs = _prefs(project)
+    prefs[DRAFT_WITH_HOLDS_KEY] = bool(value)
     project.touch()
 
 
@@ -85,6 +110,7 @@ def reset_after_intake_change(project: Stage2Project) -> None:
     prefs = _prefs(project)
     prefs["intake_confirmed"] = False
     prefs["validation_confirmed"] = False
+    prefs[DRAFT_WITH_HOLDS_KEY] = False
     project.touch()
 
 
