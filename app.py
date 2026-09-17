@@ -6,9 +6,7 @@ from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runt
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_fragment_runtime import install_cap_fragment_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
-from engine.stage2.cap_official_docx import install_cap_official_word_runtime
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
-from engine.stage2.psm_baseline_runtime import install_psm_baseline_runtime
 from engine.stage2.storage import list_projects, load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
@@ -32,14 +30,12 @@ install_cap_fragment_runtime()
 # replacing them with short free text, and omit internal review notes from the
 # CAP final-facing DOCX. This runs after the split-form writer is installed.
 install_cap_final_form_runtime()
-# The legal Word output is not a python-docx redraw. Export the completed law.go.kr
-# HWPX through local Hancom Office so official table/font/page layout is retained.
-# Also label the old combined DOCX truthfully as internal review material.
-install_cap_official_word_runtime()
-# PSM uses the preserved regulation-form DOCX as a separate layout baseline.
-# It inserts confirmed company data into those existing form cells while the
-# ordinary PSM DOCX remains an internal review document with broader prose.
-install_psm_baseline_runtime()
+# The legal Word output (engine.stage2.cap_official_docx.build_cap_official_word)
+# is not a python-docx redraw: it exports the completed law.go.kr HWPX through
+# local Hancom Office so official table/font/page layout is retained. It is
+# invoked explicitly rather than through Stage 5, which renders its own
+# internal-review-labeled DOCX and the PSM regulation-form baseline directly
+# (see ui/stage2_review_page.py).
 
 # Local 14B models can be healthy yet exceed the old 180-second single-request
 # limit when many report items are sent at once. Install small-batch generation,

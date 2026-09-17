@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-"""Optional CAP HWPX-to-DOCX conversion helpers and Stage 5 review-label runtime.
+"""Optional CAP HWPX-to-DOCX conversion helpers.
 
-The statutory HWP/HWPX attachment remains the layout authority.  The conversion
-helpers are retained for internal/explicit use, but Stage 5 no longer exposes a
-Word-conversion section.  The runtime only labels the synthetic combined DOCX
-outputs truthfully as internal review material.
+The statutory HWP/HWPX attachment remains the layout authority.  These
+conversion helpers are retained for internal/explicit use; Stage 5 does not
+expose a Word-conversion section.  (Stage 5's own synthetic combined DOCX
+labels/styling live directly in ui/stage2_review_page.py.)
 """
 
 from contextlib import redirect_stderr, redirect_stdout
@@ -18,10 +18,6 @@ import tempfile
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from . import cap_hwpx
-
-
-WRAPPER_MARKER = "_cap_official_word_runtime_wrapper"
-_INSTALLED = False
 
 
 @dataclass(frozen=True)
@@ -155,52 +151,3 @@ def build_cap_official_word(project) -> CAPOfficialWordResult:
         mime="application/zip",
         form_count=len(hwpx_names),
     )
-
-
-def install_cap_official_word_runtime() -> None:
-    """Label Stage 5 review DOCX outputs without exposing a Word-conversion UI."""
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    try:
-        import streamlit as st
-    except Exception:
-        return
-
-    current_markdown = st.markdown
-    current_download = st.download_button
-
-    def markdown_review_labels(body, *args, **kwargs):
-        text = str(body or "")
-        if text == "### 화학사고예방관리계획서 · DOCX 초안":
-            result = current_markdown("### 화학사고예방관리계획서 · 내부 검토용", *args, **kwargs)
-            st.caption(
-                "이 파일은 여러 작성항목을 한 문서에서 검토하기 위해 프로그램이 재구성한 내부 검토용입니다. "
-                "법제처 원본과 표 형식·글꼴·크기·여백이 같지 않으며 최종 법정서식으로 사용하지 않습니다."
-            )
-            return result
-        if text == "### 공정안전보고서 · DOCX 초안":
-            return current_markdown("### 공정안전보고서 · 내부 검토용", *args, **kwargs)
-        return current_markdown(body, *args, **kwargs)
-
-    def download_review_labels(label, *args, **kwargs):
-        key = str(kwargs.get("key") or "")
-        if key.startswith("draft_plain_") and key.endswith("_CAP"):
-            label = "화학사고예방관리계획서 · 내부 검토용 DOCX 다운로드"
-            kwargs["type"] = "secondary"
-        elif key.startswith("draft_plain_") and key.endswith("_PSM"):
-            label = "공정안전보고서 · 내부 검토용 DOCX 다운로드"
-            kwargs["type"] = "secondary"
-        elif key.startswith("draft_ai_") and key.endswith("_CAP"):
-            label = "화학사고예방관리계획서 · AI 문장 검토용 내부 DOCX"
-            kwargs["type"] = "secondary"
-        elif key.startswith("draft_ai_") and key.endswith("_PSM"):
-            label = "공정안전보고서 · AI 문장 검토용 내부 DOCX"
-            kwargs["type"] = "secondary"
-        return current_download(label, *args, **kwargs)
-
-    setattr(markdown_review_labels, WRAPPER_MARKER, True)
-    setattr(download_review_labels, WRAPPER_MARKER, True)
-    st.markdown = markdown_review_labels
-    st.download_button = download_review_labels
-    _INSTALLED = True
