@@ -6,6 +6,13 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from .inventory import (
+    FACILITY_COMPONENT_CAS_COLUMN,
+    MIXTURE_COMPONENT_COLUMNS,
+    MIXTURE_COMPONENT_SHEET,
+    MIXTURE_FLAG_COLUMN,
+)
+
 
 TITLE_FILL = PatternFill("solid", fgColor="1F4E78")
 HEADER_FILL = PatternFill("solid", fgColor="5B9BD5")
@@ -139,13 +146,16 @@ def _build_business_sheet(wb: Workbook) -> None:
 
 def _build_chemical_sheet(wb: Workbook) -> None:
     ws = wb.create_sheet("02_화학물질목록")
-    ws.merge_cells("A1:O1")
+    ws.merge_cells("A1:P1")
     ws["A1"] = "2. 화학물질 목록 — 예시값을 귀사 물질로 수정"
     ws["A1"].fill = TITLE_FILL
     ws["A1"].font = Font(color="FFFFFF", bold=True, size=13)
 
-    ws.merge_cells("A2:O2")
-    ws["A2"] = "※ 선택형 정보가 귀사에 적용되지 않으면 '해당없음', 아직 확인하지 못했으면 '모름'을 선택하세요."
+    ws.merge_cells("A2:P2")
+    ws["A2"] = (
+        "※ 단일물질은 기존 방식대로 작성합니다. 혼합제품은 '혼합물 여부=Y'로 표시하고 02A_혼합물구성성분에 SDS 제3항의 규제 가능 성분을 모두 입력하세요. "
+        "화학사고예방관리계획서 최대보유량은 성분량으로 줄이지 않고 혼합물 전체량을 사용합니다."
+    )
     ws["A2"].fill = NOTE_FILL
     ws["A2"].alignment = Alignment(wrap_text=True)
 
@@ -154,43 +164,101 @@ def _build_chemical_sheet(wb: Workbook) -> None:
         "최대 제조·사용량", "최대 저장량", "수량 단위", "최대 동시보유량(알면 입력)", "비고",
         "상온·상압 액체 여부(해당 시)", "최대보유량 법정 산정 여부",
         "회사/제품 SDS 제2항 보유·확인 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)",
+        MIXTURE_FLAG_COLUMN,
     ]
     _write_row(ws, 3, headers)
-    _style_header(ws, "A3:O3")
+    _style_header(ws, "A3:P3")
 
+    # 16th value: 혼합물 여부. Y marks the diluted/aqueous-solution examples,
+    # matching their SDS Section-3 components in 02A_혼합물구성성분.
     examples = [
-        [1, "메틸 이소시아네이트", "624-83-9", "메틸 이소시아네이트", 100, "사용", 600, 0, "kg", 600, "100% 단일물질 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2|급성 독성(경구) : 구분 3|급성 독성(경피) : 구분 3"],
-        [2, "포스겐", "75-44-5", "포스겐", 100, "사용", 250, 1600, "kg", 1600, "1군 판정 테스트용 가상값", "해당없음", "Y", "해당없음", "해당없음"],
-        [3, "염소", "7782-50-5", "염소", 100, "저장", 0, 800, "kg", 800, "사고대비물질 예시", "해당없음", "Y", "해당없음", "해당없음"],
-        [4, "암모니아", "7664-41-7", "암모니아", 100, "사용", 1200, 4500, "kg", 5000, "상온·상압 액체 여부 확인 예시", "N", "Y", "해당없음", "해당없음"],
-        [5, "염산 35%", "7647-01-0", "염화수소", 35, "사용", 2000, 6000, "kg", 6500, "농도조건 예시", "Y", "Y", "해당없음", "해당없음"],
-        [6, "과산화수소 35%", "7722-84-1", "과산화수소", 35, "사용", 1000, 3000, "kg", 2500, "농도조건 예시", "해당없음", "Y", "해당없음", "해당없음"],
-        [7, "톨루엔", "108-88-3", "톨루엔", 100, "사용", 1500, 4500, "kg", 4000, "별표 1/SDS 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2"],
-        [8, "이소프로필알코올 수용액 70%", "67-63-0", "2-프로판올", 70, "사용", 800, 1200, "kg", 1500, "혼합제품: 회사 제품 SDS 제2항 확인", "해당없음", "Y", "Y", "인화성 액체 : 구분 2"],
-        [9, "메탄올", "67-56-1", "메탄올", 100, "저장", 1000, 7000, "kg", 6500, "SDS 다중분류 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2|특정표적장기 독성(1회 노출) : 구분 1"],
-        [10, "질산 68%", "7697-37-2", "질산", 68, "사용", 1500, 3000, "kg", 2800, "농도조건 예시", "해당없음", "Y", "해당없음", "해당없음"],
-        [11, "수산화나트륨 수용액 30%", "1310-73-2", "수산화나트륨", 30, "사용", 600, 2500, "kg", 2000, "별표 1 해당없음 예시", "해당없음", "Y", "Y", "별표1 해당없음"],
-        [12, "아세톤", "67-64-1", "아세톤", 100, "사용", 900, 1800, "kg", 1600, "SDS 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2"],
+        [1, "메틸 이소시아네이트", "624-83-9", "메틸 이소시아네이트", 100, "사용", 600, 0, "kg", 600, "100% 단일물질 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2|급성 독성(경구) : 구분 3|급성 독성(경피) : 구분 3", "N"],
+        [2, "포스겐", "75-44-5", "포스겐", 100, "사용", 250, 1600, "kg", 1600, "1군 판정 테스트용 가상값", "해당없음", "Y", "해당없음", "해당없음", "N"],
+        [3, "염소", "7782-50-5", "염소", 100, "저장", 0, 800, "kg", 800, "사고대비물질 예시", "해당없음", "Y", "해당없음", "해당없음", "N"],
+        [4, "암모니아", "7664-41-7", "암모니아", 100, "사용", 1200, 4500, "kg", 5000, "상온·상압 액체 여부 확인 예시", "N", "Y", "해당없음", "해당없음", "N"],
+        [5, "염산 35%", "7647-01-0", "염화수소", 35, "사용", 2000, 6000, "kg", 6500, "농도조건 예시", "Y", "Y", "해당없음", "해당없음", "Y"],
+        [6, "과산화수소 35%", "7722-84-1", "과산화수소", 35, "사용", 1000, 3000, "kg", 2500, "농도조건 예시", "해당없음", "Y", "해당없음", "해당없음", "Y"],
+        [7, "톨루엔", "108-88-3", "톨루엔", 100, "사용", 1500, 4500, "kg", 4000, "별표 1/SDS 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2", "N"],
+        [8, "이소프로필알코올 수용액 70%", "67-63-0", "2-프로판올", 70, "사용", 800, 1200, "kg", 1500, "혼합제품: 회사 제품 SDS 제2항 확인", "해당없음", "Y", "Y", "인화성 액체 : 구분 2", "Y"],
+        [9, "메탄올", "67-56-1", "메탄올", 100, "저장", 1000, 7000, "kg", 6500, "SDS 다중분류 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2|특정표적장기 독성(1회 노출) : 구분 1", "N"],
+        [10, "질산 68%", "7697-37-2", "질산", 68, "사용", 1500, 3000, "kg", 2800, "농도조건 예시", "해당없음", "Y", "해당없음", "해당없음", "Y"],
+        [11, "수산화나트륨 수용액 30%", "1310-73-2", "수산화나트륨", 30, "사용", 600, 2500, "kg", 2000, "별표 1 해당없음 예시", "해당없음", "Y", "Y", "별표1 해당없음", "Y"],
+        [12, "아세톤", "67-64-1", "아세톤", 100, "사용", 900, 1800, "kg", 1600, "SDS 예시", "해당없음", "Y", "Y", "인화성 액체 : 구분 2", "N"],
     ]
     for r_idx, row in enumerate(examples, start=4):
         _write_row(ws, r_idx, row)
-    _fill_range(ws, "B4:O15", EXAMPLE_FILL)
+    _fill_range(ws, "B4:P15", EXAMPLE_FILL)
 
     for r in range(16, 104):
         ws.cell(r, 1, r - 3)
-        for c in range(2, 16):
+        for c in range(2, 17):
             ws.cell(r, c).fill = INPUT_FILL
 
     _add_list_validation(ws, "F4:F103", ["제조", "사용", "저장", "보관", "제조+저장", "사용+저장", "기타", "해당없음", "모름"])
     _add_list_validation(ws, "I4:I103", ["kg", "ton", "L", "m3", "기타"])
     for col in ["L", "M", "N"]:
         _add_list_validation(ws, f"{col}4:{col}103", ["Y", "N", "해당없음", "모름"])
+    # Blank future rows stay unmarked rather than defaulting to N, so an
+    # unanswered row is never mistaken for a confirmed single-substance one.
+    _add_list_validation(ws, "P4:P103", ["N", "Y", "모름"])
 
-    _wrap_range(ws, "A1:O103")
-    widths = [7, 29, 16, 24, 11, 15, 18, 16, 12, 25, 42, 24, 24, 29, 58]
+    _wrap_range(ws, "A1:P103")
+    widths = [7, 29, 16, 24, 11, 15, 18, 16, 12, 25, 42, 24, 24, 29, 58, 16]
     for i, width in enumerate(widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
     ws.freeze_panes = "D4"
+
+
+def _build_mixture_component_sheet(wb: Workbook) -> None:
+    """SDS Section-3 components of a mixture listed in 02_화학물질목록.
+
+    A commercial mixture stays one product row there; CAP Appendix 3/2
+    screening is then performed per component here, while Appendix-4 maximum
+    holding still uses the parent row's whole-mixture quantity.
+    """
+    ws = wb.create_sheet(MIXTURE_COMPONENT_SHEET)
+    ws.merge_cells("A1:J1")
+    ws["A1"] = "2A. 혼합물 구성성분 — 혼합제품 하나에 성분이 여러 개면 성분별로 한 줄"
+    ws["A1"].fill = TITLE_FILL
+    ws["A1"].font = Font(color="FFFFFF", bold=True, size=13)
+    ws.merge_cells("A2:J2")
+    ws["A2"] = (
+        "※ 제품목록행번호로 02_화학물질목록의 부모 제품과 연결합니다. 성분별 법정 함량기준을 판단하되 적용되는 성분의 최대보유량은 '성분함량×제품량'이 아니라 혼합물 전체 총량입니다. "
+        "SDS가 함량범위로 제시되면 최저·최고를 입력하며 법정기준을 가로지르면 판정보류합니다."
+    )
+    ws["A2"].fill = NOTE_FILL
+    ws["A2"].alignment = Alignment(wrap_text=True)
+    for col, header in enumerate(MIXTURE_COMPONENT_COLUMNS, start=1):
+        ws.cell(3, col, header)
+        ws.cell(3, col).fill = HEADER_FILL
+        ws.cell(3, col).font = WHITE_FONT
+        ws.cell(3, col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    examples = [
+        ["해당", 5, "염산 35%", "염화수소", "7647-01-0", 35, None, None, "회사 제품 SDS 제3항", ""],
+        ["해당", 6, "과산화수소 35%", "과산화수소", "7722-84-1", 35, None, None, "회사 제품 SDS 제3항", ""],
+        ["해당", 8, "이소프로필알코올 수용액 70%", "2-프로판올", "67-63-0", 70, None, None, "회사 제품 SDS 제3항", ""],
+        ["해당", 10, "질산 68%", "질산", "7697-37-2", 68, None, None, "회사 제품 SDS 제3항", ""],
+        ["해당", 11, "수산화나트륨 수용액 30%", "수산화나트륨", "1310-73-2", 30, None, None, "회사 제품 SDS 제3항", ""],
+        ["해당없음", 999, "다성분 혼합제품 형식예시(업로드 제외)", "톨루엔", "108-88-3", 90, None, None, "회사 제품 SDS 제3항", "같은 제품번호에 성분별로 여러 줄 작성"],
+        ["해당없음", 999, "다성분 혼합제품 형식예시(업로드 제외)", "메탄올", "67-56-1", 8, None, None, "회사 제품 SDS 제3항", "같은 제품번호에 성분별로 여러 줄 작성"],
+    ]
+    for row_no, values in enumerate(examples, start=4):
+        for col, value in enumerate(values, start=1):
+            ws.cell(row_no, col, value)
+            ws.cell(row_no, col).fill = EXAMPLE_FILL
+            ws.cell(row_no, col).alignment = Alignment(vertical="top", wrap_text=True)
+    for row in range(11, 104):
+        ws.cell(row, 1, "해당없음")
+        for col in range(1, len(MIXTURE_COMPONENT_COLUMNS) + 1):
+            ws.cell(row, col).fill = INPUT_FILL
+
+    dv_active = DataValidation(type="list", formula1='"해당,해당없음,모름"', allow_blank=True)
+    ws.add_data_validation(dv_active)
+    dv_active.add("A4:A103")
+    for idx, width in enumerate([12, 16, 28, 24, 16, 12, 14, 14, 38, 40], start=1):
+        ws.column_dimensions[ws.cell(3, idx).column_letter].width = width
+    ws.freeze_panes = "A4"
 
 
 def _build_documents_sheet(wb: Workbook) -> None:
@@ -219,15 +287,17 @@ def _build_documents_sheet(wb: Workbook) -> None:
 
 def _build_facility_sheet(wb: Workbook) -> None:
     ws = wb.create_sheet("04_시설별최대보유량")
-    ws.merge_cells("A1:V1")
+    ws.merge_cells("A1:W1")
     ws["A1"] = "화학사고예방관리계획서 사업장 최대보유량 산정용 시설정보 — 시설 하나당 한 줄"
     ws["A1"].fill = CAP_FILL
     ws["A1"].font = Font(bold=True, size=13)
 
-    ws.merge_cells("A2:V2")
+    ws.merge_cells("A2:W2")
     ws["A2"] = (
         "※ 법정 사업장 최대보유량을 이미 정확히 알고 있으면 02 시트에 값을 입력하고 '최대보유량 법정 산정 여부=Y'로 표시하세요. "
-        "그렇지 않으면 이 시트에 시설별 정보를 작성합니다."
+        "그렇지 않으면 이 시트에 시설별 정보를 작성합니다. "
+        "※ 혼합물 저장·변화없음 공정은 02A 성분함량을 자동 연결할 수 있습니다. 하나의 혼합제품에 규제성분이 2개 이상이고 단순혼합·반응으로 성분함량이 달라지면 시설행을 성분별로 복사하여 "
+        f"'{FACILITY_COMPONENT_CAS_COLUMN}'와 별표4 기준함량·근거를 각각 작성하세요."
     )
     ws["A2"].fill = NOTE_FILL
     ws["A2"].alignment = Alignment(wrap_text=True)
@@ -237,9 +307,10 @@ def _build_facility_sheet(wb: Workbook) -> None:
         "물질성상", "공정유형", "별표4 기준함량(%)", "함량근거", "설계용량", "용량단위",
         "비중 또는 밀도(kg/L=ton/m3)", "보관계획도 최대량", "일일최대보관량", "질량단위",
         "직접확인 최대보유량", "직접확인 근거", "복수성상 증빙", "비고",
+        FACILITY_COMPONENT_CAS_COLUMN,
     ]
     _write_row(ws, 3, headers)
-    _style_header(ws, "A3:V3")
+    _style_header(ws, "A3:W3")
 
     examples = [
         ["해당", 1, "메틸 이소시아네이트", "624-83-9", "R-101 반응기", "제조·사용시설", "N", "해당없음", "액체", "반응", 100, "제품 SDS 및 공정배합표", 0.35, "m3", 0.96, None, None, "kg", None, None, "N", "가상 예시"],
@@ -253,11 +324,11 @@ def _build_facility_sheet(wb: Workbook) -> None:
     ]
     for r_idx, row in enumerate(examples, start=4):
         _write_row(ws, r_idx, row)
-    _fill_range(ws, "A4:V11", EXAMPLE_FILL)
+    _fill_range(ws, "A4:W11", EXAMPLE_FILL)
 
     for r in range(12, 31):
         ws.cell(r, 1, "해당없음")
-        for c in range(1, 23):
+        for c in range(1, 24):
             ws.cell(r, c).fill = INPUT_FILL
 
     _add_list_validation(ws, "A4:A30", ["해당", "해당없음", "모름"])
@@ -270,8 +341,8 @@ def _build_facility_sheet(wb: Workbook) -> None:
     _add_list_validation(ws, "R4:R30", ["kg", "ton", "해당없음"])
     _add_list_validation(ws, "U4:U30", ["Y", "N", "해당없음", "모름"])
 
-    _wrap_range(ws, "A1:V30")
-    widths = [12, 10, 28, 16, 24, 18, 15, 22, 18, 16, 18, 28, 14, 12, 24, 20, 20, 12, 22, 36, 16, 28]
+    _wrap_range(ws, "A1:W30")
+    widths = [12, 10, 28, 16, 24, 18, 15, 22, 18, 16, 18, 28, 14, 12, 24, 20, 20, 12, 22, 36, 16, 28, 24]
     for i, width in enumerate(widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
     ws.freeze_panes = "A4"
@@ -457,6 +528,7 @@ def build_minimal_input_workbook() -> bytes:
     _build_guide_sheet(wb)
     _build_business_sheet(wb)
     _build_chemical_sheet(wb)
+    _build_mixture_component_sheet(wb)
     _build_documents_sheet(wb)
     _build_facility_sheet(wb)
     _build_final_conditions_sheet(wb)

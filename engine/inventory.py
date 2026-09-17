@@ -20,6 +20,7 @@ LEGACY_PSM_NOTE8_SHEET = "06_공정안전보고서_비고8제외수량"
 LEGACY_PSM_NOTE8_SHEET = "06_PSM_비고8제외수량"
 MIXTURE_COMPONENT_SHEET = "02A_혼합물구성성분"
 MIXTURE_FLAG_COLUMN = "혼합물 여부"
+FACILITY_COMPONENT_CAS_COLUMN = "규제성분 CAS(혼합물)"
 MIXTURE_COMPONENT_COLUMNS = [
     "적용여부", "제품목록행번호", "제품명(확인용)", "구성성분명", "CAS No.",
     "함량(%)", "함량 최저(%)", "함량 최고(%)", "SDS 제3항 근거", "비고",

@@ -15,68 +15,22 @@ component reaction/simple-mixing facility must identify which component CAS its
 process concentration belongs to.
 """
 
-from io import BytesIO
 from typing import Any, Callable, Iterable
 
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.worksheet.datavalidation import DataValidation
 
-
-COMPONENT_SHEET = "02A_혼합물구성성분"
-MIXTURE_FLAG_COLUMN = "혼합물 여부"
-FACILITY_COMPONENT_CAS_COLUMN = "규제성분 CAS(혼합물)"
-_SHORT_NAME = "화사계"
-_FULL_NAME = "화학사고예방관리계획서"
-COMPONENT_COLUMNS = [
-    "적용여부", "제품목록행번호", "제품명(확인용)", "구성성분명", "CAS No.",
-    "함량(%)", "함량 최저(%)", "함량 최고(%)", "SDS 제3항 근거", "비고",
-]
-
-TITLE_FILL = PatternFill("solid", fgColor="1F4E78")
-HEADER_FILL = PatternFill("solid", fgColor="5B9BD5")
-INPUT_FILL = PatternFill("solid", fgColor="FFF2CC")
-EXAMPLE_FILL = PatternFill("solid", fgColor="E2F0D9")
-NOTE_FILL = PatternFill("solid", fgColor="F3F6F9")
-WHITE_FONT = Font(color="FFFFFF", bold=True)
-
-
-def _clean(value: Any) -> str:
-    if value is None:
-        return ""
-    try:
-        if pd.isna(value):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    text = str(value).strip()
-    return "" if text.lower() in {"nan", "none", "null", "<na>"} else text
-
-
-def _num(value: Any) -> float | None:
-    text = _clean(value).replace(",", "")
-    if not text:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def _int(value: Any) -> int | None:
-    value = _num(value)
-    if value is None or int(value) != value:
-        return None
-    return int(value)
-
-
-def _yes(value: Any) -> bool:
-    return _clean(value).lower().replace(" ", "") in {"y", "yes", "예", "해당", "혼합물", "1", "true"}
-
-
-def _no(value: Any) -> bool:
-    return _clean(value).lower().replace(" ", "") in {"n", "no", "아니오", "아님", "단일물질", "0", "false", "해당없음"}
+from .inventory import (
+    FACILITY_COMPONENT_CAS_COLUMN,
+    MIXTURE_COMPONENT_COLUMNS as COMPONENT_COLUMNS,
+    MIXTURE_COMPONENT_SHEET as COMPONENT_SHEET,
+    MIXTURE_FLAG_COLUMN,
+    _mixture_clean as _clean,
+    _mixture_concentration_values as _concentration_values,
+    _mixture_int as _int,
+    _mixture_no as _no,
+    _mixture_num as _num,
+    _mixture_yes as _yes,
+)
 
 
 def _component_frame(intake: Any) -> pd.DataFrame:
@@ -93,19 +47,6 @@ def _components_for_parent(intake: Any, parent: int) -> pd.DataFrame:
     if frame.empty or "제품목록행번호" not in frame.columns:
         return pd.DataFrame(columns=COMPONENT_COLUMNS)
     return frame[frame["제품목록행번호"].map(_int).eq(parent)].copy().reset_index(drop=True)
-
-
-def _concentration_values(component: pd.Series) -> tuple[list[float], str]:
-    exact = _num(component.get("함량(%)"))
-    if exact is not None:
-        return ([exact] if 0 <= exact <= 100 else []), "exact"
-    low = _num(component.get("함량 최저(%)"))
-    high = _num(component.get("함량 최고(%)"))
-    if low is None or high is None or low < 0 or high > 100 or low > high:
-        return [], "invalid"
-    if low == high:
-        return [low], "exact"
-    return [low, high], "range"
 
 
 def _clone_intake(intake: Any, *, chemicals: pd.DataFrame | None = None, facilities: pd.DataFrame | None = None):
@@ -186,153 +127,6 @@ def _screen_component_direct(original_screen: Callable[[Any], Any], intake: Any,
     return (mapped[-1] if mapped else []), list(dict.fromkeys(blockers)), claimed, True
 
 
-def _replace_short_name(value: Any) -> Any:
-    if isinstance(value, str) and _SHORT_NAME in value:
-        return value.replace(_SHORT_NAME, _FULL_NAME)
-    return value
-
-
-def _cleanup_company_workbook(raw: bytes) -> bytes:
-    """Final user-facing pass: full legal names only, and blank future input
-    rows are not left flagged as non-mixtures by the new mixture column."""
-    wb = load_workbook(BytesIO(raw), data_only=False)
-
-    for ws in wb.worksheets:
-        for row in ws.iter_rows():
-            for cell in row:
-                replacement = _replace_short_name(cell.value)
-                if replacement != cell.value:
-                    cell.value = replacement
-
-    if "02_화학물질목록" in wb.sheetnames:
-        ws = wb["02_화학물질목록"]
-        headers = {
-            str(ws.cell(3, col).value or "").strip(): col
-            for col in range(1, ws.max_column + 1)
-        }
-        mix_col = headers.get(MIXTURE_FLAG_COLUMN)
-        if mix_col:
-            for row_no in range(4, ws.max_row + 1):
-                has_product_data = any(
-                    ws.cell(row_no, col).value not in (None, "")
-                    for col in (2, 3, 4, 5)  # 제품명, CAS, 물질명, 함량
-                )
-                if not has_product_data:
-                    ws.cell(row_no, mix_col).value = None
-
-    output = BytesIO()
-    wb.save(output)
-    return output.getvalue()
-
-
-def _patch_template(original: Callable[[], bytes]) -> Callable[[], bytes]:
-    def wrapped() -> bytes:
-        raw = original()
-        wb = load_workbook(BytesIO(raw))
-        if COMPONENT_SHEET in wb.sheetnames:
-            return _cleanup_company_workbook(raw)
-
-        chem = wb["02_화학물질목록"]
-        mix_col = chem.max_column + 1
-        chem.cell(3, mix_col, MIXTURE_FLAG_COLUMN)
-        chem.cell(3, mix_col).fill = HEADER_FILL
-        chem.cell(3, mix_col).font = WHITE_FONT
-        chem.cell(3, mix_col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        for row in range(4, 104):
-            if chem.cell(row, 1).value not in (None, ""):
-                chem.cell(row, mix_col, "N")
-            chem.cell(row, mix_col).fill = EXAMPLE_FILL if row <= 15 else INPUT_FILL
-        # Existing aqueous examples: product row numbers 5,6,8,10,11.
-        for worksheet_row in (8, 9, 11, 13, 14):
-            chem.cell(worksheet_row, mix_col, "Y")
-        dv = DataValidation(type="list", formula1='"N,Y,모름"', allow_blank=True)
-        chem.add_data_validation(dv)
-        dv.add(f"{chem.cell(3, mix_col).column_letter}4:{chem.cell(3, mix_col).column_letter}103")
-        chem.column_dimensions[chem.cell(3, mix_col).column_letter].width = 16
-        for merged in list(chem.merged_cells.ranges):
-            if str(merged) in {"A1:O1", "A2:O2"}:
-                chem.unmerge_cells(str(merged))
-        chem.merge_cells(start_row=1, start_column=1, end_row=1, end_column=mix_col)
-        chem.merge_cells(start_row=2, start_column=1, end_row=2, end_column=mix_col)
-        chem["A2"] = (
-            "※ 단일물질은 기존 방식대로 작성합니다. 혼합제품은 '혼합물 여부=Y'로 표시하고 02A_혼합물구성성분에 SDS 제3항의 규제 가능 성분을 모두 입력하세요. "
-            "화사계 최대보유량은 성분량으로 줄이지 않고 혼합물 전체량을 사용합니다."
-        )
-        chem["A2"].fill = NOTE_FILL
-        chem["A2"].alignment = Alignment(wrap_text=True)
-
-        ws = wb.create_sheet(COMPONENT_SHEET, 3)
-        ws.merge_cells("A1:J1")
-        ws["A1"] = "2A. 혼합물 구성성분 — 혼합제품 하나에 성분이 여러 개면 성분별로 한 줄"
-        ws["A1"].fill = TITLE_FILL
-        ws["A1"].font = Font(color="FFFFFF", bold=True, size=13)
-        ws.merge_cells("A2:J2")
-        ws["A2"] = (
-            "※ 제품목록행번호로 02_화학물질목록의 부모 제품과 연결합니다. 성분별 법정 함량기준을 판단하되 적용되는 성분의 최대보유량은 '성분함량×제품량'이 아니라 혼합물 전체 총량입니다. "
-            "SDS가 함량범위로 제시되면 최저·최고를 입력하며 법정기준을 가로지르면 판정보류합니다."
-        )
-        ws["A2"].fill = NOTE_FILL
-        ws["A2"].alignment = Alignment(wrap_text=True)
-        for col, header in enumerate(COMPONENT_COLUMNS, start=1):
-            ws.cell(3, col, header)
-            ws.cell(3, col).fill = HEADER_FILL
-            ws.cell(3, col).font = WHITE_FONT
-            ws.cell(3, col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        examples = [
-            ["해당", 5, "염산 35%", "염화수소", "7647-01-0", 35, None, None, "회사 제품 SDS 제3항", ""],
-            ["해당", 6, "과산화수소 35%", "과산화수소", "7722-84-1", 35, None, None, "회사 제품 SDS 제3항", ""],
-            ["해당", 8, "이소프로필알코올 수용액 70%", "2-프로판올", "67-63-0", 70, None, None, "회사 제품 SDS 제3항", ""],
-            ["해당", 10, "질산 68%", "질산", "7697-37-2", 68, None, None, "회사 제품 SDS 제3항", ""],
-            ["해당", 11, "수산화나트륨 수용액 30%", "수산화나트륨", "1310-73-2", 30, None, None, "회사 제품 SDS 제3항", ""],
-            ["해당없음", 999, "다성분 혼합제품 형식예시(업로드 제외)", "톨루엔", "108-88-3", 90, None, None, "회사 제품 SDS 제3항", "같은 제품번호에 성분별로 여러 줄 작성"],
-            ["해당없음", 999, "다성분 혼합제품 형식예시(업로드 제외)", "메탄올", "67-56-1", 8, None, None, "회사 제품 SDS 제3항", "같은 제품번호에 성분별로 여러 줄 작성"],
-        ]
-        for row_no, values in enumerate(examples, start=4):
-            for col, value in enumerate(values, start=1):
-                ws.cell(row_no, col, value)
-                ws.cell(row_no, col).fill = EXAMPLE_FILL
-                ws.cell(row_no, col).alignment = Alignment(vertical="top", wrap_text=True)
-        for row in range(11, 104):
-            ws.cell(row, 1, "해당없음")
-            for col in range(1, len(COMPONENT_COLUMNS) + 1):
-                ws.cell(row, col).fill = INPUT_FILL
-        dv_active = DataValidation(type="list", formula1='"해당,해당없음,모름"', allow_blank=True)
-        ws.add_data_validation(dv_active)
-        dv_active.add("A4:A103")
-        for idx, width in enumerate([12, 16, 28, 24, 16, 12, 14, 14, 38, 40], start=1):
-            ws.column_dimensions[ws.cell(3, idx).column_letter].width = width
-        ws.freeze_panes = "A4"
-
-        if "04_시설별최대보유량" in wb.sheetnames:
-            facilities = wb["04_시설별최대보유량"]
-            component_col = facilities.max_column + 1
-            facilities.cell(3, component_col, FACILITY_COMPONENT_CAS_COLUMN)
-            facilities.cell(3, component_col).fill = HEADER_FILL
-            facilities.cell(3, component_col).font = WHITE_FONT
-            facilities.cell(3, component_col).alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            for row in range(4, 31):
-                facilities.cell(row, component_col).fill = EXAMPLE_FILL if row <= 11 else INPUT_FILL
-            facilities.column_dimensions[facilities.cell(3, component_col).column_letter].width = 24
-            for merged in list(facilities.merged_cells.ranges):
-                if str(merged) in {"A1:V1", "A2:V2"}:
-                    facilities.unmerge_cells(str(merged))
-            facilities.merge_cells(start_row=1, start_column=1, end_row=1, end_column=component_col)
-            facilities.merge_cells(start_row=2, start_column=1, end_row=2, end_column=component_col)
-            facilities["A2"] = (
-                "※ 혼합물 저장·변화없음 공정은 02A 성분함량을 자동 연결할 수 있습니다. 하나의 혼합제품에 규제성분이 2개 이상이고 단순혼합·반응으로 성분함량이 달라지면 시설행을 성분별로 복사하여 "
-                f"'{FACILITY_COMPONENT_CAS_COLUMN}'와 별표4 기준함량·근거를 각각 작성하세요."
-            )
-            facilities["A2"].fill = NOTE_FILL
-            facilities["A2"].alignment = Alignment(wrap_text=True)
-
-        out = BytesIO()
-        wb.save(out)
-        return _cleanup_company_workbook(out.getvalue())
-
-    wrapped._planner_cap_mixture_template = True
-    return wrapped
-
-
 def _resolved_pct(component: pd.Series, hits: Iterable[dict[str, Any]]) -> float | None:
     values, mode = _concentration_values(component)
     if not values:
@@ -380,7 +174,6 @@ def _prepare_mixture_facilities(intake: Any, parent: int, component: pd.Series, 
 
 
 def install_cap_mixture_runtime() -> None:
-    from . import template as template_module
     from . import inventory as inventory_module
     from . import cap_engine as cap_engine_module
     from . import cap_scope_engine as cap_scope_module
@@ -391,8 +184,8 @@ def install_cap_mixture_runtime() -> None:
     if getattr(inventory_module, "_cap_mixture_runtime_installed", False):
         return
 
-    template_module.build_minimal_input_workbook = _patch_template(template_module.build_minimal_input_workbook)
-
+    # template.build_minimal_input_workbook already builds the mixture
+    # column/sheet directly (see engine.template._build_mixture_component_sheet).
     # inventory.read_intake_workbook/validate_intake already read and validate
     # mixture_components directly (it is a real IntakeData field); only the
     # downstream CAP screening/scope/holding functions still need patching.
