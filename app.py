@@ -4,7 +4,6 @@ import streamlit as st
 
 from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
-from engine.stage2.cap_fragment_runtime import install_cap_fragment_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.local_ai_resilience import install_local_ai_resilience
 from engine.stage2.storage import list_projects, load_project
@@ -21,11 +20,11 @@ ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 # law.go.kr may publish CAP appendices as several approved HWP/HWPX files rather
 # than one monolithic file. Treat the CURRENT approved set as one official form
 # bundle, fill each original independently, and package the written forms as ZIP.
+# (Split official files intentionally contain only some statutory form markers;
+# cap_multi_form_runtime._partial_builder relaxes the monolithic validation only
+# for that approved split-form writer, and cap_hwpx.convert_hwp_to_hwpx quiets
+# pyhwpx's local DLL-path diagnostic noise during HWP conversion.)
 install_cap_multi_form_runtime()
-# Split official files intentionally contain only some statutory form markers.
-# Relax the monolithic validation only inside the approved split-form writer and
-# suppress pyhwpx's local DLL-path diagnostic noise during HWP conversion.
-install_cap_fragment_runtime()
 # Keep statutory checkbox/choice cells as full official option sets instead of
 # replacing them with short free text, and omit internal review notes from the
 # CAP final-facing DOCX. This runs after the split-form writer is installed.

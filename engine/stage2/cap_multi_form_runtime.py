@@ -20,7 +20,7 @@ from io import BytesIO
 from pathlib import Path
 import platform
 import re
-from types import FunctionType
+from threading import RLock
 from typing import Any, Mapping, Sequence
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -32,6 +32,7 @@ WRAPPER_MARKER = "_cap_multi_form_runtime_wrapper"
 CACHE_DIR = cap_hwpx.PROJECT_ROOT / "data" / "runtime" / "cap_hwpx_converted"
 BUNDLE_SOURCE = "APPROVED_LAW_ARCHIVE_BUNDLE"
 BUNDLE_INCOMPLETE_SOURCE = "APPROVED_LAW_ARCHIVE_BUNDLE_INCOMPLETE"
+_VALIDATION_LOCK = RLock()
 
 
 @dataclass(frozen=True)
@@ -221,8 +222,8 @@ def _bundle_meta(bundle: CAPOfficialFormBundle) -> Mapping[str, Any]:
     }
 
 
-def _relaxed_validation(data: bytes):
-    validation = cap_hwpx.validate_cap_hwpx_template(data)
+def _relaxed_validation(strict_validate, data: bytes):
+    validation = strict_validate(data)
     if validation.found_markers:
         return cap_hwpx.CAPTemplateValidation(
             ok=True,
@@ -235,22 +236,30 @@ def _relaxed_validation(data: bytes):
 
 
 def _partial_builder(original_build):
-    """Clone the existing builder with validation relaxed only for one approved split form.
+    """Wrap the builder with validation relaxed only for one approved split form.
 
-    Cloning the function globals avoids mutating cap_hwpx.validate_cap_hwpx_template
-    process-wide, so manual uploads and ordinary single-template validation remain strict.
+    cap_hwpx.build_cap_hwpx_draft resolves validate_cap_hwpx_template from the
+    cap_hwpx module globals at call time (including through any helper it
+    delegates to), so the swap must happen on that module itself rather than
+    on a private copy of original_build's globals. Swap it only inside a lock
+    and always restore it, so manual uploads and ordinary single-template
+    validation elsewhere stay strict. The relaxed validator is bound to the
+    strict validator captured *before* the swap, so it never resolves to
+    itself and recurses once installed.
     """
-    globals_copy = dict(original_build.__globals__)
-    globals_copy["validate_cap_hwpx_template"] = _relaxed_validation
-    cloned = FunctionType(
-        original_build.__code__,
-        globals_copy,
-        name=original_build.__name__,
-        argdefs=original_build.__defaults__,
-        closure=original_build.__closure__,
-    )
-    cloned.__kwdefaults__ = original_build.__kwdefaults__
-    return cloned
+
+    def build_partial(project, template_bytes: bytes | None = None):
+        if template_bytes is None:
+            return original_build(project)
+        with _VALIDATION_LOCK:
+            current = cap_hwpx.validate_cap_hwpx_template
+            cap_hwpx.validate_cap_hwpx_template = lambda data: _relaxed_validation(current, data)
+            try:
+                return original_build(project, template_bytes=template_bytes)
+            finally:
+                cap_hwpx.validate_cap_hwpx_template = current
+
+    return build_partial
 
 
 def _meaningful_warnings(values: Sequence[str]) -> tuple[str, ...]:

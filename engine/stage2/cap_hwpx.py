@@ -9,9 +9,10 @@ only where the official template already contains blank rows; a shortage is
 reported for human review instead of rebuilding the table.
 """
 
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from hashlib import sha256
-from io import BytesIO
+from io import BytesIO, StringIO
 import json
 from pathlib import Path
 import platform
@@ -115,17 +116,22 @@ def convert_hwp_to_hwpx(file_bytes: bytes, file_name: str) -> bytes:
         dst = Path(tmp) / "official_form.hwpx"
         src.write_bytes(file_bytes)
         hwp = None
+        # pyhwpx prints its FilePathCheckerModule DLL path during COM setup.
+        # It is diagnostic noise, not a user prompt or AI message.
+        sink = StringIO()
         try:  # pragma: no cover - requires Hancom COM
-            try:
-                hwp = Hwp(visible=False)
-            except TypeError:
-                hwp = Hwp()
-            hwp.open(str(src))
-            hwp.save_as(str(dst))
+            with redirect_stdout(sink), redirect_stderr(sink):
+                try:
+                    hwp = Hwp(visible=False)
+                except TypeError:
+                    hwp = Hwp()
+                hwp.open(str(src))
+                hwp.save_as(str(dst))
         finally:
             if hwp is not None:
                 try:
-                    hwp.quit()
+                    with redirect_stdout(sink), redirect_stderr(sink):
+                        hwp.quit()
                 except Exception:
                     pass
         if not dst.exists() or dst.stat().st_size == 0:
