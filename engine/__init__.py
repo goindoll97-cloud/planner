@@ -100,15 +100,16 @@ _install_kosha_msds_endpoint_migration()
 # rule-engine calculations out of the company-direct input burden.
 from .company_intake_contract import install_company_intake_contract
 from .company_intake_fullname_runtime import install_company_intake_fullname_runtime
-from .cap_mixture_runtime import install_cap_mixture_runtime
 from .stage1_request_detail_runtime import install_stage1_request_detail_runtime
 from .stage2_visible_handoff_runtime import install_stage2_visible_handoff_runtime
 
 install_company_intake_contract()
 install_company_intake_fullname_runtime()
-# Install the mixture/component contract before Stage-1 is imported by the
-# detailed-request hook, so Stage-1 captures the mixture-aware CAP functions.
-install_cap_mixture_runtime()
+# engine.cap_mixture exports mixture-aware screen_facility_stage/assess_cap/
+# assess_cap_holding/compare_confirmed_declared_holding directly; Stage 1
+# (engine.stage1_workbook) imports those by name instead of the plain
+# cap_engine/cap_holding_screen/cap_holding/cap_quick_holding versions, so
+# there is no install-order dependency here to worry about.
 install_stage1_request_detail_runtime()
 # Keep Stage 1/2 files separate but make carried facts visible, immutable in
 # Stage 2, and available to mixture-aware MSDS reference/validation logic.

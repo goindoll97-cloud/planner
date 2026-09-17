@@ -7,7 +7,7 @@ import unittest
 import pandas as pd
 from openpyxl import load_workbook
 
-from engine.cap_mixture_runtime import (
+from engine.cap_mixture import (
     COMPONENT_SHEET,
     FACILITY_COMPONENT_CAS_COLUMN,
     MIXTURE_FLAG_COLUMN,
@@ -18,7 +18,7 @@ from engine.inventory import IntakeData, _mixture_validation_issues
 from engine.template import build_minimal_input_workbook
 
 
-class CAPMixtureRuntimeTests(unittest.TestCase):
+class CAPMixtureTests(unittest.TestCase):
     def _intake(self) -> IntakeData:
         chemicals = pd.DataFrame([
             {

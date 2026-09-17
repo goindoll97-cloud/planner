@@ -40,8 +40,8 @@ def _replace_generic_facility_request(
 
 def _facility_blockers(intake: Any) -> list[str]:
     """Reproduce only the already-approved facility check to obtain its blockers."""
-    from .cap_holding import app4_db_ready, assess_cap_holding
-    from .cap_holding_screen import screen_facility_stage
+    from .cap_holding import app4_db_ready
+    from .cap_mixture import assess_cap_holding, screen_facility_stage
 
     facilities = getattr(intake, "facilities", None)
     if facilities is None or getattr(facilities, "empty", True):
