@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -50,7 +48,7 @@ class CAPFragmentRuntimeTests(unittest.TestCase):
 
 
 class AILiveProgressRuntimeTests(unittest.TestCase):
-    def test_compact_fast_selection_caps_output(self):
+    def test_live_progress_preserves_fast_selection_and_adaptive_batching(self):
         original_select = resilience.select_fast_auto_config
         original_process = resilience._process_one_batch
         original_recommended = resilience.recommended_batch_size
@@ -67,15 +65,17 @@ class AILiveProgressRuntimeTests(unittest.TestCase):
             )
             selected = resilience.select_fast_auto_config(configured, ("qwen3:14b", "qwen3:8b"))
             self.assertEqual(selected.model, "qwen3:8b")
-            self.assertLessEqual(selected.max_output_tokens, 1200)
-            self.assertEqual(resilience.recommended_batch_size(selected.model), 1)
+            self.assertLessEqual(selected.max_output_tokens, resilience.FAST_AUTO_MAX_OUTPUT_TOKENS)
+            self.assertEqual(resilience.recommended_batch_size(selected.model), resilience.FAST_AUTO_BATCH_SIZE)
+            self.assertIs(resilience.select_fast_auto_config, original_select)
+            self.assertIs(resilience.recommended_batch_size, original_recommended)
         finally:
             resilience.select_fast_auto_config = original_select
             resilience._process_one_batch = original_process
             resilience.recommended_batch_size = original_recommended
             resilience._ai_live_progress_runtime_installed = installed
 
-    def test_compact_fast_selection_forwards_vram_keywords(self):
+    def test_live_progress_keeps_vram_aware_selection(self):
         original_select = resilience.select_fast_auto_config
         original_process = resilience._process_one_batch
         original_recommended = resilience.recommended_batch_size
@@ -101,7 +101,8 @@ class AILiveProgressRuntimeTests(unittest.TestCase):
                 gpu_vram_bytes=6 * 1024 * 1024 * 1024,
             )
             self.assertEqual(selected.model, "qwen3.5:4b")
-            self.assertLessEqual(selected.max_output_tokens, 1200)
+            self.assertLessEqual(selected.max_output_tokens, resilience.FAST_AUTO_MAX_OUTPUT_TOKENS)
+            self.assertEqual(resilience.recommended_batch_size(selected.model), resilience.FAST_AUTO_BATCH_SIZE)
         finally:
             resilience.select_fast_auto_config = original_select
             resilience._process_one_batch = original_process

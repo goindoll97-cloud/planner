@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-"""Make Stage 5 local-AI drafting visibly progress one item at a time.
+"""Surface Stage 5 local-AI drafting progress without disabling batching.
 
-The page groups UI work in threes, but the underlying resilient generator can
-still process those three items in one long model call.  On ordinary Windows
-PCs that leaves the progress bar at 0/N until the first large response returns.
-This runtime keeps the same grounding and validation rules while forcing one
-requirement per local-model call and surfacing progress before and after each
-item.
+The resilient generator already chooses a model-appropriate batch size and
+checkpoints successful batches. Earlier live-progress behavior forced one
+requirement per model call, which made the progress bar smoother but multiplied
+prompt-prefill and HTTP overhead. This runtime now observes each real batch
+instead: progress moves after a checkpoint while the underlying 4B-8B/large
+model batch-size policy remains intact.
 """
 
-from dataclasses import replace
 import re
 from typing import Any
 
@@ -26,25 +25,6 @@ def install_ai_live_progress_runtime() -> None:
     if bool(getattr(resilience, "_ai_live_progress_runtime_installed", False)):
         return
 
-    # One requirement per call keeps each JSON response compact and lets every
-    # completed item be checkpointed independently.
-    resilience.recommended_batch_size = lambda _model_name: 1
-
-    original_select = resilience.select_fast_auto_config
-    if not bool(getattr(original_select, WRAPPER_MARKER, False)):
-        def select_fast_with_compact_output(config, available_models, **kwargs):
-            # Keep this wrapper forward-compatible with the underlying selector.
-            # VRAM-aware selection adds keyword-only arguments such as
-            # available_model_sizes/gpu_vram_bytes; live-progress must not strip
-            # or reject them before the real model selector can use them.
-            selected = original_select(config, available_models, **kwargs)
-            size = resilience._model_size_billion(selected.model)
-            cap = 1200 if size is not None and size <= resilience.FAST_AUTO_MODEL_MAX_B else 1600
-            return replace(selected, max_output_tokens=min(selected.max_output_tokens, cap))
-
-        setattr(select_fast_with_compact_output, WRAPPER_MARKER, True)
-        resilience.select_fast_auto_config = select_fast_with_compact_output
-
     original_process = resilience._process_one_batch
     if not bool(getattr(original_process, WRAPPER_MARKER, False)):
         def process_one_with_live_progress(project, system, specs, client, *, store_safe_drafts: bool):
@@ -52,12 +32,18 @@ def install_ai_live_progress_runtime() -> None:
             bar = _active.get("bar")
             total = int(_active.get("total") or 0)
             done = int(_active.get("done") or 0)
-            label = getattr(specs[0], "label", "설명문") if specs else "설명문"
+            labels = [str(getattr(spec, "label", "설명문") or "설명문") for spec in specs]
+            if not labels:
+                batch_label = "설명문"
+            elif len(labels) == 1:
+                batch_label = labels[0]
+            else:
+                batch_label = f"{labels[0]} 외 {len(labels) - 1}개"
+
             if bar is not None and total > 0:
-                next_no = min(total, done + 1)
                 bar.progress(
                     min(1.0, done / total),
-                    text=f"{done}/{total}개 완료 · {next_no}번째 '{label}' 정리 중",
+                    text=f"{done}/{total}개 완료 · '{batch_label}' 묶음 정리 중",
                 )
             result = original_process(
                 project,
@@ -69,7 +55,7 @@ def install_ai_live_progress_runtime() -> None:
             if bar is not None and total > 0:
                 done = min(total, done + max(1, len(specs)))
                 _active["done"] = done
-                bar.progress(min(1.0, done / total), text=f"{done}/{total}개 · 저장 완료")
+                bar.progress(min(1.0, done / total), text=f"{done}/{total}개 · 묶음 저장 완료")
             return result
 
         setattr(process_one_with_live_progress, WRAPPER_MARKER, True)
