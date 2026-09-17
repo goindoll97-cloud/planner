@@ -240,6 +240,9 @@ def create_project_from_stage1_snapshot(snapshot: Mapping[str, Any]) -> Stage2Pr
     """
     business = dict(snapshot.get("business") or {})
     decision = dict(snapshot.get("decision") or {})
+    mixture_components = [
+        dict(row) for row in list(snapshot.get("mixture_components") or []) if isinstance(row, Mapping)
+    ]
 
     company_name = _business_value(
         business,
@@ -272,6 +275,7 @@ def create_project_from_stage1_snapshot(snapshot: Mapping[str, Any]) -> Stage2Pr
             "documents": dict(snapshot.get("documents") or {}),
             "chemicals": list(snapshot.get("chemicals") or []),
             "facilities": list(snapshot.get("facilities") or []),
+            "mixture_components": mixture_components,
         },
     )
 
@@ -331,6 +335,16 @@ def create_project_from_stage1_snapshot(snapshot: Mapping[str, Any]) -> Stage2Pr
         "VERIFIED" if snapshot.get("facilities") else "HOLD",
         evidence=base_evidence if snapshot.get("facilities") else [],
     )
+
+    if mixture_components:
+        project.set_field(
+            "inventory.mixture_components",
+            "혼합물 구성성분",
+            mixture_components,
+            "VERIFIED" if source else "USER_CONFIRMED",
+            evidence=base_evidence,
+            note="Stage 1 회사 입력 Excel의 SDS 제3항 기반 혼합물 구성성분",
+        )
 
     # Carry the company-fact intake contract (engine.company_intake_contract)
     # into Stage 2 project fields so the PSM/CAP statutory-form writers can

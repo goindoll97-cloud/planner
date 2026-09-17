@@ -79,39 +79,6 @@ def _stage1_evidence(project: Any) -> list[Any]:
     ]
 
 
-def _install_project_mixture_handoff() -> None:
-    from engine.stage2 import project as project_module
-
-    original = project_module.create_project_from_stage1_snapshot
-    if getattr(original, "_planner_visible_handoff_wrapped", False):
-        return
-
-    def create_with_mixture(snapshot: Mapping[str, Any]):
-        project = original(snapshot)
-        components = [dict(row) for row in list(snapshot.get("mixture_components") or []) if isinstance(row, Mapping)]
-        project.stage1_snapshot["mixture_components"] = components
-        if components:
-            project.set_field(
-                "inventory.mixture_components",
-                "혼합물 구성성분",
-                components,
-                "VERIFIED" if getattr(project, "stage1_source_fingerprint", "") else "USER_CONFIRMED",
-                evidence=_stage1_evidence(project),
-                note="Stage 1 회사 입력 Excel의 SDS 제3항 기반 혼합물 구성성분",
-            )
-        return project
-
-    create_with_mixture._planner_visible_handoff_wrapped = True
-    project_module.create_project_from_stage1_snapshot = create_with_mixture
-
-    # engine.stage2.__init__ re-exports the function; keep that alias synchronized.
-    try:
-        import engine.stage2 as stage2_package
-        stage2_package.create_project_from_stage1_snapshot = create_with_mixture
-    except Exception:
-        pass
-
-
 def _value_summary(key: str, value: Any) -> str:
     if isinstance(value, list):
         if key == "inventory.chemicals":
@@ -731,11 +698,12 @@ def _install_msds_mixture_handoff() -> None:
 
 
 def install_stage2_visible_handoff_runtime() -> None:
-    """Install visible provenance, immutable Stage-1 handoff and MSDS linkage."""
+    """Install visible provenance and immutable Stage-1 handoff for workbooks
+    and MSDS linkage. Mixture-component handoff into Stage 2 project fields is
+    already native to engine.stage2.project.create_project_from_stage1_snapshot."""
     import engine.stage2.project as project_module
     if getattr(project_module, "_visible_stage1_handoff_runtime_installed", False):
         return
-    _install_project_mixture_handoff()
     _install_workbook_handoff()
     _install_msds_mixture_handoff()
     project_module._visible_stage1_handoff_runtime_installed = True
