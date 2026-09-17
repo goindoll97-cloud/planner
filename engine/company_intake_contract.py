@@ -7,11 +7,15 @@ safely invented by AI or derived by the rule engine. Narrative drafting,
 regulatory calculations, applicability decisions, writing level, and other
 interpretive fields remain outside the company-direct input contract.
 
-This module installs two small compatibility hooks:
+This module owns the company-facing labels directly. Older pre-release PSM/CAP
+abbreviation labels are accepted only as compatibility aliases when reading
+existing workbooks; newly generated workbooks expose full Korean report names.
+
+The module also installs two focused compatibility hooks:
 1. replace the ``01_사업장기본정보`` sheet builder with the current company-fact
    contract while keeping the rest of the existing workbook unchanged;
-2. carry those confirmed company facts into Stage 2 project fields so the PSM
-   and CAP statutory-form writers can reuse them without asking again.
+2. carry those confirmed company facts into Stage 2 project fields so the
+   statutory-form writers can reuse them without asking again.
 """
 
 from dataclasses import dataclass
@@ -20,6 +24,29 @@ from typing import Any, Mapping, Sequence
 
 
 UNKNOWN_TOKENS = {"", "모름", "잘모름", "미확인", "unknown"}
+
+# Backward compatibility for workbooks created before full Korean report names
+# became the public input contract. New workbooks use only the right-hand labels.
+LABEL_ALIASES: tuple[tuple[str, str], ...] = (
+    ("PSM 사업 구분", "공정안전보고서 사업 구분"),
+    ("PSM 심사대상 설비명", "공정안전보고서 심사대상 설비명"),
+    ("PSM 부지면적(㎡)", "공정안전보고서 부지면적(㎡)"),
+    ("PSM 주요건물(동/층/연면적)", "공정안전보고서 주요건물(동/층/연면적)"),
+    ("PSM 보고서 작성자 성명", "공정안전보고서 작성자 성명"),
+    ("PSM 보고서 작성자 자격", "공정안전보고서 작성자 자격"),
+    ("PSM 총사업기간", "공정안전보고서 총사업기간"),
+    ("PSM 착공예정일", "공정안전보고서 착공예정일"),
+    ("PSM 시운전기간", "공정안전보고서 시운전기간"),
+    ("CAP 단위공장명", "화학사고예방관리계획서 단위공장명"),
+    ("CAP 산업단지명", "화학사고예방관리계획서 산업단지명"),
+    ("CAP 제출구분", "화학사고예방관리계획서 제출구분"),
+    ("CAP 공동비상대응계획 수립 여부", "화학사고예방관리계획서 공동비상대응계획 수립 여부"),
+    ("CAP 유사제도 심사결과 활용 여부", "화학사고예방관리계획서 유사제도 심사결과 활용 여부"),
+    ("CAP 최근 3년간 화학사고 발생 여부", "화학사고예방관리계획서 최근 3년간 화학사고 발생 여부"),
+    ("CAP 작성자 성명", "화학사고예방관리계획서 작성자 성명"),
+    ("CAP 담당자 연락처", "화학사고예방관리계획서 담당자 연락처"),
+    ("CAP 담당자 이메일", "화학사고예방관리계획서 담당자 이메일"),
+)
 
 
 @dataclass(frozen=True)
@@ -50,29 +77,29 @@ COMPANY_FACT_SPECS: tuple[CompanyFactSpec, ...] = (
     CompanyFactSpec("기존 화학사고예방관리계획서 보유 여부", "N", "Y", "화학사고예방관리계획서", "Y / N / 해당없음 / 모름", choices=("Y", "N", "해당없음", "모름")),
     CompanyFactSpec("현재 목적", "신규 사전진단", "Y", "공통", "신규 사전진단 / 변경검토 / 재제출검토", choices=("신규 사전진단", "변경검토", "재제출검토")),
 
-    # PSM statutory-form facts. Narrative overview is intentionally excluded:
+    # 공정안전보고서 statutory-form facts. Narrative overview is intentionally excluded:
     # AI can draft it from confirmed process/material/equipment evidence.
-    CompanyFactSpec("PSM 사업 구분", "설치·이전", "대상 시", "공정안전보고서", "설치·이전 / 변경 / 기존설비 / 모름", ("psm.business.project_type",), ("설치·이전", "변경", "기존설비", "모름")),
-    CompanyFactSpec("PSM 심사대상 설비명", "반응·정제 공정 (가상)", "대상 시", "공정안전보고서", "공정안전보고서 심사대상 설비의 회사 사용 명칭", ("psm.business.target_facility",)),
-    CompanyFactSpec("PSM 부지면적(㎡)", 28500, "대상 시", "공정안전보고서", "사업장 부지면적", ("psm.business.site_area",)),
-    CompanyFactSpec("PSM 주요건물(동/층/연면적)", "생산동 2동·3층·연면적 8,400㎡ (가상)", "대상 시", "공정안전보고서", "주요건물 수·층수·연면적 등 회사 확정값", ("psm.business.main_building",)),
-    CompanyFactSpec("PSM 보고서 작성자 성명", "김안전 (가상)", "대상 시", "공정안전보고서", "최종 보고서 작성 책임자 성명"),
-    CompanyFactSpec("PSM 보고서 작성자 자격", "산업안전기사 (가상)", "대상 시", "공정안전보고서", "법정 서식에 기재할 작성자 자격"),
-    CompanyFactSpec("PSM 총사업기간", "2026.10~2027.06 (가상)", "대상 시", "공정안전보고서", "총 사업기간", ("psm.business.total_period",)),
-    CompanyFactSpec("PSM 착공예정일", "2026-10-15 (가상)", "대상 시", "공정안전보고서", "착공 예정일", ("psm.business.start_date",)),
-    CompanyFactSpec("PSM 시운전기간", "2027.05~2027.06 (가상)", "대상 시", "공정안전보고서", "시운전 예정기간", ("psm.business.commissioning_period",)),
+    CompanyFactSpec("공정안전보고서 사업 구분", "설치·이전", "대상 시", "공정안전보고서", "설치·이전 / 변경 / 기존설비 / 모름", ("psm.business.project_type",), ("설치·이전", "변경", "기존설비", "모름")),
+    CompanyFactSpec("공정안전보고서 심사대상 설비명", "반응·정제 공정 (가상)", "대상 시", "공정안전보고서", "공정안전보고서 심사대상 설비의 회사 사용 명칭", ("psm.business.target_facility",)),
+    CompanyFactSpec("공정안전보고서 부지면적(㎡)", 28500, "대상 시", "공정안전보고서", "사업장 부지면적", ("psm.business.site_area",)),
+    CompanyFactSpec("공정안전보고서 주요건물(동/층/연면적)", "생산동 2동·3층·연면적 8,400㎡ (가상)", "대상 시", "공정안전보고서", "주요건물 수·층수·연면적 등 회사 확정값", ("psm.business.main_building",)),
+    CompanyFactSpec("공정안전보고서 작성자 성명", "김안전 (가상)", "대상 시", "공정안전보고서", "최종 보고서 작성 책임자 성명"),
+    CompanyFactSpec("공정안전보고서 작성자 자격", "산업안전기사 (가상)", "대상 시", "공정안전보고서", "법정 서식에 기재할 작성자 자격"),
+    CompanyFactSpec("공정안전보고서 총사업기간", "2026.10~2027.06 (가상)", "대상 시", "공정안전보고서", "총 사업기간", ("psm.business.total_period",)),
+    CompanyFactSpec("공정안전보고서 착공예정일", "2026-10-15 (가상)", "대상 시", "공정안전보고서", "착공 예정일", ("psm.business.start_date",)),
+    CompanyFactSpec("공정안전보고서 시운전기간", "2027.05~2027.06 (가상)", "대상 시", "공정안전보고서", "시운전 예정기간", ("psm.business.commissioning_period",)),
 
-    # CAP statutory-form facts. Writing level and impact-range conclusions are
-    # deliberately excluded because the rule/analysis pipeline derives them.
-    CompanyFactSpec("CAP 단위공장명", "제1생산공장 (가상)", "대상 시", "화학사고예방관리계획서", "계획서 작성 단위가 되는 단위공장명", ("cap.business.unit_plant_name",)),
-    CompanyFactSpec("CAP 산업단지명", "울산미포국가산업단지 (가상)", "대상 시", "화학사고예방관리계획서", "산업단지 밖이면 '해당없음'", ("cap.business.industrial_complex",)),
-    CompanyFactSpec("CAP 제출구분", "신규", "대상 시", "화학사고예방관리계획서", "신규 / 변경 / 재제출 / 모름", ("cap.business.submission_type",), ("신규", "변경", "재제출", "모름")),
-    CompanyFactSpec("CAP 공동비상대응계획 수립 여부", "N", "대상 시", "화학사고예방관리계획서", "회사에서 수립 여부를 확인해 Y / N / 해당없음 / 모름", ("cap.business.joint_emergency_plan",), ("Y", "N", "해당없음", "모름")),
-    CompanyFactSpec("CAP 유사제도 심사결과 활용 여부", "N", "대상 시", "화학사고예방관리계획서", "기존 유사제도 심사결과 활용 여부", ("cap.business.other_system_review",), ("Y", "N", "해당없음", "모름")),
-    CompanyFactSpec("CAP 최근 3년간 화학사고 발생 여부", "N", "대상 시", "화학사고예방관리계획서", "회사 사고기록을 기준으로 Y / N / 모름", ("cap.business.recent_accident",), ("Y", "N", "모름")),
-    CompanyFactSpec("CAP 작성자 성명", "이환경 (가상)", "대상 시", "화학사고예방관리계획서", "계획서 작성 담당자 성명", ("cap.business.writer_info",)),
-    CompanyFactSpec("CAP 담당자 연락처", "010-0000-0000 (가상)", "대상 시", "화학사고예방관리계획서", "작성 담당자 연락처", ("cap.business.writer_contact",)),
-    CompanyFactSpec("CAP 담당자 이메일", "safety@example.com (가상)", "대상 시", "화학사고예방관리계획서", "작성 담당자 이메일", ("cap.business.writer_email",)),
+    # 화학사고예방관리계획서 statutory-form facts. Writing level and impact-range
+    # conclusions are deliberately excluded because the rule/analysis pipeline derives them.
+    CompanyFactSpec("화학사고예방관리계획서 단위공장명", "제1생산공장 (가상)", "대상 시", "화학사고예방관리계획서", "계획서 작성 단위가 되는 단위공장명", ("cap.business.unit_plant_name",)),
+    CompanyFactSpec("화학사고예방관리계획서 산업단지명", "울산미포국가산업단지 (가상)", "대상 시", "화학사고예방관리계획서", "산업단지 밖이면 '해당없음'", ("cap.business.industrial_complex",)),
+    CompanyFactSpec("화학사고예방관리계획서 제출구분", "신규", "대상 시", "화학사고예방관리계획서", "신규 / 변경 / 재제출 / 모름", ("cap.business.submission_type",), ("신규", "변경", "재제출", "모름")),
+    CompanyFactSpec("화학사고예방관리계획서 공동비상대응계획 수립 여부", "N", "대상 시", "화학사고예방관리계획서", "회사에서 수립 여부를 확인해 Y / N / 해당없음 / 모름", ("cap.business.joint_emergency_plan",), ("Y", "N", "해당없음", "모름")),
+    CompanyFactSpec("화학사고예방관리계획서 유사제도 심사결과 활용 여부", "N", "대상 시", "화학사고예방관리계획서", "기존 유사제도 심사결과 활용 여부", ("cap.business.other_system_review",), ("Y", "N", "해당없음", "모름")),
+    CompanyFactSpec("화학사고예방관리계획서 최근 3년간 화학사고 발생 여부", "N", "대상 시", "화학사고예방관리계획서", "회사 사고기록을 기준으로 Y / N / 모름", ("cap.business.recent_accident",), ("Y", "N", "모름")),
+    CompanyFactSpec("화학사고예방관리계획서 작성자 성명", "이환경 (가상)", "대상 시", "화학사고예방관리계획서", "계획서 작성 담당자 성명", ("cap.business.writer_info",)),
+    CompanyFactSpec("화학사고예방관리계획서 담당자 연락처", "010-0000-0000 (가상)", "대상 시", "화학사고예방관리계획서", "작성 담당자 연락처", ("cap.business.writer_contact",)),
+    CompanyFactSpec("화학사고예방관리계획서 담당자 이메일", "safety@example.com (가상)", "대상 시", "화학사고예방관리계획서", "작성 담당자 이메일", ("cap.business.writer_email",)),
 )
 
 
@@ -88,6 +115,17 @@ AI_DRAFT_EXCLUDED_LABELS: tuple[str, ...] = (
 
 def _norm(value: object) -> str:
     return re.sub(r"\s+", "", "" if value is None else str(value)).strip().lower()
+
+
+def _aliased_business(business: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose both current full labels and pre-release abbreviation aliases."""
+    values = dict(business)
+    for old, current in LABEL_ALIASES:
+        if current in values and old not in values:
+            values[old] = values[current]
+        elif old in values and current not in values:
+            values[current] = values[old]
+    return values
 
 
 def _business_value(business: Mapping[str, object], *labels: str) -> object:
@@ -112,6 +150,7 @@ def _set_project_fact(project: Any, key: str, label: str, value: object, evidenc
 
 def seed_company_facts(project: Any, business: Mapping[str, object]) -> None:
     """Carry company-direct workbook facts into Stage 2 without inference."""
+    business = _aliased_business(business)
     source = str(getattr(project, "stage1_source_fingerprint", "") or "").strip()
     evidence: list[Any] = []
     if source:
@@ -168,8 +207,8 @@ def seed_company_facts(project: Any, business: Mapping[str, object]) -> None:
         for key in spec.field_keys:
             _set_project_fact(project, key, labels_by_key.get(key, spec.label), value, evidence)
 
-    writer_name = _business_value(business, "PSM 보고서 작성자 성명")
-    writer_qualification = _business_value(business, "PSM 보고서 작성자 자격")
+    writer_name = _business_value(business, "공정안전보고서 작성자 성명")
+    writer_qualification = _business_value(business, "공정안전보고서 작성자 자격")
     if writer_name not in (None, "") or writer_qualification not in (None, ""):
         payload = {
             "작성자": "" if writer_name is None else str(writer_name).strip(),
