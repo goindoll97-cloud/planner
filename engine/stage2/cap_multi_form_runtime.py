@@ -14,6 +14,7 @@ This module keeps the existing fail-closed rules:
 - incomplete coverage, failed HWP conversion, or unrecognised forms stay HOLD.
 """
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
@@ -33,6 +34,10 @@ CACHE_DIR = cap_hwpx.PROJECT_ROOT / "data" / "runtime" / "cap_hwpx_converted"
 BUNDLE_SOURCE = "APPROVED_LAW_ARCHIVE_BUNDLE"
 BUNDLE_INCOMPLETE_SOURCE = "APPROVED_LAW_ARCHIVE_BUNDLE_INCOMPLETE"
 _VALIDATION_LOCK = RLock()
+_PARTIAL_VALIDATION_ALLOWED: ContextVar[bool] = ContextVar(
+    "cap_multi_form_partial_validation_allowed",
+    default=False,
+)
 
 
 @dataclass(frozen=True)
@@ -236,16 +241,16 @@ def _relaxed_validation(strict_validate, data: bytes):
 
 
 def _partial_builder(original_build):
-    """Wrap the builder with validation relaxed only for one approved split form.
+    """Relax validation only inside one approved split-form build context.
 
-    cap_hwpx.build_cap_hwpx_draft resolves validate_cap_hwpx_template from the
-    cap_hwpx module globals at call time (including through any helper it
-    delegates to), so the swap must happen on that module itself rather than
-    on a private copy of original_build's globals. Swap it only inside a lock
-    and always restore it, so manual uploads and ordinary single-template
-    validation elsewhere stay strict. The relaxed validator is bound to the
-    strict validator captured *before* the swap, so it never resolves to
-    itself and recurses once installed.
+    ``cap_hwpx.build_cap_hwpx_draft`` resolves ``validate_cap_hwpx_template``
+    from the module at call time, so the split-form path still needs a temporary
+    wrapper there.  The wrapper is context-local: only the thread/task that set
+    ``_PARTIAL_VALIDATION_ALLOWED`` sees partial-form validation as acceptable.
+    Any concurrent Streamlit session sees the same temporary wrapper but its
+    ContextVar remains false, so it still executes the captured strict validator.
+    The module binding is restored in ``finally`` for compatibility with callers
+    that expect the ordinary validator object outside the split-form call.
     """
 
     def build_partial(project, template_bytes: bytes | None = None):
@@ -253,11 +258,19 @@ def _partial_builder(original_build):
             return original_build(project)
         with _VALIDATION_LOCK:
             current = cap_hwpx.validate_cap_hwpx_template
-            cap_hwpx.validate_cap_hwpx_template = lambda data: _relaxed_validation(current, data)
+            token = _PARTIAL_VALIDATION_ALLOWED.set(True)
+
+            def contextual_validate(data: bytes):
+                if not _PARTIAL_VALIDATION_ALLOWED.get():
+                    return current(data)
+                return _relaxed_validation(current, data)
+
+            cap_hwpx.validate_cap_hwpx_template = contextual_validate
             try:
                 return original_build(project, template_bytes=template_bytes)
             finally:
                 cap_hwpx.validate_cap_hwpx_template = current
+                _PARTIAL_VALIDATION_ALLOWED.reset(token)
 
     return build_partial
 
