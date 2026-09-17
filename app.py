@@ -3,7 +3,6 @@ from __future__ import annotations
 import streamlit as st
 
 from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
-from engine.stage2.ai_response_runtime import install_ai_response_runtime
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_fragment_runtime import install_cap_fragment_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
@@ -47,13 +46,11 @@ install_psm_baseline_runtime()
 # limit when many report items are sent at once. Install small-batch generation,
 # longer local read timeouts, bounded output, checkpoint saves and Ollama
 # non-thinking mode before Streamlit imports the selected Stage 2 page.
+# Local models may also return equivalent JSON with `items`, `sentences`, a
+# keyed object, or a direct one-item object instead of the exact `drafts`
+# array; local_ai_resilience tolerates those harmless response-shape
+# differences while keeping validation strict on requirement keys/facts.
 install_local_ai_resilience()
-
-# Local models may return equivalent JSON with `items`, `sentences`, a keyed
-# object, or a direct one-item object instead of the exact `drafts` array. Keep
-# validation strict on requirement keys/facts, but tolerate those harmless
-# response-shape differences.
-install_ai_response_runtime()
 # Surface each local-AI item immediately instead of leaving the page at 0/N
 # during the first multi-item model call. Grounding/validation stays unchanged.
 install_ai_live_progress_runtime()

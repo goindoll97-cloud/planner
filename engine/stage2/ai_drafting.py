@@ -380,12 +380,11 @@ def build_pack_result_from_rows(
 ) -> tuple[str, list[AIDraftItem], list[AIDraftItem]]:
     """Validate LLM draft rows against confirmed facts and language policy.
 
-    Shared by the non-batched (``generate_system_ai_drafts``), batched
-    (``local_ai_resilience._process_one_batch``), and tolerant-JSON-shape
-    (``ai_response_runtime._process_one_batch_flexible``) callers, which
-    otherwise differ only in how they obtain ``draft_rows``/the profile
+    Shared by the non-batched (``generate_system_ai_drafts``) and batched,
+    tolerant-JSON-shape (``local_ai_resilience._process_one_batch``) callers,
+    which otherwise differ only in how they obtain ``draft_rows``/the profile
     summary from the raw LLM response. Keeping this in one place means a
-    validation-rule change cannot land in only one or two of the three.
+    validation-rule change cannot land in only one of the two.
     """
     profile_summary = normalize_public_prose(str(raw_profile_summary or "").strip(), system)
     if validate_public_prose(profile_summary, system):

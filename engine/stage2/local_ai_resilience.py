@@ -22,6 +22,7 @@ import requests
 
 from . import ai_drafting as core
 from . import local_llm
+from .ai_response_normalizer import normalize_draft_response
 
 
 DEFAULT_LOCAL_AI_TIMEOUT_SECONDS = 600
@@ -328,12 +329,10 @@ def _process_one_batch(
     specs = list(specs)
     prompt, global_facts = core._build_pack_prompt(project, system, specs)
     raw = client.generate_json(instructions=core._system_prompt(system), prompt=prompt)
-    draft_rows = raw.get("drafts")
-    if not isinstance(draft_rows, list):
-        raise ValueError("로컬 AI 응답에 문장 배열이 없습니다.")
+    raw_profile, draft_rows = normalize_draft_response(raw, specs)
 
     return core.build_pack_result_from_rows(
-        project, system, specs, global_facts, raw.get("profile_summary"), draft_rows, client,
+        project, system, specs, global_facts, raw_profile, draft_rows, client,
         store_safe_drafts=store_safe_drafts,
     )
 
