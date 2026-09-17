@@ -48,8 +48,8 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
 
     def test_report_downloads_offer_plain_and_ai_enhanced_drafts(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("기본 초안 다운로드", text)
-        self.assertIn("AI 문장 다듬기 포함 초안", text)
+        self.assertIn("내부 검토용 DOCX 다운로드", text)
+        self.assertIn("AI 문장 검토용 내부 DOCX", text)
         self.assertIn("build_report_draft", text)
         self.assertIn("build_ai_enhanced_report_draft", text)
 

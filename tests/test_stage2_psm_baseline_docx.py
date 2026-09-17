@@ -156,23 +156,22 @@ class PSMBaselineDocxTests(unittest.TestCase):
         self.assertTrue(name.endswith("_공정안전보고서_규정서식_작성본.docx"))
         self.assertNotIn("내부", name)
 
-    def test_app_installs_psm_baseline_after_cap_review_label_runtime(self):
-        text = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn("install_psm_baseline_runtime", text)
-        self.assertGreater(
-            text.index("install_psm_baseline_runtime()"),
-            text.index("install_cap_official_word_runtime()"),
-        )
-        self.assertLess(
-            text.index("install_psm_baseline_runtime()"),
-            text.index("install_local_ai_resilience()"),
-        )
-
-    def test_stage5_runtime_inserts_regulation_form_before_psm_review_heading(self):
-        text = (PROJECT_ROOT / "engine/stage2/psm_baseline_runtime.py").read_text(encoding="utf-8")
+    def test_stage5_renders_regulation_form_directly_before_psm_review_heading(self):
+        # Stage 5 used to detect the (already relabeled) PSM review heading via
+        # a chained st.markdown monkeypatch, which never actually fired because
+        # cap_official_docx's own relabeling wrapper called its own frozen
+        # pre-patch st.markdown reference and bypassed the outer patch. Calling
+        # _render_psm_regulation_form directly, in source order before the
+        # heading, removes that failure mode entirely.
+        text = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("공정안전보고서 · 규정서식 작성본", text)
-        self.assertIn('text == "### 공정안전보고서 · 내부 검토용"', text)
         self.assertIn("공정안전보고서 규정서식 작성본 DOCX 다운로드", text)
+        # The last occurrence is the call site in the page body; the function
+        # definition itself (which also contains this substring) comes first.
+        call_site = text.rindex("_render_psm_regulation_form(project)")
+        heading = text.index('st.markdown("### 공정안전보고서 · 내부 검토용")')
+        self.assertLess(call_site, heading)
+        self.assertGreater(call_site, text.index("def _render_psm_regulation_form(project)"))
 
 
 if __name__ == "__main__":
