@@ -11,8 +11,10 @@ from engine.stage2.storage import list_projects, load_project, save_project
 from engine.stage2.workflow import (
     ATTACHMENT_MODE_MANUAL,
     attachment_mode,
+    draft_with_holds_acknowledged,
     input_kind_has_attachment,
     intake_confirmed,
+    mark_draft_with_holds_acknowledged,
     mark_validation_confirmed,
     validation_confirmed,
 )
@@ -37,7 +39,7 @@ st.set_page_config(page_title="작성자료 점검·보완", page_icon="🔎", l
 st.title("🔎 4. 작성자료 점검·보완")
 st.caption(
     "3단계에서 입력한 자료가 보고서 작성에 충분한지 확인하고, 빠진 자료나 서로 맞지 않는 내용을 정리합니다. "
-    "이 단계가 끝나면 바로 5. 보고서 작성으로 넘어갈 수 있습니다."
+    "미확인 항목이 남아 있어도 현재 확인된 자료만으로 검토용 초안을 작성할 수 있습니다."
 )
 st.info(
     "이 단계에서는 ① 선택한 보고서 작성범위에 필요한 자료가 빠지지 않았는지, "
@@ -122,12 +124,16 @@ c4.metric("최종 제출 전 별도 준비", len(manual_issues))
 if text_validation_ready:
     st.success("보고서 작성에 필요한 기본 자료점검이 완료되었습니다. 5. 보고서 작성으로 진행할 수 있습니다.")
 else:
-    st.warning("보고서를 작성하기 전에 보완하거나 담당자가 확인해야 할 항목이 남아 있습니다. 아래 내용을 먼저 확인해 주세요.")
+    st.warning(
+        "보완하거나 담당자가 확인해야 할 항목이 남아 있습니다. "
+        "자료를 더 보완할 수도 있고, 현재 확인된 자료만 사용해 검토용 초안 작성을 계속할 수도 있습니다."
+    )
 
 if not report.final_export_allowed:
     st.info(
         "보고서 초안 작성 가능 여부와 최종 제출 가능 여부는 다릅니다. "
-        "도면·이미지·계산서·제품 MSDS 등 별도 준비자료는 최종 제출 전에 실제 자료를 확인하여 결합해야 합니다."
+        "미확인 값은 추정하지 않고 빈칸/HOLD로 남기며, 도면·이미지·계산서·제품 MSDS 등 별도 준비자료는 "
+        "최종 제출 전에 실제 자료를 확인하여 결합해야 합니다."
     )
 
 rows = []
@@ -149,7 +155,7 @@ else:
 st.markdown("### 보강 요청자료")
 st.caption(
     "현재 자료만으로 보고서 내용을 확정하기 어려운 항목을 담당자에게 요청하기 쉬운 형태로 정리했습니다. "
-    "필요한 자료와 확인 가능한 위치를 보고 보완한 뒤 3단계 통합 작성자료에 반영하세요."
+    "이 목록은 검토용 초안 작성을 자동으로 막지 않으며, 확보되는 자료는 3단계 통합 작성자료에 추가 반영할 수 있습니다."
 )
 request_rows: list[dict[str, str]] = []
 if project.psm_in_scope:
@@ -195,10 +201,26 @@ if manual_issues:
 
 st.divider()
 if not text_validation_ready:
-    mark_validation_confirmed(project, False)
-    save_project(project)
-    st.button("작성자료 확인 완료 → 5. 보고서 작성", disabled=True, width="stretch")
-    st.caption("위의 ‘보완 필요’와 ‘담당자 확인 필요’ 항목을 먼저 처리해 주세요.")
+    # Keep validation fail-closed, but permit an explicit draft-only continuation.
+    if validation_confirmed(project):
+        mark_validation_confirmed(project, False)
+        save_project(project)
+
+    if draft_with_holds_acknowledged(project):
+        st.warning(
+            "현재 자료로 검토용 초안 작성을 허용한 상태입니다. 미확인 항목은 빈칸/HOLD로 유지되며, "
+            "이 상태는 최종 제출 가능 판정을 의미하지 않습니다."
+        )
+        st.page_link("ui/stage2_review_page.py", label="다음: 5. 보고서 초안 작성", icon="📝")
+    else:
+        st.caption(
+            "추가 자료를 지금 확보하기 어렵다면 아래 버튼으로 현재 확인된 자료만 사용해 5단계 검토용 초안을 작성할 수 있습니다. "
+            "확인되지 않은 사실·수치는 새로 추정하지 않습니다."
+        )
+        if st.button("현재 자료로 초안 작성 계속 → 5. 보고서 작성", type="primary", width="stretch"):
+            mark_draft_with_holds_acknowledged(project, True)
+            save_project(project)
+            st.rerun()
 else:
     if not validation_confirmed(project):
         if st.button("작성자료 확인 완료 → 5. 보고서 작성", type="primary", width="stretch"):

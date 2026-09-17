@@ -38,7 +38,11 @@ from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from engine.stage2.report_draft import build_report_draft, draft_filename
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
-from engine.stage2.workflow import validation_confirmed
+from engine.stage2.workflow import (
+    draft_authoring_allowed,
+    draft_with_holds_acknowledged,
+    validation_confirmed,
+)
 
 
 PSM_FULL = "공정안전보고서"
@@ -295,9 +299,6 @@ def _run_automatic_ai(
         for batch in _chunks(missing, ui_batch_size):
             batch_label = batch[-1].label if batch else SYSTEM_LABELS[system]
             if progress_callback is not None:
-                # Move the bar's text before the (possibly slow) model call
-                # starts, so it doesn't sit frozen on the previous batch's
-                # label for the whole duration of this one.
                 progress_callback(completed_pending, total_pending, f"{batch_label} 묶음 정리 중")
             try:
                 result = generate_system_ai_drafts(
@@ -473,9 +474,6 @@ def _render_basic_docx(project, system: str, label: str) -> None:
         st.error(f"{label} 기본 초안을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
-    # This combined DOCX is a program-reconstructed review copy, not the
-    # official statutory layout (that is the CAP HWPX / PSM regulation-form
-    # download above), so it is labeled and styled as secondary here.
     st.download_button(
         f"{label} · 내부 검토용 DOCX 다운로드",
         data=baseline,
@@ -488,11 +486,6 @@ def _render_basic_docx(project, system: str, label: str) -> None:
 
 
 def _render_psm_regulation_form(project) -> None:
-    """Fill the preserved PSM regulation-form DOCX with confirmed company data.
-
-    Mirrors the CAP split between the official-layout form (this) and the
-    internal-review prose DOCX rendered separately by _render_basic_docx.
-    """
     st.markdown("### 공정안전보고서 · 규정서식 작성본")
     st.caption(
         "규정서식 baseline의 표·병합셀·글꼴·페이지 구성을 유지하고, 4단계까지 확인된 회사자료만 해당 칸에 입력합니다. "
@@ -609,13 +602,19 @@ if not project.scope_confirmed:
     st.warning("이번 프로젝트에서 작성할 문서가 아직 선택되지 않았습니다.")
     st.page_link("ui/stage2_scope_page.py", label="2. 작성범위 선택으로 이동", icon="🧭")
     st.stop()
-if not validation_confirmed(project):
-    st.warning("4. 작성자료 점검·보완이 아직 완료되지 않았습니다. 먼저 4단계에서 필요한 자료를 확인해 주세요.")
+if not draft_authoring_allowed(project):
+    st.warning("4. 작성자료 점검·보완에서 자료점검 또는 현재 자료로 초안 작성 계속 여부를 먼저 확인해 주세요.")
     st.page_link("ui/stage2_validation_page.py", label="4. 작성자료 점검·보완으로 이동", icon="🔎")
     st.stop()
 
 scope = [SYSTEM_LABELS[system] for system in _systems(project)]
 st.success("현재 작성 문서: " + ", ".join(scope))
+
+if draft_with_holds_acknowledged(project) and not validation_confirmed(project):
+    st.warning(
+        "현재 자료만으로 작성하는 검토용 초안입니다. 4단계의 보완 필요/담당자 확인 필요 항목은 해결된 것으로 처리하지 않으며, "
+        "확인되지 않은 값은 추정하지 않고 빈칸 또는 HOLD로 유지합니다. 최종 제출 전에 보강자료와 실제 도면·첨부자료를 확인해야 합니다."
+    )
 
 st.markdown("## 보고서 초안 내려받기")
 st.caption("AI를 실행하지 않아도 아래 기본 초안을 바로 내려받을 수 있습니다.")
