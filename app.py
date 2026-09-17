@@ -5,7 +5,6 @@ import streamlit as st
 from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
-from engine.stage2.local_ai_resilience import install_local_ai_resilience
 from engine.stage2.storage import list_projects, load_project
 from engine.stage2.workflow import intake_confirmed, validation_confirmed
 
@@ -36,15 +35,12 @@ install_cap_final_form_runtime()
 # internal-review-labeled DOCX and the PSM regulation-form baseline directly
 # (see ui/stage2_review_page.py).
 
-# Local 14B models can be healthy yet exceed the old 180-second single-request
-# limit when many report items are sent at once. Install small-batch generation,
-# longer local read timeouts, bounded output, checkpoint saves and Ollama
-# non-thinking mode before Streamlit imports the selected Stage 2 page.
-# Local models may also return equivalent JSON with `items`, `sentences`, a
-# keyed object, or a direct one-item object instead of the exact `drafts`
-# array; local_ai_resilience tolerates those harmless response-shape
-# differences while keeping validation strict on requirement keys/facts.
-install_local_ai_resilience()
+# ui/stage2_review_page.py imports build_local_llm_client/
+# local_llm_config_from_sources/generate_system_ai_drafts directly from
+# engine.stage2.local_ai_resilience (small-batch generation with
+# checkpointing, longer local read timeouts, bounded output, and tolerant
+# JSON-shape parsing for local Ollama models) instead of the plain
+# local_llm/ai_drafting versions, so no install step is needed here.
 # Surface each local-AI item immediately instead of leaving the page at 0/N
 # during the first multi-item model call. Grounding/validation stays unchanged.
 install_ai_live_progress_runtime()

@@ -60,9 +60,7 @@ class CAPFinalFormRuntimeTests(unittest.TestCase):
         text = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
         multi_form = text.index("install_cap_multi_form_runtime()")
         final_form = text.index("install_cap_final_form_runtime()")
-        local_ai = text.index("install_local_ai_resilience()")
         self.assertLess(multi_form, final_form)
-        self.assertLess(final_form, local_ai)
 
     def test_cap_final_runtime_suppresses_only_cap_review_appendix(self):
         text = (PROJECT_ROOT / "engine/stage2/cap_final_form_runtime.py").read_text(encoding="utf-8")

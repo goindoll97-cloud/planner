@@ -8,7 +8,6 @@ from engine.stage2.ai_drafting import (
     ai_draft_field_key,
     ai_draft_is_current,
     ai_draftable_specs,
-    generate_system_ai_drafts,
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
 from engine.stage2.cap_hwpx import (
@@ -18,14 +17,18 @@ from engine.stage2.cap_hwpx import (
     register_cap_template,
     registered_cap_template,
 )
-from engine.stage2.local_ai_resilience import recommended_batch_size, select_fast_auto_config
+from engine.stage2.local_ai_resilience import (
+    build_local_llm_client,
+    generate_system_ai_drafts,
+    local_llm_config_from_sources,
+    recommended_batch_size,
+    select_fast_auto_config,
+)
 from engine.stage2.local_llm import (
     DEFAULT_MODEL,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OPENAI_COMPATIBLE_URL,
     LocalLLMConfig,
-    build_local_llm_client,
-    local_llm_config_from_sources,
     local_runtime_label,
     local_runtime_not_ready_message,
     probe_local_llm_runtime,
