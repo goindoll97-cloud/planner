@@ -5,7 +5,7 @@ import streamlit as st
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.storage import list_projects, load_project
-from engine.stage2.workflow import intake_confirmed, validation_confirmed
+from engine.stage2.workflow import draft_authoring_allowed, intake_confirmed
 
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
@@ -47,12 +47,16 @@ install_cap_final_form_runtime()
 def _stage2_progress() -> tuple[bool, bool]:
     """Return whether Stage 4/5 should be registered in this app run.
 
-    Streamlit builds the navigation before the selected page executes.  If page
+    Streamlit builds the navigation before the selected page executes. If page
     registration depends only on the session's previously active project, a user
     can switch projects inside Stage 3/4 and immediately render a page_link to a
-    page that was not registered at app start.  Register a gated page whenever
+    page that was not registered at app start. Register a gated page whenever
     at least one stored project is legitimately ready for it; each destination
     page still enforces the selected project's own gate before showing content.
+
+    Stage 5 is registered for both fully validated projects and projects whose
+    user explicitly acknowledged unresolved HOLD/REVIEW items for draft-only
+    authoring. Final-submission readiness remains controlled by validation.
     """
     project_ids: list[str] = []
     active_id = str(st.session_state.get(ACTIVE_PROJECT_KEY) or "").strip()
@@ -67,20 +71,20 @@ def _stage2_progress() -> tuple[bool, bool]:
         pass
 
     intake_ready = False
-    validation_ready = False
+    authoring_ready = False
     for project_id in project_ids:
         try:
             project = load_project(project_id)
         except Exception:
             continue
         intake_ready = intake_ready or intake_confirmed(project)
-        validation_ready = validation_ready or validation_confirmed(project)
-        if intake_ready and validation_ready:
+        authoring_ready = authoring_ready or draft_authoring_allowed(project)
+        if intake_ready and authoring_ready:
             break
-    return intake_ready, validation_ready
+    return intake_ready, authoring_ready
 
 
-intake_ready, validation_ready = _stage2_progress()
+intake_ready, authoring_ready = _stage2_progress()
 
 pages = [
     st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅", default=True),
@@ -91,10 +95,10 @@ pages = [
 # Keep a novice user on the intended sequence. Stage 4/5 are registered only
 # when at least one stored project can legitimately enter them. The page itself
 # re-checks the currently selected project's gate, so switching projects cannot
-# bypass Stage 3 or Stage 4 validation.
+# bypass Stage 3 or the explicit Stage 4 draft-authoring acknowledgement.
 if intake_ready:
     pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
-if validation_ready:
+if authoring_ready:
     pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
 
 # These are reference/administration tools rather than sequential workflow
