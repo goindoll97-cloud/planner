@@ -321,6 +321,41 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertIn("generate_system_ai_drafts", source)
         self.assertIn("local_llm_config_from_sources", source)
 
+    def test_fast_auto_selection_picks_smaller_installed_model_and_batch(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        selected = resilience.select_fast_auto_config(configured, ("qwen3:14b", "qwen3:8b"))
+        self.assertEqual(selected.model, "qwen3:8b")
+        self.assertLessEqual(selected.max_output_tokens, resilience.FAST_AUTO_MAX_OUTPUT_TOKENS)
+        self.assertEqual(resilience.recommended_batch_size(selected.model), resilience.FAST_AUTO_BATCH_SIZE)
+
+    def test_fast_auto_selection_is_vram_aware_when_model_sizes_are_known(self):
+        configured = LocalLLMConfig(
+            provider="ollama",
+            model="qwen3:14b",
+            base_url="http://127.0.0.1:11434",
+            timeout_seconds=600,
+            max_output_tokens=3000,
+        )
+        selected = resilience.select_fast_auto_config(
+            configured,
+            ("qwen3:14b", "qwen3:8b", "qwen3.5:4b"),
+            available_model_sizes={
+                "qwen3:14b": 9_300_000_000,
+                "qwen3:8b": 5_800_000_000,
+                "qwen3.5:4b": 3_400_000_000,
+            },
+            gpu_vram_bytes=6 * 1024 * 1024 * 1024,
+        )
+        self.assertEqual(selected.model, "qwen3.5:4b")
+        self.assertLessEqual(selected.max_output_tokens, resilience.FAST_AUTO_MAX_OUTPUT_TOKENS)
+        self.assertEqual(resilience.recommended_batch_size(selected.model), resilience.FAST_AUTO_BATCH_SIZE)
+
 
 if __name__ == "__main__":
     unittest.main()

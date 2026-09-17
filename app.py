@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-from engine.stage2.ai_live_progress_runtime import install_ai_live_progress_runtime
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.storage import list_projects, load_project
@@ -41,9 +40,8 @@ install_cap_final_form_runtime()
 # checkpointing, longer local read timeouts, bounded output, and tolerant
 # JSON-shape parsing for local Ollama models) instead of the plain
 # local_llm/ai_drafting versions, so no install step is needed here.
-# Surface each local-AI item immediately instead of leaving the page at 0/N
-# during the first multi-item model call. Grounding/validation stays unchanged.
-install_ai_live_progress_runtime()
+# _run_automatic_ai's own progress_callback (called both before and after
+# each batch) surfaces progress directly, with no separate runtime needed.
 
 
 def _stage2_progress() -> tuple[bool, bool]:

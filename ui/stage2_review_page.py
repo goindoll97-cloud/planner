@@ -294,6 +294,11 @@ def _run_automatic_ai(
         ui_batch_size = recommended_batch_size(getattr(client, "model", config.model))
         for batch in _chunks(missing, ui_batch_size):
             batch_label = batch[-1].label if batch else SYSTEM_LABELS[system]
+            if progress_callback is not None:
+                # Move the bar's text before the (possibly slow) model call
+                # starts, so it doesn't sit frozen on the previous batch's
+                # label for the whole duration of this one.
+                progress_callback(completed_pending, total_pending, f"{batch_label} 묶음 정리 중")
             try:
                 result = generate_system_ai_drafts(
                     project,

@@ -14,6 +14,7 @@ from engine.stage2.cap_multi_form_runtime import (
     BUNDLE_SOURCE,
     _build_bundle_zip,
     _bundle_meta,
+    _partial_builder,
     resolve_current_cap_form_bundle,
 )
 from engine.stage2.project import Stage2Project
@@ -128,6 +129,42 @@ class CAPMultiOfficialFormTests(unittest.TestCase):
         self.assertIn("법제처 원본서식 작성본 ZIP 다운로드", source)
         self.assertIn('kwargs["mime"] = "application/zip"', source)
         self.assertNotIn("여러 원본을 하나의 새 법정서식으로 임의 병합", "")
+
+
+class CAPMultiFormPartialBuilderTests(unittest.TestCase):
+    """Split official CAP files contain only some statutory form markers, so
+    cap_multi_form_runtime._partial_builder relaxes the monolithic validation
+    only for that approved split-form writer; every other caller of
+    cap_hwpx.validate_cap_hwpx_template (manual uploads, single-template
+    validation) must stay strict, including immediately after a relaxed call."""
+
+    def test_partial_builder_relaxes_only_split_form_call_and_restores_validator(self):
+        strict = cap_hwpx.CAPTemplateValidation(
+            ok=False,
+            sha256="a" * 64,
+            found_markers=("[별지 제1호서식]",),
+            missing_markers=("[별지 제3호서식]",),
+            section_paths=("Contents/section0.xml",),
+        )
+        calls = []
+
+        def strict_validator(_data):
+            return strict
+
+        def original_build(project, template_bytes=None):
+            result = cap_hwpx.validate_cap_hwpx_template(template_bytes or b"")
+            calls.append(result.ok)
+            if not result.ok:
+                raise ValueError("strict rejection")
+            return "built"
+
+        with patch.object(cap_hwpx, "validate_cap_hwpx_template", strict_validator):
+            builder = _partial_builder(original_build)
+            self.assertEqual(builder(object(), template_bytes=b"split-form"), "built")
+            self.assertEqual(calls, [True])
+            self.assertIs(cap_hwpx.validate_cap_hwpx_template, strict_validator)
+            with self.assertRaisesRegex(ValueError, "strict rejection"):
+                original_build(object(), template_bytes=b"split-form")
 
 
 if __name__ == "__main__":
