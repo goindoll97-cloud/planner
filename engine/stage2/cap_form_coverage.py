@@ -311,14 +311,6 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         ("inventory.facilities", "documents.pid"),
         "누출 가능한 최대 연결구 크기(mm)",
     ))
-    items.append(CAPFormCoverageItem(
-        9, "장치·설비 목록 및 명세", "공식 HWPX 다단헤더 압력·온도 셀 매핑",
-        RENDERER_GAP,
-        "출력엔진",
-        (),
-        "현행 법제처 HWPX의 압력/온도 하위 '설계·운전' 셀",
-        "데이터는 준비하되 반복되는 다단헤더 위치를 검증 없이 추정하지 않음",
-    ))
 
     # 별지 제10호
     items.append(CAPFormCoverageItem(
@@ -372,20 +364,6 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         "총괄영향범위 산출방법/결과요약, 보호대상 명세, KORA/GIS 결과파일",
         "개별 장외거리 최대값으로 총괄영향범위 형상을 대체하지 않음",
     ))
-    items.append(CAPFormCoverageItem(
-        12, "사고시나리오 사업장 주변지역 영향 평가", "공식 HWPX 시나리오별 원본 작성",
-        RENDERER_GAP,
-        "출력엔진", (),
-        "사고시나리오마다 별지 제12호 공식 원본 1부 및 확정 KORA/GIS 값",
-        "현재 법제처 원본의 텍스트/표 셀 매핑과 복수 시나리오 분리작성을 검증해야 함",
-    ))
-    items.append(CAPFormCoverageItem(
-        13, "총괄영향범위 사업장 주변지역 영향 평가", "공식 HWPX 총괄영향범위·보호대상 표",
-        RENDERER_GAP,
-        "출력엔진", (),
-        "총괄영향범위 확정요약, 보호대상 표, KORA/GIS 결과파일",
-        "현재 법제처 원본의 보호대상 표 행 확장과 셀 매핑을 검증해야 함",
-    ))
 
     items.append(CAPFormCoverageItem(
         14, "사고시나리오별 시설빈도", "개시사건 개수·사고빈도·시나리오 시설빈도",
@@ -403,34 +381,6 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         "KORA/GIS 결과와 완성된 시설빈도",
         "증감 전 점수는 자동계산하되 최종 위험도는 안전원 결정 전에는 확정하지 않음",
     ))
-
-    if not form15.no_offsite_scenario:
-        renderer_ready = False
-        renderer_note = "계산자료 완성 후 현재 승인 법제처 HWPX 원본에 시험작성하여 확인"
-        if not form14.blockers and form15.ready:
-            from .cap_multi_form_runtime import preflight_cap_risk_hwpx
-
-            renderer = preflight_cap_risk_hwpx(project)
-            renderer_ready = renderer.ready
-            if renderer.blockers:
-                renderer_note = " / ".join(renderer.blockers[:3])
-            elif renderer.messages:
-                renderer_note = " / ".join(renderer.messages[:2])
-
-        items.append(CAPFormCoverageItem(
-            14, "사고시나리오별 시설빈도", "공식 HWPX 시나리오별 원본 작성",
-            READY if renderer_ready else RENDERER_GAP,
-            "현재 승인 법제처 원본 + byte-preserving 출력엔진", (),
-            "사고시나리오마다 별지 제14호 공식 원본 1부",
-            renderer_note,
-        ))
-        items.append(CAPFormCoverageItem(
-            15, "위험도 분석", "공식 HWPX A·B·C·D 및 점수 셀",
-            READY if renderer_ready else RENDERER_GAP,
-            "현재 승인 법제처 원본 + byte-preserving 출력엔진", (),
-            "A·B·C·D 합계, 구간점수, 사고빈도·사고영향점수",
-            renderer_note,
-        ))
 
     # 별지 제16호
     items.append(CAPFormCoverageItem(
