@@ -8,7 +8,6 @@ from engine.stage2.ai_drafting import (
     ai_draftable_specs,
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
-from engine.stage2.cap_final_gate import evaluate_cap_final_gate
 from engine.stage2.document_output_readiness import evaluate_document_output_readiness
 from engine.stage2.local_ai_resilience import (
     build_local_llm_client,
@@ -31,7 +30,6 @@ from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from engine.stage2.report_draft import build_report_draft, draft_filename
 from engine.stage2.scope_validation import validate_selected_scope
-from engine.stage2.system_final_gate import evaluate_system_final_gate
 from engine.stage2.storage import list_projects, load_project, save_project
 from engine.stage2.workflow import (
     draft_authoring_allowed,
@@ -648,7 +646,7 @@ def _render_submission_readiness(project) -> dict[str, bool]:
             + checkpoint_note
         )
         st.caption(
-            "DOCX 작성본은 내려받을 수 있지만, 필수 작성항목이 미확인 상태이거나 "
+            "검토용 DOCX는 내려받을 수 있지만, 필수 작성항목이 미확인 상태이거나 "
             "도면·제품 SDS/MSDS·계산서·영향평가 결과 및 최종 체크포인트의 증빙자료가 남아 있으면 "
             "이를 보완·결합·확인한 뒤 제출해야 합니다."
         )
