@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-"""Keep CAP statutory choice fields recognizable in final-facing outputs.
+"""Keep CAP statutory choice fields recognizable in DOCX output.
 
-The official forms use many checkbox/choice cells. Confirmed company data may
-select an option, but must not collapse the entire official option set into a
-short free-text value. This module uses text checkboxes (☒/☐), which survive
-DOCX/HWPX conversion reliably and do not require graphical form controls.
+Confirmed company data may select an option, but must not collapse the full
+choice set into short free text. Text checkboxes (☒/☐) are used directly in
+the DOCX report and do not depend on HWPX/Hancom rendering.
 """
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
 import re
 
-from . import cap_hwpx
 from . import statutory_report as report
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
 _INSTALL_MARKER = "_cap_final_form_runtime_installed"
+_INSTALLED = False
 
 
 def _norm(value: object) -> str:
@@ -124,11 +123,32 @@ def _facility_choice_key(value: object) -> str:
     return "기타"
 
 
+def _confirmed_rows(project: Stage2Project, *keys: str) -> list[dict[str, object]]:
+    for key in keys:
+        rec = project.get_field(key)
+        if rec is None or rec.status not in CONFIRMED_STATUSES:
+            continue
+        if isinstance(rec.value, list):
+            rows = [dict(row) for row in rec.value if isinstance(row, Mapping)]
+            if rows:
+                return rows
+    return []
+
+
+def _row_value(row: Mapping[str, object], *aliases: str) -> object:
+    normalized = {_norm(key): value for key, value in row.items()}
+    for alias in aliases:
+        value = normalized.get(_norm(alias))
+        if value not in (None, ""):
+            return value
+    return ""
+
+
 def render_facility_type_counts(project: Stage2Project) -> str:
-    rows = cap_hwpx._confirmed_rows(project, "inventory.facilities", "cap.facility.equipment_specs")
+    rows = _confirmed_rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     counts: Counter[str] = Counter()
     for row in rows:
-        name = cap_hwpx._row_value(row, "설비종류", "설비형태", "장치·설비 종류", "설비명")
+        name = _row_value(row, "설비종류", "설비형태", "장치·설비 종류", "설비명")
         if name:
             counts[_facility_choice_key(name)] += 1
     return "\n".join(
@@ -336,34 +356,21 @@ def _choice_scalar(label: str, value: object) -> str:
 
 
 def install_cap_final_form_runtime() -> None:
-    if getattr(cap_hwpx, _INSTALL_MARKER, False):
+    global _INSTALLED
+    if _INSTALLED:
         return
 
-    original_fill_scalar_batch = cap_hwpx._fill_scalar_batch
     original_review_appendix = report._add_review_appendix
-
-    def fill_scalar_batch_with_choices(source: bytes, specs):
-        choice_labels = {
-            "제출구분", "작성수준", "공동비상대응계획 수립 여부", "유사제도 심사결과 활용",
-            "총괄영향범위내 주민여부", "최근 3년간 화학사고 발생 여부", "입·출하 및 운반시설",
-        }
-        normalized = [
-            (anchor, label, _choice_scalar(label, value) if label in choice_labels else value)
-            for anchor, label, value in specs
-        ]
-        return original_fill_scalar_batch(source, normalized)
 
     def review_appendix_without_cap(doc, project, system: str, status) -> None:
         if str(system or "").strip().upper() != "CAP":
             original_review_appendix(doc, project, system, status)
 
-    cap_hwpx._fill_scalar_batch = fill_scalar_batch_with_choices
-    cap_hwpx._facility_count_text = render_facility_type_counts
+    # DOCX-specific presentation refinements. Forms 12 and 13 deliberately
+    # remain the newer validated implementations in statutory_report.
     report._cap_form3 = _docx_form3
     report._cap_facility_overview = _docx_facility_overview
     report._cap_form8 = _docx_form8
-    report._cap_form12 = _docx_form12
-    report._cap_form13 = _docx_form13
     report._add_review_appendix = review_appendix_without_cap
 
-    setattr(cap_hwpx, _INSTALL_MARKER, True)
+    _INSTALLED = True

@@ -226,14 +226,15 @@ class Stage2ReportDraftTests(unittest.TestCase):
             self.assertIn("공정안전보고서", manifest)
             self.assertIn("화학사고예방관리계획서", manifest)
 
-    def test_report_page_describes_statutory_form_based_output(self):
+    def test_report_page_describes_docx_only_output(self):
         source = Path("ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn('st.title("📝 5. 보고서 작성")', source)
-        self.assertIn("보고서 초안 내려받기", source)
+        self.assertIn("DOCX 보고서 내려받기", source)
         self.assertIn("build_report_draft", source)
-        self.assertIn("내부 검토용 DOCX 다운로드", source)
+        self.assertIn("DOCX 작성본 다운로드", source)
+        self.assertIn("검토용 DOCX 다운로드", source)
         self.assertIn("AI 문장 검토용 내부 DOCX", source)
-        self.assertIn("법제처 원본서식 HWPX", source)
+        self.assertNotIn("법제처 원본서식 HWPX", source)
         self.assertIn("최종 제출자료와 대조한 뒤 제출본으로 확정", source)
         self.assertNotIn('"감사·검토자료"', source)
 

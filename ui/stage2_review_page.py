@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import streamlit as st
 
 from engine.stage2.ai_drafting import (
@@ -10,13 +8,6 @@ from engine.stage2.ai_drafting import (
     ai_draftable_specs,
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
-from engine.stage2.cap_hwpx import (
-    build_cap_hwpx_draft,
-    cap_hwpx_filename,
-    normalize_cap_template_upload,
-    register_cap_template,
-    registered_cap_template,
-)
 from engine.stage2.local_ai_resilience import (
     build_local_llm_client,
     generate_system_ai_drafts,
@@ -37,7 +28,7 @@ from engine.stage2.local_llm import (
 from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from engine.stage2.report_draft import build_report_draft, draft_filename
-from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
+from engine.stage2.storage import list_projects, load_project, save_project
 from engine.stage2.workflow import (
     draft_authoring_allowed,
     draft_with_holds_acknowledged,
@@ -471,17 +462,27 @@ def _render_basic_docx(project, system: str, label: str) -> None:
     try:
         baseline = build_report_draft(project, system)
     except Exception as exc:
-        st.error(f"{label} 기본 초안을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
+        st.error(f"{label} DOCX를 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
+    clean = validation_confirmed(project)
+    if clean:
+        button_label = f"{label} · DOCX 작성본 다운로드"
+        file_name = draft_filename(project, system).replace("_검토용_초안.docx", "_작성본.docx")
+        button_type = "primary"
+    else:
+        button_label = f"{label} · 검토용 DOCX 다운로드"
+        file_name = draft_filename(project, system)
+        button_type = "secondary"
+
     st.download_button(
-        f"{label} · 내부 검토용 DOCX 다운로드",
+        button_label,
         data=baseline,
-        file_name=draft_filename(project, system),
+        file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"draft_plain_{project.project_id}_{system}",
         width="stretch",
-        type="secondary",
+        type=button_type,
     )
 
 
@@ -508,85 +509,11 @@ def _render_psm_regulation_form(project) -> None:
     )
 
 
-def _render_cap_hwpx(project) -> None:
-    st.markdown("### 화학사고예방관리계획서 · 법제처 원본서식 HWPX")
-    template_meta = registered_cap_template(project)
-    if not template_meta:
-        st.warning(
-            "법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다. "
-            "처음 설치한 환경이면 규정 DB 관리에서 최신본 업데이트를 한 번 실행해 법제처 원본을 준비해 주세요."
-        )
-        st.page_link(
-            "ui/regdb_page.py",
-            label="규정 DB 관리에서 법제처 최신 원본 준비",
-            icon="🗂️",
-        )
-        st.caption(
-            "최신본 업데이트가 완료되면 법령 최신성과 첨부원본을 검증한 뒤 승인된 HWPX/HWP만 사용합니다. "
-            "자동 준비가 어려운 경우에만 아래에서 법제처 원본서식을 직접 등록하세요."
-        )
-        with st.expander("법제처 원본서식 직접 등록 · 필요한 경우만", expanded=False):
-            upload = st.file_uploader(
-                "법제처 CAP 별표·별지 원본 HWPX/HWP",
-                type=["hwpx", "hwp"],
-                key=f"cap_official_hwpx_{project.project_id}",
-            )
-            if upload is not None and st.button(
-                "원본서식 등록",
-                key=f"register_cap_hwpx_{project.project_id}",
-                width="stretch",
-            ):
-                try:
-                    normalized, source_format = normalize_cap_template_upload(upload.name, upload.getvalue())
-                    original = Path(upload.name)
-                    stored_name = original.name if original.suffix.lower() == ".hwpx" else f"{original.stem}_converted.hwpx"
-                    evidence = save_attachment(
-                        project.project_id,
-                        stored_name,
-                        normalized,
-                        source_type="OFFICIAL_LEGAL_TEMPLATE",
-                        note="국가법령정보센터 CAP 별표·별지 원본서식",
-                    )
-                    register_cap_template(
-                        project,
-                        evidence=evidence,
-                        hwpx_bytes=normalized,
-                        source_format=source_format,
-                    )
-                    save_project(project)
-                except Exception as exc:
-                    st.error(f"법제처 원본서식을 등록하지 못했습니다: {type(exc).__name__}: {exc}")
-                else:
-                    st.rerun()
-        return
-
-    try:
-        result = build_cap_hwpx_draft(project)
-    except Exception as exc:
-        st.error(f"법제처 원본서식 HWPX 작성본을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
-        return
-
-    st.download_button(
-        "화학사고예방관리계획서 법제처 원본서식 HWPX 다운로드",
-        data=result.data,
-        file_name=cap_hwpx_filename(project),
-        mime="application/vnd.hancom.hwpx",
-        key=f"download_cap_hwpx_{project.project_id}",
-        width="stretch",
-        type="primary",
-    )
-    st.caption("법제처 원본서식의 표·레이아웃을 유지하고 4단계까지 확인된 회사값만 입력합니다.")
-    if result.warnings:
-        with st.expander(f"자동입력 후 추가로 확인할 내용 · {len(result.warnings)}건", expanded=False):
-            for warning in result.warnings:
-                st.write(f"• {warning}")
-
-
 st.set_page_config(page_title="보고서 작성", page_icon="📝", layout="wide")
 st.title("📝 5. 보고서 작성")
 st.caption(
-    "4단계에서 확인한 회사자료를 바탕으로 보고서 초안을 만듭니다. "
-    "기본 초안은 먼저 바로 내려받을 수 있고, 필요하면 아래에서 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
+    "4단계에서 확인한 회사자료를 바탕으로 DOCX 보고서를 작성합니다. "
+    "화학사고예방관리계획서는 HWPX를 생성하지 않고 DOCX만 최종 출력하며, 필요하면 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
 )
 
 project_id = _project_selector()
@@ -616,15 +543,15 @@ if draft_with_holds_acknowledged(project) and not validation_confirmed(project):
         "확인되지 않은 값은 추정하지 않고 빈칸 또는 HOLD로 유지합니다. 최종 제출 전에 보강자료와 실제 도면·첨부자료를 확인해야 합니다."
     )
 
-st.markdown("## 보고서 초안 내려받기")
-st.caption("AI를 실행하지 않아도 아래 기본 초안을 바로 내려받을 수 있습니다.")
+st.markdown("## DOCX 보고서 내려받기")
+st.caption("AI를 실행하지 않아도 확인된 자료를 반영한 DOCX를 바로 내려받을 수 있습니다.")
 
 if project.cap_in_scope:
-    _render_cap_hwpx(project)
-    st.markdown("### 화학사고예방관리계획서 · 내부 검토용")
+    st.markdown("### 화학사고예방관리계획서 · DOCX 작성본")
     st.caption(
-        "이 파일은 여러 작성항목을 한 문서에서 검토하기 위해 프로그램이 재구성한 내부 검토용입니다. "
-        "법제처 원본과 표 형식·글꼴·크기·여백이 같지 않으며 최종 법정서식으로 사용하지 않습니다."
+        "프로그램의 화학사고예방관리계획서 최종 출력 형식은 DOCX입니다. "
+        "법령·작성규정에 따른 항목, 회사 확정자료, 계산·검증 결과를 한 문서에 작성하며 "
+        "확인되지 않은 값은 추정하지 않고 HOLD 또는 공란으로 유지합니다."
     )
     _render_basic_docx(project, "CAP", CAP_FULL)
 

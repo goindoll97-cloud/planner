@@ -122,14 +122,12 @@ class CAPHwpxTemplateTests(unittest.TestCase):
         self.assertTrue(result.data.startswith(b"PK"))
         self.assertTrue(validate_cap_hwpx_template(result.data).ok)
 
-    def test_report_page_exposes_official_hwpx_primary_output(self):
+    def test_report_page_does_not_expose_hwpx_in_docx_only_mode(self):
         text = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("법제처 원본서식 HWPX", text)
-        self.assertIn("normalize_cap_template_upload", text)
-        self.assertIn("build_cap_hwpx_draft", text)
-        self.assertIn("법제처 원본서식의 표·레이아웃을 유지", text)
-        self.assertIn("4단계까지 확인된 회사값만 입력", text)
-        self.assertIn("내부 검토용", text)
+        self.assertIn("화학사고예방관리계획서 · DOCX 작성본", text)
+        self.assertNotIn("normalize_cap_template_upload", text)
+        self.assertNotIn("build_cap_hwpx_draft", text)
+        self.assertNotIn("법제처 원본서식 HWPX", text)
         self.assertIn("AI 문장 검토용 내부 DOCX", text)
 
     def test_requirements_keep_pure_python_hwpx_and_windows_hancom_converter(self):

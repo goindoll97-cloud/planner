@@ -95,11 +95,11 @@ class CAPFinalFormRuntimeTests(unittest.TestCase):
         self.assertIn("☐ 고압시설", rendered)
         self.assertIn("☒ 기타 (1)기", rendered)
 
-    def test_app_installs_final_form_runtime_after_multi_form_runtime(self):
+    def test_app_uses_docx_final_runtime_without_hwpx_runtime(self):
         text = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
-        multi_form = text.index("install_cap_multi_form_runtime()")
-        final_form = text.index("install_cap_final_form_runtime()")
-        self.assertLess(multi_form, final_form)
+        self.assertIn("install_cap_final_form_runtime()", text)
+        self.assertNotIn("install_cap_multi_form_runtime()", text)
+        self.assertNotIn("from engine.stage2.cap_multi_form_runtime", text)
 
     def test_cap_final_runtime_suppresses_only_cap_review_appendix(self):
         text = (PROJECT_ROOT / "engine/stage2/cap_final_form_runtime.py").read_text(encoding="utf-8")

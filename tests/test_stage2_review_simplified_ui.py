@@ -14,22 +14,22 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertNotIn("WORK_AREAS", text)
         self.assertNotIn("st.radio(\n    \"작성·검토 작업\"", text)
         self.assertNotIn("부족자료", text)
-        self.assertIn("보고서 초안 내려받기", text)
+        self.assertIn("DOCX 보고서 내려받기", text)
 
     def test_ai_is_optional_and_explained_in_user_language(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("AI로 문장 다듬은 초안 만들기", text)
         self.assertNotIn("AI로 문장 다듬은 초안도 만들기", text)
         self.assertIn("법적 판정이나 회사자료를 바꾸지 않고", text)
-        self.assertIn("기본 초안은 먼저 바로 내려받을 수", text)
+        self.assertIn("DOCX 보고서를 작성합니다", text)
         self.assertNotIn("`AI 문장보강`", text)
 
     def test_basic_downloads_render_before_optional_ai_work(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        download_index = text.index('st.markdown("## 보고서 초안 내려받기")')
+        download_index = text.index('st.markdown("## DOCX 보고서 내려받기")')
         ai_index = text.index('st.markdown("### AI로 문장 다듬기 · 선택사항")')
         self.assertLess(download_index, ai_index)
-        self.assertIn("AI를 실행하지 않아도 아래 기본 초안을 바로 내려받을 수 있습니다.", text)
+        self.assertIn("AI를 실행하지 않아도 확인된 자료를 반영한 DOCX를 바로 내려받을 수 있습니다.", text)
 
     def test_ai_work_shows_count_progress_and_requires_explicit_start(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
@@ -50,17 +50,18 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
 
     def test_report_downloads_offer_plain_and_ai_enhanced_drafts(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("내부 검토용 DOCX 다운로드", text)
+        self.assertIn("검토용 DOCX 다운로드", text)
         self.assertIn("AI 문장 검토용 내부 DOCX", text)
         self.assertIn("build_report_draft", text)
         self.assertIn("build_ai_enhanced_report_draft", text)
 
-    def test_missing_cap_hwpx_guides_user_to_legal_db_update(self):
+    def test_cap_output_is_docx_only_and_does_not_require_hwpx_setup(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다", text)
-        self.assertIn('st.page_link(\n            "ui/regdb_page.py"', text)
-        self.assertIn("규정 DB 관리에서 법제처 최신 원본 준비", text)
-        self.assertIn("최신본 업데이트", text)
+        self.assertIn("화학사고예방관리계획서 · DOCX 작성본", text)
+        self.assertIn("HWPX를 생성하지 않고 DOCX만 최종 출력", text)
+        self.assertNotIn("build_cap_hwpx_draft", text)
+        self.assertNotIn("법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다", text)
+        self.assertNotIn("원본서식 등록", text)
 
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
