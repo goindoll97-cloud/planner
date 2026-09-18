@@ -272,8 +272,8 @@ def _writer_parts(project: Stage2Project) -> tuple[str, str]:
     return text, ""
 
 
-def _project_type_options(project: Stage2Project) -> str:
-    raw = _field_text(project, "psm.business.project_type")
+def _project_type_options(project: Stage2Project, raw_value: object = "") -> str:
+    raw = _clean(raw_value) or _field_text(project, "psm.business.project_type")
     normalized = re.sub(r"\s+", "", raw)
     install = bool(raw and ("설치" in normalized or "이전" in normalized))
     change = bool(raw and "변경" in normalized)
@@ -329,41 +329,82 @@ def _form12_schedule_parts(project: Stage2Project) -> tuple[str, str, str]:
     return total, start, commissioning
 
 
-def _fill_form12(table, project: Stage2Project) -> None:
-    chemicals = base._rows(project, "inventory.chemicals")
-    raw_materials = ", ".join(
-        value for row in chemicals[:8]
-        if (value := _clean(base._row_value(row, "물질명", "화학물질", "유해화학물질명")))
-    )
-    writer, qualification = _writer_parts(project)
+def _form12_detail(project: Stage2Project) -> Mapping[str, object]:
+    rows = base._rows(project, "psm.business.form12_details")
+    return rows[0] if rows and isinstance(rows[0], Mapping) else {}
 
-    _append_value(_unique_cells(table.rows[3])[0], project.company_name)
-    _write_cell(_unique_cells(table.rows[3])[2], _project_type_options(project))
-    _append_value(_unique_cells(table.rows[4])[0], _field_text(project, "business.registration_no", "cap.business.registration_no"))
-    _append_value(_unique_cells(table.rows[5])[0], _field_text(project, "business.representative", "cap.business.representative"))
-    _write_cell(_unique_cells(table.rows[5])[2], _field_text(project, "psm.business.target_facility"))
-    _append_value(_unique_cells(table.rows[6])[0], _field_text(project, "business.ksic"))
-    _append_value(_unique_cells(table.rows[7])[0], _field_text(project, "business.employee_count"))
-    electric = _field_text(project, "business.electric_contract_capacity")
+
+def _fill_form12(table, project: Stage2Project) -> None:
+    detail = _form12_detail(project)
+
+    def value(header: str, *fallback_keys: str) -> str:
+        direct = _mapping_lookup(detail, header)
+        if direct not in (None, ""):
+            return _clean(direct)
+        return _field_text(project, *fallback_keys) if fallback_keys else ""
+
+    chemicals = base._rows(project, "psm.psi.chemical_details", "inventory.chemicals")
+    inventory_raw_materials = ", ".join(
+        item for row in chemicals[:8]
+        if (item := _clean(base._row_value(row, "물질명", "화학물질", "유해화학물질명")))
+    )
+    raw_materials = value("주요 원료") or inventory_raw_materials
+
+    legacy_writer, legacy_qualification = _writer_parts(project)
+    writer = value("작성자 성명") or legacy_writer
+    qualification = value("작성자 자격") or legacy_qualification
+
+    # Stage 1 identity remains authoritative for protected company/address facts.
+    company_name = project.company_name or value("사업장명")
+    address = _field_text(project, "business.address") or value("사업장 소재지")
+
+    _append_value(_unique_cells(table.rows[3])[0], company_name)
+    _write_cell(_unique_cells(table.rows[3])[2], _project_type_options(project, value("제출구분")))
+    _append_value(
+        _unique_cells(table.rows[4])[0],
+        value("사업자등록번호", "business.registration_no", "cap.business.registration_no"),
+    )
+    _append_value(
+        _unique_cells(table.rows[5])[0],
+        value("대표자", "business.representative", "cap.business.representative"),
+    )
+    _write_cell(
+        _unique_cells(table.rows[5])[2],
+        value("대상 유해·위험설비", "psm.business.target_facility"),
+    )
+    _append_value(_unique_cells(table.rows[6])[0], value("한국표준산업분류", "business.ksic"))
+    _append_value(_unique_cells(table.rows[7])[0], value("근로자수", "business.employee_count"))
+    electric = value("계약전력(kW)", "business.electric_contract_capacity")
     if electric:
         _write_cell(_unique_cells(table.rows[7])[2], f"{electric} ㎾")
     _write_cell(_unique_cells(table.rows[8])[1], writer)
     _write_cell(_unique_cells(table.rows[8])[3], qualification)
     _write_cell(_unique_cells(table.rows[11])[2], raw_materials)
-    _write_cell(_unique_cells(table.rows[12])[2], _field_text(project, "business.main_products"))
-    _write_cell(_unique_cells(table.rows[13])[2], _field_text(project, "psm.business.overview"))
+    _write_cell(_unique_cells(table.rows[12])[2], value("주요 생산품", "business.main_products"))
+    _write_cell(_unique_cells(table.rows[13])[2], value("사업개요", "psm.business.overview"))
 
-    address, contact, site_area, main_building = _form12_site_parts(project)
+    phone = value("전화번호", "business.phone", "psm.business.phone")
+    fax = value("전송번호", "business.fax", "psm.business.fax")
+    contact = f"전화번호: {phone}\n전송번호: {fax}".rstrip() if phone or fax else ""
     if address:
         _write_cell(_unique_cells(table.rows[14])[2], address)
     if contact:
         _write_cell(_unique_cells(table.rows[14])[3], contact)
+
+    legacy_address, _, legacy_site_area, legacy_main_building = _form12_site_parts(project)
+    site_area = value("부지면적", "psm.business.site_area", "business.site_area") or legacy_site_area
+    main_building = value(
+        "주요 건물", "psm.business.main_building", "business.main_building", "psm.business.site_building"
+    ) or legacy_main_building
     if site_area:
         _write_cell(_unique_cells(table.rows[15])[2], site_area)
     if main_building:
         _write_cell(_unique_cells(table.rows[16])[2], main_building)
 
-    total_period, start_date, commissioning_period = _form12_schedule_parts(project)
+    legacy_total, legacy_start, legacy_commissioning = _form12_schedule_parts(project)
+    total_period = value("총 사업기간", "psm.business.total_period", "psm.business.schedule") or legacy_total
+    start_date = value("착공예정일", "psm.business.start_date") or legacy_start
+    commissioning_period = value("시운전기간", "psm.business.commissioning_period") or legacy_commissioning
     if total_period:
         _write_cell(_unique_cells(table.rows[17])[2], total_period)
     if start_date:
@@ -412,10 +453,68 @@ def _threshold_values(case: Mapping[str, object], group: str, thresholds: Sequen
     return output
 
 
+def _consequence_source(project: Stage2Project) -> Mapping[str, object]:
+    rows = base._rows(project, "psm.risk.consequence_table")
+    if rows:
+        output: dict[str, object] = {}
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            scenario = _clean(base._row_value(row, "시나리오 구분", "시나리오구분"))
+            normalized = base._norm(scenario)
+            if "최악" in normalized:
+                target = "최악의 사고 시나리오"
+            elif "대안" in normalized:
+                target = "대안의 사고 시나리오"
+            else:
+                continue
+            output[target] = {
+                "풍속(m/s)": base._row_value(row, "풍속(m/s)"),
+                "대기안정도(A~F)": base._row_value(row, "대기안정도(A~F)"),
+                "대기온도(℃)": base._row_value(row, "대기온도(℃)"),
+                "습도(%)": base._row_value(row, "습도(%)"),
+                "표면거칠기(m)": base._row_value(row, "표면거칠기"),
+                "물질명": base._row_value(row, "물질명"),
+                "물질의 상태": base._row_value(row, "물질의 상태"),
+                "설비명(또는 배관부위)": base._row_value(row, "설비명(또는 배관부위)"),
+                "운전압력(MPa)": base._row_value(row, "운전압력(MPa)"),
+                "운전온도(℃)": base._row_value(row, "운전온도(℃)"),
+                "누출구의 크기(mm2)": base._row_value(row, "누출구의 크기(mm2)"),
+                "웅덩이 크기(m2)": base._row_value(row, "웅덩이 크기(m2)"),
+                "누출결과": base._row_value(row, "누출결과"),
+                "직접계산(kg/s or kg)": base._row_value(row, "직접계산(kg/s or kg)"),
+                "웅덩이(kg/s)": base._row_value(row, "웅덩이(kg/s)"),
+                "설비/배관(kg/s)": base._row_value(row, "설비/배관(kg/s)"),
+                "화재-복사열이 미치는 거리": {
+                    "4 kW/m2": base._row_value(row, "화재-4 kW/m2"),
+                    "12.5 kW/m2": base._row_value(row, "화재-12.5 kW/m2"),
+                    "37.5 kW/m2": base._row_value(row, "화재-37.5 kW/m2"),
+                },
+                "폭발-과압이 미치는 거리": {
+                    "7 kPa": base._row_value(row, "폭발-7 kPa"),
+                    "21 kPa": base._row_value(row, "폭발-21 kPa"),
+                    "70 kPa": base._row_value(row, "폭발-70 kPa"),
+                },
+                "확산결과-인화성": {
+                    "25% LEL": base._row_value(row, "인화성-25% LEL"),
+                    "LEL": base._row_value(row, "인화성-LEL"),
+                    "UEL": base._row_value(row, "인화성-UEL"),
+                },
+                "확산결과-독성": {
+                    "ERPG 1": base._row_value(row, "독성-ERPG 1"),
+                    "ERPG 2": base._row_value(row, "독성-ERPG 2"),
+                    "ERPG 3": base._row_value(row, "독성-ERPG 3"),
+                },
+            }
+        if output:
+            return output
+
+    legacy = base._value(project, "psm.risk.consequence", default={})
+    return legacy if isinstance(legacy, Mapping) else {}
+
+
 def _fill_form19_2(table, project: Stage2Project) -> None:
-    source = base._value(project, "psm.risk.consequence", default={})
-    if not isinstance(source, Mapping):
-        return
+    source = _consequence_source(project)
     worst = _mapping_lookup(source, "최악의 사고 시나리오", "worst_case", "worst")
     alternative = _mapping_lookup(source, "대안의 사고 시나리오", "alternative_case", "alternative")
     worst = worst if isinstance(worst, Mapping) else {}
