@@ -4,6 +4,7 @@ from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
+from .cap_form11_engine import build_cap_form11_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
 
@@ -143,6 +144,36 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     message="필요용량 근거, 유효용량 산정 및 적정성 검토결과를 확인했습니다.",
                     field_keys=("cap.safety.dike_calculation", "cap.safety.dike_layout"),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제10호서식",
+                )
+            )
+
+        checked_rules += 1
+        form11 = build_cap_form11_data(project)
+        if form11.blockers:
+            for index, blocker in enumerate(form11.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM11-{index}",
+                        status="HOLD",
+                        system="CAP",
+                        section="시설정보",
+                        legal_item="별지 제11호 고정식 유해감지시설 명세",
+                        message=str(blocker),
+                        field_keys=("cap.safety.gas_detection", "psm.psi.gas_detection"),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제11호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM11-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="시설정보",
+                    legal_item="별지 제11호 고정식 유해감지시설 명세",
+                    message="고정식 감지기 대상선별과 작동시간·측정방식·경보·연동·정밀도·유지관리 값을 확인했습니다.",
+                    field_keys=("cap.safety.gas_detection", "psm.psi.gas_detection"),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제11호서식",
                 )
             )
 

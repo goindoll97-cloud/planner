@@ -83,11 +83,16 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "title": "가스누출감지 및 경보장치 통합정보",
         "targets": ("psm.psi.gas_detection", "cap.safety.gas_detection"),
         "headers": (
-            "감지기 번호", "설치위치", "검출대상 물질", "감지방식", "경보 설정값", "경보 위치",
+            "감지기 번호", "설치형태", "설치위치", "검출대상 물질",
+            "작동시간", "측정방식", "경보 설정값", "경보 위치",
+            "연동여부", "연동 설비·조치", "정밀도", "유지관리",
             "비상전원 여부", "관련 도면번호", "비고",
         ),
         "example": (
-            ("GD-101", "TK-101 방유제 내", "톨루엔", "고정식", "10% LEL", "중앙제어실", "예", "GA-101", "예시값"),
+            ("GD-101", "고정식", "TK-101 방유제 내", "톨루엔",
+             "30초 이내", "접촉연소식", "10% LEL", "중앙제어실",
+             "예", "HH 경보 시 원료 이송펌프 정지", "±3% F.S.", "월 1회 기능점검·연 1회 교정",
+             "예", "GA-101", "예시값"),
         ),
     },
     {
@@ -281,6 +286,46 @@ def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
     return out
 
 
+def _prefill_detectors(project: Stage2Project) -> list[list[Any]]:
+    rows: list[Mapping[str, Any]] = []
+    for key in ("cap.safety.gas_detection", "psm.psi.gas_detection"):
+        record = project.get_field(key)
+        if record and isinstance(record.value, list):
+            rows = [row for row in record.value if isinstance(row, Mapping)]
+            if rows:
+                break
+
+    out: list[list[Any]] = []
+    for row in rows:
+        legacy = str(_pick(row, "감지방식") or "").strip()
+        legacy_norm = re.sub(r"[^0-9a-z가-힣]", "", legacy.lower())
+        installation = _pick(row, "설치형태", "설치 형식")
+        measurement = _pick(row, "측정방식", "측정원리", "센서방식")
+        if not installation and legacy_norm in {"고정식", "휴대식", "고정식휴대식"}:
+            installation = legacy
+        if not measurement and legacy and legacy_norm not in {"고정식", "휴대식", "고정식휴대식"}:
+            measurement = legacy
+
+        out.append([
+            _pick(row, "감지기 번호", "감지기번호", "구분기호"),
+            installation,
+            _pick(row, "설치위치", "설치장소"),
+            _pick(row, "검출대상 물질", "감지대상", "검출대상"),
+            _pick(row, "작동시간", "응답시간"),
+            measurement,
+            _pick(row, "경보 설정값", "경보설정값"),
+            _pick(row, "경보 위치", "경보기 설치장소"),
+            _pick(row, "연동여부", "인터록 연동여부"),
+            _pick(row, "연동 설비·조치", "연동설비", "경보시 조치내용"),
+            _pick(row, "정밀도", "정확도"),
+            _pick(row, "유지관리", "점검주기", "교정주기"),
+            _pick(row, "비상전원 여부"),
+            _pick(row, "관련 도면번호", "도면번호"),
+            _pick(row, "비고"),
+        ])
+    return out
+
+
 def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
     record = project.get_field("inventory.facilities")
     rows = record.value if record and isinstance(record.value, list) else []
@@ -316,6 +361,8 @@ def _table_rows_for(project: Stage2Project, sheet: str, example: bool, spec: Map
         return _prefill_chemicals(project)
     if sheet == "03_설비정보":
         return _prefill_facilities(project)
+    if sheet == "05_가스누출감지_경보장치":
+        return _prefill_detectors(project)
     return []
 
 
