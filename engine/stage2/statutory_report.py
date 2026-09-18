@@ -19,6 +19,7 @@ from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
+from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
@@ -1126,29 +1127,73 @@ def _cap_form11_rows(project: Stage2Project) -> list[list[str]]:
 
 
 def _cap_form12(doc: Document, project: Stage2Project) -> None:
+    prepared = build_cap_form12_data(project)
     _add_form_heading(doc, "별지 제12호서식", "사고시나리오 사업장 주변지역 영향 평가")
-    source = _value(project, "cap.offsite.surrounding_impact_result", "cap.offsite.population_and_protected_targets", default=MISSING)
-    rows = (
-        ("사고시나리오", _text(project, "cap.offsite.target_facility_selection", default=MISSING)),
-        ("영향범위", _text(project, "cap.offsite.impact_range_result", default=MISSING)),
-        ("영향범위 내 주민의 수", _text(project, "cap.offsite.population_and_protected_targets", default=MISSING)),
-        ("사업장 위치", _text(project, "cap.business.industrial_complex", default=MISSING)),
-        ("갑종·을종 보호대상 및 환경수용체", str(source) if source != MISSING else MISSING),
-        ("사고원점의 좌표", _text(project, "cap.offsite.accident_origin_coordinate", default=MISSING)),
-    )
-    table = doc.add_table(rows=len(rows), cols=2)
-    _set_table_borders(table)
-    for i, (label, value) in enumerate(rows):
-        _set_cell_text(table.rows[i].cells[0], label, bold=True, size=8)
-        _set_cell_text(table.rows[i].cells[1], value, size=8)
+    if not prepared.rows:
+        doc.add_paragraph(MISSING)
+    for idx, row in enumerate(prepared.rows, 1):
+        if idx > 1:
+            doc.add_paragraph()
+        _add_key_value_form(doc, "", f"{idx}) {row.get('사고시나리오명') or MISSING}", (
+            ("유해화학물질명", str(row.get("유해화학물질명") or MISSING)),
+            ("대상 설비번호", str(row.get("대상 설비번호") or MISSING)),
+            ("사고유형", str(row.get("사고유형") or MISSING)),
+            ("장외거리(m)", str(row.get("장외거리(m)") if row.get("장외거리(m)") not in (None, "") else MISSING)),
+            ("영향범위 내 거주민수", str(row.get("거주민수") if row.get("거주민수") not in (None, "") else MISSING)),
+            ("영향범위 내 근로자수", str(row.get("근로자수") if row.get("근로자수") not in (None, "") else MISSING)),
+            ("갑종 보호대상 수", str(row.get("갑종 보호대상 수") if row.get("갑종 보호대상 수") not in (None, "") else MISSING)),
+            ("을종 보호대상 수", str(row.get("을종 보호대상 수") if row.get("을종 보호대상 수") not in (None, "") else MISSING)),
+            ("환경수용체 수", str(row.get("환경수용체 수") if row.get("환경수용체 수") not in (None, "") else MISSING)),
+            ("사고원점의 좌표", str(row.get("사고원점 좌표") or MISSING)),
+            ("KORA/GIS 근거", str(row.get("KORA/GIS 근거") or MISSING)),
+        ))
+    if prepared.blockers:
+        note = doc.add_paragraph()
+        note.add_run("확인 필요: ").bold = True
+        note.add_run(" / ".join(prepared.blockers))
 
 
 def _cap_form13(doc: Document, project: Stage2Project) -> None:
+    prepared = build_cap_form13_data(project)
     _add_form_heading(doc, "별지 제13호서식", "총괄영향범위 사업장 주변지역 영향 평가")
-    doc.add_paragraph(_text(project, "cap.offsite.surrounding_impact_result", default=MISSING))
-    spec = FormSpec("", "", ("일련번호", "보호대상 명칭", "보호대상 종류"))
-    rows = _generic_form_rows(project, "cap.offsite.population_and_protected_targets", spec, (("일련번호", "연번"), ("보호대상 명칭", "명칭"), ("보호대상 종류", "종류")))
-    _add_form_table(doc, spec, rows)
+    summary = prepared.summary or {}
+    _add_key_value_form(doc, "", "총괄영향범위 확정정보", (
+        ("총괄영향범위 산출방법", str(summary.get("총괄영향범위 산출방법") or MISSING)),
+        ("총괄영향범위 결과 요약", str(summary.get("총괄영향범위 결과 요약") or MISSING)),
+        ("총괄영향범위 내 거주민수", str(summary.get("총괄영향범위 내 거주민수") if summary.get("총괄영향범위 내 거주민수") not in (None, "") else MISSING)),
+        ("총괄영향범위 내 근로자수", str(summary.get("총괄영향범위 내 근로자수") if summary.get("총괄영향범위 내 근로자수") not in (None, "") else MISSING)),
+        ("보호대상 없음 여부", str(summary.get("보호대상 없음 여부") or MISSING)),
+        ("GIS/KORA 근거", str(summary.get("GIS/KORA 근거") or MISSING)),
+    ))
+    spec = FormSpec(
+        "", "총괄영향범위 내 보호대상",
+        ("일련번호", "보호대상 명칭", "보호대상 구분", "보호대상 종류", "주소·위치", "사업장 경계와 거리(m)", "인원수", "GIS 근거"),
+    )
+    rows = [
+        [
+            str(row.get("일련번호") or ""),
+            str(row.get("보호대상 명칭") or ""),
+            str(row.get("보호대상 구분") or ""),
+            str(row.get("보호대상 종류") or ""),
+            str(row.get("주소·위치") or row.get("좌표") or ""),
+            str(row.get("사업장 경계와 거리(m)") if row.get("사업장 경계와 거리(m)") not in (None, "") else ""),
+            str(row.get("인원수") if row.get("인원수") not in (None, "") else ""),
+            str(row.get("GIS 근거") or ""),
+        ]
+        for row in prepared.protected_targets
+    ]
+    if rows:
+        _add_form_table(doc, spec, rows)
+    elif prepared.no_protected_targets:
+        doc.add_paragraph("총괄영향범위 내 보호대상 없음(회사/GIS 확정)")
+    else:
+        doc.add_paragraph(MISSING)
+    _add_attachment_line(doc, "KORA/GIS 총괄영향범위 결과파일", _doc_value(project, "documents.kora_impact_result"))
+    if prepared.blockers:
+        note = doc.add_paragraph()
+        note.add_run("확인 필요: ").bold = True
+        note.add_run(" / ".join(prepared.blockers))
+
 
 
 def _cap_form14(doc: Document, project: Stage2Project) -> None:
