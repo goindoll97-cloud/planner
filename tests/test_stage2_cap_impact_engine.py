@@ -90,7 +90,7 @@ class CAPImpactEngineTests(unittest.TestCase):
     def test_form12_cross_checks_and_prepares_confirmed_scenario_impact(self):
         result = build_cap_form12_data(self._project())
 
-        self.assertTrue(result.ready)
+        self.assertTrue(result.ready, result.blockers)
         self.assertEqual(result.blockers, ())
         row = result.rows[0]
         self.assertEqual(row["사고시나리오명"], "염소 독성누출-1")
@@ -152,7 +152,7 @@ class CAPImpactEngineTests(unittest.TestCase):
 
         result = build_cap_form13_data(project)
 
-        self.assertTrue(result.ready)
+        self.assertTrue(result.ready, result.blockers)
         self.assertTrue(result.no_protected_targets)
         self.assertEqual(result.protected_targets, ())
 
