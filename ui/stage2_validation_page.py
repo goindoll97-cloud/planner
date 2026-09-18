@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from engine.stage2.cap_form_coverage import audit_cap_form_coverage, STATE_LABELS as CAP_FORM_STATE_LABELS
 from engine.stage2.cap_requests import build_cap_data_requests
 from engine.stage2.intake import selected_requirement_specs
 from engine.stage2.psm_requests import build_psm_data_requests
@@ -151,6 +152,36 @@ if rows:
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 else:
     st.success("현재 입력된 텍스트·표 자료에서 추가로 보완할 문제가 없습니다.")
+
+if project.cap_in_scope:
+    st.markdown("### 법정서식 공란·작성가능성 점검")
+    st.caption(
+        "현재 회사자료와 프로그램 기능을 기준으로 별지 제1호부터 제16호의 주요 작성칸을 어떻게 채울 수 있는지 점검합니다. "
+        "단순 공란뿐 아니라 법령조회, 계산, 영향평가 또는 출력엔진 보완이 필요한 항목도 구분합니다."
+    )
+    cap_coverage = audit_cap_form_coverage(project)
+    coverage_rows = []
+    for item in cap_coverage:
+        coverage_rows.append({
+            "서식": f"별지 제{item.form_no}호",
+            "서식명": item.form_name,
+            "작성항목": item.item,
+            "상태": item.state_label,
+            "작성근거·방법": item.source_kind,
+            "필요한 자료": item.required_input,
+            "비고": item.note,
+        })
+    if coverage_rows:
+        unresolved_coverage = sum(item.state != "READY" for item in cap_coverage)
+        ready_coverage = len(cap_coverage) - unresolved_coverage
+        c1, c2 = st.columns(2)
+        c1.metric("현재 작성 가능", ready_coverage)
+        c2.metric("추가 처리 필요", unresolved_coverage)
+        st.dataframe(pd.DataFrame(coverage_rows), width="stretch", hide_index=True)
+        st.caption(
+            "‘추가 처리 필요’가 곧 회사자료 누락만을 뜻하지는 않습니다. "
+            "법령 DB로 자동판정할 항목, 계산엔진이 산출할 항목, 회사에 확인할 항목, KORA/GIS 등 별도 분석이 필요한 항목을 분리한 결과입니다."
+        )
 
 st.markdown("### 보강 요청자료")
 st.caption(
