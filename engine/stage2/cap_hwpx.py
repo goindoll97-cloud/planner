@@ -28,6 +28,7 @@ from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
+from .cap_form11_engine import build_cap_form11_data
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -578,24 +579,26 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     applied += count
     warnings.extend(warn)
 
-    detectors = _confirmed_rows(project, "cap.safety.gas_detection", "psm.psi.gas_detection")
+    form11 = build_cap_form11_data(project)
+    detectors = list(form11.rows)
+    warnings.extend(f"별지 제11호 확인 필요: {msg}" for msg in form11.blockers)
     source, count, warn = _fill_structured_table(
         source,
         table_anchor="고정식 유해감지시설 명세",
         rows=detectors,
         columns=(
             ("연번", ("__rowno__",)),
-            ("구분 기호", ("감지기 번호", "감지기번호", "구분기호")),
-            ("감지대상", ("검출대상 물질", "감지대상")),
-            ("설치위치", ("설치위치", "설치장소")),
+            ("구분 기호", ("구분기호",)),
+            ("감지대상", ("감지대상",)),
+            ("설치위치", ("설치위치",)),
             ("작동시간", ("작동시간",)),
-            ("측정방식", ("감지방식", "측정방식")),
-            ("경보 설정값", ("경보 설정값", "경보설정값")),
-            ("경보기 설치장소", ("경보 위치", "경보기 설치장소")),
+            ("측정방식", ("측정방식",)),
+            ("경보 설정값", ("경보설정값",)),
+            ("경보기 설치장소", ("경보기 설치장소",)),
             ("연동여부", ("연동여부",)),
             ("정밀도", ("정밀도",)),
-            ("유지관리", ("유지관리", "점검주기")),
-            ("비고", ("비고", "관련 도면번호")),
+            ("유지관리", ("유지관리",)),
+            ("비고", ("비고",)),
         ),
     )
     applied += count
