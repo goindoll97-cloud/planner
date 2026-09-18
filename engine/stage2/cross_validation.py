@@ -75,6 +75,23 @@ class CrossValidationReport:
         }
 
 
+def filter_validation_report(
+    report: CrossValidationReport,
+    systems: set[str] | tuple[str, ...] | list[str],
+) -> CrossValidationReport:
+    """Return only issues that belong to the requested validation systems.
+
+    This is a view over an already-computed report. It does not rerun or relax
+    any validation rule; it only prevents one selected document's issues from
+    being attributed to another document's final-readiness checkpoint.
+    """
+    allowed = {str(system).strip().upper() for system in systems}
+    return CrossValidationReport(
+        issues=tuple(issue for issue in report.issues if issue.system.upper() in allowed),
+        checked_rules=report.checked_rules,
+    )
+
+
 TAG_ALIASES = (
     "tag",
     "tagno",
