@@ -117,6 +117,41 @@ CAP_ARTICLE_ITEMS = {
 }
 
 
+_OPERATOR_STAFFING_HEADERS = (
+    "공정·단위공장",
+    "운전책임자",
+    "작업자 수",
+    "교대 형태",
+    "비고",
+)
+
+_OPERATOR_STAFFING_ALIASES = (
+    ("공정·단위공장", "단위공장·공정", "공정", "단위공장"),
+    ("운전책임자", "책임자", "운전책임자 성명"),
+    ("작업자 수", "작업자수", "작업인원", "인원수"),
+    ("교대 형태", "교대형태", "근무형태", "교대"),
+    ("비고", "note"),
+)
+
+
+def _add_operator_staffing(doc: Document, project: Stage2Project) -> None:
+    rows = base._rows(project, "cap.facility.operator_staffing")
+    if rows:
+        spec = base.FormSpec("", "", _OPERATOR_STAFFING_HEADERS)
+        rendered = [
+            [base._row_value(row, *aliases) for aliases in _OPERATOR_STAFFING_ALIASES]
+            for row in rows
+        ]
+        base._add_form_table(doc, spec, rendered)
+        return
+
+    # Backward compatibility for projects created before the field became a
+    # structured table. Confirmed legacy narrative text is still rendered.
+    doc.add_paragraph(
+        base._text(project, "cap.facility.operator_staffing", default=base.MISSING)
+    )
+
+
 def _render_cap(doc: Document, project: Stage2Project) -> None:
     # The CAP deliverable should read like the statutory annex set itself.
     # Do not prepend a cover, source declaration, or synthetic category heading;
@@ -139,7 +174,7 @@ def _render_cap(doc: Document, project: Stage2Project) -> None:
     doc.add_heading("공정위험성 분석 자료", level=2)
     doc.add_paragraph(base._text(project, "cap.facility.process_hazard_analysis", default=base.MISSING))
     doc.add_heading("운전책임자 및 작업자 현황", level=2)
-    doc.add_paragraph(base._text(project, "cap.facility.operator_staffing", default=base.MISSING))
+    _add_operator_staffing(doc, project)
     base._add_form_table(doc, base.CAP_FORMS["10"], base._cap_form10_rows(project))
     base._add_form_table(doc, base.CAP_FORMS["11"], base._cap_form11_rows(project))
     base._add_attachment_line(doc, "안전밸브 및 파열판 명세", base._text(project, "cap.safety.relief_device_specs", default=base.MISSING))
@@ -244,7 +279,7 @@ def _render_cap_narrative(doc: Document, project: Stage2Project) -> None:
     base._add_heading_safe(doc, "공정위험성 분석 자료", level=2)
     doc.add_paragraph(base._text(project, "cap.facility.process_hazard_analysis", default=base.MISSING))
     base._add_heading_safe(doc, "운전책임자 및 작업자 현황", level=2)
-    doc.add_paragraph(base._text(project, "cap.facility.operator_staffing", default=base.MISSING))
+    _add_operator_staffing(doc, project)
     base._add_attachment_line(doc, "안전밸브 및 파열판 명세", base._text(project, "cap.safety.relief_device_specs", default=base.MISSING))
     base._add_attachment_line(doc, "배출물질 처리시설 현황", base._text(project, "cap.safety.waste_treatment", default=base.MISSING))
 
