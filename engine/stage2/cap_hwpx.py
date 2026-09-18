@@ -24,6 +24,7 @@ from zipfile import BadZipFile, ZipFile
 from hwpx.table_patch import fill_cells, resolve_cell_target
 
 from ..law_attachment_archive import approved_source_files, approved_source_is_current
+from .cap_form1_engine import build_cap_form1_data
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -459,6 +460,43 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     source, count, warn = _fill_scalar_batch(source, scalar_specs)
     applied += count
     warnings.extend(warn)
+
+    form1 = build_cap_form1_data(project)
+    source, count, warn = _fill_structured_table(
+        source,
+        table_anchor="단위공장 내 취급시설별 최대보유량 산출",
+        rows=form1.facility_rows,
+        columns=(
+            ("단위공장", ("단위공장",)),
+            ("유해화학물질", ("유해화학물질",)),
+            ("CAS No.", ("CAS No.",)),
+            ("함량(%)", ("함량(%)",)),
+            ("구분기호", ("구분기호",)),
+            ("취급시설", ("취급시설",)),
+            ("설계용량(m3)", ("설계용량(m3)",)),
+            ("취급량(ton)", ("취급량(ton)",)),
+        ),
+    )
+    applied += count
+    warnings.extend(warn)
+
+    source, count, warn = _fill_structured_table(
+        source,
+        table_anchor="유해화학물질별 사업장 내의 최대보유량 산출",
+        rows=form1.chemical_rows,
+        columns=(
+            ("물질명", ("물질명",)),
+            ("CAS No.", ("CAS No.",)),
+            ("물질구분", ("물질구분",)),
+            ("사업장 내 최대보유량(ton)", ("사업장 내 최대보유량(ton)",)),
+            ("작성수준", ("작성수준",)),
+            ("하위규정수량(ton)", ("하위규정수량(ton)",)),
+            ("상위규정수량(ton)", ("상위규정수량(ton)",)),
+        ),
+    )
+    applied += count
+    warnings.extend(warn)
+    warnings.extend(f"별지 제1호 확인 필요: {msg}" for msg in form1.blockers)
 
     chemicals = _confirmed_rows(project, "cap.chemical.details", "inventory.chemicals")
     source, count, warn = _fill_structured_table(
