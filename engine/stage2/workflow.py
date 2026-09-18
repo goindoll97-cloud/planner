@@ -185,6 +185,7 @@ def reset_after_intake_change(project: Stage2Project) -> None:
     prefs = _prefs(project)
     prefs["intake_confirmed"] = False
     prefs["validation_confirmed"] = False
+    prefs.pop(VALIDATION_FINGERPRINT_KEY, None)
     prefs[DRAFT_WITH_HOLDS_KEY] = False
     project.touch()
 
