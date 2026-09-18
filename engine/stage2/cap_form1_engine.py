@@ -146,7 +146,11 @@ def _chemical_identity_rows(project: Stage2Project) -> list[dict[str, Any]]:
 
 
 def _facility_source_rows(project: Stage2Project) -> list[dict[str, Any]]:
-    return _confirmed_rows(project, "inventory.facilities", "cap.facility.equipment_specs")
+    # cap.workspace.facilities holds rows edited directly in the CAP form
+    # workspace and takes precedence over the Stage 1 / integrated-workbook rows.
+    return _confirmed_rows(
+        project, "cap.workspace.facilities", "inventory.facilities", "cap.facility.equipment_specs"
+    )
 
 
 def _adapt_chemicals_for_stage1(chemicals: list[dict[str, Any]]) -> pd.DataFrame:
