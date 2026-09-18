@@ -10,6 +10,7 @@ from engine.stage2.ai_drafting import (
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.document_output_readiness import evaluate_document_output_readiness
+from engine.stage2.output_bundle import build_verified_output_bundle, verified_bundle_filename
 from engine.stage2.output_provenance import (
     build_output_provenance,
     output_provenance_filename,
@@ -542,6 +543,22 @@ def _render_statutory_provenance(
         file_name=output_provenance_filename(file_name),
         mime="application/json",
         key=f"download_{system.lower()}_provenance_{project.project_id}",
+        width="stretch",
+        type="secondary",
+    )
+
+    try:
+        bundle = build_verified_output_bundle(data, provenance)
+    except Exception as exc:
+        st.warning(f"검증 묶음 ZIP을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+        return
+
+    st.download_button(
+        f"{provenance.system_label} · 출력물 검증 묶음 ZIP 다운로드",
+        data=bundle,
+        file_name=verified_bundle_filename(file_name),
+        mime="application/zip",
+        key=f"download_{system.lower()}_verified_bundle_{project.project_id}",
         width="stretch",
         type="secondary",
     )
