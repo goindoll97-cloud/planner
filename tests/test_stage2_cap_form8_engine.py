@@ -9,6 +9,7 @@ from docx import Document
 from openpyxl import load_workbook
 
 from engine.stage2.cap_chemical_legal import CAPChemicalLegalData, build_cap_chemical_legal_data
+from engine.stage2.cap_sds_engine import CAPForm6SDSData
 from engine.stage2.cap_form8_engine import build_cap_form8_data
 from engine.stage2.integrated_workbook import build_integrated_authoring_workbook
 from engine.stage2.project import Stage2Project
@@ -146,9 +147,9 @@ class CAPForm8EngineTests(unittest.TestCase):
         self.assertNotEqual(result.rows[0].get("고유번호"), "OLD-001")
         self.assertTrue(result.blockers)
 
-    @patch("engine.stage2.cap_baseline_docx.build_cap_chemical_legal_data")
+    @patch("engine.stage2.cap_baseline_docx.build_cap_form6_sds_data")
     def test_baseline_docx_uses_validated_form6_legal_identity_and_form8_rows(
-        self, legal_mock
+        self, form6_mock
     ):
         project = self._project()
         project.set_field(
@@ -178,7 +179,7 @@ class CAPForm8EngineTests(unittest.TestCase):
             }],
             "USER_CONFIRMED",
         )
-        legal_mock.return_value = CAPChemicalLegalData(
+        form6_mock.return_value = CAPForm6SDSData(
             rows=({
                 "물질명": "염소",
                 "CAS 번호": "7782-50-5",
@@ -190,7 +191,6 @@ class CAPForm8EngineTests(unittest.TestCase):
             },),
             blockers=(),
             messages=(),
-            app2_ready=True,
         )
 
         data = build_cap_baseline_draft(project)

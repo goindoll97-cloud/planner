@@ -40,14 +40,22 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
     {
         "sheet": "02_화학물질정보",
         "scope": "COMMON",
-        "title": "화학물질 정보",
+        "title": "화학물질 정보 및 회사 SDS 확인값",
         "targets": ("cap.chemical.details",),
         "headers": (
             "물질명", "CAS 번호", "함량(%)", "물리적 상태", "최대보유량", "단위",
-            "사용·저장 공정", "주요 용도", "비고",
+            "사용·저장 공정", "주요 용도",
+            "비중", "폭발한계 하한", "폭발한계 상한",
+            "독성구분 항목", "독성구분", "위험노출수준", "허용농도값",
+            "증기압", "부식성", "SDS 파일명", "SDS 개정일", "비고",
         ),
         "example": (
-            ("톨루엔", "108-88-3", 99.5, "액체", 15000, "kg", "원료 저장·혼합", "원료", "예시값"),
+            (
+                "톨루엔", "108-88-3", 99.5, "액체", 15000, "kg", "원료 저장·혼합", "원료",
+                "0.87", "1.2 vol%", "7.1 vol%", "급성독성(흡입)", "구분 4",
+                "ERPG-2 300 ppm", "TWA 50 ppm", "28.4 mmHg (25℃)", "해당 없음",
+                "toluene_company_SDS.pdf", "2026-06-01", "회사 제품 SDS 전사 예시"
+            ),
         ),
     },
     {
@@ -228,6 +236,27 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
              "○○시 ○○로 10", "35.0,129.0", 420, "GIS-SITE-01", "500m 내 보호대상 예시"),
         ),
     },
+    {
+        "sheet": "28_대표물질_유해성정보",
+        "scope": "CAP",
+        "title": "별지 제7호 대표물질 유해성 정보",
+        "targets": ("cap.chemical.hazard_information",),
+        "headers": (
+            "물질명", "CAS 번호", "인체유해성", "물리적 위험성", "환경유해성",
+            "출처", "선정 사유", "SDS 파일명", "SDS 개정일", "비고",
+        ),
+        "example": (
+            (
+                "염소", "7782-50-5",
+                "흡입 시 급성 독성 및 호흡기 자극 우려",
+                "산화성·가압가스 관련 위험",
+                "수생생물에 매우 유독",
+                "회사 제품 SDS 제2·11·12항",
+                "사고시나리오 대상물질이며 독성영향을 대표하므로 선정",
+                "chlorine_company_SDS.pdf", "2026-05-10", "회사 확인자료 예시"
+            ),
+        ),
+    },
 )
 
 ATTACHMENT_KINDS = {
@@ -348,7 +377,12 @@ def _pick(row: Mapping[str, Any], *aliases: str) -> Any:
 
 
 def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
-    record = project.get_field("inventory.chemicals")
+    # After the company enriches the chemical table with SDS facts, preserve
+    # that richer table on subsequent downloads. Fall back to Stage-1 inventory
+    # only for the first authoring pass.
+    record = project.get_field("cap.chemical.details")
+    if record is None or not isinstance(record.value, list) or not record.value:
+        record = project.get_field("inventory.chemicals")
     rows = record.value if record and isinstance(record.value, list) else []
     out: list[list[Any]] = []
     for row in rows:
@@ -363,6 +397,17 @@ def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
             _pick(row, "단위", "unit"),
             _pick(row, "공정", "사용공정", "저장공정", "process"),
             _pick(row, "용도", "usage"),
+            _pick(row, "비중", "밀도/비중"),
+            _pick(row, "폭발한계 하한", "폭발하한", "LEL"),
+            _pick(row, "폭발한계 상한", "폭발상한", "UEL"),
+            _pick(row, "독성구분 항목", "독성구분-항목"),
+            _pick(row, "독성구분", "독성구분-구분"),
+            _pick(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"),
+            _pick(row, "허용농도값", "TWA", "노출기준"),
+            _pick(row, "증기압", "증기압(20℃, mmHg)"),
+            _pick(row, "부식성", "부식성(유, 무)"),
+            _pick(row, "SDS 파일명", "MSDS 파일명"),
+            _pick(row, "SDS 개정일", "MSDS 개정일", "SDS 작성·개정일"),
             _pick(row, "비고", "note"),
         ])
     return out
@@ -445,6 +490,19 @@ def _table_rows_for(project: Stage2Project, sheet: str, example: bool, spec: Map
         return _prefill_facilities(project)
     if sheet == "05_가스누출감지_경보장치":
         return _prefill_detectors(project)
+
+    # Generic structured-table re-download support. This preserves previously
+    # confirmed rows such as Form 7 hazard information, GIS target tables and
+    # scenario tables instead of returning a blank sheet on the next download.
+    headers = list(spec.get("headers", ()))
+    for key in spec.get("targets", ()):
+        record = project.get_field(str(key))
+        if record is None or not isinstance(record.value, list):
+            continue
+        source_rows = [row for row in record.value if isinstance(row, Mapping)]
+        if not source_rows:
+            continue
+        return [[_pick(row, header) for header in headers] for row in source_rows]
     return []
 
 
@@ -950,12 +1008,32 @@ def apply_integrated_authoring_workbook(
     )
 
 
-def declared_attachment_file_name(record_value: Any) -> str:
+def declared_attachment_file_names(record_value: Any) -> tuple[str, ...]:
+    names: list[str] = []
+
+    def add(value: object) -> None:
+        text = str(value or "").strip()
+        if text and text not in names:
+            names.append(text)
+
     if isinstance(record_value, Mapping):
-        return str(record_value.get("file_name") or "").strip()
-    if isinstance(record_value, str):
-        return record_value.strip()
-    return ""
+        for key in ("file_name", "파일명", "SDS 파일명", "MSDS 파일명", "SDS 원본 파일명"):
+            add(record_value.get(key))
+    elif isinstance(record_value, list):
+        for item in record_value:
+            if isinstance(item, Mapping):
+                for key in ("file_name", "파일명", "SDS 파일명", "MSDS 파일명", "SDS 원본 파일명"):
+                    add(item.get(key))
+            elif isinstance(item, str):
+                add(item)
+    elif isinstance(record_value, str):
+        add(record_value)
+    return tuple(names)
+
+
+def declared_attachment_file_name(record_value: Any) -> str:
+    names = declared_attachment_file_names(record_value)
+    return names[0] if names else ""
 
 
 def attach_company_file(project: Stage2Project, evidence: EvidenceRef) -> tuple[str, ...]:
@@ -963,19 +1041,29 @@ def attach_company_file(project: Stage2Project, evidence: EvidenceRef) -> tuple[
     matched: list[str] = []
     target_name = Path(evidence.source_name).name.lower()
     for key, record in list(project.fields.items()):
-        declared = Path(declared_attachment_file_name(record.value)).name.lower()
-        if not declared or declared != target_name:
+        declared_names = {
+            Path(name).name.lower()
+            for name in declared_attachment_file_names(record.value)
+            if str(name or "").strip()
+        }
+        if target_name not in declared_names:
             continue
         refs = list(record.evidence)
         if not any(ref.sha256 == evidence.sha256 for ref in refs):
             refs.append(evidence)
+        status = record.status if record.status in {"VERIFIED", "USER_CONFIRMED", "CALCULATED"} else "HOLD"
+        note = (
+            "통합 작성자료의 회사 확정값에 실제 원본 첨부파일이 증빙으로 연결되었습니다."
+            if status != "HOLD"
+            else "통합 작성자료에 기재된 파일과 실제 첨부파일이 연결되었습니다. 내용 확인 전까지 사람 확인 필요 상태로 유지합니다."
+        )
         project.set_field(
             key,
             record.label,
             record.value,
-            "HOLD",
+            status,
             evidence=refs,
-            note="통합 작성자료에 기재된 파일과 실제 첨부파일이 연결되었습니다. 내용 확인 전까지 사람 확인 필요 상태로 유지합니다.",
+            note=note,
         )
         matched.append(key)
     if not matched:
