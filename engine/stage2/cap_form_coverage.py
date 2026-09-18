@@ -14,6 +14,7 @@ from typing import Any
 
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
@@ -104,6 +105,17 @@ def _all_rows_have(rows: Sequence[Mapping[str, Any]], aliases: tuple[str, ...]) 
     return bool(rows) and all(_row_value(row, *aliases) not in (None, "") for row in rows)
 
 
+def _structured_rows(project: Stage2Project, key: str) -> list[Mapping[str, Any]]:
+    rec = _record(project, key)
+    if rec is None:
+        return []
+    if isinstance(rec.value, Mapping):
+        return [dict(rec.value)]
+    if isinstance(rec.value, list):
+        return [dict(row) for row in rec.value if isinstance(row, Mapping)]
+    return []
+
+
 def _chemical_units_need_ton_conversion(project: Stage2Project) -> bool:
     rows = _rows(project, "inventory.chemicals", "cap.chemical.details")
     if not rows:
@@ -146,6 +158,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     facilities = _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     form1 = build_cap_form1_data(project)
     form6 = build_cap_chemical_legal_data(project)
+    form8 = build_cap_form8_data(project)
     form9 = build_cap_form9_data(project)
     form10 = build_cap_form10_data(project)
     form11 = build_cap_form11_data(project)
@@ -273,24 +286,41 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제7호
+    hazard_rows = _structured_rows(project, "cap.chemical.hazard_information")
+    hazard_core_ready = bool(hazard_rows) and all(
+        _row_value(row, "인체유해성") not in (None, "")
+        and _row_value(row, "물리적 위험성") not in (None, "")
+        and _row_value(row, "환경유해성") not in (None, "")
+        and _row_value(row, "출처") not in (None, "")
+        for row in hazard_rows
+    )
+    selection_reason_ready = bool(hazard_rows) and all(
+        _row_value(row, "선정 사유", "선정사유") not in (None, "")
+        for row in hazard_rows
+    )
     items.append(CAPFormCoverageItem(
         7, "유해화학물질의 유해성 정보", "인체·물리·환경 유해성 및 출처",
-        ASK_COMPANY, "회사 보유 SDS/MSDS", ("psm.psi.msds",),
-        "실제 제품 SDS/MSDS",
-        "AI는 업로드된 SDS에서 요약할 수 있지만 근거 없는 유해성은 생성하지 않음",
+        READY if hazard_core_ready else ASK_COMPANY,
+        "회사 보유 SDS/MSDS·승인 유해성자료", ("cap.chemical.hazard_information", "psm.psi.msds"),
+        "실제 제품 SDS/MSDS에서 확인한 인체·물리·환경 유해성과 출처",
+        "외부 MSDS 자동조회 없이 회사 확인자료만 사용",
     ))
     items.append(CAPFormCoverageItem(
         7, "유해화학물질의 유해성 정보", "대표물질 선정 사유",
-        CALCULATION if chemicals else ASK_COMPANY, "선정 규칙·사고영향 우선순위",
-        ("inventory.chemicals",), "취급량·유해성·사고시나리오 선정근거",
+        READY if selection_reason_ready else ASK_COMPANY,
+        "회사/사고시나리오 선정근거", ("cap.chemical.hazard_information",),
+        "대표물질 선정기준과 해당 물질을 선택한 실제 근거",
+        "화학물질 목록만으로 프로그램이 대표물질을 임의 선택하지 않음",
     ))
 
     # 별지 제8호
     items.append(CAPFormCoverageItem(
         8, "사업장 주변 환경 정보", "500m 내 보호대상 체크·목록·거리",
-        EXTERNAL_ANALYSIS, "GIS/현장·공간자료",
+        READY if form8.ready else EXTERNAL_ANALYSIS,
+        "회사/GIS/현장 확인자료 + 검증엔진",
         ("cap.site.surrounding_environment",),
-        "사업장 경계와 보호대상 공간자료",
+        "보호대상 없음 여부 또는 보호대상 명칭·구분·세부유형·위치·경계거리·GIS/현장 근거",
+        "500m 초과값, 분류 불명, 근거 없는 위치·거리는 자동확정하지 않음",
     ))
 
     # 별지 제9호
