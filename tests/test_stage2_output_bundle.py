@@ -69,6 +69,8 @@ class VerifiedOutputBundleTests(unittest.TestCase):
 
             guide = archive.read("검증안내.txt").decode("utf-8")
             self.assertIn(provenance.sha256, guide)
+            self.assertIn(provenance.baseline_sha256, guide)
+            self.assertIn(provenance.baseline_schema_version, guide)
             self.assertIn("AUTHORING_READY", guide)
 
     def test_hash_mismatch_fails_closed(self):
