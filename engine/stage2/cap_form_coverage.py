@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -138,6 +139,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     chemicals = _rows(project, "inventory.chemicals", "cap.chemical.details")
     facilities = _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     form1 = build_cap_form1_data(project)
+    form6 = build_cap_chemical_legal_data(project)
     threshold_rows_ready = bool(form1.chemical_rows) and all(
         str(row.get("물질구분") or "").strip()
         and str(row.get("하위규정수량(ton)") or "").strip()
@@ -238,10 +240,16 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         READY if identification_ready else ASK_COMPANY, "회사 화학물질표/SDS",
         ("inventory.chemicals",), "회사 화학물질 목록 및 제품 SDS",
     ))
+    form6_legal_ready = bool(form6.rows) and all(
+        str(row.get("물질구분") or "").strip() and str(row.get("고유번호") or "").strip()
+        for row in form6.rows
+    ) and not form6.blockers
     items.append(CAPFormCoverageItem(
         6, "유해화학물질 목록 및 명세", "물질구분·고유번호",
-        LEGAL_ENGINE, "법령 DB", (),
+        READY if form6_legal_ready else LEGAL_ENGINE,
+        "현행 별표 2 고유번호 + 별표 2·3 법적 물질구분", (),
         "CAS·농도와 현행 유해화학물질 분류/고유번호 DB",
+        "사고대비물질 별표 3 연번은 고유번호로 대체하지 않음",
     ))
     items.append(CAPFormCoverageItem(
         6, "유해화학물질 목록 및 명세", "비중·폭발한계·독성구분·위험노출수준·TWA·증기압·부식성",
