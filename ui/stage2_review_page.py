@@ -30,6 +30,7 @@ from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from engine.stage2.report_draft import build_report_draft, draft_filename
 from engine.stage2.scope_validation import validate_selected_scope
+from engine.stage2.system_final_gate import evaluate_system_final_gate
 from engine.stage2.storage import list_projects, load_project, save_project
 from engine.stage2.workflow import (
     draft_authoring_allowed,
@@ -516,11 +517,43 @@ def _render_psm_regulation_form(project) -> None:
     )
 
 
+def _render_system_gate(gate) -> None:
+    if gate is None or not gate.checkpoints:
+        return
+    with st.expander(
+        f"{gate.system_label} · 작성완성도·자동검증",
+        expanded=not gate.ready,
+    ):
+        rows = [
+            {
+                "상태": item.status_label,
+                "점검항목": item.label,
+                "확인내용": item.message,
+            }
+            for item in gate.checkpoints
+        ]
+        st.dataframe(rows, width="stretch", hide_index=True)
+        st.caption(
+            "이 표는 이미 계산된 작성완성도와 자동검증 결과를 문서별로 분리해 보여줍니다. "
+            "다른 문서의 이슈를 현재 문서의 미완료 사유로 계산하지 않습니다."
+        )
+
+
 def _render_submission_readiness(project) -> None:
     """Separate report-body readiness from final submission-package readiness."""
     confirmed = validation_confirmed(project)
     try:
         report = validate_selected_scope(project)
+        cap_system_gate = (
+            evaluate_system_final_gate(project, "CAP", report)
+            if project.cap_in_scope
+            else None
+        )
+        psm_system_gate = (
+            evaluate_system_final_gate(project, "PSM", report)
+            if project.psm_in_scope
+            else None
+        )
         cap_gate = evaluate_cap_final_gate(project, report) if project.cap_in_scope else None
     except Exception as exc:
         st.warning(
@@ -528,6 +561,9 @@ def _render_submission_readiness(project) -> None:
             f"현재 DOCX는 검토용으로 취급해 주세요: {type(exc).__name__}: {exc}"
         )
         return
+
+    _render_system_gate(cap_system_gate)
+    _render_system_gate(psm_system_gate)
 
     if cap_gate is not None:
         with st.expander("화학사고예방관리계획서 · 최종 제출 체크포인트", expanded=not cap_gate.ready):
@@ -546,8 +582,18 @@ def _render_submission_readiness(project) -> None:
                 "담당자 확인 필요 항목은 프로그램이 임의로 완료 처리하지 않습니다."
             )
 
-    final_gate_ready = cap_gate.ready if cap_gate is not None else True
-    final_ready = confirmed and report.final_export_allowed and final_gate_ready
+    system_gates = [
+        gate for gate in (cap_system_gate, psm_system_gate)
+        if gate is not None
+    ]
+    system_gate_ready = all(gate.ready for gate in system_gates)
+    cap_manual_gate_ready = cap_gate.ready if cap_gate is not None else True
+    final_ready = (
+        confirmed
+        and report.final_export_allowed
+        and system_gate_ready
+        and cap_manual_gate_ready
+    )
 
     if final_ready:
         st.success(
@@ -557,20 +603,29 @@ def _render_submission_readiness(project) -> None:
         return
 
     if confirmed:
-        checkpoint_note = ""
+        notes = []
+        for gate in system_gates:
+            if not gate.ready:
+                notes.append(
+                    f"{gate.system_label} 작성완성도·자동검증: "
+                    f"보완 필요 {gate.hold_count}건, 담당자 확인 필요 {gate.review_count}건"
+                )
         if cap_gate is not None and not cap_gate.ready:
-            checkpoint_note = (
-                f" 최종 체크포인트에서 보완 필요 {cap_gate.hold_count}건, "
-                f"담당자 확인 필요 {cap_gate.review_count}건이 남아 있습니다."
+            notes.append(
+                "화학사고예방관리계획서 최종 체크포인트: "
+                f"보완 필요 {cap_gate.hold_count}건, 담당자 확인 필요 {cap_gate.review_count}건"
             )
+        checkpoint_note = (" " + " / ".join(notes) + ".") if notes else ""
+
         st.warning(
             "보고서 본문 작성자료 확인은 완료되었지만 최종 제출자료 준비는 아직 완료되지 않았습니다. "
-            f"자동검증 기준 보완 필요 {report.hold_count}건, 담당자 확인 필요 {report.review_count}건이 남아 있습니다."
+            f"전체 자동검증 기준 보완 필요 {report.hold_count}건, 담당자 확인 필요 {report.review_count}건이 남아 있습니다."
             + checkpoint_note
         )
         st.caption(
-            "DOCX 작성본은 내려받을 수 있지만, 도면·제품 SDS/MSDS·계산서·영향평가 결과 및 "
-            "최종 체크포인트의 증빙자료가 남아 있으면 이를 결합·확인한 뒤 제출해야 합니다."
+            "DOCX 작성본은 내려받을 수 있지만, 필수 작성항목이 미확인 상태이거나 "
+            "도면·제품 SDS/MSDS·계산서·영향평가 결과 및 최종 체크포인트의 증빙자료가 남아 있으면 "
+            "이를 보완·결합·확인한 뒤 제출해야 합니다."
         )
         return
 
