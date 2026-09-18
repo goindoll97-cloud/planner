@@ -373,6 +373,21 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         "개별 장외거리 최대값으로 총괄영향범위 형상을 대체하지 않음",
     ))
     items.append(CAPFormCoverageItem(
+        12, "사고시나리오 사업장 주변지역 영향 평가", "공식 HWPX 시나리오별 원본 작성",
+        RENDERER_GAP,
+        "출력엔진", (),
+        "사고시나리오마다 별지 제12호 공식 원본 1부 및 확정 KORA/GIS 값",
+        "현재 법제처 원본의 텍스트/표 셀 매핑과 복수 시나리오 분리작성을 검증해야 함",
+    ))
+    items.append(CAPFormCoverageItem(
+        13, "총괄영향범위 사업장 주변지역 영향 평가", "공식 HWPX 총괄영향범위·보호대상 표",
+        RENDERER_GAP,
+        "출력엔진", (),
+        "총괄영향범위 확정요약, 보호대상 표, KORA/GIS 결과파일",
+        "현재 법제처 원본의 보호대상 표 행 확장과 셀 매핑을 검증해야 함",
+    ))
+
+    items.append(CAPFormCoverageItem(
         14, "사고시나리오별 시설빈도", "개시사건 개수·사고빈도·시나리오 시설빈도",
         READY if (form14.ready or form15.no_offsite_scenario) else CALCULATION,
         "P&ID·설비 개수 × 현행 별지 제14호 기준빈도",
