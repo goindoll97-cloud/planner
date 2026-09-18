@@ -42,9 +42,11 @@ OPTION_GROUPS: dict[str, tuple[str, ...]] = {
     "joint_submission": ("공동제출", "단독제출"),
     "other_system_review": ("미해당", "해당 - 공정안전보고서", "해당 - 안전성향상계획", "해당 - 공정안전보고서 + 안전성향상계획"),
     "yes_no": ("예", "아니오"),
+    "applicable_na": ("적용", "해당 없음"),
 }
 
 TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
+    "09_PSM_조건부서식_적용여부": {"적용여부": "applicable_na"},
     "02_화학물질정보": {
         "물리적 상태": "physical_state",
         "단위": "mass_volume_unit",
