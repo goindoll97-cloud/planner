@@ -391,7 +391,9 @@ def _render_ai_downloads(project) -> None:
         st.download_button(
             f"{label} · AI 문장 검토용 내부 DOCX",
             data=enhanced,
-            file_name=draft_filename(project, system).replace("_검토용_초안.docx", "_AI보강_검토용_초안.docx"),
+            file_name=draft_filename(project, system)
+            .replace("_법정서식_검토용_초안.docx", "_내부_AI보강_검토용.docx")
+            .replace("_검토용_초안.docx", "_내부_AI보강_검토용.docx"),
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"draft_ai_{project.project_id}_{system}",
             width="stretch",
@@ -482,7 +484,11 @@ def _render_basic_docx(
         button_type = "primary"
     elif review_only:
         button_label = f"{label} · 내부 검토용 DOCX 다운로드"
-        file_name = draft_filename(project, system)
+        file_name = (
+            draft_filename(project, system)
+            .replace("_법정서식_검토용_초안.docx", "_내부_검토용.docx")
+            .replace("_검토용_초안.docx", "_내부_검토용.docx")
+        )
         button_type = "secondary"
     else:
         button_label = f"{label} · 검토용 DOCX 다운로드"
