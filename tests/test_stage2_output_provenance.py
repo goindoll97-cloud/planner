@@ -62,6 +62,14 @@ class OutputProvenanceTests(unittest.TestCase):
         self.assertEqual(result.sha256, sha256(data).hexdigest())
         self.assertEqual(result.size_bytes, len(data))
         self.assertEqual(result.stage1_source_fingerprint, "a" * 64)
+        self.assertEqual(result.baseline_schema_version, "psm-statutory-form-layout-baseline-v2")
+        self.assertEqual(
+            result.baseline_sha256,
+            "82457f0775850d95abd166fa6e63aae67da8fdc2ae27349d7efdb8bbc9501335",
+        )
+        self.assertEqual(result.baseline_role, "LAYOUT_BASELINE")
+        self.assertIn("별지 제12호", result.baseline_source_description)
+        self.assertIn("법적 최신성", result.baseline_authority_note)
         self.assertEqual(result.validation_fingerprint, validation_fingerprint(project))
         self.assertTrue(result.validation_confirmed)
         self.assertTrue(result.final_ready)
@@ -118,6 +126,11 @@ class OutputProvenanceTests(unittest.TestCase):
         self.assertEqual(payload["sha256"], sha256(b"cap-docx").hexdigest())
         self.assertEqual(payload["state"], "REVIEW_ONLY")
         self.assertEqual(payload["system"], "CAP")
+        self.assertEqual(
+            payload["baseline_sha256"],
+            "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d",
+        )
+        self.assertEqual(payload["baseline_schema_version"], "cap-statutory-form-layout-baseline-v1")
         self.assertIn("generated_at_utc", payload)
 
     def test_authoring_ready_requires_current_stage4_validation(self):
