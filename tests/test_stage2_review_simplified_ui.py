@@ -138,6 +138,16 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         internal_slice = text[heading:text.index("if project.psm_in_scope:", heading)]
         self.assertIn("review_only=True", internal_slice)
 
+    def test_statutory_downloads_expose_output_provenance(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("build_output_provenance", text)
+        self.assertIn("output_provenance_json_bytes", text)
+        self.assertIn("output_provenance_filename", text)
+        self.assertIn("출력물 SHA-256", text)
+        self.assertIn("출력물 검증정보 JSON 다운로드", text)
+        self.assertIn('_render_statutory_provenance(\n        project,\n        "CAP"', text)
+        self.assertIn('_render_statutory_provenance(\n        project,\n        "PSM"', text)
+
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
         self.assertIn('st.title("🔎 4. 작성자료 점검·보완")', text)

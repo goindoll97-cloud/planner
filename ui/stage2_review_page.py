@@ -10,6 +10,11 @@ from engine.stage2.ai_drafting import (
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.document_output_readiness import evaluate_document_output_readiness
+from engine.stage2.output_provenance import (
+    build_output_provenance,
+    output_provenance_filename,
+    output_provenance_json_bytes,
+)
 from engine.stage2.local_ai_resilience import (
     build_local_llm_client,
     generate_system_ai_drafts,
@@ -506,6 +511,42 @@ def _render_basic_docx(
     )
 
 
+def _render_statutory_provenance(
+    project,
+    system: str,
+    *,
+    data: bytes,
+    file_name: str,
+    final_ready: bool,
+) -> None:
+    try:
+        provenance = build_output_provenance(
+            project,
+            system,
+            data,
+            file_name=file_name,
+            final_ready=final_ready,
+        )
+    except Exception as exc:
+        st.warning(f"출력물 검증정보를 만들지 못했습니다: {type(exc).__name__}: {exc}")
+        return
+
+    st.caption(
+        f"출력물 SHA-256: {provenance.sha256[:16]}… · "
+        f"검증상태: {'작성본' if provenance.final_ready else '검토용'} · "
+        f"생성시점(UTC): {provenance.generated_at_utc}"
+    )
+    st.download_button(
+        f"{provenance.system_label} · 출력물 검증정보 JSON 다운로드",
+        data=output_provenance_json_bytes(provenance),
+        file_name=output_provenance_filename(file_name),
+        mime="application/json",
+        key=f"download_{system.lower()}_provenance_{project.project_id}",
+        width="stretch",
+        type="secondary",
+    )
+
+
 def _render_cap_regulation_form(project, *, final_ready: bool) -> None:
     st.markdown(
         "### 화학사고예방관리계획서 · 규정서식 작성본"
@@ -523,23 +564,31 @@ def _render_cap_regulation_form(project, *, final_ready: bool) -> None:
         st.error(f"화학사고예방관리계획서 규정서식 작성본을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
+    file_name = (
+        cap_baseline_filename(project)
+        if final_ready
+        else cap_baseline_filename(project).replace(
+            "_규정서식_작성본.docx",
+            "_규정서식_검토용.docx",
+        )
+    )
     st.download_button(
         "화학사고예방관리계획서 규정서식 작성본 DOCX 다운로드"
         if final_ready
         else "화학사고예방관리계획서 규정서식 검토용 DOCX 다운로드",
         data=data,
-        file_name=(
-            cap_baseline_filename(project)
-            if final_ready
-            else cap_baseline_filename(project).replace(
-                "_규정서식_작성본.docx",
-                "_규정서식_검토용.docx",
-            )
-        ),
+        file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"download_cap_regulation_form_{project.project_id}",
         width="stretch",
         type="primary" if final_ready else "secondary",
+    )
+    _render_statutory_provenance(
+        project,
+        "CAP",
+        data=data,
+        file_name=file_name,
+        final_ready=final_ready,
     )
 
 
@@ -559,20 +608,31 @@ def _render_psm_regulation_form(project, *, final_ready: bool) -> None:
         st.error(f"공정안전보고서 규정서식 작성본을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
+    file_name = (
+        psm_baseline_filename(project)
+        if final_ready
+        else psm_baseline_filename(project).replace(
+            "_규정서식_작성본.docx",
+            "_규정서식_검토용.docx",
+        )
+    )
     st.download_button(
         "공정안전보고서 규정서식 작성본 DOCX 다운로드"
         if final_ready
         else "공정안전보고서 규정서식 검토용 DOCX 다운로드",
         data=data,
-        file_name=(
-            psm_baseline_filename(project)
-            if final_ready
-            else psm_baseline_filename(project).replace("_규정서식_작성본.docx", "_규정서식_검토용.docx")
-        ),
+        file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"download_psm_regulation_form_{project.project_id}",
         width="stretch",
         type="primary" if final_ready else "secondary",
+    )
+    _render_statutory_provenance(
+        project,
+        "PSM",
+        data=data,
+        file_name=file_name,
+        final_ready=final_ready,
     )
 
 
