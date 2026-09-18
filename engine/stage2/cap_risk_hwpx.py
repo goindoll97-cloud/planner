@@ -126,18 +126,51 @@ def _resolve(
     *,
     directions: Sequence[str] = ("below",),
 ):
+    """Resolve a unique adjacent cell anywhere inside the anchored form section.
+
+    Current law.go.kr forms often contain several data tables under one form
+    heading.  Table-anchor lookback intentionally stops at the previous data
+    table, so later score tables cannot be addressed safely by reusing the form
+    heading.  Instead, use the heading only to choose the section, then probe
+    every table in that section and accept a label/direction only when exactly
+    one concrete cell resolves.
+    """
     section = _section_for_anchor(data, table_anchor)
+    table_indexes = [
+        int(item.get("tableIndex", -1))
+        for item in table_summary(data)
+        if item.get("sectionPath") == section
+    ]
     errors: list[str] = []
     for label in labels:
         for direction in directions:
-            try:
-                return resolve_cell_target(data, {
-                    "section_path": section,
-                    "table_anchor": table_anchor,
-                    "cell_anchor": {"label": label, "direction": direction},
-                })
-            except Exception as exc:
-                errors.append(f"{label}/{direction}: {exc}")
+            hits = []
+            for table_index in table_indexes:
+                try:
+                    target = resolve_cell_target(data, {
+                        "section_path": section,
+                        "table_index": table_index,
+                        "cell_anchor": {"label": label, "direction": direction},
+                    })
+                except Exception:
+                    continue
+                key = (
+                    target.section_path,
+                    target.table_index,
+                    target.logical_row,
+                    target.logical_col,
+                )
+                if key not in {
+                    (item.section_path, item.table_index, item.logical_row, item.logical_col)
+                    for item in hits
+                }:
+                    hits.append(target)
+            if len(hits) == 1:
+                return hits[0]
+            if len(hits) > 1:
+                errors.append(f"{label}/{direction}: {len(hits)}개 표에서 중복")
+            else:
+                errors.append(f"{label}/{direction}: 대상 셀 없음")
     raise ValueError(" / ".join(errors))
 
 
