@@ -1196,13 +1196,28 @@ def apply_integrated_authoring_workbook(
             for key in field_keys:
                 if key in PROTECTED_STAGE1_FIELDS:
                     continue
+                status = "USER_CONFIRMED"
+                note = "통합 작성자료 Excel의 구조화 표에서 회사가 직접 입력한 내용"
+                if key == "psm.psi.form_applicability":
+                    allowed = {"적용", "해당 없음"}
+                    complete = all(
+                        str(row.get("적용여부") or "").strip() in allowed
+                        and bool(str(row.get("확인근거") or "").strip())
+                        for row in rows
+                    )
+                    if not complete:
+                        status = "HOLD"
+                        note = (
+                            "PSM 조건부 별지서식의 적용여부 또는 확인근거가 일부 비어 있습니다. "
+                            "모든 서식에 대해 '적용' 또는 '해당 없음'과 확인근거를 회사가 확인해야 합니다."
+                        )
                 project.set_field(
                     key,
                     field_label(key),
                     rows,
-                    "USER_CONFIRMED",
+                    status,
                     evidence=evidence,
-                    note="통합 작성자료 Excel의 구조화 표에서 회사가 직접 입력한 내용",
+                    note=note,
                 )
                 updated += 1
                 table_fields += 1
