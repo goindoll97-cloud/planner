@@ -422,12 +422,21 @@ def _pick(row: Mapping[str, Any], *aliases: str) -> Any:
 
 
 def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
-    # After the company enriches the chemical table with SDS facts, preserve
-    # that richer table on subsequent downloads. Fall back to Stage-1 inventory
-    # only for the first authoring pass.
-    record = project.get_field("cap.chemical.details")
-    if record is None or not isinstance(record.value, list) or not record.value:
-        record = project.get_field("inventory.chemicals")
+    # Preserve the richer Stage-2 table on subsequent downloads while keeping
+    # Stage-1 inventory as the immutable first-pass source. In PSM-only scope,
+    # never depend on a CAP-only enrichment field.
+    record = None
+    preferred_keys = []
+    if project.psm_in_scope:
+        preferred_keys.append("psm.psi.chemical_details")
+    if project.cap_in_scope:
+        preferred_keys.append("cap.chemical.details")
+    preferred_keys.append("inventory.chemicals")
+    for key in preferred_keys:
+        candidate = project.get_field(key)
+        if candidate is not None and isinstance(candidate.value, list) and candidate.value:
+            record = candidate
+            break
     rows = record.value if record and isinstance(record.value, list) else []
     out: list[list[Any]] = []
     for row in rows:
@@ -436,15 +445,22 @@ def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
         out.append([
             _pick(row, "물질명", "화학물질명", "제품명", "substance", "name"),
             _pick(row, "CAS 번호", "CAS", "CAS No", "CAS번호"),
+            _pick(row, "분자식", "molecular formula"),
             _pick(row, "함량(%)", "함량", "농도", "content", "purity"),
             _pick(row, "물리적 상태", "상태", "state", "phase"),
             _pick(row, "최대보유량", "최대저장량", "보유량", "quantity", "holding"),
             _pick(row, "단위", "unit"),
-            _pick(row, "공정", "사용공정", "저장공정", "process"),
-            _pick(row, "용도", "usage"),
+            _pick(row, "일일사용량", "취급량", "사용량", "daily use"),
+            _pick(row, "공정", "사용공정", "저장공정", "사용·저장 공정", "process"),
+            _pick(row, "용도", "주요 용도", "usage"),
             _pick(row, "비중", "밀도/비중"),
             _pick(row, "폭발한계 하한", "폭발하한", "LEL"),
             _pick(row, "폭발한계 상한", "폭발상한", "UEL"),
+            _pick(row, "노출기준", "TWA", "허용농도값"),
+            _pick(row, "독성치", "toxicity"),
+            _pick(row, "인화점", "flash point"),
+            _pick(row, "발화점", "ignition point"),
+            _pick(row, "이상반응 유무", "이상반응"),
             _pick(row, "독성구분 항목", "독성구분-항목"),
             _pick(row, "독성구분", "독성구분-구분"),
             _pick(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"),
@@ -499,7 +515,18 @@ def _prefill_detectors(project: Stage2Project) -> list[list[Any]]:
 
 
 def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
-    record = project.get_field("inventory.facilities")
+    record = None
+    preferred_keys = []
+    if project.psm_in_scope:
+        preferred_keys.append("psm.psi.equipment_specs")
+    if project.cap_in_scope:
+        preferred_keys.append("cap.facility.equipment_specs")
+    preferred_keys.append("inventory.facilities")
+    for key in preferred_keys:
+        candidate = project.get_field(key)
+        if candidate is not None and isinstance(candidate.value, list) and candidate.value:
+            record = candidate
+            break
     rows = record.value if record and isinstance(record.value, list) else []
     out: list[list[Any]] = []
     for row in rows:
@@ -509,7 +536,7 @@ def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
             _pick(row, "설비번호", "시설번호", "장치번호", "tag", "equipment id"),
             _pick(row, "설비명", "시설명", "장치명", "equipment"),
             _pick(row, "설비종류", "시설종류", "type"),
-            _pick(row, "단위공장", "공정", "process", "unit"),
+            _pick(row, "단위공장·공정", "단위공장", "공정", "process", "unit"),
             _pick(row, "취급물질", "물질명", "chemical"),
             _pick(row, "용량", "capacity"),
             _pick(row, "용량단위", "단위", "unit"),
@@ -517,7 +544,15 @@ def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
             _pick(row, "설계온도", "design temperature"),
             _pick(row, "운전압력", "operating pressure"),
             _pick(row, "운전온도", "operating temperature"),
-            _pick(row, "재질", "material"),
+            _pick(row, "재질", "본체재질", "material"),
+            _pick(row, "부속품재질", "부속품"),
+            _pick(row, "개스킷재질", "개스킷 재질"),
+            _pick(row, "용접효율"),
+            _pick(row, "계산두께"),
+            _pick(row, "부식여유"),
+            _pick(row, "사용두께"),
+            _pick(row, "후열처리 여부", "후열처리여부"),
+            _pick(row, "비파괴검사율", "비파괴율검사"),
             _pick(row, "최대보유량", "최대보유량(kg)", "holding"),
             _pick(row, "P&ID 번호", "P&ID", "PID"),
             _pick(row, "비고", "note"),
