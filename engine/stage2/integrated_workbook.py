@@ -304,6 +304,7 @@ def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
             _pick(row, "최대보유량", "최대보유량(kg)", "holding"),
             _pick(row, "P&ID 번호", "P&ID", "PID"),
             _pick(row, "비고", "note"),
+            _pick(row, "최대 연결구 크기(mm)", "연결구 크기(mm)", "호칭경", "connection size"),
         ])
     return out
 
