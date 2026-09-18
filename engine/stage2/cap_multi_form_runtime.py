@@ -52,13 +52,13 @@ class CAPOfficialForm:
 
 
 @dataclass(frozen=True)
-@dataclass(frozen=True)
 class CAPRiskRendererPreflight:
     ready: bool
     blockers: tuple[str, ...]
     messages: tuple[str, ...]
 
 
+@dataclass(frozen=True)
 class CAPOfficialFormBundle:
     status: str
     forms: tuple[CAPOfficialForm, ...]
