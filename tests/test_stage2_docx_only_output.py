@@ -16,7 +16,8 @@ class Stage2DocxOnlyOutputTests(unittest.TestCase):
         self.assertNotIn("build_cap_hwpx_draft", source)
         self.assertNotIn("HWPX 다운로드", source)
         self.assertNotIn("원본서식 등록", source)
-        self.assertIn("화학사고예방관리계획서 · DOCX 작성본", source)
+        self.assertIn("화학사고예방관리계획서 · 규정서식 작성본", source)
+        self.assertIn("화학사고예방관리계획서 · 내부 검토용", source)
 
     def test_stage4_has_no_hwpx_renderer_hold(self):
         source = (ROOT / "engine" / "stage2" / "scope_validation.py").read_text(encoding="utf-8")
