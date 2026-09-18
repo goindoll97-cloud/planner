@@ -25,6 +25,7 @@ from docx import Document
 from . import statutory_report as base
 from .cap_form1_engine import build_cap_form1_data
 from .cap_chemical_legal import build_cap_chemical_legal_data
+from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
@@ -462,7 +463,7 @@ def _fill_facility_overview(table, project: Stage2Project) -> None:
 
 
 def _fill_form6(table, project: Stage2Project) -> None:
-    prepared = build_cap_chemical_legal_data(project)
+    prepared = build_cap_form6_sds_data(project)
     rows = []
     for idx, row in enumerate(prepared.rows, 1):
         rows.append([
@@ -487,26 +488,34 @@ def _fill_form6(table, project: Stage2Project) -> None:
 
 
 def _fill_form7(table, project: Stage2Project) -> None:
-    source = base._value(project, "cap.chemical.hazard_information", default="")
-    items: list[Mapping[str, object]] = []
-    if isinstance(source, list):
-        items = [dict(v) for v in source if isinstance(v, Mapping)]
-    elif isinstance(source, Mapping):
-        items = [dict(source)]
-    if not items:
+    prepared = build_cap_form7_data(project)
+    row = prepared.row
+    if not row:
         return
 
-    row = items[0]
+    max_holding = base._row_value(row, "최대보유량(ton)", "최대보유량")
+    if max_holding not in (None, "") and "ton" not in str(max_holding).lower():
+        max_holding = f"{max_holding} ton"
+
+    source = base._row_value(row, "출처", "SDS 출처")
+    sds_file = base._row_value(row, "SDS 파일명", "MSDS 파일명")
+    sds_revision = base._row_value(row, "SDS 개정일", "MSDS 개정일", "SDS 작성·개정일")
+    source_parts = [
+        str(value).strip()
+        for value in (source, sds_file, sds_revision)
+        if str(value or "").strip()
+    ]
+
     mapping = {
         "물질명": base._row_value(row, *_CHEMICAL_NAME_ALIASES),
         "화학물질식별번호(CAS 번호)": base._row_value(row, *_CAS_ALIASES),
         "유해화학물질 고유번호": base._row_value(row, "고유번호"),
-        "농도(또는 함량 %)": base._row_value(row, "농도", "함량"),
-        "최대보유량": base._row_value(row, "최대보유량"),
+        "농도(또는 함량 %)": base._row_value(row, "함량(%)", "농도", "함량"),
+        "최대보유량": max_holding,
         "인체유해성": base._row_value(row, "인체유해성"),
         "물리적 위험성": base._row_value(row, "물리적 위험성"),
         "환경유해성": base._row_value(row, "환경유해성"),
-        "출처": base._row_value(row, "출처"),
+        "출처": " / ".join(source_parts),
         "선정 사유": base._row_value(row, "선정 사유", "선정사유"),
     }
     _fill_single_column_labels(table, mapping)
