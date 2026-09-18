@@ -3,6 +3,11 @@ from __future__ import annotations
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form3_5_engine import (
+    build_cap_form3_readiness,
+    build_cap_form4_readiness,
+    build_cap_form5_readiness,
+)
 from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
@@ -61,6 +66,90 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제1호서식",
                 )
             )
+
+        for prepared, section, legal_item, field_keys in (
+            (
+                build_cap_form3_readiness(project),
+                "기본정보",
+                "별지 제3호 사업장 일반정보",
+                (
+                    "cap.business.unit_plant_name",
+                    "cap.business.registration_no",
+                    "cap.business.representative",
+                    "business.address",
+                    "cap.business.industrial_complex",
+                    "cap.business.contact",
+                    "cap.business.submission_type",
+                    "cap.business.submission_reason",
+                    "cap.business.joint_emergency_plan",
+                    "cap.business.other_system_review",
+                    "cap.business.residents_in_overall_range",
+                    "cap.business.recent_accident",
+                    "cap.business.writer_name",
+                    "cap.business.writer_info",
+                    "cap.business.writer_contact",
+                    "cap.business.writer_email",
+                ),
+            ),
+            (
+                build_cap_form4_readiness(project),
+                "기본정보",
+                "별지 제4호 총괄 취급시설 개요",
+                (
+                    "cap.basic.total_facility_overview",
+                    "process.description",
+                    "inventory.facilities",
+                    "cap.basic.loading_transport",
+                    "inventory.chemicals",
+                ),
+            ),
+            (
+                build_cap_form5_readiness(project),
+                "기본정보",
+                "별지 제5호 세부 취급시설 개요",
+                (
+                    "cap.basic.unit_facility_overview",
+                    "process.description",
+                    "inventory.facilities",
+                    "cap.basic.loading_transport",
+                    "inventory.chemicals",
+                ),
+            ),
+        ):
+            checked_rules += 1
+            if prepared.blockers:
+                for index, blocker in enumerate(prepared.blockers, start=1):
+                    issues_list.append(
+                        ValidationIssue(
+                            code=f"CAP-FORM{prepared.form_no}-{index}",
+                            status="HOLD",
+                            system="CAP",
+                            section=section,
+                            legal_item=legal_item,
+                            message=str(blocker),
+                            field_keys=field_keys,
+                            legal_basis=(
+                                "화학사고예방관리계획서 작성 등에 관한 규정 "
+                                f"별지 제{prepared.form_no}호서식"
+                            ),
+                        )
+                    )
+            else:
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM{prepared.form_no}-READY",
+                        status="PASS",
+                        system="CAP",
+                        section=section,
+                        legal_item=legal_item,
+                        message=prepared.messages[0] if prepared.messages else "작성자료를 확인했습니다.",
+                        field_keys=field_keys,
+                        legal_basis=(
+                            "화학사고예방관리계획서 작성 등에 관한 규정 "
+                            f"별지 제{prepared.form_no}호서식"
+                        ),
+                    )
+                )
 
         checked_rules += 1
         form6 = build_cap_form6_sds_data(project)

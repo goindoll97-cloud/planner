@@ -222,24 +222,62 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제3호
+    items.append(_company_item(
+        project, 3, "사업장 일반정보", "사업자등록번호·대표자·주소·대표전화",
+        ("cap.business.registration_no", "cap.business.representative", "business.address", "cap.business.contact"),
+        "사업자등록번호, 대표자, 사업장 주소, 대표전화",
+    ))
+    unit_plant_ready = _has(project, "cap.business.unit_plant_name") or bool(str(project.site_name or "").strip())
+    items.append(CAPFormCoverageItem(
+        3, "사업장 일반정보", "단위공장명",
+        READY if unit_plant_ready else ASK_COMPANY,
+        "회사 확정자료", ("cap.business.unit_plant_name",),
+        "회사 내부 단위공장명",
+    ))
     for item, keys, req in (
-        ("단위공장명", ("cap.business.unit_plant_name",), "회사 내부 단위공장명"),
         ("산업단지", ("cap.business.industrial_complex",), "산업단지 공식 명칭 또는 해당 없음"),
         ("제출구분·최초/부적합", ("cap.business.submission_type", "cap.business.submission_reason"), "제출유형과 하위 사유"),
         ("공동비상대응계획 수립 여부", ("cap.business.joint_emergency_plan",), "공동/단독 제출 여부"),
         ("유사제도 심사결과 활용", ("cap.business.other_system_review",), "PSM/안전성향상계획 활용 여부"),
         ("최근 3년간 화학사고 발생 여부", ("cap.business.recent_accident",), "최근 3년 사고 이력"),
-        ("작성자·연락처·메일", ("cap.business.writer_name", "cap.business.writer_contact", "cap.business.writer_email"), "작성 담당자 신상정보"),
     ):
         items.append(_company_item(project, 3, "사업장 일반정보", item, keys, req))
+    writer_ready = (
+        (_has(project, "cap.business.writer_name") or _has(project, "cap.business.writer_info"))
+        and _has(project, "cap.business.writer_contact")
+        and _has(project, "cap.business.writer_email")
+    )
+    items.append(CAPFormCoverageItem(
+        3, "사업장 일반정보", "작성자·연락처·메일",
+        READY if writer_ready else ASK_COMPANY,
+        "회사 확정자료",
+        ("cap.business.writer_name", "cap.business.writer_info", "cap.business.writer_contact", "cap.business.writer_email"),
+        "작성 담당자 신상정보",
+    ))
+    items.append(CAPFormCoverageItem(
+        3, "사업장 일반정보", "작성수준 1군/2군",
+        READY if (project.cap_group in {"1군", "2군"} or _has(project, "cap.business.writing_level")) else LEGAL_ENGINE,
+        "Stage 1 판정결과 또는 회사 확인값", ("cap.business.writing_level",),
+        "확정된 작성수준",
+    ))
+    overall_rows = _structured_rows(project, "cap.offsite.overall_impact_summary")
+    residents_ready = _has(project, "cap.business.residents_in_overall_range") or any(
+        _row_value(row, "총괄영향범위 내 거주민수", "거주민수", "총괄 거주민수") not in (None, "")
+        for row in overall_rows
+    )
     items.append(CAPFormCoverageItem(
         3, "사업장 일반정보", "총괄영향범위 내 주민 여부",
-        READY if _has(project, "cap.business.residents_in_overall_range") else EXTERNAL_ANALYSIS,
-        "영향평가 결과", ("cap.business.residents_in_overall_range",),
+        READY if residents_ready else EXTERNAL_ANALYSIS,
+        "영향평가 결과", ("cap.business.residents_in_overall_range", "cap.offsite.overall_impact_summary"),
         "총괄영향범위와 주민 분포 결과",
     ))
 
     # 별지 제4~5호
+    items.append(_company_item(
+        project, 4, "총괄 취급시설 개요", "총괄 시설구성·공정개요",
+        ("cap.basic.total_facility_overview", "process.description"),
+        "총괄 취급시설 구성과 공정개요",
+    ))
     items.append(CAPFormCoverageItem(
         4, "총괄 취급시설 개요", "장치·설비 종류 및 수량",
         READY if facilities else ASK_COMPANY, "설비목록 자동집계",
@@ -251,11 +289,23 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         ("cap.basic.loading_transport",), "입·출하시설 및 보유 탱크로리 수",
     ))
     items.append(CAPFormCoverageItem(
+        4, "총괄 취급시설 개요", "유해화학물질 및 최대보유량",
+        READY if chemicals else ASK_COMPANY,
+        "별지 제1호 물질·최대보유량 결과 재사용",
+        ("inventory.chemicals",),
+        "유해화학물질명·CAS·최대보유량",
+    ))
+    items.append(CAPFormCoverageItem(
         5, "세부 취급시설 개요", "단위공장 구성·공정개요·취급물질",
-        READY if _has(project, "process.description") and facilities and chemicals else ASK_COMPANY,
+        READY if _has(project, "cap.basic.unit_facility_overview")
+        and _has(project, "process.description") and facilities and chemicals else ASK_COMPANY,
         "회사 공정·설비자료",
-        ("process.description", "inventory.facilities", "inventory.chemicals"),
-        "공정 흐름과 단위공장별 설비·물질",
+        ("cap.basic.unit_facility_overview", "process.description", "inventory.facilities", "inventory.chemicals"),
+        "단위공장 구성, 공정 흐름과 단위공장별 설비·물질",
+    ))
+    items.append(_company_item(
+        project, 5, "세부 취급시설 개요", "입·출하 및 운반시설",
+        ("cap.basic.loading_transport",), "입·출하시설 및 보유 탱크로리 수",
     ))
 
     # 별지 제6호
