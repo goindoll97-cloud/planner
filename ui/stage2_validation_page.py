@@ -181,10 +181,14 @@ if project.cap_in_scope:
             item.state not in {CAP_FORM_READY, CAP_FORM_NOT_APPLICABLE}
             for item in cap_coverage
         )
-        ready_coverage = len(cap_coverage) - unresolved_coverage
-        c1, c2 = st.columns(2)
+        ready_coverage = sum(item.state == CAP_FORM_READY for item in cap_coverage)
+        not_applicable_coverage = sum(
+            item.state == CAP_FORM_NOT_APPLICABLE for item in cap_coverage
+        )
+        c1, c2, c3 = st.columns(3)
         c1.metric("현재 작성 가능", ready_coverage)
-        c2.metric("추가 처리 필요", unresolved_coverage)
+        c2.metric("해당 없음", not_applicable_coverage)
+        c3.metric("추가 처리 필요", unresolved_coverage)
         st.dataframe(pd.DataFrame(coverage_rows), width="stretch", hide_index=True)
         st.caption(
             "‘추가 처리 필요’가 곧 회사자료 누락만을 뜻하지는 않습니다. "
