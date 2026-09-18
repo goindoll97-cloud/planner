@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from io import BytesIO
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from docx import Document
 from openpyxl import load_workbook
 
-from engine.stage2.cap_chemical_legal import CAPChemicalLegalData
+from engine.stage2.cap_chemical_legal import CAPChemicalLegalData, build_cap_chemical_legal_data
 from engine.stage2.cap_form8_engine import build_cap_form8_data
 from engine.stage2.integrated_workbook import build_integrated_authoring_workbook
 from engine.stage2.project import Stage2Project
@@ -116,6 +117,34 @@ class CAPForm8EngineTests(unittest.TestCase):
         self.assertIn("보호대상 구분", headers)
         self.assertIn("사업장 경계와 거리(m)", headers)
         self.assertIn("GIS/현장 근거", headers)
+
+    @patch("engine.stage2.cap_chemical_legal.build_cap_form1_data")
+    @patch("engine.stage2.cap_chemical_legal.load_approved_scope_tables")
+    def test_stale_company_legal_identity_does_not_survive_failed_current_law_lookup(
+        self, tables_mock, form1_mock
+    ):
+        project = self._project()
+        project.set_field(
+            "inventory.chemicals",
+            "화학물질 목록",
+            [{
+                "물질명": "가상물질",
+                "CAS 번호": "123-45-6",
+                "함량(%)": 50,
+                "물질구분": "과거 분류",
+                "고유번호": "OLD-001",
+            }],
+            "USER_CONFIRMED",
+        )
+        tables_mock.return_value = ({}, ("CAP_QTY_APP2",))
+        form1_mock.return_value = SimpleNamespace(chemical_rows=())
+
+        result = build_cap_chemical_legal_data(project)
+
+        self.assertFalse(result.ready)
+        self.assertNotEqual(result.rows[0].get("물질구분"), "과거 분류")
+        self.assertNotEqual(result.rows[0].get("고유번호"), "OLD-001")
+        self.assertTrue(result.blockers)
 
     @patch("engine.stage2.cap_baseline_docx.build_cap_chemical_legal_data")
     def test_baseline_docx_uses_validated_form6_legal_identity_and_form8_rows(
