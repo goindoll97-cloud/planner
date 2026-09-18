@@ -16,6 +16,7 @@ from docx.shared import Cm, Pt
 
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form9_engine import build_cap_form9_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -1058,27 +1059,25 @@ def _cap_form8(doc: Document, project: Stage2Project) -> None:
 
 
 def _cap_form9_rows(project: Stage2Project) -> list[list[str]]:
-    chemicals = {_norm(_row_value(c, "물질명", "유해화학물질명")): c for c in _chemical_rows(project)}
-    out = []
-    for idx, row in enumerate(_facility_rows(project), 1):
-        material = _row_value(row, "취급물질", "물질명")
-        chem = chemicals.get(_norm(material), {})
+    prepared = build_cap_form9_data(project)
+    out: list[list[str]] = []
+    for row in prepared.rows:
         out.append([
-            str(idx),
-            _row_value(row, "설비번호", "구분기호", "장치번호"),
-            _row_value(row, "설비명", "장치·설비명", "장치명"),
-            material,
-            _row_value(chem, "CAS 번호", "화학물질식별번호"),
-            _row_value(chem, "물리적 상태", "물질상태"),
-            _row_value(chem, "함량(%)", "함량"),
-            _row_value(row, "연결구 크기", "호칭경"),
-            _row_value(row, "설계압력"),
-            _row_value(row, "운전압력"),
-            _row_value(row, "설계온도"),
-            _row_value(row, "운전온도"),
-            _row_value(row, "용량", "설계용량"),
-            _row_value(row, "최대보유량(kg)", "취급량", "최대보유량"),
-            _row_value(row, "비고", "P&ID 번호"),
+            str(row.get("연번") or ""),
+            str(row.get("구분기호") or ""),
+            str(row.get("장치·설비명") or ""),
+            str(row.get("취급물질") or ""),
+            str(row.get("CAS No.") or ""),
+            str(row.get("물질상태") or ""),
+            str(row.get("함량(%)") or ""),
+            str(row.get("연결구 크기(mm)") or ""),
+            str(row.get("압력(MPa)-설계") or ""),
+            str(row.get("압력(MPa)-운전") or ""),
+            str(row.get("온도(℃)-설계") or ""),
+            str(row.get("온도(℃)-운전") or ""),
+            str(row.get("설계용량(m3)") or ""),
+            str(row.get("취급량(ton)") or ""),
+            str(row.get("비고") or ""),
         ])
     return out
 
