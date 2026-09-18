@@ -270,6 +270,12 @@ def build_cap_form11_data(project: Stage2Project) -> CAPForm11Data:
             "비고": " / ".join(remarks),
         })
 
+    if not out:
+        blockers.append(
+            "CAP 별지 제11호에 작성할 고정식 유해감지시설이 확인되지 않았습니다. "
+            "휴대식만 보유한 경우에도 법적 고정식 설치대상 여부를 확인하기 전에는 '해당 없음'으로 자동처리하지 않습니다."
+        )
+
     if excluded_portable:
         messages.append(
             f"휴대식 감지기 {excluded_portable}건은 회사자료에는 유지하되 CAP 별지 제11호 고정식 명세에서 제외했습니다."
