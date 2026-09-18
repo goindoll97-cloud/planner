@@ -119,6 +119,48 @@ class SystemFinalGateTests(unittest.TestCase):
         self.assertEqual(validation.status, HOLD)
 
     @patch("engine.stage2.system_final_gate.report_generation_status")
+    def test_psm_statutory_form_hold_blocks_final_gate(self, status_mock):
+        status_mock.return_value = SimpleNamespace(
+            final_ready=True,
+            state="READY",
+            completion_pct=100.0,
+            blocking_labels=(),
+        )
+        project = self._project(psm=True)
+        report = self._report(
+            ValidationIssue(
+                code="PSM-FORM12-1",
+                status="HOLD",
+                system="PSM",
+                section="사업개요",
+                legal_item="별지 제12호서식 사업개요",
+                message="필수 작성칸 누락",
+            )
+        )
+
+        result = evaluate_system_final_gate(project, "PSM", report)
+
+        self.assertFalse(result.ready)
+        item = next(i for i in result.checkpoints if i.key == "psm.final.statutory_forms")
+        self.assertEqual(item.status, HOLD)
+        self.assertIn("별지 제12호서식", item.message)
+
+    @patch("engine.stage2.system_final_gate.report_generation_status")
+    def test_cap_gate_does_not_get_psm_statutory_checkpoint(self, status_mock):
+        status_mock.return_value = SimpleNamespace(
+            final_ready=True,
+            state="READY",
+            completion_pct=100.0,
+            blocking_labels=(),
+        )
+        project = self._project(psm=False, cap=True)
+
+        result = evaluate_system_final_gate(project, "CAP", self._report())
+
+        self.assertTrue(result.ready)
+        self.assertFalse(any(i.key == "psm.final.statutory_forms" for i in result.checkpoints))
+
+    @patch("engine.stage2.system_final_gate.report_generation_status")
     def test_ready_requires_both_completeness_and_scoped_validation(self, status_mock):
         status_mock.return_value = SimpleNamespace(
             final_ready=True,
