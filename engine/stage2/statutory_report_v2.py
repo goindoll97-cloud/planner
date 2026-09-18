@@ -6,10 +6,6 @@ from docx import Document
 
 from .project import Stage2Project
 from . import statutory_report as base
-from .cap_report_authoritative import (
-    add_cap_form6_msds_candidate_review,
-    add_cap_form7_msds_candidate_review,
-)
 
 
 # The base renderer uses small helper tables inside a larger statutory form.
@@ -130,9 +126,7 @@ def _render_cap(doc: Document, project: Stage2Project) -> None:
     base._cap_facility_overview(doc, project, detailed=False)
     base._cap_facility_overview(doc, project, detailed=True)
     base._add_form_table(doc, base.CAP_FORMS["6"], base._cap_form6_rows(project))
-    add_cap_form6_msds_candidate_review(doc, project)
     base._cap_form7(doc, project)
-    add_cap_form7_msds_candidate_review(doc, project)
     base._cap_form8(doc, project)
 
     doc.add_page_break()
@@ -247,8 +241,6 @@ def _render_cap_narrative(doc: Document, project: Stage2Project) -> None:
     base._add_heading_safe(doc, "시설정보", level=1)
     base._add_attachment_line(doc, "공정흐름도(PFD)", base._doc_value(project, "documents.pfd"))
     base._add_attachment_line(doc, "공정배관계장도(P&ID)", base._doc_value(project, "documents.pid"))
-    add_cap_form6_msds_candidate_review(doc, project)
-    add_cap_form7_msds_candidate_review(doc, project)
     base._add_heading_safe(doc, "공정위험성 분석 자료", level=2)
     doc.add_paragraph(base._text(project, "cap.facility.process_hazard_analysis", default=base.MISSING))
     base._add_heading_safe(doc, "운전책임자 및 작업자 현황", level=2)
