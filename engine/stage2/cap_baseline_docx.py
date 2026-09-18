@@ -268,6 +268,25 @@ def _fill_label_rows(table, mapping: Mapping[str, object], *, start: int = 0) ->
             _append_value(cells[-1], value)
 
 
+def _fill_label_rows_replace(table, mapping: Mapping[str, object], *, start: int = 0) -> None:
+    """Replace answer cells instead of appending to preprinted option text.
+
+    Choice rows in the statutory baseline already contain empty checkbox
+    options. Appending another option set produces duplicated lines. For fields
+    where the program renders the complete option set itself, replace the
+    answer cell so exactly one checkbox set remains.
+    """
+    normalized = {base._norm(key): value for key, value in mapping.items()}
+    for row in table.rows[start:]:
+        cells = _unique_cells(row)
+        if len(cells) < 2:
+            continue
+        label = cells[0].text.strip()
+        value = normalized.get(base._norm(label))
+        if value not in (None, "", MISSING):
+            _write_cell(cells[-1], value)
+
+
 def _fill_single_column_labels(table, mapping: Mapping[str, object]) -> None:
     """별지 제7호서식-style tables: one column, each row starts with a label
     like "가. 물질명" and the answer is appended after it in the same cell."""
@@ -302,6 +321,28 @@ def _fill_form1(tables, project: Stage2Project) -> None:
         for row in prepared.facility_rows
     ]
     _fill_table_rows(t1, _sanitize_rows(t1_rows), header_rows=1)
+
+    if not t1_rows:
+        chemicals = base._chemical_rows(project)
+        chem_by_name = {
+            base._norm(base._row_value(row, *_CHEMICAL_NAME_ALIASES)): row
+            for row in chemicals
+        }
+        legacy_rows = []
+        for facility in base._facility_rows(project):
+            material = base._row_value(facility, "취급물질", "물질명")
+            chem = chem_by_name.get(base._norm(material), {})
+            legacy_rows.append([
+                base._row_value(facility, "단위공장·공정", "단위공장", "공정"),
+                material,
+                base._row_value(chem, *_CAS_ALIASES),
+                base._row_value(chem, "함량(%)", "함량"),
+                base._row_value(facility, "설비번호", "구분기호"),
+                base._row_value(facility, "설비명", "취급시설"),
+                base._row_value(facility, "용량", "설계용량"),
+                base._row_value(facility, "최대보유량(kg)", "취급량", "최대보유량"),
+            ])
+        _fill_table_rows(t1, _sanitize_rows(legacy_rows), header_rows=1)
 
     t2_rows = [
         [
@@ -389,7 +430,7 @@ def _fill_form3(table, project: Stage2Project) -> None:
         "담당자 연락처": base._text(project, "cap.business.writer_contact", default=""),
         "담당자 메일주소": base._text(project, "cap.business.writer_email", default=""),
     }
-    _fill_label_rows(table, mapping, start=1)
+    _fill_label_rows_replace(table, mapping, start=1)
 
 
 def _fill_facility_overview(table, project: Stage2Project) -> None:
@@ -415,7 +456,7 @@ def _fill_facility_overview(table, project: Stage2Project) -> None:
         ),
         "유해화학물질 및 취급량": "\n".join(line for line in chem_lines if line),
     }
-    _fill_label_rows(table, mapping, start=1)
+    _fill_label_rows_replace(table, mapping, start=1)
 
 
 def _fill_form6(table, project: Stage2Project) -> None:
@@ -502,6 +543,33 @@ def _fill_form9(table, project: Stage2Project) -> None:
         for row in prepared.rows
     ]
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
+    if not rows:
+        chemicals = {
+            base._norm(base._row_value(item, *_CHEMICAL_NAME_ALIASES)): item
+            for item in base._chemical_rows(project)
+        }
+        fallback = []
+        for idx, row in enumerate(base._facility_rows(project), 1):
+            material = base._row_value(row, "취급물질", "물질명")
+            chem = chemicals.get(base._norm(material), {})
+            fallback.append([
+                str(idx),
+                base._row_value(row, "설비번호", "구분기호", "장치번호"),
+                base._row_value(row, "설비명", "장치·설비명", "장치명"),
+                material,
+                base._row_value(chem, *_CAS_ALIASES),
+                base._row_value(chem, "물리적 상태", "물질상태"),
+                base._row_value(chem, "함량(%)", "함량"),
+                base._row_value(row, "연결구 크기", "호칭경"),
+                base._row_value(row, "설계압력"),
+                base._row_value(row, "운전압력"),
+                base._row_value(row, "설계온도"),
+                base._row_value(row, "운전온도"),
+                base._row_value(row, "용량", "설계용량"),
+                base._row_value(row, "최대보유량(kg)", "취급량", "최대보유량"),
+                base._row_value(row, "비고", "P&ID 번호"),
+            ])
+        _fill_table_rows(table, _sanitize_rows(fallback), header_rows=2)
 
 def _fill_form10(table, project: Stage2Project) -> None:
     prepared = build_cap_form10_data(project)
@@ -521,6 +589,21 @@ def _fill_form10(table, project: Stage2Project) -> None:
         for row in prepared.rows
     ]
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
+    if not rows:
+        fallback = []
+        for idx, row in enumerate(base._rows(project, "cap.safety.dike_layout"), 1):
+            fallback.append([
+                str(idx), base._row_value(row, "설비형태"),
+                base._row_value(row, "구분기호", "설비번호"),
+                base._row_value(row, "장치·설비명", "설비명"),
+                base._row_value(row, "설계용량"),
+                base._row_value(row, "설비종류"),
+                base._row_value(row, "필요용량"),
+                base._row_value(row, "유효용량"),
+                base._row_value(row, "검토결과"),
+                base._row_value(row, "비고"),
+            ])
+        _fill_table_rows(table, _sanitize_rows(fallback), header_rows=2)
 
 def _fill_form11(table, project: Stage2Project) -> None:
     prepared = build_cap_form11_data(project)
@@ -542,6 +625,24 @@ def _fill_form11(table, project: Stage2Project) -> None:
         for row in prepared.rows
     ]
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=1)
+    if not rows:
+        fallback = []
+        for idx, row in enumerate(base._rows(project, "cap.safety.gas_detection", "psm.psi.gas_detection"), 1):
+            fallback.append([
+                str(idx),
+                base._row_value(row, "감지기 번호", "구분기호", "감지기번호"),
+                base._row_value(row, "검출대상 물질", "감지대상"),
+                base._row_value(row, "설치위치", "설치장소"),
+                base._row_value(row, "작동시간"),
+                base._row_value(row, "감지방식", "측정방식"),
+                base._row_value(row, "경보 설정값", "경보설정값"),
+                base._row_value(row, "경보 위치", "경보기 설치장소"),
+                base._row_value(row, "연동여부"),
+                base._row_value(row, "정밀도"),
+                base._row_value(row, "유지관리", "점검주기"),
+                base._row_value(row, "비고", "관련 도면번호"),
+            ])
+        _fill_table_rows(table, _sanitize_rows(fallback), header_rows=1)
 
 def _fill_form12(tables, project: Stage2Project) -> None:
     scenario_table, list_table = tables
