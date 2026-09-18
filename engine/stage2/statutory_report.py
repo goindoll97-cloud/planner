@@ -540,8 +540,16 @@ def _chemical_rows(project: Stage2Project) -> list[Mapping[str, object]]:
     return _rows(project, "cap.chemical.details", "inventory.chemicals")
 
 
+def _psm_chemical_rows(project: Stage2Project) -> list[Mapping[str, object]]:
+    return _rows(project, "psm.psi.chemical_details", "inventory.chemicals", "cap.chemical.details")
+
+
 def _facility_rows(project: Stage2Project) -> list[Mapping[str, object]]:
     return _rows(project, "cap.facility.equipment_specs", "psm.psi.equipment_specs", "inventory.facilities")
+
+
+def _psm_facility_rows(project: Stage2Project) -> list[Mapping[str, object]]:
+    return _rows(project, "psm.psi.equipment_specs", "inventory.facilities", "cap.facility.equipment_specs")
 
 
 def _facility_counts(rows: Sequence[Mapping[str, object]]) -> str:
@@ -557,7 +565,7 @@ def _facility_counts(rows: Sequence[Mapping[str, object]]) -> str:
 
 
 def _psm_form12(doc: Document, project: Stage2Project) -> None:
-    chemicals = _chemical_rows(project)
+    chemicals = _psm_chemical_rows(project)
     raw_names = ", ".join(_row_value(r, "물질명", "화학물질", "유해화학물질명") for r in chemicals[:8]) if chemicals else MISSING
     rows = (
         ("사업장명", project.company_name or MISSING),
@@ -581,7 +589,7 @@ def _psm_form12(doc: Document, project: Stage2Project) -> None:
 
 def _psm_form13_rows(project: Stage2Project) -> list[list[str]]:
     rows = []
-    for row in _chemical_rows(project):
+    for row in _psm_chemical_rows(project):
         rows.append([
             _row_value(row, "물질명", "화학물질", "유해화학물질명"),
             _row_value(row, "CAS 번호", "CAS No.", "화학물질식별번호"),
@@ -619,7 +627,7 @@ def _psm_form14_rows(project: Stage2Project) -> list[list[str]]:
 
 def _psm_form15_rows(project: Stage2Project) -> list[list[str]]:
     out = []
-    for row in _facility_rows(project):
+    for row in _psm_facility_rows(project):
         material = _row_value(row, "취급물질", "내용물")
         body_mat = _row_value(row, "본체재질", "재질", "사용재질")
         out.append([

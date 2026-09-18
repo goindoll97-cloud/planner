@@ -41,20 +41,22 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "02_화학물질정보",
         "scope": "COMMON",
         "title": "화학물질 정보 및 회사 SDS 확인값",
-        "targets": ("cap.chemical.details",),
+        "targets": ("inventory.chemicals", "psm.psi.chemical_details", "cap.chemical.details"),
         "headers": (
-            "물질명", "CAS 번호", "함량(%)", "물리적 상태", "최대보유량", "단위",
+            "물질명", "CAS 번호", "분자식", "함량(%)", "물리적 상태", "최대보유량", "단위", "일일사용량",
             "사용·저장 공정", "주요 용도",
-            "비중", "폭발한계 하한", "폭발한계 상한",
+            "비중", "폭발한계 하한", "폭발한계 상한", "노출기준", "독성치", "인화점", "발화점", "이상반응 유무",
             "독성구분 항목", "독성구분", "위험노출수준", "허용농도값",
             "증기압", "부식성", "SDS 파일명", "SDS 개정일", "비고",
         ),
         "example": (
             (
-                "톨루엔", "108-88-3", 99.5, "액체", 15000, "kg", "원료 저장·혼합", "원료",
-                "0.87", "1.2 vol%", "7.1 vol%", "급성독성(흡입)", "구분 4",
-                "ERPG-2 300 ppm", "TWA 50 ppm", "28.4 mmHg (25℃)", "해당 없음",
-                "toluene_company_SDS.pdf", "2026-06-01", "회사 제품 SDS 전사 예시"
+                "톨루엔", "108-88-3", "C7H8", 99.5, "액체", 15000, "kg", "2500 kg/day",
+                "원료 저장·혼합", "원료", "0.87", "1.2 vol%", "7.1 vol%", "TWA 50 ppm",
+                "LD50 2600 mg/kg (경구, rat)", "4 ℃", "480 ℃", "해당 없음",
+                "급성독성(흡입)", "구분 4", "ERPG-2 300 ppm", "TWA 50 ppm",
+                "28.4 mmHg (25℃)", "해당 없음", "toluene_company_SDS.pdf", "2026-06-01",
+                "회사 제품 SDS 전사 예시"
             ),
         ),
     },
@@ -62,14 +64,20 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "03_설비정보",
         "scope": "COMMON",
         "title": "장치·설비 통합정보",
-        "targets": ("psm.psi.equipment_specs", "cap.facility.equipment_specs"),
+        "targets": ("inventory.facilities", "psm.psi.equipment_specs", "cap.facility.equipment_specs"),
         "headers": (
             "설비번호", "설비명", "설비종류", "단위공장·공정", "취급물질", "용량", "용량단위",
-            "설계압력", "설계온도", "운전압력", "운전온도", "재질", "최대보유량(kg)", "P&ID 번호", "비고",
-            "최대 연결구 크기(mm)",
+            "설계압력", "설계온도", "운전압력", "운전온도",
+            "재질", "부속품재질", "개스킷재질", "용접효율", "계산두께", "부식여유", "사용두께",
+            "후열처리 여부", "비파괴검사율", "최대보유량(kg)", "P&ID 번호", "비고", "최대 연결구 크기(mm)",
         ),
         "example": (
-            ("TK-101", "톨루엔 저장탱크", "저장탱크", "원료저장", "톨루엔", 20, "m3", "0.49 MPa", "80 ℃", "0.15 MPa", "30 ℃", "SUS304", 15000, "PID-101", "예시값", 50),
+            (
+                "TK-101", "톨루엔 저장탱크", "저장탱크", "원료저장", "톨루엔", 20, "m3",
+                "0.49 MPa", "80 ℃", "0.15 MPa", "30 ℃",
+                "SUS304", "SUS304", "PTFE", "1.0", "6.0 mm", "1.0 mm", "8.0 mm",
+                "해당 없음", "10%", 15000, "PID-101", "예시값", 50
+            ),
         ),
     },
     {
@@ -78,11 +86,20 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "title": "안전밸브 및 파열판 통합정보",
         "targets": ("psm.psi.relief_device_specs", "cap.safety.relief_device_specs"),
         "headers": (
-            "안전밸브·파열판 번호", "보호대상 설비번호", "형식", "설정압력", "배출용량", "배출물질",
-            "배출상태", "최종 배출·처리 지점", "관련 P&ID 번호", "비고",
+            "안전밸브·파열판 번호", "보호대상 설비번호", "형식", "설정압력",
+            "배출용량", "정격용량", "노즐크기 입구", "노즐크기 출구",
+            "배출물질", "배출상태", "보호기기 운전압력", "보호기기 설계압력",
+            "몸체재질", "TRIM 재질", "정밀도", "최종 배출·처리 지점", "배출원인",
+            "관련 P&ID 번호", "비고",
         ),
         "example": (
-            ("PSV-101", "TK-101", "안전밸브", "0.45 MPa", "1200 kg/h", "톨루엔 증기", "기체", "스크러버", "PID-101", "예시값"),
+            (
+                "PSV-101", "TK-101", "안전밸브", "0.45 MPa",
+                "1200 kg/h", "1300 kg/h", "25A", "40A",
+                "톨루엔 증기", "기체", "0.15 MPa", "0.49 MPa",
+                "WCB", "SUS316", "±3%", "스크러버", "화재",
+                "PID-101", "예시값"
+            ),
         ),
     },
     {
@@ -109,10 +126,14 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "title": "동력기계 목록",
         "targets": ("psm.psi.machinery_list",),
         "headers": (
-            "기계번호", "기계명", "형식", "용량", "동력", "재질", "취급물질", "설치공정", "관련 P&ID 번호", "비고",
+            "기계번호", "기계명", "형식", "용량", "동력", "재질", "방호·보호장치 종류",
+            "취급물질", "설치공정", "관련 P&ID 번호", "비고",
         ),
         "example": (
-            ("P-101", "원료 이송펌프", "원심펌프", "20 m3/h", "7.5 kW", "SUS304", "톨루엔", "원료저장", "PID-101", "예시값"),
+            (
+                "P-101", "원료 이송펌프", "원심펌프", "20 m3/h", "7.5 kW", "SUS304",
+                "커플링 가드·모터 과부하 보호", "톨루엔", "원료저장", "PID-101", "예시값"
+            ),
         ),
     },
     {
@@ -121,10 +142,14 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "title": "배관 및 개스킷 명세",
         "targets": ("psm.psi.piping_gasket_specs",),
         "headers": (
-            "배관번호·Class", "유체명", "배관재질", "호칭경", "설계압력", "설계온도", "개스킷 재질", "관련 P&ID 번호", "비고",
+            "배관번호·Class", "유체명", "배관재질", "호칭경", "설계압력", "설계온도",
+            "개스킷 재질", "비파괴검사율", "후열처리여부", "관련 P&ID 번호", "비고",
         ),
         "example": (
-            ("PCL-150", "톨루엔", "SUS304", "50A", "0.49 MPa", "80 ℃", "PTFE", "PID-101", "예시값"),
+            (
+                "PCL-150", "톨루엔", "SUS304", "50A", "0.49 MPa", "80 ℃",
+                "PTFE", "10%", "해당 없음", "PID-101", "예시값"
+            ),
         ),
     },
     {
@@ -397,12 +422,21 @@ def _pick(row: Mapping[str, Any], *aliases: str) -> Any:
 
 
 def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
-    # After the company enriches the chemical table with SDS facts, preserve
-    # that richer table on subsequent downloads. Fall back to Stage-1 inventory
-    # only for the first authoring pass.
-    record = project.get_field("cap.chemical.details")
-    if record is None or not isinstance(record.value, list) or not record.value:
-        record = project.get_field("inventory.chemicals")
+    # Preserve the richer Stage-2 table on subsequent downloads while keeping
+    # Stage-1 inventory as the immutable first-pass source. In PSM-only scope,
+    # never depend on a CAP-only enrichment field.
+    record = None
+    preferred_keys = []
+    if project.psm_in_scope:
+        preferred_keys.append("psm.psi.chemical_details")
+    if project.cap_in_scope:
+        preferred_keys.append("cap.chemical.details")
+    preferred_keys.append("inventory.chemicals")
+    for key in preferred_keys:
+        candidate = project.get_field(key)
+        if candidate is not None and isinstance(candidate.value, list) and candidate.value:
+            record = candidate
+            break
     rows = record.value if record and isinstance(record.value, list) else []
     out: list[list[Any]] = []
     for row in rows:
@@ -411,15 +445,22 @@ def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
         out.append([
             _pick(row, "물질명", "화학물질명", "제품명", "substance", "name"),
             _pick(row, "CAS 번호", "CAS", "CAS No", "CAS번호"),
+            _pick(row, "분자식", "molecular formula"),
             _pick(row, "함량(%)", "함량", "농도", "content", "purity"),
             _pick(row, "물리적 상태", "상태", "state", "phase"),
             _pick(row, "최대보유량", "최대저장량", "보유량", "quantity", "holding"),
             _pick(row, "단위", "unit"),
-            _pick(row, "공정", "사용공정", "저장공정", "process"),
-            _pick(row, "용도", "usage"),
+            _pick(row, "일일사용량", "취급량", "사용량", "daily use"),
+            _pick(row, "공정", "사용공정", "저장공정", "사용·저장 공정", "process"),
+            _pick(row, "용도", "주요 용도", "usage"),
             _pick(row, "비중", "밀도/비중"),
             _pick(row, "폭발한계 하한", "폭발하한", "LEL"),
             _pick(row, "폭발한계 상한", "폭발상한", "UEL"),
+            _pick(row, "노출기준", "TWA", "허용농도값"),
+            _pick(row, "독성치", "toxicity"),
+            _pick(row, "인화점", "flash point"),
+            _pick(row, "발화점", "ignition point"),
+            _pick(row, "이상반응 유무", "이상반응"),
             _pick(row, "독성구분 항목", "독성구분-항목"),
             _pick(row, "독성구분", "독성구분-구분"),
             _pick(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"),
@@ -474,7 +515,18 @@ def _prefill_detectors(project: Stage2Project) -> list[list[Any]]:
 
 
 def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
-    record = project.get_field("inventory.facilities")
+    record = None
+    preferred_keys = []
+    if project.psm_in_scope:
+        preferred_keys.append("psm.psi.equipment_specs")
+    if project.cap_in_scope:
+        preferred_keys.append("cap.facility.equipment_specs")
+    preferred_keys.append("inventory.facilities")
+    for key in preferred_keys:
+        candidate = project.get_field(key)
+        if candidate is not None and isinstance(candidate.value, list) and candidate.value:
+            record = candidate
+            break
     rows = record.value if record and isinstance(record.value, list) else []
     out: list[list[Any]] = []
     for row in rows:
@@ -484,7 +536,7 @@ def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
             _pick(row, "설비번호", "시설번호", "장치번호", "tag", "equipment id"),
             _pick(row, "설비명", "시설명", "장치명", "equipment"),
             _pick(row, "설비종류", "시설종류", "type"),
-            _pick(row, "단위공장", "공정", "process", "unit"),
+            _pick(row, "단위공장·공정", "단위공장", "공정", "process", "unit"),
             _pick(row, "취급물질", "물질명", "chemical"),
             _pick(row, "용량", "capacity"),
             _pick(row, "용량단위", "단위", "unit"),
@@ -492,7 +544,15 @@ def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
             _pick(row, "설계온도", "design temperature"),
             _pick(row, "운전압력", "operating pressure"),
             _pick(row, "운전온도", "operating temperature"),
-            _pick(row, "재질", "material"),
+            _pick(row, "재질", "본체재질", "material"),
+            _pick(row, "부속품재질", "부속품"),
+            _pick(row, "개스킷재질", "개스킷 재질"),
+            _pick(row, "용접효율"),
+            _pick(row, "계산두께"),
+            _pick(row, "부식여유"),
+            _pick(row, "사용두께"),
+            _pick(row, "후열처리 여부", "후열처리여부"),
+            _pick(row, "비파괴검사율", "비파괴율검사"),
             _pick(row, "최대보유량", "최대보유량(kg)", "holding"),
             _pick(row, "P&ID 번호", "P&ID", "PID"),
             _pick(row, "비고", "note"),

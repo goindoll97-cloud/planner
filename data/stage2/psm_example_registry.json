@@ -25,6 +25,7 @@
   "field_labels": {
     "psm.business.overview": "사업개요",
     "inventory.chemicals": "유해·위험물질 종류 및 사용량",
+    "psm.psi.chemical_details": "공정안전보고서 유해·위험물질 상세명세",
     "psm.psi.msds": "물질안전보건자료(MSDS)",
     "inventory.facilities": "유해·위험설비 목록",
     "psm.psi.machinery_list": "동력기계 목록",
