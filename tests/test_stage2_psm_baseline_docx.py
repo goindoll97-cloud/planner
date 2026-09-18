@@ -266,10 +266,14 @@ class PSMBaselineDocxTests(unittest.TestCase):
         self.assertIn("공정안전보고서 규정서식 작성본 DOCX 다운로드", text)
         # The last occurrence is the call site in the page body; the function
         # definition itself (which also contains this substring) comes first.
-        call_site = text.rindex("_render_psm_regulation_form(project)")
+        call_site = text.rindex("_render_psm_regulation_form(\n        project,")
         heading = text.index('st.markdown("### 공정안전보고서 · 내부 검토용")')
         self.assertLess(call_site, heading)
-        self.assertGreater(call_site, text.index("def _render_psm_regulation_form(project)"))
+        self.assertGreater(
+            call_site,
+            text.index("def _render_psm_regulation_form(project, *, final_ready: bool)")
+        )
+        self.assertIn('final_ready=download_readiness.get("PSM", False)', text[call_site:heading])
 
 
 if __name__ == "__main__":
