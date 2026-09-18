@@ -590,7 +590,7 @@ def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
 
 def _prefill_detectors(project: Stage2Project) -> list[list[Any]]:
     rows: list[Mapping[str, Any]] = []
-    for key in ("cap.safety.gas_detection", "psm.psi.gas_detection"):
+    for key in ("psm.psi.gas_detection_table", "cap.safety.gas_detection", "psm.psi.gas_detection"):
         record = project.get_field(key)
         if record and isinstance(record.value, list):
             rows = [row for row in record.value if isinstance(row, Mapping)]
