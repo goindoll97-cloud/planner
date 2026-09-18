@@ -20,6 +20,10 @@ from .cap_form16_engine import build_cap_form16_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
 from .psm_core_form_engine import build_all_psm_core_form_readiness
+from .psm_form12_consequence_engine import (
+    build_psm_form12_readiness,
+    build_psm_form19_2_readiness,
+)
 from .psm_later_form_engine import build_all_psm_later_form_readiness
 
 
@@ -39,6 +43,43 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
         issue for issue in raw.issues if issue.system in allowed_systems
     ]
     checked_rules = raw.checked_rules
+
+    if project.psm_in_scope:
+        checked_rules += 1
+        prepared = build_psm_form12_readiness(project)
+        if prepared.blockers:
+            for index, blocker in enumerate(prepared.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"PSM-FORM12-{index}",
+                        status="HOLD",
+                        system="PSM",
+                        section="사업개요",
+                        legal_item="별지 제12호서식 사업개요",
+                        message=str(blocker),
+                        field_keys=("psm.business.form12_details",),
+                        legal_basis=(
+                            "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 "
+                            "별지 제12호서식"
+                        ),
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="PSM-FORM12-READY",
+                    status="PASS",
+                    system="PSM",
+                    section="사업개요",
+                    legal_item="별지 제12호서식 사업개요",
+                    message=prepared.messages[0],
+                    field_keys=("psm.business.form12_details",),
+                    legal_basis=(
+                        "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 "
+                        "별지 제12호서식"
+                    ),
+                )
+            )
 
     if project.psm_in_scope:
         psm_fields = {
@@ -129,6 +170,51 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                         legal_basis=legal_basis,
                     )
                 )
+
+    if project.psm_in_scope:
+        checked_rules += 1
+        prepared = build_psm_form19_2_readiness(project)
+        if prepared.blockers:
+            for index, blocker in enumerate(prepared.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"PSM-FORM19-2-{index}",
+                        status="HOLD",
+                        system="PSM",
+                        section="공정위험성평가",
+                        legal_item="별지 제19호의2서식 시나리오 및 피해예측 결과",
+                        message=str(blocker),
+                        field_keys=(
+                            "psm.psi.form_applicability",
+                            "psm.risk.consequence_table",
+                            "psm.risk.consequence",
+                        ),
+                        legal_basis=(
+                            "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 "
+                            "별지 제19호의2서식"
+                        ),
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="PSM-FORM19-2-READY",
+                    status="PASS",
+                    system="PSM",
+                    section="공정위험성평가",
+                    legal_item="별지 제19호의2서식 시나리오 및 피해예측 결과",
+                    message=prepared.messages[0],
+                    field_keys=(
+                        "psm.psi.form_applicability",
+                        "psm.risk.consequence_table",
+                        "psm.risk.consequence",
+                    ),
+                    legal_basis=(
+                        "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 "
+                        "별지 제19호의2서식"
+                    ),
+                )
+            )
 
     if project.cap_in_scope:
         checked_rules += 1
