@@ -205,6 +205,8 @@ data/runtime/stage2/projects/<project_id>/
   - Stage 4 fingerprint가 현재 프로젝트와 일치하지 않거나 작성범위 밖 문서이거나 파일명 상태와 readiness가 모순되면 검증정보 생성을 중단
 - 규정서식 검증 묶음 ZIP
   - 동일 DOCX, 해당 DOCX의 검증정보 JSON, SHA-256 확인 안내문을 한 묶음으로 제공하며 해시 불일치 시 생성을 중단
+- 규정서식 DOCX 재현성
+  - CAP/PSM 공식 규정서식 DOCX의 OOXML ZIP entry 순서와 timestamp metadata를 정규화하여 같은 프로젝트·같은 확인자료이면 같은 bytes와 SHA-256이 생성되도록 함
 - 선택사항: 로컬 AI를 이용한 내부 설명문 보강 검토용 DOCX
 
 DOCX가 생성되더라도 프로그램이 이를 자동으로 제출 확정본으로 간주하지 않습니다. 최종 제출 전 담당자가 회사 사실, 수치, 도면, 제품 SDS/MSDS 및 첨부자료와 대조하여 확인해야 합니다. PDF/XLSX/ZIP 형태의 별도 최종 제출 패키지는 현재 Stage 5의 기본 출력 형식이 아닙니다.

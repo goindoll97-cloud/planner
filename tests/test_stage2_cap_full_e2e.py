@@ -469,5 +469,24 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
         )
 
 
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
+    @patch("engine.stage2.cap_chemical_legal.screen_cap_scope_candidates_from_tables", return_value=pd.DataFrame())
+    @patch("engine.stage2.cap_chemical_legal.load_approved_scope_tables")
+    @patch("engine.stage2.cap_form1_engine.screen_facility_stage")
+    def test_cap_statutory_writer_is_byte_deterministic(
+        self, screen_mock, law_tables_mock, _scope_mock, _current
+    ):
+        screen_mock.return_value = self._screen()
+        law_tables_mock.return_value = (self._law_tables(), ())
+        project = self._project()
+
+        first = build_cap_baseline_draft(project)
+        second = build_cap_baseline_draft(project)
+
+        self.assertEqual(first, second)
+        self.assertGreater(len(first), 0)
+
+
+
 if __name__ == "__main__":
     unittest.main()

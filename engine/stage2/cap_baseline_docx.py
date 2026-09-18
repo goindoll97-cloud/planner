@@ -44,6 +44,7 @@ from .cap_final_form_runtime import (
     render_yes_no,
 )
 from .project import CONFIRMED_STATUSES, Stage2Project
+from .ooxml_determinism import canonicalize_docx_zip
 
 # Intake workbook templates have used different header wording for the same
 # fields over time (e.g. an older "물질명" column vs. a newer
@@ -1231,7 +1232,7 @@ def build_cap_baseline_draft(project: Stage2Project) -> bytes:
 
     out = BytesIO()
     doc.save(out)
-    return out.getvalue()
+    return canonicalize_docx_zip(out.getvalue())
 
 
 def cap_baseline_filename(project: Stage2Project) -> str:

@@ -22,6 +22,7 @@ from docx import Document
 
 from . import statutory_report as base
 from .project import Stage2Project
+from .ooxml_determinism import canonicalize_docx_zip
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_DIR = PROJECT_ROOT / "data" / "templates" / "psm"
@@ -578,7 +579,7 @@ def build_psm_baseline_draft(project: Stage2Project) -> bytes:
     _fill_form19_2(doc.tables[FORM_TABLE_INDEX["19-2"]], project)
     out = BytesIO()
     doc.save(out)
-    return out.getvalue()
+    return canonicalize_docx_zip(out.getvalue())
 
 
 def psm_baseline_filename(project: Stage2Project) -> str:
