@@ -52,19 +52,6 @@ class CAPChemicalLegalTests(unittest.TestCase):
                 "active": "true",
                 "source_key": "CAP_QTY_APP2",
             },
-            {
-                "record_key": "10:2",
-                "item_no": "10",
-                "hazard_seq": "2",
-                "designation_id": "2026-1-0010",
-                "substance_name": "시험물질",
-                "direct_cas": "123-45-6",
-                "scope_type": "DIRECT_CAS",
-                "hazard_category": "용액",
-                "content_threshold_pct": "",
-                "active": "true",
-                "source_key": "CAP_QTY_APP2",
-            },
         ])
 
     @staticmethod
@@ -100,6 +87,44 @@ class CAPChemicalLegalTests(unittest.TestCase):
         self.assertEqual(row["고유번호"], "2026-1-0010")
         self.assertEqual(row["물질구분"], "인체급성유해성물질 / 사고대비물질")
         self.assertNotIn("용액", row["물질구분"])
+
+    def test_solution_specific_app2_row_stays_fail_closed_until_condition_is_confirmed(self):
+        table = self._app2_table()
+        table = pd.concat([
+            table,
+            pd.DataFrame([{
+                "record_key": "10:2",
+                "item_no": "10",
+                "hazard_seq": "2",
+                "designation_id": "2026-1-0010",
+                "substance_name": "시험물질",
+                "direct_cas": "123-45-6",
+                "scope_type": "DIRECT_CAS",
+                "hazard_category": "용액",
+                "content_threshold_pct": "",
+                "active": "true",
+                "source_key": "CAP_QTY_APP2",
+            }]),
+        ], ignore_index=True)
+
+        with (
+            patch(
+                "engine.stage2.cap_chemical_legal.load_approved_scope_tables",
+                return_value=({"CAP_QTY_APP2": table}, []),
+            ),
+            patch(
+                "engine.stage2.cap_chemical_legal.screen_cap_scope_candidates_from_tables",
+                return_value=pd.DataFrame(),
+            ),
+            patch(
+                "engine.stage2.cap_chemical_legal.build_cap_form1_data",
+                return_value=self._form1(),
+            ),
+        ):
+            result = build_cap_chemical_legal_data(self._project())
+
+        self.assertEqual(result.rows[0].get("고유번호", ""), "")
+        self.assertTrue(any("용액" in blocker for blocker in result.blockers))
 
     def test_accident_appendix_item_number_is_never_used_as_unique_id(self):
         with (
