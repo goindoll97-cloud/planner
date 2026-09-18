@@ -11,7 +11,7 @@ from .cap_form2_engine import (
     REVIEW_REQUIRED as FORM2_REVIEW_REQUIRED,
     build_cap_form2_readiness,
 )
-from .cross_validation import CrossValidationReport
+from .cross_validation import CrossValidationReport, filter_validation_report
 from .project import CONFIRMED_STATUSES, FieldRecord, Stage2Project
 from .requirements import load_cap_manual_registry
 
@@ -318,11 +318,12 @@ def evaluate_cap_final_gate(
         return CAPFinalGateResult(checkpoints=())
 
     meta = _checkpoint_meta()
+    cap_report = filter_validation_report(report, {"COMMON", "CAP"})
     checkpoints = (
         _submission_type_checkpoint(project, meta),
         _other_system_checkpoint(project, meta),
         _joint_emergency_checkpoint(project, meta),
-        _omission_checkpoint(report, meta),
+        _omission_checkpoint(cap_report, meta),
         _item(
             meta,
             "cap.final.post_submission",
