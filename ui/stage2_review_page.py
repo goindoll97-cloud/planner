@@ -8,6 +8,7 @@ from engine.stage2.ai_drafting import (
     ai_draftable_specs,
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
+from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.document_output_readiness import evaluate_document_output_readiness
 from engine.stage2.local_ai_resilience import (
     build_local_llm_client,
@@ -390,7 +391,9 @@ def _render_ai_downloads(project) -> None:
         st.download_button(
             f"{label} · AI 문장 검토용 내부 DOCX",
             data=enhanced,
-            file_name=draft_filename(project, system).replace("_검토용_초안.docx", "_AI보강_검토용_초안.docx"),
+            file_name=draft_filename(project, system)
+            .replace("_법정서식_검토용_초안.docx", "_내부_AI보강_검토용.docx")
+            .replace("_검토용_초안.docx", "_내부_AI보강_검토용.docx"),
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             key=f"draft_ai_{project.project_id}_{system}",
             width="stretch",
@@ -481,7 +484,11 @@ def _render_basic_docx(
         button_type = "primary"
     elif review_only:
         button_label = f"{label} · 내부 검토용 DOCX 다운로드"
-        file_name = draft_filename(project, system)
+        file_name = (
+            draft_filename(project, system)
+            .replace("_법정서식_검토용_초안.docx", "_내부_검토용.docx")
+            .replace("_검토용_초안.docx", "_내부_검토용.docx")
+        )
         button_type = "secondary"
     else:
         button_label = f"{label} · 검토용 DOCX 다운로드"
@@ -496,6 +503,43 @@ def _render_basic_docx(
         key=f"draft_plain_{project.project_id}_{system}",
         width="stretch",
         type=button_type,
+    )
+
+
+def _render_cap_regulation_form(project, *, final_ready: bool) -> None:
+    st.markdown(
+        "### 화학사고예방관리계획서 · 규정서식 작성본"
+        if final_ready
+        else "### 화학사고예방관리계획서 · 규정서식 검토용"
+    )
+    st.caption(
+        "현행 별지 제1호부터 제16호 규정서식 baseline의 표·병합셀·체크박스·페이지 구성을 유지하고, "
+        "4단계까지 확인된 회사자료와 검증된 계산결과만 해당 칸에 입력합니다. "
+        "확인되지 않은 값은 추정하지 않고 공란 또는 검토 필요 상태로 유지합니다."
+    )
+    try:
+        data = build_cap_baseline_draft(project)
+    except Exception as exc:
+        st.error(f"화학사고예방관리계획서 규정서식 작성본을 생성하지 못했습니다: {type(exc).__name__}: {exc}")
+        return
+
+    st.download_button(
+        "화학사고예방관리계획서 규정서식 작성본 DOCX 다운로드"
+        if final_ready
+        else "화학사고예방관리계획서 규정서식 검토용 DOCX 다운로드",
+        data=data,
+        file_name=(
+            cap_baseline_filename(project)
+            if final_ready
+            else cap_baseline_filename(project).replace(
+                "_규정서식_작성본.docx",
+                "_규정서식_검토용.docx",
+            )
+        ),
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        key=f"download_cap_regulation_form_{project.project_id}",
+        width="stretch",
+        type="primary" if final_ready else "secondary",
     )
 
 
@@ -698,22 +742,21 @@ st.markdown("## DOCX 보고서 내려받기")
 st.caption("AI를 실행하지 않아도 확인된 자료를 반영한 DOCX를 바로 내려받을 수 있습니다.")
 
 if project.cap_in_scope:
-    st.markdown(
-        "### 화학사고예방관리계획서 · DOCX 작성본"
-        if download_readiness.get("CAP", False)
-        else "### 화학사고예방관리계획서 · DOCX 검토용"
+    _render_cap_regulation_form(
+        project,
+        final_ready=download_readiness.get("CAP", False),
     )
+    st.markdown("### 화학사고예방관리계획서 · 내부 검토용")
     st.caption(
-        "프로그램의 화학사고예방관리계획서 기본 출력 형식은 DOCX입니다. "
-        "법령·작성규정에 따른 항목, 회사 확정자료, 계산·검증 결과를 한 문서에 작성하며 "
-        "확인되지 않은 값은 추정하지 않고 HOLD 또는 공란으로 유지합니다. "
-        "DOCX 작성 가능 상태와 최종 제출자료 준비 완료 상태는 별도로 표시합니다."
+        "내부 검토용 DOCX는 법정 별지서식 제출본이 아니라, "
+        "작성항목과 설명문을 담당자가 검토하기 위한 보조 문서입니다."
     )
     _render_basic_docx(
         project,
         "CAP",
         CAP_FULL,
         final_ready=download_readiness.get("CAP", False),
+        review_only=True,
     )
 
 if project.psm_in_scope:
