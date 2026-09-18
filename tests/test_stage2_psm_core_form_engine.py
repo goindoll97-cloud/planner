@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from engine.stage2.project import Stage2Project
+from engine.stage2.scope_validation import validate_selected_scope
 from engine.stage2.psm_core_form_engine import (
     build_all_psm_core_form_readiness,
     build_psm_core_form_readiness,
@@ -167,6 +168,40 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
 
         self.assertTrue(result.ready)
         self.assertEqual(result.rows[0][2], "C7H8")
+
+    def test_stage4_exposes_psm_core_form_passes_when_complete(self):
+        report = validate_selected_scope(self._project())
+        core = [
+            issue
+            for issue in report.issues
+            if issue.code.startswith("PSM-FORM")
+        ]
+
+        self.assertTrue(core)
+        self.assertTrue(any(issue.code == "PSM-FORM13-READY" for issue in core))
+        self.assertTrue(any(issue.code == "PSM-FORM17-READY" for issue in core))
+        self.assertFalse(any(issue.status == "HOLD" for issue in core))
+
+    def test_stage4_exposes_form13_hold_when_core_value_is_missing(self):
+        p = self._project()
+        row = dict(p.get_field("psm.psi.chemical_details").value[0])
+        row.pop("독성치")
+        p.set_field(
+            "psm.psi.chemical_details",
+            "공정안전보고서 유해·위험물질 상세명세",
+            [row],
+            "USER_CONFIRMED",
+        )
+
+        report = validate_selected_scope(p)
+        form13_holds = [
+            issue
+            for issue in report.issues
+            if issue.code.startswith("PSM-FORM13-") and issue.status == "HOLD"
+        ]
+
+        self.assertTrue(form13_holds)
+        self.assertTrue(any("독성치" in issue.message for issue in form13_holds))
 
     def test_missing_structured_table_is_hold(self):
         p = self._project()
