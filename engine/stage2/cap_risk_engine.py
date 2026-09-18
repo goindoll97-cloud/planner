@@ -296,6 +296,12 @@ def build_cap_form15_data(project: Stage2Project) -> CAPForm15Data:
     messages: list[str] = list(form14.messages)
 
     explicit_no_scenario = _confirmed_text(project, "cap.offsite.no_offsite_scenario")
+    if not explicit_no_scenario:
+        controls = _confirmed_rows(project, "cap.offsite.risk_control")
+        if controls:
+            explicit_no_scenario = _clean(
+                _row_value(controls[0], "장외 사고시나리오 없음 여부", "사고시나리오 없음 여부")
+            )
     if _norm(explicit_no_scenario) in {"예", "yes", "y", "true", "1", "없음", "해당"}:
         if impact_rows or form14.scenario_rows:
             blockers.append(
