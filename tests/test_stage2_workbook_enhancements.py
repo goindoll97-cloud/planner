@@ -63,6 +63,27 @@ class Stage2WorkbookEnhancementTests(unittest.TestCase):
         self.assertIsNotNone(equipment["A4"].comment)
         self.assertIn("Tag No.", equipment["A4"].comment.text)
 
+    def test_cap_business_sheet_uses_structured_submission_and_writer_fields(self):
+        wb = load_workbook(BytesIO(build_enhanced_integrated_authoring_workbook(self._project(), example=False)))
+        ws = wb["01_사업장정보"]
+        labels = {str(ws.cell(row, 1).value or ""): row for row in range(5, ws.max_row + 1)}
+        for label in (
+            "단위공장명", "산업단지", "제출구분", "제출 사유",
+            "공동비상대응계획 수립 여부", "총괄영향범위 내 주민 여부",
+            "최근 3년간 화학사고 발생 여부", "작성자 성명", "작성자 부서",
+            "담당자 연락처", "담당자 메일주소",
+        ):
+            self.assertIn(label, labels)
+
+        validation_rows = {
+            row
+            for dv in ws.data_validations.dataValidation
+            for cell_range in str(dv.sqref).split()
+            for row in [int("".join(ch for ch in cell_range if ch.isdigit()) or 0)]
+        }
+        self.assertIn(labels["제출구분"], validation_rows)
+        self.assertIn(labels["제출 사유"], validation_rows)
+
     def test_input_workbook_has_no_example_column_or_canned_example_prose(self):
         wb = load_workbook(BytesIO(build_enhanced_integrated_authoring_workbook(self._project(), example=False)))
 
