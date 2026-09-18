@@ -11,6 +11,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .project import EvidenceRef, Stage2Project
+from .psm_applicability import requirement_explicitly_not_applicable
 from .requirements import cap_field_labels, psm_field_labels
 from .intake import field_label, selected_requirement_specs
 
@@ -991,6 +992,8 @@ def _attachment_specs(project: Stage2Project) -> list[tuple[str, str, str]]:
     rows: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for spec in selected_requirement_specs(project):
+        if requirement_explicitly_not_applicable(project, spec.key):
+            continue
         if spec.input_kind not in ATTACHMENT_KINDS and spec.input_kind not in {"DOCUMENT_SET", "DRAWING"}:
             continue
         for key in spec.field_keys:
