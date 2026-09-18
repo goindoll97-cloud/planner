@@ -32,6 +32,7 @@ LEGAL_ENGINE = "LEGAL_ENGINE"
 CALCULATION = "CALCULATION"
 EXTERNAL_ANALYSIS = "EXTERNAL_ANALYSIS"
 CONDITIONAL = "CONDITIONAL"
+NOT_APPLICABLE = "NOT_APPLICABLE"
 RENDERER_GAP = "RENDERER_GAP"
 
 STATE_LABELS = {
@@ -41,6 +42,7 @@ STATE_LABELS = {
     CALCULATION: "계산 필요",
     EXTERNAL_ANALYSIS: "영향평가·GIS 필요",
     CONDITIONAL: "해당 시 작성",
+    NOT_APPLICABLE: "해당 없음",
     RENDERER_GAP: "출력엔진 보완 필요",
 }
 
@@ -213,7 +215,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
 
     # 별지 제2호
     if form2.status == "NOT_APPLICABLE":
-        form2_state = CONDITIONAL
+        form2_state = NOT_APPLICABLE
         form2_source = "확정된 제출구분"
         form2_note = form2.messages[0] if form2.messages else "최초 신규제출로 변경내역 관리대장 비적용"
     elif form2.status == "PASS":
