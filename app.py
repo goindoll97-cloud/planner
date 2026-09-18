@@ -70,6 +70,7 @@ pages = [
     st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅", default=True),
     st.Page("ui/stage2_scope_page.py", title="2. 작성범위 선택", icon="🧭"),
     st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥"),
+    st.Page("ui/cap_workspace_page.py", title="화사계 작성 (새 방식)", icon="📝"),
 ]
 
 # Keep a novice user on the intended sequence. Stage 4/5 are registered only
