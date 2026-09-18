@@ -148,6 +148,13 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn('_render_statutory_provenance(\n        project,\n        "CAP"', text)
         self.assertIn('_render_statutory_provenance(\n        project,\n        "PSM"', text)
 
+    def test_statutory_provenance_offers_verified_zip_bundle(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("build_verified_output_bundle", text)
+        self.assertIn("verified_bundle_filename", text)
+        self.assertIn("출력물 검증 묶음 ZIP 다운로드", text)
+        self.assertIn('mime="application/zip"', text)
+
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
         self.assertIn('st.title("🔎 4. 작성자료 점검·보완")', text)
