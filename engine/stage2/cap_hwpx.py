@@ -26,6 +26,7 @@ from hwpx.table_patch import fill_cells, resolve_cell_target
 from ..law_attachment_archive import approved_source_files, approved_source_is_current
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form9_engine import build_cap_form9_data
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -528,24 +529,26 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     applied += count
     warnings.extend(warn)
 
-    facilities = _confirmed_rows(project, "cap.facility.equipment_specs", "inventory.facilities")
+    form9 = build_cap_form9_data(project)
+    facilities = list(form9.rows)
+    warnings.extend(f"별지 제9호 확인 필요: {msg}" for msg in form9.blockers)
     source, count, warn = _fill_structured_table(
         source,
         table_anchor="장치 설비 목록 및 명세",
         rows=facilities,
         columns=(
             ("연번", ("__rowno__",)),
-            ("구분기호", ("설비번호", "구분기호", "장치번호")),
-            ("장치·설비명", ("설비명", "장치·설비명", "장치명")),
-            ("취급물질", ("취급물질", "물질명")),
-            ("물질상태", ("물질상태", "물리적 상태")),
-            ("함량(%)", ("함량(%)", "함량")),
-            ("연결구 크기", ("연결구 크기", "호칭경")),
-            ("설계", ("설계압력",)),
-            ("운전", ("운전압력",)),
-            ("설계용량", ("설계용량", "용량")),
-            ("취급량", ("취급량", "최대보유량", "최대보유량(kg)")),
-            ("비고", ("비고", "P&ID 번호", "PFD 도면번호")),
+            ("구분기호", ("구분기호",)),
+            ("장치·설비명", ("장치·설비명",)),
+            ("취급물질", ("취급물질",)),
+            ("물질상태", ("물질상태",)),
+            ("함량(%)", ("함량(%)",)),
+            ("연결구 크기", ("연결구 크기(mm)",)),
+            ("설계", ("압력(MPa)-설계",)),
+            ("운전", ("압력(MPa)-운전",)),
+            ("설계용량", ("설계용량(m3)",)),
+            ("취급량", ("취급량(ton)",)),
+            ("비고", ("비고",)),
         ),
     )
     applied += count
