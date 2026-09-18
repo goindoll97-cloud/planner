@@ -5,6 +5,7 @@ from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
+from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
@@ -177,6 +178,53 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제11호서식",
                 )
             )
+
+        checked_rules += 2
+        form12 = build_cap_form12_data(project)
+        form13 = build_cap_form13_data(project)
+        for form_no, prepared, field_keys, legal_item in (
+            (
+                12, form12,
+                ("cap.offsite.scenario_impact_table",),
+                "별지 제12호 사고시나리오 사업장 주변지역 영향 평가",
+            ),
+            (
+                13, form13,
+                ("cap.offsite.overall_impact_summary", "cap.offsite.population_and_protected_targets", "documents.kora_impact_result"),
+                "별지 제13호 총괄영향범위 사업장 주변지역 영향 평가",
+            ),
+        ):
+            if prepared.blockers:
+                for index, blocker in enumerate(prepared.blockers, start=1):
+                    issues_list.append(
+                        ValidationIssue(
+                            code=f"CAP-FORM{form_no}-{index}",
+                            status="HOLD",
+                            system="CAP",
+                            section="장외평가정보",
+                            legal_item=legal_item,
+                            message=str(blocker),
+                            field_keys=field_keys,
+                            legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
+                        )
+                    )
+            else:
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM{form_no}-READY",
+                        status="PASS",
+                        system="CAP",
+                        section="장외평가정보",
+                        legal_item=legal_item,
+                        message=(
+                            "시나리오별 KORA/GIS 영향평가 값과 회사 물질·설비자료의 정합성을 확인했습니다."
+                            if form_no == 12
+                            else "총괄영향범위 GIS/KORA 확정요약, 보호대상 명세 및 결과파일을 확인했습니다."
+                        ),
+                        field_keys=field_keys,
+                        legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
+                    )
+                )
 
         checked_rules += 2
         form14 = build_cap_form14_data(project)
