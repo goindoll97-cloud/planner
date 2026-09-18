@@ -9,6 +9,7 @@ from engine.stage2.ai_drafting import (
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
 from engine.stage2.cap_final_gate import evaluate_cap_final_gate
+from engine.stage2.document_output_readiness import evaluate_document_output_readiness
 from engine.stage2.local_ai_resilience import (
     build_local_llm_client,
     generate_system_ai_drafts,
@@ -461,18 +462,29 @@ def _render_ai_assistance(project) -> None:
     _render_ai_downloads(project)
 
 
-def _render_basic_docx(project, system: str, label: str) -> None:
+def _render_basic_docx(
+    project,
+    system: str,
+    label: str,
+    *,
+    final_ready: bool,
+    review_only: bool = False,
+) -> None:
     try:
         baseline = build_report_draft(project, system)
     except Exception as exc:
         st.error(f"{label} DOCX를 생성하지 못했습니다: {type(exc).__name__}: {exc}")
         return
 
-    clean = validation_confirmed(project)
-    if clean:
+    authoring_ready = bool(final_ready and not review_only)
+    if authoring_ready:
         button_label = f"{label} · DOCX 작성본 다운로드"
         file_name = draft_filename(project, system).replace("_검토용_초안.docx", "_작성본.docx")
         button_type = "primary"
+    elif review_only:
+        button_label = f"{label} · 내부 검토용 DOCX 다운로드"
+        file_name = draft_filename(project, system)
+        button_type = "secondary"
     else:
         button_label = f"{label} · 검토용 DOCX 다운로드"
         file_name = draft_filename(project, system)
@@ -489,9 +501,12 @@ def _render_basic_docx(project, system: str, label: str) -> None:
     )
 
 
-def _render_psm_regulation_form(project) -> None:
-    clean = validation_confirmed(project)
-    st.markdown("### 공정안전보고서 · 규정서식 작성본" if clean else "### 공정안전보고서 · 규정서식 검토용")
+def _render_psm_regulation_form(project, *, final_ready: bool) -> None:
+    st.markdown(
+        "### 공정안전보고서 · 규정서식 작성본"
+        if final_ready
+        else "### 공정안전보고서 · 규정서식 검토용"
+    )
     st.caption(
         "규정서식 baseline의 표·병합셀·글꼴·페이지 구성을 유지하고, 4단계까지 확인된 회사자료만 해당 칸에 입력합니다. "
         "확인되지 않은 값은 추정하지 않고 빈칸으로 둡니다."
@@ -503,17 +518,19 @@ def _render_psm_regulation_form(project) -> None:
         return
 
     st.download_button(
-        "공정안전보고서 규정서식 작성본 DOCX 다운로드" if clean else "공정안전보고서 규정서식 검토용 DOCX 다운로드",
+        "공정안전보고서 규정서식 작성본 DOCX 다운로드"
+        if final_ready
+        else "공정안전보고서 규정서식 검토용 DOCX 다운로드",
         data=data,
         file_name=(
             psm_baseline_filename(project)
-            if clean
+            if final_ready
             else psm_baseline_filename(project).replace("_규정서식_작성본.docx", "_규정서식_검토용.docx")
         ),
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"download_psm_regulation_form_{project.project_id}",
         width="stretch",
-        type="primary" if clean else "secondary",
+        type="primary" if final_ready else "secondary",
     )
 
 
@@ -539,28 +556,35 @@ def _render_system_gate(gate) -> None:
         )
 
 
-def _render_submission_readiness(project) -> None:
+def _render_submission_readiness(project) -> dict[str, bool]:
     """Separate report-body readiness from final submission-package readiness."""
     confirmed = validation_confirmed(project)
+    default_readiness = {system: False for system in _systems(project)}
     try:
         report = validate_selected_scope(project)
-        cap_system_gate = (
-            evaluate_system_final_gate(project, "CAP", report)
+        cap_output = (
+            evaluate_document_output_readiness(project, "CAP", report)
             if project.cap_in_scope
             else None
         )
-        psm_system_gate = (
-            evaluate_system_final_gate(project, "PSM", report)
+        psm_output = (
+            evaluate_document_output_readiness(project, "PSM", report)
             if project.psm_in_scope
             else None
         )
-        cap_gate = evaluate_cap_final_gate(project, report) if project.cap_in_scope else None
+        cap_system_gate = cap_output.system_gate if cap_output is not None else None
+        psm_system_gate = psm_output.system_gate if psm_output is not None else None
+        cap_gate = cap_output.cap_gate if cap_output is not None else None
+        document_readiness = {
+            "CAP": cap_output.final_ready if cap_output is not None else False,
+            "PSM": psm_output.final_ready if psm_output is not None else False,
+        }
     except Exception as exc:
         st.warning(
             "최종 제출 준비상태를 다시 계산하지 못했습니다. "
             f"현재 DOCX는 검토용으로 취급해 주세요: {type(exc).__name__}: {exc}"
         )
-        return
+        return default_readiness
 
     _render_system_gate(cap_system_gate)
     _render_system_gate(psm_system_gate)
@@ -593,6 +617,7 @@ def _render_submission_readiness(project) -> None:
         and report.final_export_allowed
         and system_gate_ready
         and cap_manual_gate_ready
+        and all(document_readiness.get(system, False) for system in _systems(project))
     )
 
     if final_ready:
@@ -600,7 +625,7 @@ def _render_submission_readiness(project) -> None:
             "프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다. 최종 체크포인트 확인도 완료되었습니다. "
             "다만 실제 제출 전에는 담당자가 DOCX, 도면, 제품 SDS/MSDS 및 모든 첨부자료의 최신본·서명·날짜를 최종 대조해야 합니다."
         )
-        return
+        return document_readiness
 
     if confirmed:
         notes = []
@@ -627,12 +652,13 @@ def _render_submission_readiness(project) -> None:
             "도면·제품 SDS/MSDS·계산서·영향평가 결과 및 최종 체크포인트의 증빙자료가 남아 있으면 "
             "이를 보완·결합·확인한 뒤 제출해야 합니다."
         )
-        return
+        return document_readiness
 
     st.warning(
         "현재는 검토용 초안 단계입니다. 4단계의 보완 필요 또는 담당자 확인 필요 항목이 남아 있어 "
         "최종 제출 준비 완료 상태로 표시하지 않습니다."
     )
+    return document_readiness
 
 
 st.set_page_config(page_title="보고서 작성", page_icon="📝", layout="wide")
@@ -662,7 +688,7 @@ if not draft_authoring_allowed(project):
 
 scope = [SYSTEM_LABELS[system] for system in _systems(project)]
 st.success("현재 작성 문서: " + ", ".join(scope))
-_render_submission_readiness(project)
+download_readiness = _render_submission_readiness(project)
 
 if draft_with_holds_acknowledged(project) and not validation_confirmed(project):
     st.warning(
@@ -674,21 +700,39 @@ st.markdown("## DOCX 보고서 내려받기")
 st.caption("AI를 실행하지 않아도 확인된 자료를 반영한 DOCX를 바로 내려받을 수 있습니다.")
 
 if project.cap_in_scope:
-    st.markdown("### 화학사고예방관리계획서 · DOCX 작성본")
+    st.markdown(
+        "### 화학사고예방관리계획서 · DOCX 작성본"
+        if download_readiness.get("CAP", False)
+        else "### 화학사고예방관리계획서 · DOCX 검토용"
+    )
     st.caption(
         "프로그램의 화학사고예방관리계획서 기본 출력 형식은 DOCX입니다. "
         "법령·작성규정에 따른 항목, 회사 확정자료, 계산·검증 결과를 한 문서에 작성하며 "
         "확인되지 않은 값은 추정하지 않고 HOLD 또는 공란으로 유지합니다. "
         "DOCX 작성 가능 상태와 최종 제출자료 준비 완료 상태는 별도로 표시합니다."
     )
-    _render_basic_docx(project, "CAP", CAP_FULL)
+    _render_basic_docx(
+        project,
+        "CAP",
+        CAP_FULL,
+        final_ready=download_readiness.get("CAP", False),
+    )
 
 if project.psm_in_scope:
     if project.cap_in_scope:
         st.divider()
-    _render_psm_regulation_form(project)
+    _render_psm_regulation_form(
+        project,
+        final_ready=download_readiness.get("PSM", False),
+    )
     st.markdown("### 공정안전보고서 · 내부 검토용")
-    _render_basic_docx(project, "PSM", PSM_FULL)
+    _render_basic_docx(
+        project,
+        "PSM",
+        PSM_FULL,
+        final_ready=download_readiness.get("PSM", False),
+        review_only=True,
+    )
 
 st.divider()
 st.markdown("### AI로 문장 다듬기 · 선택사항")
