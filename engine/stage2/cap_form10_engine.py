@@ -174,6 +174,12 @@ def build_cap_form10_data(project: Stage2Project) -> CAPForm10Data:
         )
 
     form9 = build_cap_form9_data(project)
+    raw_facilities = _confirmed_rows(project, "cap.facility.equipment_specs", "inventory.facilities")
+    raw_facility_by_tag = {
+        _clean(_row_value(row, "설비번호", "구분기호", "장치번호")): row
+        for row in raw_facilities
+        if _clean(_row_value(row, "설비번호", "구분기호", "장치번호"))
+    }
     facility_by_tag = {
         _clean(row.get("구분기호")): dict(row)
         for row in form9.rows
@@ -241,9 +247,21 @@ def build_cap_form10_data(project: Stage2Project) -> CAPForm10Data:
             continue
 
         facility = facility_by_tag.get(target)
+        raw_facility = raw_facility_by_tag.get(target, {})
         if facility is None:
             blockers.append(f"{target}: 별지 제9호 장치·설비 목록에서 대상 설비번호를 찾지 못했습니다.")
             facility = {}
+
+        source_facility_type = _clean(_row_value(raw_facility, "설비종류", "설비형태", "장치·설비 종류"))
+        entered_facility_type = _clean(_row_value(row, "설비형태"))
+        if source_facility_type and entered_facility_type and _norm(source_facility_type) != _norm(entered_facility_type):
+            blockers.append(
+                f"{target}: 확산방지설비 계산자료의 설비형태('{entered_facility_type}')와 "
+                f"03_설비정보의 설비종류('{source_facility_type}')가 다릅니다."
+            )
+        facility_type = source_facility_type or entered_facility_type
+        if not facility_type:
+            blockers.append(f"{target}: 대상 취급시설의 설비형태를 확인할 수 없습니다.")
 
         containment_type = _clean(_row_value(row, "확산방지설비 종류", "설비종류"))
         if not containment_type:
@@ -272,7 +290,7 @@ def build_cap_form10_data(project: Stage2Project) -> CAPForm10Data:
 
         output.append({
             "연번": idx,
-            "설비형태": _clean(_row_value(row, "설비형태")) or _clean(facility.get("장치·설비명")),
+            "설비형태": facility_type,
             "구분기호": target,
             "장치·설비명": _clean(facility.get("장치·설비명")),
             "설계용량": _clean(facility.get("설계용량(m3)")),
