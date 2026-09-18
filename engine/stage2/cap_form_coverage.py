@@ -227,16 +227,33 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         ("cap.business.registration_no", "cap.business.representative", "business.address", "cap.business.contact"),
         "사업자등록번호, 대표자, 사업장 주소, 대표전화",
     ))
+    unit_plant_ready = _has(project, "cap.business.unit_plant_name") or bool(str(project.site_name or "").strip())
+    items.append(CAPFormCoverageItem(
+        3, "사업장 일반정보", "단위공장명",
+        READY if unit_plant_ready else ASK_COMPANY,
+        "회사 확정자료", ("cap.business.unit_plant_name",),
+        "회사 내부 단위공장명",
+    ))
     for item, keys, req in (
-        ("단위공장명", ("cap.business.unit_plant_name",), "회사 내부 단위공장명"),
         ("산업단지", ("cap.business.industrial_complex",), "산업단지 공식 명칭 또는 해당 없음"),
         ("제출구분·최초/부적합", ("cap.business.submission_type", "cap.business.submission_reason"), "제출유형과 하위 사유"),
         ("공동비상대응계획 수립 여부", ("cap.business.joint_emergency_plan",), "공동/단독 제출 여부"),
         ("유사제도 심사결과 활용", ("cap.business.other_system_review",), "PSM/안전성향상계획 활용 여부"),
         ("최근 3년간 화학사고 발생 여부", ("cap.business.recent_accident",), "최근 3년 사고 이력"),
-        ("작성자·연락처·메일", ("cap.business.writer_name", "cap.business.writer_contact", "cap.business.writer_email"), "작성 담당자 신상정보"),
     ):
         items.append(_company_item(project, 3, "사업장 일반정보", item, keys, req))
+    writer_ready = (
+        (_has(project, "cap.business.writer_name") or _has(project, "cap.business.writer_info"))
+        and _has(project, "cap.business.writer_contact")
+        and _has(project, "cap.business.writer_email")
+    )
+    items.append(CAPFormCoverageItem(
+        3, "사업장 일반정보", "작성자·연락처·메일",
+        READY if writer_ready else ASK_COMPANY,
+        "회사 확정자료",
+        ("cap.business.writer_name", "cap.business.writer_info", "cap.business.writer_contact", "cap.business.writer_email"),
+        "작성 담당자 신상정보",
+    ))
     items.append(CAPFormCoverageItem(
         3, "사업장 일반정보", "작성수준 1군/2군",
         READY if (project.cap_group in {"1군", "2군"} or _has(project, "cap.business.writing_level")) else LEGAL_ENGINE,
