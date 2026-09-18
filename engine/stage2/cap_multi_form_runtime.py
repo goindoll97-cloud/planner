@@ -27,6 +27,8 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from ..law_attachment_archive import approved_source_files, approved_source_is_current
 from . import cap_hwpx
+from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
+from .cap_risk_hwpx import render_form14_single_scenario, render_form15_risk
 
 
 WRAPPER_MARKER = "_cap_multi_form_runtime_wrapper"
@@ -47,6 +49,13 @@ class CAPOfficialForm:
     markers: tuple[str, ...]
     source_sha256: str
     source_format: str
+
+
+@dataclass(frozen=True)
+class CAPRiskRendererPreflight:
+    ready: bool
+    blockers: tuple[str, ...]
+    messages: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -275,8 +284,26 @@ def _partial_builder(original_build):
     return build_partial
 
 
-def _meaningful_warnings(values: Sequence[str]) -> tuple[str, ...]:
-    """Hide only warnings caused by another official form living in another file."""
+def _meaningful_warnings(
+    values: Sequence[str],
+    active_markers: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    """Keep only warnings relevant to the official form file being written.
+
+    Split law.go.kr attachments are built through the same generic CAP writer,
+    so data engines for other annexes may legitimately report missing company
+    facts. Those warnings are not meaningful for a Form-14-only HWPX. When the
+    current file's markers are known, suppress only a warning that explicitly
+    names an annex not present in that file.
+    """
+    active_form_numbers: set[str] | None = None
+    if active_markers is not None:
+        active_form_numbers = set()
+        for marker in active_markers:
+            match = re.search(r"별지\s*제?\s*(\d+)\s*호", str(marker))
+            if match:
+                active_form_numbers.add(match.group(1))
+
     out: list[str] = []
     for value in values:
         text = str(value or "").strip()
@@ -284,9 +311,133 @@ def _meaningful_warnings(values: Sequence[str]) -> tuple[str, ...]:
             continue
         if "서식 제목" in text and "고유하게 찾지 못했습니다" in text:
             continue
+        if active_form_numbers is not None:
+            match = re.search(r"별지\s*제?\s*(\d+)\s*호", text)
+            if match and match.group(1) not in active_form_numbers:
+                continue
         if text not in out:
             out.append(text)
     return tuple(out)
+
+
+def _scenario_name(row: Mapping[str, Any]) -> str:
+    normalized = {
+        re.sub(r"[^0-9A-Za-z가-힣]+", "", str(key or "")).lower(): value
+        for key, value in row.items()
+    }
+    for alias in ("사고시나리오명", "사고시나리오", "시나리오명", "시나리오"):
+        key = re.sub(r"[^0-9A-Za-z가-힣]+", "", alias).lower()
+        value = normalized.get(key)
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _project_for_scenario(project, scenario: str):
+    clone = type(project).from_dict(project.to_dict())
+    for key in ("cap.offsite.scenario_frequency", "cap.offsite.scenario_impact_table"):
+        rec = clone.get_field(key)
+        if rec is None or not isinstance(rec.value, list):
+            continue
+        filtered = [
+            dict(row)
+            for row in rec.value
+            if isinstance(row, Mapping) and _scenario_name(row) == scenario
+        ]
+        if not filtered:
+            continue
+        clone.set_field(
+            key,
+            rec.label,
+            filtered,
+            rec.status,
+            evidence=list(rec.evidence),
+            note=rec.note,
+        )
+    return clone
+
+
+def preflight_cap_risk_hwpx(project) -> CAPRiskRendererPreflight:
+    """Validate current official Form 14/15 layout against the risk renderers.
+
+    This preflight reads the CURRENT approved official-form bundle and actually
+    runs the byte-preserving renderers on copies in memory.  It never mutates
+    the archived originals.  Final readiness may be released only when the
+    current legal source itself passes this probe.
+    """
+    form15 = build_cap_form15_data(project)
+    if form15.no_offsite_scenario:
+        return CAPRiskRendererPreflight(
+            True,
+            (),
+            ("장외 사고시나리오 없음 확정으로 별지 제14·15호 출력대상이 없습니다.",),
+        )
+
+    form14 = build_cap_form14_data(project)
+    if form14.blockers or form15.blockers:
+        return CAPRiskRendererPreflight(
+            False,
+            (),
+            ("별지 제14·15호 계산자료가 완성된 뒤 공식 HWPX 구조를 검증합니다.",),
+        )
+
+    bundle = resolve_current_cap_form_bundle()
+    if not bundle.ready:
+        details = ", ".join(bundle.missing_markers[:6]) or "공식 원본 확인 필요"
+        return CAPRiskRendererPreflight(
+            False,
+            (f"현재 승인된 CAP 공식 HWPX 묶음이 완전하지 않아 별지 제14·15호 출력구조를 검증할 수 없습니다: {details}",),
+            (),
+        )
+
+    marker14 = "[별지 제14호서식]"
+    marker15 = "[별지 제15호서식]"
+    forms14 = [form for form in bundle.forms if marker14 in form.markers]
+    forms15 = [form for form in bundle.forms if marker15 in form.markers]
+    blockers: list[str] = []
+    messages: list[str] = []
+
+    if len(forms14) != 1:
+        blockers.append(f"별지 제14호 공식 원본을 고유하게 선택하지 못했습니다({len(forms14)}개).")
+    if len(forms15) != 1:
+        blockers.append(f"별지 제15호 공식 원본을 고유하게 선택하지 못했습니다({len(forms15)}개).")
+    if blockers:
+        return CAPRiskRendererPreflight(False, tuple(blockers), ())
+
+    source14 = forms14[0]
+    source15 = forms15[0]
+    if len(form14.scenario_rows) > 1 and len(source14.markers) != 1:
+        blockers.append(
+            "복수 사고시나리오의 별지 제14호 원본을 시나리오별 복제하려면 "
+            "별지 제14호가 다른 별지와 분리된 공식 파일이어야 합니다."
+        )
+    else:
+        for row in form14.scenario_rows:
+            scenario = str(row.get("사고시나리오명") or "").strip()
+            scoped = _project_for_scenario(project, scenario)
+            scoped14 = build_cap_form14_data(scoped)
+            scoped15 = build_cap_form15_data(scoped)
+            rendered = render_form14_single_scenario(source14.hwpx_data, scoped14, scoped15)
+            blockers.extend(f"{scenario}: {warning}" for warning in rendered.warnings)
+        if not blockers:
+            messages.append(
+                f"별지 제14호 공식 원본에 사고시나리오 {len(form14.scenario_rows)}건의 "
+                "개시사건·시설빈도·안전성확보설비·보호대상 셀 매핑을 검증했습니다."
+            )
+
+    rendered15 = render_form15_risk(source15.hwpx_data, form15)
+    blockers.extend(rendered15.warnings)
+    if not rendered15.warnings:
+        messages.append(
+            "별지 제15호 공식 원본의 사고시나리오 행과 A·B·C·D, 구간점수, "
+            "사고빈도·사고영향 점수 셀 매핑을 검증했습니다."
+        )
+
+    return CAPRiskRendererPreflight(
+        ready=not blockers,
+        blockers=tuple(dict.fromkeys(blockers)),
+        messages=tuple(dict.fromkeys(messages)),
+    )
 
 
 def _build_bundle_zip(project, bundle: CAPOfficialFormBundle, original_build):
@@ -300,6 +451,11 @@ def _build_bundle_zip(project, bundle: CAPOfficialFormBundle, original_build):
         )
 
     builder = _partial_builder(original_build)
+    form14 = build_cap_form14_data(project)
+    form15 = build_cap_form15_data(project)
+    marker14 = "[별지 제14호서식]"
+    marker15 = "[별지 제15호서식]"
+
     package = BytesIO()
     total_applied = 0
     user_warnings: list[str] = []
@@ -308,26 +464,72 @@ def _build_bundle_zip(project, bundle: CAPOfficialFormBundle, original_build):
         "",
         "- 각 HWPX는 법제처에서 받은 개별 공식 원본서식의 레이아웃을 유지합니다.",
         "- 프로그램은 여러 원본을 하나의 새 법정서식으로 임의 병합하지 않습니다.",
+        "- 별지 제14호는 사고시나리오별 공식 원본 1부씩 생성합니다.",
         "- 회사 확정자료만 자동 입력하며 최종 제출 전 담당자 확인이 필요합니다.",
         "",
     ]
 
     used_names: set[str] = set()
     with ZipFile(package, "w", compression=ZIP_DEFLATED) as zf:
-        for index, form in enumerate(bundle.forms, 1):
+        output_index = 0
+        for form_index, form in enumerate(bundle.forms, 1):
+            form_marker_set = set(form.markers)
+
+            # When Articles 24/25 are not applicable, do not emit blank
+            # standalone Forms 14/15. A combined official file is retained
+            # because it may contain other required statutory forms.
+            if form15.no_offsite_scenario and form_marker_set and form_marker_set.issubset({marker14, marker15}):
+                manifest_lines.append(f"[생략] {form.path.name}")
+                manifest_lines.append("  사유: 장외 사고시나리오 없음 확정으로 별지 제14·15호 작성대상 없음")
+                manifest_lines.append("")
+                continue
+
+            if marker14 in form_marker_set and len(form14.scenario_rows) > 1:
+                if form_marker_set != {marker14}:
+                    raise ValueError(
+                        "별지 제14호 공식 원본이 다른 별지와 한 파일에 묶여 있어 "
+                        "복수 사고시나리오별 원본 복제를 안전하게 수행할 수 없습니다."
+                    )
+                for scenario_row in form14.scenario_rows:
+                    scenario = str(scenario_row.get("사고시나리오명") or "").strip()
+                    scoped = _project_for_scenario(project, scenario)
+                    result = builder(scoped, template_bytes=form.hwpx_data)
+                    total_applied += int(result.applied_count)
+                    warnings = _meaningful_warnings(result.warnings, form.markers)
+                    user_warnings.extend(warnings)
+
+                    output_index += 1
+                    stem = _safe_name(form.path.stem, f"공식서식_{form_index:02d}")
+                    scenario_safe = _safe_name(scenario, f"시나리오_{output_index:02d}")
+                    name = f"{stem}_{scenario_safe}_작성본.hwpx"
+                    if name in used_names:
+                        name = f"{output_index:02d}_{name}"
+                    used_names.add(name)
+                    zf.writestr(name, result.data)
+
+                    manifest_lines.append(f"[{output_index}] {form.path.name} / 사고시나리오: {scenario}")
+                    manifest_lines.append("  포함서식: " + ", ".join(form.markers))
+                    manifest_lines.append(f"  자동입력: {result.applied_count}건")
+                    manifest_lines.append(f"  원본 SHA-256: {form.source_sha256}")
+                    if warnings:
+                        manifest_lines.append("  추가확인: " + " / ".join(warnings))
+                    manifest_lines.append("")
+                continue
+
             result = builder(project, template_bytes=form.hwpx_data)
             total_applied += int(result.applied_count)
-            warnings = _meaningful_warnings(result.warnings)
+            warnings = _meaningful_warnings(result.warnings, form.markers)
             user_warnings.extend(warnings)
 
-            stem = _safe_name(form.path.stem, f"공식서식_{index:02d}")
+            output_index += 1
+            stem = _safe_name(form.path.stem, f"공식서식_{form_index:02d}")
             name = f"{stem}_작성본.hwpx"
             if name in used_names:
-                name = f"{index:02d}_{name}"
+                name = f"{output_index:02d}_{name}"
             used_names.add(name)
             zf.writestr(name, result.data)
 
-            manifest_lines.append(f"[{index}] {form.path.name}")
+            manifest_lines.append(f"[{output_index}] {form.path.name}")
             manifest_lines.append("  포함서식: " + ", ".join(form.markers))
             manifest_lines.append(f"  자동입력: {result.applied_count}건")
             manifest_lines.append(f"  원본 SHA-256: {form.source_sha256}")
