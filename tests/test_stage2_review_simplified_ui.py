@@ -73,7 +73,8 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn("report.final_export_allowed", text)
         self.assertIn("보고서 본문 작성자료 확인은 완료되었지만 최종 제출자료 준비는 아직 완료되지 않았습니다", text)
         self.assertIn("프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다", text)
-        self.assertIn("DOCX 작성 가능 상태와 최종 제출자료 준비 완료 상태는 별도로 표시합니다", text)
+        self.assertIn("화학사고예방관리계획서 · 규정서식 작성본", text)
+        self.assertIn("화학사고예방관리계획서 · 내부 검토용", text)
         self.assertIn("공정안전보고서 규정서식 검토용 DOCX 다운로드", text)
         self.assertIn("화학사고예방관리계획서 규정서식 검토용 DOCX 다운로드", text)
 
