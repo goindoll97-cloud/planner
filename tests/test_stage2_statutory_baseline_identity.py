@@ -32,7 +32,7 @@ class StatutoryBaselineIdentityTests(unittest.TestCase):
             identity.sha256,
             "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d",
         )
-        self.assertIn("CAP", identity.schema_version)
+        self.assertTrue(identity.schema_version.startswith("cap-"))
         self.assertIn("법적 최신성", identity.authority_note)
 
     def test_tampered_baseline_fails_closed(self):
