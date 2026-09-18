@@ -388,19 +388,31 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     if not form15.no_offsite_scenario:
+        renderer_ready = False
+        renderer_note = "계산자료 완성 후 현재 승인 법제처 HWPX 원본에 시험작성하여 확인"
+        if not form14.blockers and form15.ready:
+            from .cap_multi_form_runtime import preflight_cap_risk_hwpx
+
+            renderer = preflight_cap_risk_hwpx(project)
+            renderer_ready = renderer.ready
+            if renderer.blockers:
+                renderer_note = " / ".join(renderer.blockers[:3])
+            elif renderer.messages:
+                renderer_note = " / ".join(renderer.messages[:2])
+
         items.append(CAPFormCoverageItem(
-            14, "사고시나리오별 시설빈도", "공식 HWPX 시나리오별 반복블록",
-            READY if len(form14.scenario_rows) <= 1 else RENDERER_GAP,
-            "출력엔진", (),
-            "사고시나리오마다 반복되는 10개 개시사건 표 블록",
-            "복수 시나리오에서는 계산결과와 별개로 HWPX 반복블록 자동복제 검증 필요",
+            14, "사고시나리오별 시설빈도", "공식 HWPX 시나리오별 원본 작성",
+            READY if renderer_ready else RENDERER_GAP,
+            "현재 승인 법제처 원본 + byte-preserving 출력엔진", (),
+            "사고시나리오마다 별지 제14호 공식 원본 1부",
+            renderer_note,
         ))
         items.append(CAPFormCoverageItem(
             15, "위험도 분석", "공식 HWPX A·B·C·D 및 점수 셀",
-            RENDERER_GAP,
-            "출력엔진", (),
+            READY if renderer_ready else RENDERER_GAP,
+            "현재 승인 법제처 원본 + byte-preserving 출력엔진", (),
             "A·B·C·D 합계, 구간점수, 사고빈도·사고영향점수",
-            "검토용 DOCX 계산은 가능하나 현행 HWPX 점수셀 자동기입은 별도 검증 필요",
+            renderer_note,
         ))
 
     # 별지 제16호
