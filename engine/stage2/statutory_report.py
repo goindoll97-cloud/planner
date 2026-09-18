@@ -18,6 +18,7 @@ from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
+from .cap_form11_engine import build_cap_form11_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -1103,21 +1104,22 @@ def _cap_form10_rows(project: Stage2Project) -> list[list[str]]:
 
 
 def _cap_form11_rows(project: Stage2Project) -> list[list[str]]:
-    out = []
-    for idx, row in enumerate(_rows(project, "cap.safety.gas_detection", "psm.psi.gas_detection"), 1):
+    prepared = build_cap_form11_data(project)
+    out: list[list[str]] = []
+    for row in prepared.rows:
         out.append([
-            str(idx),
-            _row_value(row, "감지기 번호", "구분기호", "감지기번호"),
-            _row_value(row, "검출대상 물질", "감지대상"),
-            _row_value(row, "설치위치", "설치장소"),
-            _row_value(row, "작동시간"),
-            _row_value(row, "감지방식", "측정방식"),
-            _row_value(row, "경보 설정값", "경보설정값"),
-            _row_value(row, "경보 위치", "경보기 설치장소"),
-            _row_value(row, "연동여부"),
-            _row_value(row, "정밀도"),
-            _row_value(row, "유지관리", "점검주기"),
-            _row_value(row, "비고", "관련 도면번호"),
+            str(row.get("연번") or ""),
+            str(row.get("구분기호") or ""),
+            str(row.get("감지대상") or ""),
+            str(row.get("설치위치") or ""),
+            str(row.get("작동시간") or ""),
+            str(row.get("측정방식") or ""),
+            str(row.get("경보설정값") or ""),
+            str(row.get("경보기 설치장소") or ""),
+            str(row.get("연동여부") or ""),
+            str(row.get("정밀도") or ""),
+            str(row.get("유지관리") or ""),
+            str(row.get("비고") or ""),
         ])
     return out
 
