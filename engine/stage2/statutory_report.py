@@ -14,6 +14,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
+from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
@@ -994,8 +995,9 @@ def _cap_facility_overview(doc: Document, project: Stage2Project, *, detailed: b
 
 
 def _cap_form6_rows(project: Stage2Project) -> list[list[str]]:
+    legal = build_cap_chemical_legal_data(project)
     out = []
-    for idx, row in enumerate(_chemical_rows(project), 1):
+    for idx, row in enumerate(legal.rows, 1):
         out.append([
             str(idx),
             _row_value(row, "물질명", "유해화학물질명"),

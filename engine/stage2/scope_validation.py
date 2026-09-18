@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
@@ -50,6 +51,36 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     message="물질구분, 규정수량 및 최대보유량 ton 정규화 결과를 확인했습니다.",
                     field_keys=("inventory.chemicals", "inventory.facilities"),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제1호서식",
+                )
+            )
+
+        checked_rules += 1
+        form6 = build_cap_chemical_legal_data(project)
+        if form6.blockers:
+            for index, blocker in enumerate(form6.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM6-{index}",
+                        status="HOLD",
+                        system="CAP",
+                        section="기본정보",
+                        legal_item="별지 제6호 유해화학물질 목록 및 명세",
+                        message=str(blocker),
+                        field_keys=("inventory.chemicals", "cap.chemical.details"),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제6호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM6-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="기본정보",
+                    legal_item="별지 제6호 유해화학물질 목록 및 명세",
+                    message="현행 별표 2 고유번호와 별표 2·3 물질구분을 확인했습니다.",
+                    field_keys=("inventory.chemicals", "cap.chemical.details"),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제6호서식",
                 )
             )
 

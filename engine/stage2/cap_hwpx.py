@@ -24,6 +24,7 @@ from zipfile import BadZipFile, ZipFile
 from hwpx.table_patch import fill_cells, resolve_cell_target
 
 from ..law_attachment_archive import approved_source_files, approved_source_is_current
+from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
@@ -498,7 +499,9 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     warnings.extend(warn)
     warnings.extend(f"별지 제1호 확인 필요: {msg}" for msg in form1.blockers)
 
-    chemicals = _confirmed_rows(project, "cap.chemical.details", "inventory.chemicals")
+    form6 = build_cap_chemical_legal_data(project)
+    chemicals = list(form6.rows)
+    warnings.extend(f"별지 제6호 확인 필요: {msg}" for msg in form6.blockers)
     source, count, warn = _fill_structured_table(
         source,
         table_anchor="유해화학물질 목록 및 명세",
