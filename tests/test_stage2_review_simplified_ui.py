@@ -80,15 +80,37 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
 
     def test_stage5_uses_cap_final_registry_checkpoint_gate(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("evaluate_cap_final_gate", text)
+        self.assertIn("evaluate_document_output_readiness", text)
         self.assertIn("화학사고예방관리계획서 · 최종 제출 체크포인트", text)
-        self.assertIn("evaluate_system_final_gate", text)
+        self.assertIn('evaluate_document_output_readiness(project, "CAP", report)', text)
         self.assertIn("system_gate_ready = all(gate.ready for gate in system_gates)", text)
         self.assertIn("cap_manual_gate_ready = cap_gate.ready", text)
         self.assertIn('f"{gate.system_label} · 작성완성도·자동검증"', text)
-        self.assertIn('evaluate_system_final_gate(project, "PSM", report)', text)
+        self.assertIn('evaluate_document_output_readiness(project, "PSM", report)', text)
         self.assertIn("최종 체크포인트에서 보완 필요", text)
         self.assertIn("담당자 확인 필요 항목은 프로그램이 임의로 완료 처리하지 않습니다", text)
+
+    def test_download_labels_use_document_final_readiness_not_stage4_boolean_alone(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+
+        basic_start = text.index("def _render_basic_docx(")
+        basic_end = text.index("def _render_psm_regulation_form", basic_start)
+        basic = text[basic_start:basic_end]
+        self.assertIn("final_ready: bool", basic)
+        self.assertIn("authoring_ready = bool(final_ready and not review_only)", basic)
+        self.assertNotIn("validation_confirmed(project)", basic)
+
+        psm_start = text.index("def _render_psm_regulation_form")
+        psm_end = text.index("def _render_system_gate", psm_start)
+        psm = text[psm_start:psm_end]
+        self.assertIn("final_ready: bool", psm)
+        self.assertNotIn("validation_confirmed(project)", psm)
+
+        self.assertIn("download_readiness = _render_submission_readiness(project)", text)
+        self.assertIn('final_ready=download_readiness.get("CAP", False)', text)
+        self.assertIn('final_ready=download_readiness.get("PSM", False)', text)
+        self.assertIn("review_only=True", text)
+        self.assertIn("검토용 DOCX는 내려받을 수 있지만", text)
 
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
