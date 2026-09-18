@@ -19,6 +19,7 @@ from .cap_form16_engine import build_cap_form16_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
 from .psm_core_form_engine import build_all_psm_core_form_readiness
+from .psm_later_form_engine import build_all_psm_later_form_readiness
 
 
 def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
@@ -77,6 +78,56 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                         legal_item=legal_item,
                         message=prepared.messages[0] if prepared.messages else "핵심 작성칸을 확인했습니다.",
                         field_keys=psm_fields[prepared.form_no],
+                        legal_basis=legal_basis,
+                    )
+                )
+
+    if project.psm_in_scope:
+        later_fields = {
+            "17-2": ("psm.psi.form_applicability", "psm.psi.interlock_conditions"),
+            "17-3": ("psm.psi.form_applicability", "psm.psi.fire_protection"),
+            "17-4": ("psm.psi.form_applicability", "psm.psi.fire_detection"),
+            "17-5": ("psm.psi.form_applicability", "psm.psi.gas_detection"),
+            "18": ("psm.psi.form_applicability", "psm.psi.fireproofing"),
+            "19": ("psm.psi.form_applicability", "psm.psi.local_exhaust"),
+            "20": ("psm.psi.form_applicability", "psm.psi.ex_equipment"),
+            "21": ("psm.risk.team",),
+        }
+        for prepared in build_all_psm_later_form_readiness(project):
+            checked_rules += 1
+            spec = __import__(
+                "engine.stage2.statutory_report",
+                fromlist=["PSM_FORMS"],
+            ).PSM_FORMS[prepared.form_no]
+            legal_item = f"{spec.reference} {prepared.form_name}"
+            legal_basis = (
+                "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 "
+                f"{spec.reference}"
+            )
+            if prepared.blockers:
+                for index, blocker in enumerate(prepared.blockers, start=1):
+                    issues_list.append(
+                        ValidationIssue(
+                            code=f"PSM-FORM{prepared.form_no}-{index}",
+                            status="HOLD",
+                            system="PSM",
+                            section="공정안전자료" if prepared.form_no != "21" else "공정위험성평가",
+                            legal_item=legal_item,
+                            message=str(blocker),
+                            field_keys=later_fields[prepared.form_no],
+                            legal_basis=legal_basis,
+                        )
+                    )
+            else:
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"PSM-FORM{prepared.form_no}-READY",
+                        status="PASS",
+                        system="PSM",
+                        section="공정안전자료" if prepared.form_no != "21" else "공정위험성평가",
+                        legal_item=legal_item,
+                        message=prepared.messages[0] if prepared.messages else "적용여부와 핵심 작성칸을 확인했습니다.",
+                        field_keys=later_fields[prepared.form_no],
                         legal_basis=legal_basis,
                     )
                 )
