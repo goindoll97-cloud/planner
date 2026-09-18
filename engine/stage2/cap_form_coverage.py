@@ -211,7 +211,12 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제6호
-    identification_ready = bool(chemicals) and _all_rows_have(chemicals, ("CAS 번호", "CAS No.", "CAS"))
+    identification_ready = (
+        bool(chemicals)
+        and _all_rows_have(chemicals, ("CAS 번호", "CAS No.", "CAS"))
+        and _all_rows_have(chemicals, ("함량(%)", "함량", "농도(%)"))
+        and _all_rows_have(chemicals, ("물리적 상태", "물질상태", "성상"))
+    )
     items.append(CAPFormCoverageItem(
         6, "유해화학물질 목록 및 명세", "물질명·CAS·함량·상태",
         READY if identification_ready else ASK_COMPANY, "회사 화학물질표/SDS",
@@ -331,12 +336,19 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
 
     # 별지 제16호
     items.append(CAPFormCoverageItem(
-        16, "비상대응분야 요약서", "사업장 일반정보·담당자·작성일",
+        16, "비상대응분야 요약서", "사업장 일반정보·담당자 및 연락처",
         READY if _has(project, "cap.business.writer_name", "cap.business.writer_contact") else ASK_COMPANY,
         "사업장 일반정보 재사용",
         ("cap.business.writer_name", "cap.business.writer_contact"),
-        "별지 3의 확정값 및 작성일",
-        "작성일은 출력시점/사용자 확정일을 사용하도록 renderer 보완 가능",
+        "별지 3의 확정값",
+    ))
+    items.append(CAPFormCoverageItem(
+        16, "비상대응분야 요약서", "작성일",
+        RENDERER_GAP,
+        "출력엔진",
+        (),
+        "사용자가 확정한 작성일 또는 출력일",
+        "현재 초안에서 공란으로 남는 항목이므로 별도 날짜 필드/출력 규칙 필요",
     ))
     items.append(CAPFormCoverageItem(
         16, "비상대응분야 요약서", "사고시나리오·비상대응 핵심내용",
