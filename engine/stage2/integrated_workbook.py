@@ -178,6 +178,14 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
             ("염소 독성누출-1", 2, 3, 5, 0, 8, 1, 1, 0, 0, 0, "PID-201 및 설비목록 검토", "방류벽", "가스감지기-자동차단밸브 연동", "GA-201/PID-201"),
         ),
     },
+    {
+        "sheet": "24_장외시나리오_확인",
+        "scope": "CAP",
+        "title": "장외 사고시나리오 존재 여부 확인",
+        "targets": ("cap.offsite.risk_control",),
+        "headers": ("장외 사고시나리오 없음 여부", "확인근거", "비고"),
+        "example": (("아니오", "KORA 결과 KORA-01", "장외 사고시나리오 존재"),),
+    },
 )
 
 ATTACHMENT_KINDS = {
