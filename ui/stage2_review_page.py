@@ -534,6 +534,7 @@ def _render_statutory_provenance(
 
     st.caption(
         f"출력물 SHA-256: {provenance.sha256[:16]}… · "
+        f"baseline SHA-256: {provenance.baseline_sha256[:16]}… · "
         f"검증상태: {'작성본' if provenance.final_ready else '검토용'} · "
         f"생성시점(UTC): {provenance.generated_at_utc}"
     )

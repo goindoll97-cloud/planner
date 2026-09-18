@@ -7,10 +7,11 @@ import json
 from pathlib import Path
 
 from .project import Stage2Project
+from .statutory_baseline_identity import statutory_baseline_identity
 from .workflow import validation_confirmed, validation_fingerprint
 
 
-SCHEMA_VERSION = "stage2-output-provenance-v1"
+SCHEMA_VERSION = "stage2-output-provenance-v2"
 SYSTEM_LABELS = {
     "PSM": "공정안전보고서",
     "CAP": "화학사고예방관리계획서",
@@ -40,6 +41,11 @@ class OutputProvenance:
     generated_at_utc: str
     project_updated_at: str
     stage1_source_fingerprint: str
+    baseline_schema_version: str
+    baseline_role: str
+    baseline_sha256: str
+    baseline_source_description: str
+    baseline_authority_note: str
     validation_fingerprint: str
     validation_confirmed: bool
     final_ready: bool
@@ -91,6 +97,8 @@ def build_output_provenance(
     if not final_ready and "작성본" in clean_file_name:
         raise ValueError("REVIEW_ONLY 출력물 파일명에 '작성본'을 사용할 수 없습니다.")
 
+    baseline = statutory_baseline_identity(system)
+
     return OutputProvenance(
         schema_version=SCHEMA_VERSION,
         system=system,
@@ -102,6 +110,11 @@ def build_output_provenance(
         generated_at_utc=_utc_now(),
         project_updated_at=project.updated_at,
         stage1_source_fingerprint=str(project.stage1_source_fingerprint or ""),
+        baseline_schema_version=baseline.schema_version,
+        baseline_role=baseline.role,
+        baseline_sha256=baseline.sha256,
+        baseline_source_description=baseline.source_description,
+        baseline_authority_note=baseline.authority_note,
         validation_fingerprint=validation_fingerprint(project),
         validation_confirmed=current_validation_confirmed,
         final_ready=bool(final_ready),

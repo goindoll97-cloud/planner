@@ -42,6 +42,8 @@ def build_verified_output_bundle(
         f"상태: {provenance.state}\n"
         f"출력파일: {file_name}\n"
         f"SHA-256: {provenance.sha256}\n"
+        f"규정서식 baseline SHA-256: {provenance.baseline_sha256}\n"
+        f"규정서식 baseline schema: {provenance.baseline_schema_version}\n"
         f"생성시점(UTC): {provenance.generated_at_utc}\n"
         "검증정보 JSON의 SHA-256 값은 이 ZIP 안의 DOCX bytes를 기준으로 계산되었습니다.\n"
     )
