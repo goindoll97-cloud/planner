@@ -3,6 +3,7 @@ from __future__ import annotations
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
+from .cap_form10_engine import build_cap_form10_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
 
@@ -112,6 +113,36 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     message="설비명세 필수값과 법정 단위 ton/m3/MPa 정규화를 확인했습니다.",
                     field_keys=("inventory.facilities", "cap.facility.equipment_specs"),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제9호서식",
+                )
+            )
+
+        checked_rules += 1
+        form10 = build_cap_form10_data(project)
+        if form10.blockers:
+            for index, blocker in enumerate(form10.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM10-{index}",
+                        status="HOLD",
+                        system="CAP",
+                        section="시설정보",
+                        legal_item="별지 제10호 확산방지설비 현황",
+                        message=str(blocker),
+                        field_keys=("cap.safety.dike_calculation", "cap.safety.dike_layout"),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제10호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM10-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="시설정보",
+                    legal_item="별지 제10호 확산방지설비 현황",
+                    message="필요용량 근거, 유효용량 산정 및 적정성 검토결과를 확인했습니다.",
+                    field_keys=("cap.safety.dike_calculation", "cap.safety.dike_layout"),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제10호서식",
                 )
             )
 
