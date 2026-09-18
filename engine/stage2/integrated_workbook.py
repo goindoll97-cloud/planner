@@ -106,7 +106,7 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "05_가스누출감지_경보장치",
         "scope": "COMMON",
         "title": "가스누출감지 및 경보장치 통합정보",
-        "targets": ("psm.psi.gas_detection", "cap.safety.gas_detection"),
+        "targets": ("psm.psi.gas_detection_table", "cap.safety.gas_detection"),
         "headers": (
             "감지기 번호", "설치형태", "설치위치", "검출대상 물질",
             "작동시간", "측정방식", "경보 설정값", "경보 위치",
@@ -187,7 +187,7 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "13_PSM_소화설비",
         "scope": "PSM",
         "title": "별지 제17호의3서식 입력자료 · 소화설비 설치계획",
-        "targets": ("psm.psi.fire_protection",),
+        "targets": ("psm.psi.fire_protection_table",),
         "headers": (
             "설치지역", "소화기", "자동확산소화기", "자동소화장치", "옥내소화전",
             "스프링클러", "물분무소화설비", "포소화설비", "CO2 소화설비",
@@ -203,7 +203,7 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "14_PSM_화재탐지",
         "scope": "PSM",
         "title": "별지 제17호의4서식 입력자료 · 화재탐지경보설비 설치계획",
-        "targets": ("psm.psi.fire_detection",),
+        "targets": ("psm.psi.fire_detection_table",),
         "headers": (
             "설치지역", "단독경보형 감지기", "비상경보설비", "시각경보기",
             "자동화재탐지설비", "비상방송설비", "자동화재속보설비",
@@ -218,7 +218,7 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "15_PSM_내화구조",
         "scope": "PSM",
         "title": "별지 제18호서식 입력자료 · 내화구조 명세",
-        "targets": ("psm.psi.fireproofing",),
+        "targets": ("psm.psi.fireproofing_table",),
         "headers": ("내화설비 또는 지역", "내화부위", "내화시험기준 및 시간", "비고"),
         "example": (
             ("R-101 지지철골", "주기둥 및 보", "2시간 내화성능", "내화피복 적용"),
@@ -228,7 +228,7 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "sheet": "16_PSM_국소배기",
         "scope": "PSM",
         "title": "별지 제19호서식 입력자료 · 국소배기장치 개요",
-        "targets": ("psm.psi.local_exhaust",),
+        "targets": ("psm.psi.local_exhaust_table",),
         "headers": (
             "공정 또는 작업장명", "실내외 구분", "발생원", "유해물질 종류",
             "후드형식", "후드 제어풍속(m/s)", "덕트내 반송속도(m/s)",
@@ -419,6 +419,8 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
 ATTACHMENT_KINDS = {
     "DOCUMENT_SET", "DRAWING", "DRAWING_SET", "DRAWING_AND_DATA", "DRAWING_AND_TABLE",
     "ANALYSIS_DOCUMENT", "CALCULATION_AND_DRAWING", "CALCULATION_AND_MODEL",
+    "TABLE_AND_DRAWING", "PLAN_CALCULATION_AND_DRAWING", "PLAN_SPEC_CALCULATION_AND_DRAWING",
+    "PLAN_TABLE_AND_DRAWING", "PLAN_SPEC_AND_DRAWING",
 }
 
 EXAMPLE_VALUES: dict[str, Any] = {
