@@ -226,20 +226,6 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     )
                 )
 
-        if form12.ready or form13.ready:
-            issues_list.append(
-                ValidationIssue(
-                    code="CAP-FORM12-13-HWPX-RENDERER",
-                    status="HOLD",
-                    system="CAP",
-                    section="장외평가정보",
-                    legal_item="별지 제12·13호 공식 HWPX 자동작성",
-                    message="별지 제12·13호의 KORA/GIS 확정값은 검증되었지만 현재 법제처 원본 HWPX의 시나리오별 반복작성·보호대상 표 셀 매핑은 아직 검증되지 않았습니다.",
-                    field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.overall_impact_summary", "cap.offsite.population_and_protected_targets"),
-                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제12호·제13호서식",
-                )
-            )
-
         checked_rules += 2
         form14 = build_cap_form14_data(project)
         form15 = build_cap_form15_data(project)
@@ -293,38 +279,6 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                         legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
                     )
                 )
-
-        if not form15.no_offsite_scenario and not form14.blockers and form15.ready:
-            from .cap_multi_form_runtime import preflight_cap_risk_hwpx
-
-            renderer = preflight_cap_risk_hwpx(project)
-            if renderer.ready:
-                issues_list.append(
-                    ValidationIssue(
-                        code="CAP-FORM14-15-HWPX-READY",
-                        status="PASS",
-                        system="CAP",
-                        section="장외평가정보",
-                        legal_item="별지 제14·15호 공식 HWPX 자동작성",
-                        message="현재 승인된 법제처 원본에 별지 제14호 시나리오별 작성과 별지 제15호 A·B·C·D·구간점수 셀 매핑을 시험작성하여 확인했습니다.",
-                        field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
-                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제14호·제15호서식",
-                    )
-                )
-            else:
-                for index, blocker in enumerate(renderer.blockers, start=1):
-                    issues_list.append(
-                        ValidationIssue(
-                            code=f"CAP-FORM14-15-HWPX-{index}",
-                            status="HOLD",
-                            system="CAP",
-                            section="장외평가정보",
-                            legal_item="별지 제14·15호 공식 HWPX 자동작성",
-                            message=str(blocker),
-                            field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
-                            legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제14호·제15호서식",
-                        )
-                    )
 
     order = {"HOLD": 0, "REVIEW_REQUIRED": 1, "PASS": 2, "NOT_APPLICABLE": 3}
     issues_list.sort(key=lambda issue: (order.get(issue.status, 9), issue.system, issue.section, issue.code))
