@@ -86,11 +86,11 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
     if project.psm_in_scope:
         later_fields = {
             "17-2": ("psm.psi.form_applicability", "psm.psi.interlock_conditions"),
-            "17-3": ("psm.psi.form_applicability", "psm.psi.fire_protection"),
-            "17-4": ("psm.psi.form_applicability", "psm.psi.fire_detection"),
-            "17-5": ("psm.psi.form_applicability", "psm.psi.gas_detection"),
-            "18": ("psm.psi.form_applicability", "psm.psi.fireproofing"),
-            "19": ("psm.psi.form_applicability", "psm.psi.local_exhaust"),
+            "17-3": ("psm.psi.form_applicability", "psm.psi.fire_protection_table"),
+            "17-4": ("psm.psi.form_applicability", "psm.psi.fire_detection_table"),
+            "17-5": ("psm.psi.form_applicability", "psm.psi.gas_detection_table"),
+            "18": ("psm.psi.form_applicability", "psm.psi.fireproofing_table"),
+            "19": ("psm.psi.form_applicability", "psm.psi.local_exhaust_table"),
             "20": ("psm.psi.form_applicability", "psm.psi.ex_equipment"),
             "21": ("psm.risk.team",),
         }
