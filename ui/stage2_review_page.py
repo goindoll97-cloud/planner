@@ -8,6 +8,7 @@ from engine.stage2.ai_drafting import (
     ai_draftable_specs,
 )
 from engine.stage2.ai_report import build_ai_enhanced_report_draft, has_ai_report_prose
+from engine.stage2.cap_final_gate import evaluate_cap_final_gate
 from engine.stage2.local_ai_resilience import (
     build_local_llm_client,
     generate_system_ai_drafts,
@@ -520,6 +521,7 @@ def _render_submission_readiness(project) -> None:
     confirmed = validation_confirmed(project)
     try:
         report = validate_selected_scope(project)
+        cap_gate = evaluate_cap_final_gate(project, report) if project.cap_in_scope else None
     except Exception as exc:
         st.warning(
             "최종 제출 준비상태를 다시 계산하지 못했습니다. "
@@ -527,21 +529,48 @@ def _render_submission_readiness(project) -> None:
         )
         return
 
-    if confirmed and report.final_export_allowed:
+    if cap_gate is not None:
+        with st.expander("화학사고예방관리계획서 · 최종 제출 체크포인트", expanded=not cap_gate.ready):
+            rows = []
+            for item in cap_gate.checkpoints:
+                pages = ", ".join(f"p.{page}" for page in item.manual_pages)
+                rows.append({
+                    "상태": item.status_label,
+                    "점검항목": item.label,
+                    "확인내용": item.message,
+                    "매뉴얼": pages,
+                })
+            st.dataframe(rows, width="stretch", hide_index=True)
+            st.caption(
+                "이 체크포인트는 작성 매뉴얼의 최종 제출 점검항목을 현재 프로젝트 자료와 대조한 결과입니다. "
+                "담당자 확인 필요 항목은 프로그램이 임의로 완료 처리하지 않습니다."
+            )
+
+    final_gate_ready = cap_gate.ready if cap_gate is not None else True
+    final_ready = confirmed and report.final_export_allowed and final_gate_ready
+
+    if final_ready:
         st.success(
-            "프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다. "
+            "프로그램 검증 기준상 제출 전 자료점검과 최종 체크포인트 확인이 완료되었습니다. "
             "다만 실제 제출 전에는 담당자가 DOCX, 도면, 제품 SDS/MSDS 및 모든 첨부자료의 최신본·서명·날짜를 최종 대조해야 합니다."
         )
         return
 
     if confirmed:
+        checkpoint_note = ""
+        if cap_gate is not None and not cap_gate.ready:
+            checkpoint_note = (
+                f" 최종 체크포인트에서 보완 필요 {cap_gate.hold_count}건, "
+                f"담당자 확인 필요 {cap_gate.review_count}건이 남아 있습니다."
+            )
         st.warning(
             "보고서 본문 작성자료 확인은 완료되었지만 최종 제출자료 준비는 아직 완료되지 않았습니다. "
-            f"보완 필요 {report.hold_count}건, 담당자 확인 필요 {report.review_count}건이 남아 있습니다."
+            f"자동검증 기준 보완 필요 {report.hold_count}건, 담당자 확인 필요 {report.review_count}건이 남아 있습니다."
+            + checkpoint_note
         )
         st.caption(
-            "DOCX 작성본은 내려받을 수 있지만, 도면·제품 SDS/MSDS·계산서·영향평가 결과 등 "
-            "별도 제출자료가 남아 있으면 이를 결합·확인한 뒤 제출해야 합니다."
+            "DOCX 작성본은 내려받을 수 있지만, 도면·제품 SDS/MSDS·계산서·영향평가 결과 및 "
+            "최종 체크포인트의 증빙자료가 남아 있으면 이를 결합·확인한 뒤 제출해야 합니다."
         )
         return
 
