@@ -168,6 +168,52 @@ class CAPFinalGateTests(unittest.TestCase):
         self.assertEqual(item.status, REVIEW_REQUIRED)
         self.assertFalse(result.ready)
 
+    def test_psm_only_issue_does_not_fail_cap_omission_checkpoint(self):
+        project = self._project()
+        project.psm_required = True
+        project.psm_selected = True
+        report = CrossValidationReport(
+            issues=(
+                ValidationIssue(
+                    code="PSM-ONLY-HOLD",
+                    status="HOLD",
+                    system="PSM",
+                    section="공정안전자료",
+                    legal_item="PSM 전용 항목",
+                    message="PSM만의 문제",
+                ),
+            ),
+            checked_rules=10,
+        )
+
+        result = evaluate_cap_final_gate(project, report)
+        item = next(i for i in result.checkpoints if i.key == "cap.final.omission_check")
+
+        self.assertEqual(item.status, PASS)
+        self.assertTrue(result.ready)
+
+    def test_common_issue_still_fails_cap_omission_checkpoint(self):
+        project = self._project()
+        report = CrossValidationReport(
+            issues=(
+                ValidationIssue(
+                    code="COMMON-HOLD",
+                    status="HOLD",
+                    system="COMMON",
+                    section="근거자료 관리",
+                    legal_item="공통자료",
+                    message="공통 문제",
+                ),
+            ),
+            checked_rules=10,
+        )
+
+        result = evaluate_cap_final_gate(project, report)
+        item = next(i for i in result.checkpoints if i.key == "cap.final.omission_check")
+
+        self.assertEqual(item.status, HOLD)
+        self.assertFalse(result.ready)
+
     def test_missing_submission_type_fails_closed(self):
         project = self._project()
         project.fields.pop("cap.business.submission_type")

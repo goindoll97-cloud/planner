@@ -82,7 +82,11 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("evaluate_cap_final_gate", text)
         self.assertIn("화학사고예방관리계획서 · 최종 제출 체크포인트", text)
-        self.assertIn("final_gate_ready = cap_gate.ready", text)
+        self.assertIn("evaluate_system_final_gate", text)
+        self.assertIn("system_gate_ready = all(gate.ready for gate in system_gates)", text)
+        self.assertIn("cap_manual_gate_ready = cap_gate.ready", text)
+        self.assertIn('f"{gate.system_label} · 작성완성도·자동검증"', text)
+        self.assertIn('evaluate_system_final_gate(project, "PSM", report)', text)
         self.assertIn("최종 체크포인트에서 보완 필요", text)
         self.assertIn("담당자 확인 필요 항목은 프로그램이 임의로 완료 처리하지 않습니다", text)
 
