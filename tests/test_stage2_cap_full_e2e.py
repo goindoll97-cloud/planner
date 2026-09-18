@@ -316,12 +316,17 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
 
     @staticmethod
     def _table_text(doc: Document, *indices: int) -> str:
-        return "\n".join(
-            cell.text
-            for index in indices
-            for row in doc.tables[index].rows
-            for cell in row.cells
-        )
+        values: list[str] = []
+        for table_index in indices:
+            for row in doc.tables[table_index].rows:
+                seen: set[int] = set()
+                for cell in row.cells:
+                    marker = id(cell._tc)
+                    if marker in seen:
+                        continue
+                    seen.add(marker)
+                    values.append(cell.text)
+        return "\n".join(values)
 
     @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
     @patch("engine.stage2.cap_chemical_legal.screen_cap_scope_candidates_from_tables", return_value=pd.DataFrame())
