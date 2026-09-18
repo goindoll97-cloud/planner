@@ -74,7 +74,7 @@ def _row_missing_headers(
 
 def _validate_rows(form_no: str, rows: tuple[tuple[str, ...], ...]) -> list[str]:
     spec = report.PSM_FORMS[form_no]
-    headers = spec.headers
+    headers = baseline.FORM_OUTPUT_HEADERS.get(form_no, spec.headers)
     blockers: list[str] = []
 
     if not rows:
