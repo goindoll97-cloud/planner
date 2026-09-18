@@ -545,6 +545,7 @@ def _write_business_sheet(wb: Workbook, project: Stage2Project, *, example: bool
             "cap.business.representative", "cap.business.registration_no", "cap.business.contact",
             "cap.business.unit_plant_name", "cap.business.industrial_complex",
             "cap.business.submission_type", "cap.business.submission_reason",
+            "cap.business.writing_level",
             "cap.business.joint_emergency_plan", "cap.business.other_system_review",
             "cap.business.residents_in_overall_range", "cap.business.recent_accident",
             "cap.business.writer_name", "cap.business.writer_department",
