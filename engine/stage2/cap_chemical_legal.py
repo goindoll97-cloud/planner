@@ -216,6 +216,11 @@ def build_cap_chemical_legal_data(project: Stage2Project) -> CAPChemicalLegalDat
     enriched: list[dict[str, Any]] = []
     for row_no, chem in enumerate(chemicals, start=1):
         row = dict(chem)
+        # Form-6 legal identity is re-derived from the CURRENT approved legal
+        # tables. Never let a stale company-entered legal class/unique number
+        # survive merely because the legal lookup failed.
+        row.pop("물질구분", None)
+        row.pop("고유번호", None)
         name = _clean(_row_value(chem, "물질명", "유해화학물질명", "제품명"))
         cas = _clean(_row_value(chem, "CAS 번호", "CAS No.", "화학물질식별번호"))
 
