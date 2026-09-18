@@ -37,6 +37,7 @@ OPTION_GROUPS: dict[str, tuple[str, ...]] = {
     "submission_type": ("신규제출", "변경제출", "재제출", "이행점검 불이행"),
     "submission_reason": ("최초", "부적합"),
     "joint_submission": ("공동제출", "단독제출"),
+    "other_system_review": ("미해당", "해당 - 공정안전보고서", "해당 - 안전성향상계획", "해당 - 공정안전보고서 + 안전성향상계획"),
     "yes_no": ("예", "아니오"),
 }
 
@@ -67,7 +68,7 @@ FIELD_DROPDOWNS = {
     "cap.business.submission_type": "submission_type",
     "cap.business.submission_reason": "submission_reason",
     "cap.business.joint_emergency_plan": "joint_submission",
-    "cap.business.other_system_review": "yes_no_na",
+    "cap.business.other_system_review": "other_system_review",
     "cap.business.residents_in_overall_range": "yes_no",
     "cap.business.recent_accident": "yes_no",
 }
