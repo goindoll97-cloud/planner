@@ -695,8 +695,9 @@ def _psm_form17_rows(project: Stage2Project) -> list[list[str]]:
     return out
 
 
-def _generic_form_rows(project: Stage2Project, field_key: str, spec: FormSpec, alias_groups: Sequence[Sequence[str]]) -> list[list[str]]:
-    rows = _rows(project, field_key)
+def _generic_form_rows(project: Stage2Project, field_key: str | Sequence[str], spec: FormSpec, alias_groups: Sequence[Sequence[str]]) -> list[list[str]]:
+    keys = (field_key,) if isinstance(field_key, str) else tuple(field_key)
+    rows = _rows(project, *keys)
     if not rows:
         return []
     return [[_row_value(row, *aliases) for aliases in alias_groups] for row in rows]
@@ -763,19 +764,19 @@ def _render_psm(doc: Document, project: Stage2Project) -> None:
 
     _add_form_table(
         doc, PSM_FORMS["18"],
-        _generic_form_rows(project, "psm.psi.fireproofing", PSM_FORMS["18"], (("내화설비 또는 지역", "설비", "지역"), ("내화부위",), ("내화시험기준 및 시간", "시험기준", "내화시간"), ("비고",))),
+        _generic_form_rows(project, ("psm.psi.fireproofing_table", "psm.psi.fireproofing"), PSM_FORMS["18"], (("내화설비 또는 지역", "설비", "지역"), ("내화부위",), ("내화시험기준 및 시간", "시험기준", "내화시간"), ("비고",))),
     )
     _add_form_table(
         doc, PSM_FORMS["17-3"],
-        _generic_form_rows(project, "psm.psi.fire_protection", PSM_FORMS["17-3"], tuple((h,) for h in PSM_FORMS["17-3"].headers)),
+        _generic_form_rows(project, ("psm.psi.fire_protection_table", "psm.psi.fire_protection"), PSM_FORMS["17-3"], tuple((h,) for h in PSM_FORMS["17-3"].headers)),
     )
     _add_form_table(
         doc, PSM_FORMS["17-4"],
-        _generic_form_rows(project, "psm.psi.fire_detection", PSM_FORMS["17-4"], tuple((h,) for h in PSM_FORMS["17-4"].headers)),
+        _generic_form_rows(project, ("psm.psi.fire_detection_table", "psm.psi.fire_detection"), PSM_FORMS["17-4"], tuple((h,) for h in PSM_FORMS["17-4"].headers)),
     )
     _add_form_table(
         doc, PSM_FORMS["17-5"],
-        _generic_form_rows(project, "psm.psi.gas_detection", PSM_FORMS["17-5"], (
+        _generic_form_rows(project, ("psm.psi.gas_detection_table", "psm.psi.gas_detection"), PSM_FORMS["17-5"], (
             ("감지기 번호", "감지기번호", "구분기호"), ("검출대상 물질", "감지대상"), ("설치위치", "설치장소"), ("작동시간",),
             ("감지방식", "측정방식"), ("경보 설정값", "경보설정값"), ("경보 위치", "경보기 위치"), ("정밀도",),
             ("경보시 조치내용",), ("유지관리", "점검주기"), ("비고", "관련 도면번호"),
@@ -784,7 +785,7 @@ def _render_psm(doc: Document, project: Stage2Project) -> None:
     _add_attachment_line(doc, "세안·세척시설 및 안전보호장구 설치계획", _text(project, "psm.psi.wash_facility", "psm.psi.ppe", default=MISSING))
     _add_form_table(
         doc, PSM_FORMS["19"],
-        _generic_form_rows(project, "psm.psi.local_exhaust", PSM_FORMS["19"], tuple((h,) for h in PSM_FORMS["19"].headers)),
+        _generic_form_rows(project, ("psm.psi.local_exhaust_table", "psm.psi.local_exhaust"), PSM_FORMS["19"], tuple((h,) for h in PSM_FORMS["19"].headers)),
     )
     _add_attachment_line(doc, "폭발위험장소 구분도", _doc_value(project, "psm.psi.hazardous_area"))
     _add_form_table(
