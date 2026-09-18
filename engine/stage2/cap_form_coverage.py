@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .cap_chemical_legal import build_cap_chemical_legal_data
+from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
@@ -158,6 +159,8 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     facilities = _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     form1 = build_cap_form1_data(project)
     form6 = build_cap_chemical_legal_data(project)
+    form6_sds = build_cap_form6_sds_data(project)
+    form7 = build_cap_form7_data(project)
     form8 = build_cap_form8_data(project)
     form9 = build_cap_form9_data(project)
     form10 = build_cap_form10_data(project)
@@ -280,36 +283,25 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
     items.append(CAPFormCoverageItem(
         6, "유해화학물질 목록 및 명세", "비중·폭발한계·독성구분·위험노출수준·TWA·증기압·부식성",
-        ASK_COMPANY, "회사 보유 SDS/MSDS", ("psm.psi.msds",),
-        "실제 제품 SDS/MSDS 또는 회사 승인 물성자료",
-        "KOSHA 자동조회는 현재 핵심 흐름에서 제외하므로 회사 자료를 우선 사용",
+        READY if form6_sds.ready else ASK_COMPANY,
+        "회사 제품 SDS 전사값", ("cap.chemical.details",),
+        "물질별 SDS 물성값, SDS 파일명, SDS 작성·개정일",
+        "외부/KOSHA MSDS 자동조회 없이 회사가 확인한 제품 SDS 값만 사용",
     ))
 
     # 별지 제7호
-    hazard_rows = _structured_rows(project, "cap.chemical.hazard_information")
-    hazard_core_ready = bool(hazard_rows) and all(
-        _row_value(row, "인체유해성") not in (None, "")
-        and _row_value(row, "물리적 위험성") not in (None, "")
-        and _row_value(row, "환경유해성") not in (None, "")
-        and _row_value(row, "출처") not in (None, "")
-        for row in hazard_rows
-    )
-    selection_reason_ready = bool(hazard_rows) and all(
-        _row_value(row, "선정 사유", "선정사유") not in (None, "")
-        for row in hazard_rows
-    )
     items.append(CAPFormCoverageItem(
         7, "유해화학물질의 유해성 정보", "인체·물리·환경 유해성 및 출처",
-        READY if hazard_core_ready else ASK_COMPANY,
-        "회사 보유 SDS/MSDS·승인 유해성자료", ("cap.chemical.hazard_information", "psm.psi.msds"),
-        "실제 제품 SDS/MSDS에서 확인한 인체·물리·환경 유해성과 출처",
-        "외부 MSDS 자동조회 없이 회사 확인자료만 사용",
+        READY if form7.ready else ASK_COMPANY,
+        "회사 제품 SDS/승인 유해성자료", ("cap.chemical.hazard_information",),
+        "대표물질의 인체·물리·환경 유해성, 출처, SDS 파일명·개정일",
+        "법적 고유번호와 최대보유량은 별지 제6호·제1호 결과를 재사용",
     ))
     items.append(CAPFormCoverageItem(
         7, "유해화학물질의 유해성 정보", "대표물질 선정 사유",
-        READY if selection_reason_ready else ASK_COMPANY,
+        READY if form7.ready else ASK_COMPANY,
         "회사/사고시나리오 선정근거", ("cap.chemical.hazard_information",),
-        "대표물질 선정기준과 해당 물질을 선택한 실제 근거",
+        "대표물질을 선택한 실제 회사·사고시나리오 근거",
         "화학물질 목록만으로 프로그램이 대표물질을 임의 선택하지 않음",
     ))
 
