@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .cap_form1_engine import build_cap_form1_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -136,24 +137,39 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     items: list[CAPFormCoverageItem] = []
     chemicals = _rows(project, "inventory.chemicals", "cap.chemical.details")
     facilities = _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
+    form1 = build_cap_form1_data(project)
+    threshold_rows_ready = bool(form1.chemical_rows) and all(
+        str(row.get("물질구분") or "").strip()
+        and str(row.get("하위규정수량(ton)") or "").strip()
+        and str(row.get("상위규정수량(ton)") or "").strip()
+        for row in form1.chemical_rows
+    )
+    quantity_rows_ready = bool(form1.chemical_rows) and all(
+        str(row.get("사업장 내 최대보유량(ton)") or "").strip()
+        for row in form1.chemical_rows
+    )
+    facility_quantity_ready = bool(form1.facility_rows) and all(
+        str(row.get("취급량(ton)") or "").strip()
+        for row in form1.facility_rows
+    )
 
     # 별지 제1호
     items.append(CAPFormCoverageItem(
         1, "사업장의 작성수준 구분", "단위공장별 최대보유량 산출",
-        READY if facilities else ASK_COMPANY, "회사 설비자료",
+        READY if facility_quantity_ready else ASK_COMPANY, "회사 설비자료 + 단위정규화 엔진",
         ("inventory.facilities",), "설비별 취급물질·설계용량·최대보유량",
     ))
     items.append(CAPFormCoverageItem(
         1, "사업장의 작성수준 구분", "유해화학물질별 물질구분·하위/상위 규정수량",
-        LEGAL_ENGINE, "법령 DB", (),
+        READY if threshold_rows_ready else LEGAL_ENGINE, "Stage 1 CAP 승인 법령 DB", (),
         "CAS·농도와 현행 규정수량 DB",
-        "회사 입력값이 아니라 현행 법령 기준으로 자동판정해야 하는 항목",
+        "Stage 1의 별표 3→별표 2 우선순위 법령판정 로직을 Stage 2에서 재사용",
     ))
     items.append(CAPFormCoverageItem(
         1, "사업장의 작성수준 구분", "최대보유량 단위 정규화(ton)",
-        RENDERER_GAP if _chemical_units_need_ton_conversion(project) else (READY if chemicals else ASK_COMPANY),
+        READY if quantity_rows_ready else RENDERER_GAP,
         "계산·출력엔진", ("inventory.chemicals",), "원자료의 수량과 단위",
-        "kg 등으로 입력된 값을 ton 표기 칸에 그대로 쓰지 않도록 단위변환 검증 필요",
+        "kg·ton·g 질량단위를 ton으로 정규화하여 법정서식에 기록",
     ))
     items.append(CAPFormCoverageItem(
         1, "사업장의 작성수준 구분", "최종 작성수준 1군/2군",
