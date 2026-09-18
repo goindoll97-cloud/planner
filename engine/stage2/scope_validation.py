@@ -30,6 +30,14 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
     allowed_systems = {"COMMON"}
     if project.psm_in_scope:
         allowed_systems.add("PSM")
+    if project.cap_in_scope:
+        allowed_systems.add("CAP")
+
+    issues_list: list[ValidationIssue] = [
+        issue for issue in raw.issues if issue.system in allowed_systems
+    ]
+    checked_rules = raw.checked_rules
+
     if project.psm_in_scope:
         psm_fields = {
             "13": ("psm.psi.chemical_details", "inventory.chemicals"),
@@ -72,14 +80,6 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                         legal_basis=legal_basis,
                     )
                 )
-
-    if project.cap_in_scope:
-        allowed_systems.add("CAP")
-
-    issues_list: list[ValidationIssue] = [
-        issue for issue in raw.issues if issue.system in allowed_systems
-    ]
-    checked_rules = raw.checked_rules
 
     if project.cap_in_scope:
         checked_rules += 1
