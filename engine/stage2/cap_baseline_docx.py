@@ -478,6 +478,56 @@ def _fill_choice_cells(table, *, row_start: int, row_end: int, rendered: Mapping
                     break
 
 
+def _facility_chemical_data_rows(table) -> list:
+    """Return the official Form 4/5 chemical data rows, excluding the header row."""
+    data_rows = []
+    for row in table.rows:
+        cells = _unique_cells(row)
+        if not cells:
+            continue
+        if base._norm(cells[0].text) != base._norm("유해화학물질 및 취급량"):
+            continue
+        trailing = " ".join(cell.text for cell in cells[1:])
+        if "CAS" in trailing or "최대 보유량" in trailing or "최대보유량" in trailing:
+            continue
+        if len(cells) >= 4:
+            data_rows.append(row)
+    return data_rows
+
+
+def _ensure_facility_chemical_row_capacity(table, required: int) -> list:
+    """Expand the official Form 4/5 chemical block without dropping confirmed chemicals.
+
+    The bundled statutory form contains eight preprinted rows. When the company
+    has more confirmed chemicals, clone the final official data-row XML
+    immediately after the existing block. This preserves the first-column
+    vertical merge, borders, cell widths, fonts and paragraph formatting while
+    allowing Word to paginate the enlarged table naturally.
+    """
+    rows = _facility_chemical_data_rows(table)
+    if required <= len(rows):
+        return rows
+    if not rows:
+        raise ValueError(
+            "별지 제4·5호 유해화학물질 표의 기준 데이터 행을 찾지 못해 자동 확장할 수 없습니다."
+        )
+
+    template_tr = rows[-1]._tr
+    anchor_tr = rows[-1]._tr
+    for _ in range(required - len(rows)):
+        cloned_tr = deepcopy(template_tr)
+        anchor_tr.addnext(cloned_tr)
+        anchor_tr = cloned_tr
+
+    expanded = _facility_chemical_data_rows(table)
+    if len(expanded) < required:
+        raise ValueError(
+            f"별지 제4·5호 유해화학물질 표를 {required}행까지 자동 확장하지 못했습니다 "
+            f"(확인된 작성행 {len(expanded)}행)."
+        )
+    return expanded
+
+
 def _fill_facility_chemical_rows(table, project: Stage2Project) -> None:
     prepared = build_cap_form1_data(project)
     unique: list[tuple[str, str, str]] = []
@@ -492,41 +542,38 @@ def _fill_facility_chemical_rows(table, project: Stage2Project) -> None:
         seen.add(key)
         unique.append((name, cas, holding))
 
-    data_rows = []
-    in_section = False
-    for row in table.rows:
-        cells = _unique_cells(row)
-        if not cells:
-            continue
-        label = base._norm(cells[0].text)
-        if label != base._norm("유해화학물질 및 취급량"):
-            continue
-        in_section = True
-        # The first repeated row is the fixed header row because it contains
-        # the CAS/max-holding column labels. Preserve those official headers.
-        trailing = " ".join(cell.text for cell in cells[1:])
-        if "CAS" in trailing or "최대 보유량" in trailing or "최대보유량" in trailing:
-            continue
-        if len(cells) >= 4:
-            data_rows.append(cells)
-
-    if not in_section:
+    data_rows = _ensure_facility_chemical_row_capacity(table, len(unique))
+    if not data_rows:
         return
 
-    for cells in data_rows:
+    for row in data_rows:
+        cells = _unique_cells(row)
         for cell in cells[1:4]:
             _write_cell(cell, "")
 
-    if len(unique) > len(data_rows):
-        raise ValueError(
-            f"별지 제4·5호 유해화학물질 표의 작성 가능 행({len(data_rows)}행)보다 "
-            f"확정 물질({len(unique)}건)이 많아 일부를 누락할 수 없으므로 DOCX 생성을 중단합니다."
-        )
-
-    for cells, (name, cas, holding) in zip(data_rows, unique):
+    for row, (name, cas, holding) in zip(data_rows, unique):
+        cells = _unique_cells(row)
         _write_cell(cells[1], name)
         _write_cell(cells[2], cas)
         _write_cell(cells[3], holding)
+
+    # Fail closed only if the post-write document does not contain every
+    # confirmed chemical exactly in the intended name/CAS/holding columns.
+    rendered: list[tuple[str, str, str]] = []
+    for row in data_rows[: len(unique)]:
+        cells = _unique_cells(row)
+        rendered.append(
+            (
+                _clean(cells[1].text),
+                _clean(cells[2].text),
+                _clean(cells[3].text),
+            )
+        )
+    if rendered != unique:
+        raise ValueError(
+            "별지 제4·5호 유해화학물질 표 자동 확장 후 입력값 검증에 실패하여 "
+            "일부 물질이 누락되거나 열이 어긋날 가능성이 있으므로 DOCX 생성을 중단합니다."
+        )
 
 
 def _fill_facility_overview(
