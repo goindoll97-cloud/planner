@@ -46,7 +46,11 @@ class CAPForm13Data:
 
 
 def _clean(value: object) -> str:
-    text = str(value or "").strip()
+    # Numeric zero is a meaningful confirmed value for population/protected
+    # target counts. Do not collapse it through a truthiness fallback.
+    if value is None:
+        return ""
+    text = str(value).strip()
     return "" if text.lower() in {"nan", "none", "null", "<na>"} else text
 
 
