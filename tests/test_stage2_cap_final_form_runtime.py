@@ -4,6 +4,7 @@ from pathlib import Path
 import unittest
 
 from engine.stage2.cap_final_form_runtime import (
+    render_facility_type_counts,
     render_joint_emergency,
     render_other_system_review,
     render_protected_target_groups,
@@ -61,6 +62,38 @@ class CAPFinalFormRuntimeTests(unittest.TestCase):
         self.assertIn("☐ 주택·업무시설", b)
         self.assertIn("☒ 하천", env)
         self.assertIn("☐ 습지보호지역", env)
+
+    def test_facility_checkbox_counts_map_company_terms_without_overclaiming_high_pressure(self):
+        from engine.stage2.project import Stage2Project
+
+        project = Stage2Project(
+            project_id="S2-FACILITY-CHECKBOX",
+            company_name="테스트화학",
+            cap_required=True,
+            cap_group="1군",
+            scope_confirmed=True,
+            cap_selected=True,
+        )
+        project.set_field(
+            "inventory.facilities",
+            "설비목록",
+            [
+                {"설비번호": "T-1", "설비명": "저장탱크", "설비종류": "저장탱크"},
+                {"설비번호": "R-1", "설비명": "반응기", "설비종류": "반응기"},
+                {"설비번호": "M-1", "설비명": "혼합조", "설비종류": "혼합조"},
+                {"설비번호": "C-1", "설비명": "흡수탑", "설비종류": "흡수탑"},
+                {"설비번호": "V-1", "설비명": "압력용기", "설비종류": "압력용기"},
+            ],
+            "USER_CONFIRMED",
+        )
+
+        rendered = render_facility_type_counts(project)
+        self.assertIn("☒ 저장탱크 (1)기", rendered)
+        self.assertIn("☒ 반응시설 (1)기", rendered)
+        self.assertIn("☒ 혼합시설 (1)기", rendered)
+        self.assertIn("☒ 탑조류(증류탑 등) (1)기", rendered)
+        self.assertIn("☐ 고압시설", rendered)
+        self.assertIn("☒ 기타 (1)기", rendered)
 
     def test_app_installs_final_form_runtime_after_multi_form_runtime(self):
         text = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
