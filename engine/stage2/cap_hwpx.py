@@ -29,6 +29,7 @@ from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
+from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -604,33 +605,35 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     applied += count
     warnings.extend(warn)
 
-    freq_rows = _confirmed_rows(project, "cap.offsite.scenario_frequency")
+    form14 = build_cap_form14_data(project)
+    warnings.extend(f"별지 제14호 확인 필요: {msg}" for msg in form14.blockers)
     source, count, warn = _fill_structured_table(
         source,
         table_anchor="사고시나리오별 시설빈도",
-        rows=freq_rows,
+        rows=form14.event_rows,
         columns=(
             ("연번", ("__rowno__",)),
             ("개시사건", ("개시사건",)),
-            ("빈도", ("빈도",)),
+            ("빈도", ("기준빈도(/연)",)),
             ("개수", ("개수",)),
-            ("사고빈도", ("사고빈도",)),
+            ("사고빈도", ("사고빈도(/연)",)),
         ),
     )
     applied += count
     warnings.extend(warn)
 
-    risk_rows = _confirmed_rows(project, "cap.offsite.risk_analysis")
+    form15 = build_cap_form15_data(project)
+    warnings.extend(f"별지 제15호 확인 필요: {msg}" for msg in form15.blockers)
     source, count, warn = _fill_structured_table(
         source,
         table_anchor="위험도 분석",
-        rows=risk_rows,
+        rows=form15.scenario_rows,
         columns=(
             ("연번", ("__rowno__",)),
-            ("사고시나리오 명", ("사고시나리오 명", "사고시나리오")),
-            ("사고시나리오 시설빈도", ("사고시나리오 시설빈도", "시설빈도")),
-            ("사고시나리오 거리", ("사고시나리오 거리", "거리")),
-            ("주민수", ("주민수", "주민 수")),
+            ("사고시나리오 명", ("사고시나리오 명",)),
+            ("사고시나리오 시설빈도", ("사고시나리오 시설빈도",)),
+            ("사고시나리오 거리", ("사고시나리오 거리(장외)",)),
+            ("주민수", ("위험도 주민수",)),
         ),
     )
     applied += count
