@@ -24,6 +24,8 @@ from docx import Document
 
 from . import statutory_report as base
 from .cap_form1_engine import build_cap_form1_data
+from .cap_chemical_legal import build_cap_chemical_legal_data
+from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
@@ -460,8 +462,9 @@ def _fill_facility_overview(table, project: Stage2Project) -> None:
 
 
 def _fill_form6(table, project: Stage2Project) -> None:
+    prepared = build_cap_chemical_legal_data(project)
     rows = []
-    for idx, row in enumerate(base._chemical_rows(project), 1):
+    for idx, row in enumerate(prepared.rows, 1):
         rows.append([
             str(idx),
             base._row_value(row, *_CHEMICAL_NAME_ALIASES),
@@ -511,12 +514,46 @@ def _fill_form7(table, project: Stage2Project) -> None:
 
 def _fill_form8(tables, project: Stage2Project) -> None:
     context_table, list_table = tables
-    _append_value(_unique_cells(context_table.rows[1])[0], base._text(project, "cap.site.surrounding_environment", default=""))
-    spec = base.FormSpec("", "", ("일련번호", "보호대상 종류", "보호대상 명칭", "거리(m)"))
-    rows = base._generic_form_rows(
-        project, "cap.site.surrounding_environment", spec,
-        (("일련번호", "연번"), ("보호대상 종류", "종류"), ("보호대상 명칭", "명칭"), ("거리", "거리(m)")),
-    )
+    prepared = build_cap_form8_data(project)
+
+    if prepared.no_protected_targets:
+        summary = "사업장 경계 500m 내 보호대상 없음 (회사/GIS 확인)"
+    elif prepared.rows:
+        counts = {"갑종": 0, "을종": 0, "환경수용체": 0}
+        evidence: list[str] = []
+        for row in prepared.rows:
+            category = _clean(row.get("보호대상 구분"))
+            if category in counts:
+                counts[category] += 1
+            basis = _clean(row.get("GIS/현장 근거"))
+            if basis and basis not in evidence:
+                evidence.append(basis)
+        summary = (
+            f"사업장 경계 500m 내 보호대상 {len(prepared.rows)}건"
+            f" (갑종 {counts['갑종']}건 / 을종 {counts['을종']}건 / "
+            f"환경수용체 {counts['환경수용체']}건)"
+        )
+        if evidence:
+            summary += " / 근거: " + ", ".join(evidence)
+    else:
+        summary = ""
+
+    if summary and len(context_table.rows) > 1:
+        cells = _unique_cells(context_table.rows[1])
+        if cells:
+            _write_cell(cells[-1], summary)
+
+    rows = [
+        [
+            row.get("일련번호", ""),
+            row.get("보호대상 종류", ""),
+            row.get("보호대상 명칭", ""),
+            row.get("사업장 경계와 거리(m)", ""),
+        ]
+        for row in prepared.rows
+    ]
+    if prepared.no_protected_targets and not rows:
+        rows = [["-", "-", "해당 없음", "-"]]
     _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
 
 
