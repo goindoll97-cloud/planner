@@ -186,6 +186,34 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "headers": ("장외 사고시나리오 없음 여부", "확인근거", "비고"),
         "example": (("아니오", "KORA 결과 KORA-01", "장외 사고시나리오 존재"),),
     },
+    {
+        "sheet": "25_총괄영향범위_요약",
+        "scope": "CAP",
+        "title": "총괄영향범위 GIS·KORA 확정요약",
+        "targets": ("cap.offsite.overall_impact_summary",),
+        "headers": (
+            "총괄영향범위 산출방법", "총괄영향범위 결과 요약", "GIS/KORA 근거",
+            "총괄영향범위 내 거주민수", "총괄영향범위 내 근로자수",
+            "보호대상 없음 여부", "비고",
+        ),
+        "example": (
+            ("KORA 사고시나리오 영향범위와 GIS 공간중첩", "총괄영향범위는 KORA/GIS 결과도면 기준", "KORA-ALL-01",
+             65, 25, "아니오", "형상은 GIS 결과파일 참조"),
+        ),
+    },
+    {
+        "sheet": "26_총괄영향범위_보호대상",
+        "scope": "CAP",
+        "title": "총괄영향범위 내 보호대상 명세",
+        "targets": ("cap.offsite.population_and_protected_targets",),
+        "headers": (
+            "보호대상 명칭", "보호대상 구분", "세부유형", "주소·위치", "좌표",
+            "사업장 경계와 거리(m)", "인원수", "GIS 근거", "비고",
+        ),
+        "example": (
+            ("○○초등학교", "갑종", "교육·연구시설", "○○시 ○○로 10", "35.0,129.0", 420, 350, "GIS-PT-01", "예시"),
+        ),
+    },
 )
 
 ATTACHMENT_KINDS = {
