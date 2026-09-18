@@ -7,6 +7,7 @@ from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
 from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
+from .cap_form16_engine import build_cap_form16_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
 
@@ -279,6 +280,50 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                         legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
                     )
                 )
+
+        checked_rules += 1
+        form16 = build_cap_form16_data(project)
+        if form16.blockers:
+            for index, blocker in enumerate(form16.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM16-{index}",
+                        status="HOLD",
+                        system="CAP",
+                        section="비상대응분야 요약서",
+                        legal_item="별지 제16호 화학사고예방관리계획서 비상대응분야 요약서",
+                        message=str(blocker),
+                        field_keys=(
+                            "cap.business.writer_name",
+                            "cap.business.writer_contact",
+                            "cap.business.writer_email",
+                            "cap.offsite.scenario_impact_table",
+                            "cap.offsite.scenario_frequency",
+                            "cap.prevention.emergency_contact_system",
+                            "cap.internal.shutdown_authority",
+                            "cap.internal.shutdown_procedure",
+                            "cap.internal.communication_system",
+                        ),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제16호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM16-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="비상대응분야 요약서",
+                    legal_item="별지 제16호 화학사고예방관리계획서 비상대응분야 요약서",
+                    message="사업장 일반정보, 작성일, 사고시나리오 물질·사고유형, 위험도 핵심정보 및 비상대응 요약을 확인했습니다.",
+                    field_keys=(
+                        "cap.offsite.scenario_impact_table",
+                        "cap.offsite.scenario_frequency",
+                        "cap.prevention.emergency_contact_system",
+                    ),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제16호서식",
+                )
+            )
 
     order = {"HOLD": 0, "REVIEW_REQUIRED": 1, "PASS": 2, "NOT_APPLICABLE": 3}
     issues_list.sort(key=lambda issue: (order.get(issue.status, 9), issue.system, issue.section, issue.code))
