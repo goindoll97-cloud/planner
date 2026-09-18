@@ -19,6 +19,7 @@ from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
 from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
+from .cap_form16_engine import build_cap_form16_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -152,6 +153,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     form13 = build_cap_form13_data(project)
     form14 = build_cap_form14_data(project)
     form15 = build_cap_form15_data(project)
+    form16 = build_cap_form16_data(project)
     threshold_rows_ready = bool(form1.chemical_rows) and all(
         str(row.get("물질구분") or "").strip()
         and str(row.get("하위규정수량(ton)") or "").strip()
@@ -181,9 +183,9 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
     items.append(CAPFormCoverageItem(
         1, "사업장의 작성수준 구분", "최대보유량 단위 정규화(ton)",
-        READY if quantity_rows_ready else RENDERER_GAP,
-        "계산·출력엔진", ("inventory.chemicals",), "원자료의 수량과 단위",
-        "kg·ton·g 질량단위를 ton으로 정규화하여 법정서식에 기록",
+        READY if quantity_rows_ready else ASK_COMPANY,
+        "회사 수량·단위 + ton 정규화 엔진", ("inventory.chemicals",), "원자료의 최대보유량과 질량단위",
+        "kg·ton·g는 자동 환산하며 환산할 수 없는 단위는 회사 확인이 필요함",
     ))
     items.append(CAPFormCoverageItem(
         1, "사업장의 작성수준 구분", "최종 작성수준 1군/2군",
@@ -385,23 +387,43 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     # 별지 제16호
     items.append(CAPFormCoverageItem(
         16, "비상대응분야 요약서", "사업장 일반정보·담당자 및 연락처",
-        READY if _has(project, "cap.business.writer_name", "cap.business.writer_contact") else ASK_COMPANY,
-        "사업장 일반정보 재사용",
-        ("cap.business.writer_name", "cap.business.writer_contact"),
-        "별지 3의 확정값",
+        READY if not any("사업장 일반정보" in item for item in form16.company_blockers) else ASK_COMPANY,
+        "별지 제3호 회사 확정정보 재사용",
+        ("cap.business.representative", "business.address", "cap.business.registration_no",
+         "cap.business.writer_name", "cap.business.writer_contact", "cap.business.writer_email"),
+        "대표자·주소·사업자등록번호·담당자·연락처·메일",
     ))
     items.append(CAPFormCoverageItem(
         16, "비상대응분야 요약서", "작성일",
-        RENDERER_GAP,
-        "출력엔진",
-        (),
-        "사용자가 확정한 작성일 또는 출력일",
-        "현재 초안에서 공란으로 남는 항목이므로 별도 날짜 필드/출력 규칙 필요",
+        READY,
+        "DOCX 출력엔진",
+        ("cap.business.report_date",),
+        "회사 확정 작성일이 있으면 해당 날짜, 없으면 DOCX 생성일",
+        "작성일 공란을 남기지 않되 회사가 별도 작성일을 확정하면 그 값을 우선 사용",
     ))
     items.append(CAPFormCoverageItem(
-        16, "비상대응분야 요약서", "사고시나리오·비상대응 핵심내용",
-        CALCULATION, "별지 12~15 및 비상대응계획 요약", (),
-        "완성된 사고시나리오·위험도·비상대응계획",
+        16, "비상대응분야 요약서", "사고시나리오 선정 물질·사고유형",
+        READY if form16.ready else (ASK_COMPANY if form16.company_blockers else CALCULATION),
+        "별지 제1·12호 연계 계산",
+        ("inventory.chemicals", "cap.offsite.scenario_impact_table"),
+        "CAS·함량·최대보유량과 확정 사고유형",
+        "별지 제12호 사고유형을 재사용하여 기존 사고유형 공란을 방지",
+    ))
+    items.append(CAPFormCoverageItem(
+        16, "비상대응분야 요약서", "사고시나리오·위험도 핵심정보",
+        READY if form16.ready else (ASK_COMPANY if form16.company_blockers else CALCULATION),
+        "별지 제12·15호 연계 계산",
+        ("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
+        "시나리오명·설비·사고유형·시설빈도·장외거리·주민수·KORA/GIS 근거",
+    ))
+    items.append(CAPFormCoverageItem(
+        16, "비상대응분야 요약서", "내부·외부 비상대응 핵심내용",
+        READY if form16.ready else (ASK_COMPANY if form16.company_blockers else CALCULATION),
+        "확정 비상대응계획 요약",
+        ("cap.prevention.emergency_contact_system", "cap.internal.shutdown_authority",
+         "cap.internal.shutdown_procedure", "cap.internal.communication_system"),
+        "내부 비상대응 필수계획과 1군의 외부 비상대응계획",
+        "AI 생성문이 아니라 회사 확정 비상대응자료를 항목별로 재배치",
     ))
 
     return tuple(items)
