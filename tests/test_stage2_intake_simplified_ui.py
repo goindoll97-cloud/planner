@@ -37,6 +37,17 @@ class Stage2IntakeSimplifiedUITests(unittest.TestCase):
         self.assertIn("회사 보유 SDS/MSDS·도면·첨부자료", self.source)
         self.assertIn("SDS/MSDS", self.source)
 
+    def test_cap_business_clarification_asks_for_missing_company_facts(self):
+        self.assertIn("### 4. 회사 확인 질문", self.source)
+        self.assertIn("AI가 추측해서 채우지 않습니다", self.source)
+        self.assertIn("제출구분", self.source)
+        self.assertIn("제출 사유", self.source)
+        self.assertIn("작성자 성명", self.source)
+        self.assertIn("담당자 연락처", self.source)
+        self.assertIn("담당자 메일주소", self.source)
+        self.assertIn("회사 확인내용 저장", self.source)
+        self.assertIn('"USER_CONFIRMED"', self.source)
+
     def test_upload_success_is_emitted_before_optional_refresh(self):
         """Workbook import must save and acknowledge before refreshing CAS controls."""
         marker = "통합 작성자료를 반영했습니다. 입력·확인"

@@ -32,6 +32,12 @@ class CAPFinalFormRuntimeTests(unittest.TestCase):
         self.assertIn("☒ 부적합", rendered)
         self.assertIn("☐ 신규제출", rendered)
 
+    def test_submission_reason_can_be_stored_separately(self):
+        rendered = render_submission_type("신규제출", "최초")
+        self.assertIn("☒ 신규제출", rendered)
+        self.assertIn("☒ 최초", rendered)
+        self.assertIn("☐ 부적합", rendered)
+
     def test_ambiguous_yes_does_not_invent_joint_submission_mode(self):
         rendered = render_joint_emergency("예")
         self.assertEqual(rendered, "☐ 공동제출   ☐ 단독제출")

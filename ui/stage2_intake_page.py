@@ -74,6 +74,17 @@ def _line(item, guidance) -> str:
     return f"- **{item.system_label} · {item.label}**{suffix}"
 
 
+def _confirmed_text(project, key: str) -> str:
+    record = project.get_field(key)
+    if record is None or record.value in (None, ""):
+        return ""
+    return str(record.value).strip()
+
+
+def _select_index(options: list[str], current: str) -> int:
+    return options.index(current) if current in options else 0
+
+
 project_id = _project_selector()
 if not project_id:
     st.stop()
@@ -173,7 +184,117 @@ if integrated_upload is not None and st.button("통합 작성자료 반영", typ
             st.warning(warning)
         st.rerun()
 
-st.markdown("### 4. 회사 보유 SDS/MSDS·도면·첨부자료")
+if project.cap_in_scope:
+    st.markdown("### 4. 회사 확인 질문")
+    st.caption(
+        "회사자료만으로 확정하기 어려운 법정서식 항목을 담당자에게 확인하는 단계입니다. "
+        "답한 내용은 회사 확정사실로 저장되며, AI가 추측해서 채우지 않습니다."
+    )
+    with st.form(f"cap_business_clarification_{project.project_id}"):
+        q_unit = st.text_input(
+            "단위공장명",
+            value=_confirmed_text(project, "cap.business.unit_plant_name"),
+            help="법정서식에 표시할 단위공장명을 회사 내부 명칭 기준으로 입력합니다.",
+        )
+        q_complex = st.text_input(
+            "산업단지",
+            value=_confirmed_text(project, "cap.business.industrial_complex"),
+            help="해당하는 경우 산업단지의 공식 명칭을 입력하고, 해당하지 않으면 '해당 없음'으로 입력합니다.",
+        )
+
+        submission_options = ["선택하세요", "신규제출", "변경제출", "재제출", "이행점검 불이행"]
+        reason_options = ["선택하세요", "최초", "부적합"]
+        joint_options = ["선택하세요", "공동제출", "단독제출"]
+        other_review_options = [
+            "선택하세요", "미해당", "해당 - 공정안전보고서",
+            "해당 - 안전성향상계획", "해당 - 공정안전보고서 + 안전성향상계획",
+        ]
+        accident_options = ["선택하세요", "예", "아니오"]
+
+        q_submission = st.selectbox(
+            "제출구분",
+            submission_options,
+            index=_select_index(submission_options, _confirmed_text(project, "cap.business.submission_type")),
+        )
+        q_reason = st.selectbox(
+            "제출 사유",
+            reason_options,
+            index=_select_index(reason_options, _confirmed_text(project, "cap.business.submission_reason")),
+            help="선택한 제출구분에서 법정서식의 '최초/부적합' 하위 체크에 사용합니다.",
+        )
+        q_joint = st.selectbox(
+            "공동비상대응계획 제출 방식",
+            joint_options,
+            index=_select_index(joint_options, _confirmed_text(project, "cap.business.joint_emergency_plan")),
+        )
+        q_other_review = st.selectbox(
+            "타 제도 심사결과 활용",
+            other_review_options,
+            index=_select_index(other_review_options, _confirmed_text(project, "cap.business.other_system_review")),
+        )
+        q_recent_accident = st.selectbox(
+            "최근 3년간 화학사고 발생 여부",
+            accident_options,
+            index=_select_index(accident_options, _confirmed_text(project, "cap.business.recent_accident")),
+        )
+
+        q_writer_department = st.text_input(
+            "작성자 부서",
+            value=_confirmed_text(project, "cap.business.writer_department"),
+        )
+        q_writer_name = st.text_input(
+            "작성자 성명",
+            value=_confirmed_text(project, "cap.business.writer_name"),
+        )
+        q_writer_contact = st.text_input(
+            "담당자 연락처",
+            value=_confirmed_text(project, "cap.business.writer_contact"),
+        )
+        q_writer_email = st.text_input(
+            "담당자 메일주소",
+            value=_confirmed_text(project, "cap.business.writer_email"),
+        )
+
+        clarification_submit = st.form_submit_button("회사 확인내용 저장", type="primary", width="stretch")
+
+    if clarification_submit:
+        answers = {
+            "cap.business.unit_plant_name": ("단위공장명", q_unit),
+            "cap.business.industrial_complex": ("산업단지", q_complex),
+            "cap.business.submission_type": ("제출구분", "" if q_submission == "선택하세요" else q_submission),
+            "cap.business.submission_reason": ("제출 사유", "" if q_reason == "선택하세요" else q_reason),
+            "cap.business.joint_emergency_plan": ("공동비상대응계획 수립 여부", "" if q_joint == "선택하세요" else q_joint),
+            "cap.business.other_system_review": ("타 제도 심사결과 활용 여부", "" if q_other_review == "선택하세요" else q_other_review),
+            "cap.business.recent_accident": ("최근 3년간 화학사고 발생 여부", "" if q_recent_accident == "선택하세요" else q_recent_accident),
+            "cap.business.writer_department": ("작성자 부서", q_writer_department),
+            "cap.business.writer_name": ("작성자 성명", q_writer_name),
+            "cap.business.writer_contact": ("담당자 연락처", q_writer_contact),
+            "cap.business.writer_email": ("담당자 메일주소", q_writer_email),
+        }
+        saved = 0
+        for key, (label, value) in answers.items():
+            value = str(value or "").strip()
+            if not value:
+                continue
+            if _confirmed_text(project, key) == value:
+                continue
+            project.set_field(
+                key,
+                label,
+                value,
+                "USER_CONFIRMED",
+                note="Stage 3 회사 확인 질문에서 담당자가 직접 확인한 값",
+            )
+            saved += 1
+        if saved:
+            reset_after_intake_change(project)
+            save_project(project)
+            st.success(f"회사 확인내용 {saved}개를 저장했습니다.")
+            st.rerun()
+        else:
+            st.info("새로 저장할 확인내용이 없습니다.")
+
+st.markdown("### 5. 회사 보유 SDS/MSDS·도면·첨부자료")
 if manual_mode:
     st.success("도면·이미지·원본 첨부자료는 담당자가 별도 작성·취합하도록 설정되어 있어 이 단계의 텍스트 작성 완료조건에 포함하지 않습니다.")
     with st.expander("필요한 경우 제품 SDS/MSDS·참고자료를 선택적으로 업로드", expanded=False):
@@ -287,8 +408,8 @@ if review_rows:
             st.markdown(_line(item, guidance))
 
 st.info(
-    "KOSHA CAS 조회자료와 도면·첨부자료를 별도 관리하더라도 법정 제출자료에서 실제 제품 SDS/MSDS나 필요한 도면이 없어지는 것은 아닙니다. "
-    "프로그램에서는 보고서 본문용 회사자료, 공공 참고자료, 최종 회사 첨부자료의 역할을 나누어 관리합니다."
+    "회사가 보유한 SDS/MSDS와 도면·첨부자료를 별도 관리하더라도 법정 제출자료에서 필요한 원본자료가 없어지는 것은 아닙니다. "
+    "프로그램에서는 회사 확정사실, 법령·계산 결과, 최종 회사 첨부자료의 역할을 나누어 관리합니다."
 )
 
 st.divider()

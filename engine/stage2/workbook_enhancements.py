@@ -34,7 +34,11 @@ OPTION_GROUPS: dict[str, tuple[str, ...]] = {
     "yes_no_na": ("예", "아니오", "해당 없음"),
     "machinery_type": ("원심펌프", "용적식펌프", "왕복동압축기", "원심압축기", "교반기", "송풍기", "팬", "기타(직접입력)"),
     "treatment_type": ("흡수", "흡착", "연소", "응축", "중화", "세정", "회수", "폐수처리", "기타(직접입력)"),
-    "submission_type": ("신규", "변경", "재제출", "기타(직접입력)"),
+    "submission_type": ("신규제출", "변경제출", "재제출", "이행점검 불이행"),
+    "submission_reason": ("최초", "부적합"),
+    "joint_submission": ("공동제출", "단독제출"),
+    "other_system_review": ("미해당", "해당 - 공정안전보고서", "해당 - 안전성향상계획", "해당 - 공정안전보고서 + 안전성향상계획"),
+    "yes_no": ("예", "아니오"),
 }
 
 TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
@@ -62,13 +66,21 @@ TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
 
 FIELD_DROPDOWNS = {
     "cap.business.submission_type": "submission_type",
-    "cap.business.other_system_review": "yes_no_na",
+    "cap.business.submission_reason": "submission_reason",
+    "cap.business.joint_emergency_plan": "joint_submission",
+    "cap.business.other_system_review": "other_system_review",
+    "cap.business.residents_in_overall_range": "yes_no",
+    "cap.business.recent_accident": "yes_no",
 }
 
 INPUT_HINTS = {
     "process.description": "공정단계, 주요 설비, 취급물질, 정상 운전조건을 실제 사업장 사실 기준으로 작성",
-    "cap.business.submission_type": "신규·변경 등 해당 유형을 선택. 목록에 없으면 직접 입력 가능",
+    "cap.business.submission_type": "법정서식의 제출구분을 선택",
+    "cap.business.submission_reason": "선택한 제출구분의 하위 사유(최초/부적합)를 회사 담당자 또는 제출이력으로 확인",
+    "cap.business.joint_emergency_plan": "공동제출 또는 단독제출 여부를 실제 운영방식으로 확인",
     "cap.business.other_system_review": "실제 해당 여부를 선택",
+    "cap.business.residents_in_overall_range": "총괄영향범위 산정결과를 확인한 뒤 선택",
+    "cap.business.recent_accident": "최근 3년간 사업장 화학사고 이력을 확인한 뒤 선택",
 }
 
 TABLE_EXAMPLES: dict[str, tuple[tuple[Any, ...], ...]] = {

@@ -399,6 +399,16 @@ def _fill_structured_table(
     return result.data, len(result.applied), warnings
 
 
+def _joined_confirmed(project: Stage2Project, *keys: str) -> str:
+    parts = [_confirmed_value(project, key).strip() for key in keys]
+    return " ".join(part for part in parts if part)
+
+
+def _writer_display(project: Stage2Project) -> str:
+    structured = _joined_confirmed(project, "cap.business.writer_department", "cap.business.writer_name")
+    return structured or _confirmed_value(project, "cap.business.writer_info")
+
+
 def _facility_count_text(project: Stage2Project) -> str:
     rows = _confirmed_rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     counts: dict[str, int] = {}
@@ -422,19 +432,19 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     level = project.cap_group
     scalar_specs = [
         ("사업장 일반정보", "사업장명", project.company_name),
-        ("사업장 일반정보", "단위공장명", project.site_name),
+        ("사업장 일반정보", "단위공장명", _confirmed_value(project, "cap.business.unit_plant_name") or project.site_name),
         ("사업장 일반정보", "사업자 등록번호", _confirmed_value(project, "cap.business.registration_no", "business.registration_no")),
         ("사업장 일반정보", "대표자", _confirmed_value(project, "cap.business.representative", "business.representative")),
         ("사업장 일반정보", "우편번호/주소", _confirmed_value(project, "business.address")),
         ("사업장 일반정보", "산업단지", _confirmed_value(project, "cap.business.industrial_complex")),
         ("사업장 일반정보", "대표전화", _confirmed_value(project, "cap.business.contact")),
-        ("사업장 일반정보", "제출구분", _confirmed_value(project, "cap.business.submission_type")),
+        ("사업장 일반정보", "제출구분", _joined_confirmed(project, "cap.business.submission_type", "cap.business.submission_reason")),
         ("사업장 일반정보", "작성수준", f"{'■' if level == '1군' else '□'} 1군   {'■' if level == '2군' else '□'} 2군"),
         ("사업장 일반정보", "공동비상대응계획 수립 여부", _confirmed_value(project, "cap.business.joint_emergency_plan")),
         ("사업장 일반정보", "유사제도 심사결과 활용", _confirmed_value(project, "cap.business.other_system_review")),
         ("사업장 일반정보", "총괄영향범위내 주민여부", _confirmed_value(project, "cap.business.residents_in_overall_range")),
         ("사업장 일반정보", "최근 3년간 화학사고 발생 여부", _confirmed_value(project, "cap.business.recent_accident")),
-        ("사업장 일반정보", "화학사고예방관리계획서 작성자", _confirmed_value(project, "cap.business.writer_info")),
+        ("사업장 일반정보", "화학사고예방관리계획서 작성자", _writer_display(project)),
         ("사업장 일반정보", "담당자 연락처", _confirmed_value(project, "cap.business.writer_contact")),
         ("사업장 일반정보", "담당자 메일주소", _confirmed_value(project, "cap.business.writer_email")),
         ("총괄 취급시설 개요", "단위공장 구성", _confirmed_value(project, "cap.basic.total_facility_overview")),
