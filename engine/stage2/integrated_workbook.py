@@ -153,6 +153,118 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "sheet": "09_PSM_조건부서식_적용여부",
+        "scope": "PSM",
+        "title": "PSM 조건부 별지서식 적용여부 확인",
+        "targets": ("psm.psi.form_applicability",),
+        "headers": ("서식번호", "서식명", "적용여부", "확인근거"),
+        "example": (
+            ("17-2", "이상발생시 인터록 작동조건 및 가동중지 범위", "적용", "공정 인터록 목록 및 P&ID 확인"),
+            ("17-3", "소화설비 설치계획", "적용", "소화설비 배치도 확인"),
+            ("17-4", "화재탐지경보설비 설치계획", "적용", "화재감지·경보설비 현황 확인"),
+            ("17-5", "가스누출감지경보기 설치계획", "적용", "가스감지기 목록 확인"),
+            ("18", "내화구조 명세", "해당 없음", "내화구조 적용대상 없음 확인"),
+            ("19", "국소배기장치 개요", "해당 없음", "국소배기 적용대상 없음 확인"),
+            ("20", "방폭전기/계장 기계·기구 선정기준", "적용", "폭발위험장소 구분도 확인"),
+        ),
+    },
+    {
+        "sheet": "12_PSM_인터록",
+        "scope": "PSM",
+        "title": "별지 제17호의2서식 입력자료 · 인터록 작동조건 및 가동중지 범위",
+        "targets": ("psm.psi.interlock_conditions",),
+        "headers": (
+            "인터록번호", "대상설비번호", "설정값-온도(℃)", "설정값-압력(MPa)",
+            "설정값-액위(m)", "설정값-기타", "감지기번호", "최종 작동설비번호",
+            "가동중지범위", "점검주기", "비고",
+        ),
+        "example": (
+            ("IL-101", "R-101", "120 ℃", "0.8 MPa", "해당 없음", "해당 없음",
+             "TI-101/PI-101", "XV-101/P-101", "R-101 원료공급 및 가열 정지", "월 1회", "예시값"),
+        ),
+    },
+    {
+        "sheet": "13_PSM_소화설비",
+        "scope": "PSM",
+        "title": "별지 제17호의3서식 입력자료 · 소화설비 설치계획",
+        "targets": ("psm.psi.fire_protection",),
+        "headers": (
+            "설치지역", "소화기", "자동확산소화기", "자동소화장치", "옥내소화전",
+            "스프링클러", "물분무소화설비", "포소화설비", "CO2 소화설비",
+            "할로겐화합물 소화설비", "청정소화약제 소화설비", "옥외소화전",
+        ),
+        "example": (
+            ("원료저장동", "분말 6기", "해당 없음", "해당 없음", "2개소",
+             "전면 설치", "해당 없음", "해당 없음", "해당 없음",
+             "해당 없음", "해당 없음", "2개소"),
+        ),
+    },
+    {
+        "sheet": "14_PSM_화재탐지",
+        "scope": "PSM",
+        "title": "별지 제17호의4서식 입력자료 · 화재탐지경보설비 설치계획",
+        "targets": ("psm.psi.fire_detection",),
+        "headers": (
+            "설치지역", "단독경보형 감지기", "비상경보설비", "시각경보기",
+            "자동화재탐지설비", "비상방송설비", "자동화재속보설비",
+            "통합감시시설", "누전경보기",
+        ),
+        "example": (
+            ("반응동", "해당 없음", "1식", "2개소", "연기·열감지기 12개",
+             "1식", "1식", "중앙제어실 연동", "1식"),
+        ),
+    },
+    {
+        "sheet": "15_PSM_내화구조",
+        "scope": "PSM",
+        "title": "별지 제18호서식 입력자료 · 내화구조 명세",
+        "targets": ("psm.psi.fireproofing",),
+        "headers": ("내화설비 또는 지역", "내화부위", "내화시험기준 및 시간", "비고"),
+        "example": (
+            ("R-101 지지철골", "주기둥 및 보", "2시간 내화성능", "내화피복 적용"),
+        ),
+    },
+    {
+        "sheet": "16_PSM_국소배기",
+        "scope": "PSM",
+        "title": "별지 제19호서식 입력자료 · 국소배기장치 개요",
+        "targets": ("psm.psi.local_exhaust",),
+        "headers": (
+            "공정 또는 작업장명", "실내외 구분", "발생원", "유해물질 종류",
+            "후드형식", "후드 제어풍속(m/s)", "덕트내 반송속도(m/s)",
+            "배풍량(m3/min)", "전동기용량(kW)", "배기 및 처리순서", "방폭형식",
+        ),
+        "example": (
+            ("혼합공정", "실내", "원료 투입구", "톨루엔", "포위식", "0.5",
+             "12", "80", "7.5", "후드 → 덕트 → 활성탄 흡착기 → 배기구", "Ex d IIB T4"),
+        ),
+    },
+    {
+        "sheet": "17_PSM_방폭기기",
+        "scope": "PSM",
+        "title": "별지 제20호서식 입력자료 · 방폭전기/계장 기계·기구 선정기준",
+        "targets": ("psm.psi.ex_equipment",),
+        "headers": (
+            "설치장소 또는 공정", "전기/계장 기계·기구명",
+            "0종장소 선정기준(방폭형식)", "1종장소 선정기준(방폭형식)",
+            "2종장소 선정기준(방폭형식)",
+        ),
+        "example": (
+            ("원료저장", "모터·현장계기", "해당 없음", "Ex d IIB T4", "Ex e IIB T4"),
+        ),
+    },
+    {
+        "sheet": "18_PSM_위험성평가자",
+        "scope": "PSM",
+        "title": "별지 제21호서식 입력자료 · 위험성평가 참여 전문가 명단",
+        "targets": ("psm.risk.team",),
+        "headers": ("책임분야", "성명", "소속회사", "직책", "주요경력"),
+        "example": (
+            ("공정", "홍길동", "예시화학", "공정팀장", "공정설계 및 운전 15년"),
+            ("안전", "김안전", "예시화학", "안전팀장", "공정안전관리 12년"),
+        ),
+    },
+    {
         "sheet": "20_배출물질_처리시설",
         "scope": "CAP",
         "title": "배출물질 처리시설 현황",
@@ -561,9 +673,45 @@ def _prefill_facilities(project: Stage2Project) -> list[list[Any]]:
     return out
 
 
+PSM_CONDITIONAL_FORMS: tuple[tuple[str, str], ...] = (
+    ("17-2", "이상발생시 인터록 작동조건 및 가동중지 범위"),
+    ("17-3", "소화설비 설치계획"),
+    ("17-4", "화재탐지경보설비 설치계획"),
+    ("17-5", "가스누출감지경보기 설치계획"),
+    ("18", "내화구조 명세"),
+    ("19", "국소배기장치 개요"),
+    ("20", "방폭전기/계장 기계·기구 선정기준"),
+)
+
+
+def _prefill_psm_form_applicability(project: Stage2Project) -> list[list[Any]]:
+    record = project.get_field("psm.psi.form_applicability")
+    saved: dict[str, Mapping[str, Any]] = {}
+    if record is not None and isinstance(record.value, list):
+        for row in record.value:
+            if not isinstance(row, Mapping):
+                continue
+            form_no = str(_pick(row, "서식번호", "form_no") or "").strip()
+            if form_no:
+                saved[form_no] = row
+
+    rows: list[list[Any]] = []
+    for form_no, form_name in PSM_CONDITIONAL_FORMS:
+        row = saved.get(form_no, {})
+        rows.append([
+            form_no,
+            form_name,
+            _pick(row, "적용여부", "적용 여부", "applicability"),
+            _pick(row, "확인근거", "근거", "basis"),
+        ])
+    return rows
+
+
 def _table_rows_for(project: Stage2Project, sheet: str, example: bool, spec: Mapping[str, Any]) -> list[list[Any]]:
     if example:
         return [list(row) for row in spec.get("example", ())]
+    if sheet == "09_PSM_조건부서식_적용여부":
+        return _prefill_psm_form_applicability(project)
     if sheet == "02_화학물질정보":
         return _prefill_chemicals(project)
     if sheet == "03_설비정보":
