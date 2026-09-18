@@ -37,9 +37,14 @@ def _truth_state(value: object) -> bool | None:
     return None
 
 
-def render_submission_type(value: object) -> str:
-    """Annex 3: preserve all submission choices and check only explicit facts."""
+def render_submission_type(value: object, reason: object = "") -> str:
+    """Annex 3: preserve all submission choices and check only explicit facts.
+
+    The primary submission category and its subordinate reason are stored as
+    separate company facts. Legacy combined text remains supported.
+    """
     n = _norm(value)
+    reason_n = _norm(reason)
     primary = ""
     if "이행점검" in n and "불이행" in n:
         primary = "이행점검불이행"
@@ -50,8 +55,8 @@ def render_submission_type(value: object) -> str:
     elif "신규제출" in n or "신규" in n:
         primary = "신규제출"
 
-    first = "최초" in n
-    unsuitable = "부적합" in n
+    first = "최초" in n or "최초" in reason_n
+    unsuitable = "부적합" in n or "부적합" in reason_n
     lines = []
     for key, label in (
         ("신규제출", "신규제출"),
@@ -206,23 +211,34 @@ def render_protected_target_groups(selected_text: str) -> tuple[str, str, str]:
     )
 
 
+def _writer_display(project: Stage2Project) -> str:
+    name = report._text(project, "cap.business.writer_name", default="")
+    department = report._text(project, "cap.business.writer_department", default="")
+    if name or department:
+        return " ".join(part for part in (department, name) if part)
+    return report._text(project, "cap.business.writer_info", default=report.MISSING)
+
+
 def _docx_form3(doc, project: Stage2Project) -> None:
     level = project.cap_group or report._text(project, "cap.business.writing_level", default=report.MISSING)
     rows = (
         ("사업장명", project.company_name or report.MISSING),
-        ("단위공장명", report._text(project, "cap.business.unit_plant_name", default=report.MISSING)),
+        ("단위공장명", report._text(project, "cap.business.unit_plant_name", default=project.site_name or report.MISSING)),
         ("사업자 등록번호", report._text(project, "cap.business.registration_no", default=report.MISSING)),
         ("대표자", report._text(project, "cap.business.representative", default=report.MISSING)),
         ("우편번호/주소", report._text(project, "business.address", default=report.MISSING)),
         ("산업단지", report._text(project, "cap.business.industrial_complex", default=report.MISSING)),
         ("대표전화", report._text(project, "cap.business.contact", default=report.MISSING)),
-        ("제출구분", render_submission_type(report._text(project, "cap.business.submission_type", default=""))),
+        ("제출구분", render_submission_type(
+            report._text(project, "cap.business.submission_type", default=""),
+            report._text(project, "cap.business.submission_reason", default=""),
+        )),
         ("작성수준", render_writing_level(level)),
         ("공동비상대응계획 수립 여부", render_joint_emergency(report._text(project, "cap.business.joint_emergency_plan", default=""))),
         ("유사제도 심사결과 활용", render_other_system_review(report._text(project, "cap.business.other_system_review", default=""))),
         ("총괄영향범위내 주민여부", render_yes_no(report._text(project, "cap.business.residents_in_overall_range", default=""))),
         ("최근 3년간 화학사고 발생 여부", render_yes_no(report._text(project, "cap.business.recent_accident", default=""))),
-        ("화학사고예방관리계획서 작성자", report._text(project, "cap.business.writer_info", default=report.MISSING)),
+        ("화학사고예방관리계획서 작성자", _writer_display(project)),
         ("담당자 연락처", report._text(project, "cap.business.writer_contact", default=report.MISSING)),
         ("담당자 메일주소", report._text(project, "cap.business.writer_email", default=report.MISSING)),
     )
