@@ -6,6 +6,7 @@ from typing import Any
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 from .requirements import RequirementSpec
+from .psm_applicability import requirement_explicitly_not_applicable
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,20 @@ class RequirementResult:
 
 
 def evaluate_requirement(project: Stage2Project, spec: RequirementSpec) -> RequirementResult:
+    if requirement_explicitly_not_applicable(project, spec.key):
+        return RequirementResult(
+            key=spec.key,
+            system=spec.system,
+            section=spec.section,
+            label=spec.label,
+            state="NOT_REQUIRED",
+            completion_pct=100.0,
+            missing_fields=(),
+            draft_fields=(),
+            hold_fields=(),
+            legal_basis=spec.legal_basis,
+        )
+
     if not spec.required:
         return RequirementResult(
             key=spec.key,

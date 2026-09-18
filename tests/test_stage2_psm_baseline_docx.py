@@ -125,6 +125,104 @@ class PSMBaselineDocxTests(unittest.TestCase):
         self.assertIn("2026-10-01", _unique_cells(table.rows[17])[2].text)
         self.assertNotIn("반응동 2동", _unique_cells(table.rows[18])[2].text)
 
+    def test_form12_prefers_structured_details_but_keeps_stage1_identity(self):
+        project = _project()
+        _set(project, "business.address", "충청북도 충주시 산업로 100")
+        _set(project, "psm.business.form12_details", [{
+            "사업장명": "다른회사명",
+            "제출구분": "변경",
+            "사업자등록번호": "123-45-67890",
+            "대표자": "홍길동",
+            "대상 유해·위험설비": "MIC 반응공정",
+            "한국표준산업분류": "C20119",
+            "근로자수": "80",
+            "계약전력(kW)": "1200",
+            "작성자 성명": "김작성",
+            "작성자 자격": "산업안전기사",
+            "주요 원료": "Methyl isocyanate",
+            "주요 생산품": "제품 A",
+            "사업개요": "MIC 반응·정제공정 변경",
+            "사업장 소재지": "다른 주소",
+            "전화번호": "043-000-0000",
+            "전송번호": "해당 없음",
+            "부지면적": "10,000㎡",
+            "주요 건물": "반응동 2동",
+            "총 사업기간": "2026-10-01 ~ 2027-03-31",
+            "착공예정일": "2026-10-01",
+            "시운전기간": "2027-03-01 ~ 2027-03-31",
+        }])
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        form12 = "\n".join(cell.text for row in doc.tables[0].rows for cell in row.cells)
+
+        self.assertIn("세계화학(주) 충주공장", form12)
+        self.assertNotIn("다른회사명", form12)
+        self.assertIn("충청북도 충주시 산업로 100", form12)
+        self.assertNotIn("다른 주소", form12)
+        self.assertIn("MIC 반응·정제공정 변경", form12)
+        self.assertIn("김작성", form12)
+        self.assertIn("산업안전기사", form12)
+        self.assertIn("☒ 변경", form12)
+
+    def test_form19_2_uses_structured_worst_and_alternative_rows(self):
+        project = _project()
+        base = {
+            "대기온도(℃)": "25",
+            "습도(%)": "50",
+            "표면거칠기": "도시",
+            "물질명": "염소",
+            "물질의 상태": "기체",
+            "설비명(또는 배관부위)": "V-201",
+            "운전압력(MPa)": "0.7",
+            "운전온도(℃)": "25",
+            "웅덩이 크기(m2)": "해당 없음",
+            "누출결과": "연속누출",
+            "웅덩이(kg/s)": "해당 없음",
+            "화재-4 kW/m2": "해당 없음",
+            "화재-12.5 kW/m2": "해당 없음",
+            "화재-37.5 kW/m2": "해당 없음",
+            "폭발-7 kPa": "해당 없음",
+            "폭발-21 kPa": "해당 없음",
+            "폭발-70 kPa": "해당 없음",
+            "인화성-25% LEL": "해당 없음",
+            "인화성-LEL": "해당 없음",
+            "인화성-UEL": "해당 없음",
+            "계산모델·결과 근거": "KORA 결과파일",
+        }
+        worst = dict(base, **{
+            "시나리오 구분": "최악의 사고 시나리오",
+            "풍속(m/s)": "1.5",
+            "대기안정도(A~F)": "F",
+            "누출구의 크기(mm2)": "25",
+            "직접계산(kg/s or kg)": "0.25",
+            "설비/배관(kg/s)": "0.25",
+            "독성-ERPG 1": "650",
+            "독성-ERPG 2": "300",
+            "독성-ERPG 3": "180",
+        })
+        alternative = dict(base, **{
+            "시나리오 구분": "대안의 사고 시나리오",
+            "풍속(m/s)": "3.0",
+            "대기안정도(A~F)": "D",
+            "누출구의 크기(mm2)": "10",
+            "직접계산(kg/s or kg)": "0.10",
+            "설비/배관(kg/s)": "0.10",
+            "독성-ERPG 1": "320",
+            "독성-ERPG 2": "150",
+            "독성-ERPG 3": "90",
+        })
+        _set(project, "psm.risk.consequence_table", [worst, alternative])
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        form19_2 = "\n".join(cell.text for row in doc.tables[12].rows for cell in row.cells)
+
+        self.assertIn("1.5", form19_2)
+        self.assertIn("3.0", form19_2)
+        self.assertIn("염소", form19_2)
+        self.assertIn("650", form19_2)
+        self.assertIn("300", form19_2)
+        self.assertIn("90", form19_2)
+
     def test_form19_matches_uploaded_explosion_proof_then_exhaust_sequence_order(self):
         project = _project()
         _set(project, "psm.psi.local_exhaust", [

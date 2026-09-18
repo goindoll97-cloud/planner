@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from engine.legal_terminology import psm_field_label
 
 from .project import CONFIRMED_STATUSES, Stage2Project
+from .psm_applicability import requirement_explicitly_not_applicable
 from .requirements import (
     COMMON_REQUIREMENTS,
     RequirementSpec,
@@ -145,6 +146,9 @@ def _reference_label(spec: RequirementSpec) -> str:
 
 
 def _coverage(project: Stage2Project, spec: RequirementSpec) -> tuple[str, list[str], list[str], list[str]]:
+    if requirement_explicitly_not_applicable(project, spec.key):
+        return COVERAGE_NOT_APPLICABLE, [], [], []
+
     if not spec.required and spec.legal_status != "VERIFY_CURRENT":
         return COVERAGE_NOT_APPLICABLE, [], [], []
 

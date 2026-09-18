@@ -43,9 +43,19 @@ OPTION_GROUPS: dict[str, tuple[str, ...]] = {
     "other_system_review": ("미해당", "해당 - 공정안전보고서", "해당 - 안전성향상계획", "해당 - 공정안전보고서 + 안전성향상계획"),
     "yes_no": ("예", "아니오"),
     "applicable_na": ("적용", "해당 없음"),
+    "psm_project_type": ("설치·이전", "변경", "기존설비"),
+    "psm_scenario_type": ("최악의 사고 시나리오", "대안의 사고 시나리오"),
+    "psm_surface_roughness": ("시골", "도시", "물위"),
+    "psm_consequence_state": ("기체", "액체", "2상(액체+기체)"),
 }
 
 TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
+    "08_PSM_별지12_사업개요": {"제출구분": "psm_project_type"},
+    "19_PSM_사고피해예측": {
+        "시나리오 구분": "psm_scenario_type",
+        "표면거칠기": "psm_surface_roughness",
+        "물질의 상태": "psm_consequence_state",
+    },
     "09_PSM_조건부서식_적용여부": {"적용여부": "applicable_na"},
     "02_화학물질정보": {
         "물리적 상태": "physical_state",

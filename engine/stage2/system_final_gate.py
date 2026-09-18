@@ -117,6 +117,51 @@ def _validation_checkpoint(
     )
 
 
+def _psm_statutory_forms_checkpoint(
+    report: CrossValidationReport,
+) -> SystemFinalCheckpoint:
+    issues = [
+        issue
+        for issue in report.issues
+        if issue.system == "PSM" and str(issue.code or "").startswith("PSM-FORM")
+    ]
+    holds = [issue for issue in issues if issue.status == "HOLD"]
+    reviews = [issue for issue in issues if issue.status == "REVIEW_REQUIRED"]
+
+    if holds or reviews:
+        status = HOLD if holds else REVIEW_REQUIRED
+        labels: list[str] = []
+        for issue in (*holds, *reviews):
+            label = str(issue.legal_item or issue.code or "").strip()
+            if label and label not in labels:
+                labels.append(label)
+        detail = ", ".join(labels[:5])
+        if len(labels) > 5:
+            detail += f" 외 {len(labels) - 5}건"
+        return SystemFinalCheckpoint(
+            key="psm.final.statutory_forms",
+            label="법정 별지서식 준비상태",
+            status=status,
+            message=(
+                f"PSM 법정 별지서식에 보완 필요 {len(holds)}건, "
+                f"담당자 확인 필요 {len(reviews)}건이 남아 있습니다."
+                + (f" 대상: {detail}" if detail else "")
+            ),
+        )
+
+    ready_count = sum(issue.status == "PASS" for issue in issues)
+    return SystemFinalCheckpoint(
+        key="psm.final.statutory_forms",
+        label="법정 별지서식 준비상태",
+        status=PASS,
+        message=(
+            f"PSM 법정 별지서식 전용 자동검증을 통과했습니다. 확인된 서식 체크 {ready_count}건."
+            if issues else
+            "PSM 법정 별지서식 전용 자동검증에서 보완 필요 항목이 없습니다."
+        ),
+    )
+
+
 def evaluate_system_final_gate(
     project: Stage2Project,
     system: str,
@@ -133,11 +178,15 @@ def evaluate_system_final_gate(
             checkpoints=(),
         )
 
+    checkpoints: list[SystemFinalCheckpoint] = [
+        _completeness_checkpoint(project, system),
+    ]
+    if system == "PSM":
+        checkpoints.append(_psm_statutory_forms_checkpoint(report))
+    checkpoints.append(_validation_checkpoint(report, system))
+
     return SystemFinalGateResult(
         system=system,
         system_label=SYSTEM_LABELS[system],
-        checkpoints=(
-            _completeness_checkpoint(project, system),
-            _validation_checkpoint(report, system),
-        ),
+        checkpoints=tuple(checkpoints),
     )

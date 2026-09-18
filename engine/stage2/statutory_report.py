@@ -565,24 +565,59 @@ def _facility_counts(rows: Sequence[Mapping[str, object]]) -> str:
 
 
 def _psm_form12(doc: Document, project: Stage2Project) -> None:
+    details = _rows(project, "psm.business.form12_details")
+    detail = details[0] if details and isinstance(details[0], Mapping) else {}
+
+    def value(header: str, *fallback: str) -> str:
+        direct = _row_value(detail, header) if detail else MISSING
+        if direct != MISSING:
+            return direct
+        return _text(project, *fallback, default=MISSING) if fallback else MISSING
+
     chemicals = _psm_chemical_rows(project)
-    raw_names = ", ".join(_row_value(r, "물질명", "화학물질", "유해화학물질명") for r in chemicals[:8]) if chemicals else MISSING
+    inventory_raw = ", ".join(
+        _row_value(r, "물질명", "화학물질", "유해화학물질명")
+        for r in chemicals[:8]
+    ) if chemicals else MISSING
+    raw_names = value("주요 원료")
+    if raw_names == MISSING:
+        raw_names = inventory_raw
+
+    writer_name = value("작성자 성명")
+    writer_qualification = value("작성자 자격")
+    writer = " / ".join(v for v in (writer_name, writer_qualification) if v != MISSING) or MISSING
+
+    stage1_address = _text(project, "business.address", default=MISSING)
     rows = (
-        ("사업장명", project.company_name or MISSING),
-        ("사업의 구분", _text(project, "psm.business.project_type", default=MISSING)),
-        ("사업자등록번호", _text(project, "business.registration_no", "cap.business.registration_no", default=MISSING)),
-        ("대표자 성명", _text(project, "business.representative", "cap.business.representative", default=MISSING)),
-        ("소재지", _text(project, "business.address", default=MISSING)),
-        ("심사대상 설비명", _text(project, "psm.business.target_facility", default=MISSING)),
-        ("표준산업분류", _text(project, "business.ksic", default=MISSING)),
-        ("예상근무 근로자수", _text(project, "business.employee_count", default=MISSING)),
-        ("전기계약용량", _text(project, "business.electric_contract_capacity", default=MISSING)),
-        ("보고서 작성자 / 작성자 자격", _text(project, "psm.business.writer_info", default=MISSING)),
-        ("주요 사업 내용 또는 변경내용", _text(project, "psm.business.overview", default=MISSING)),
+        ("사업장명", project.company_name or value("사업장명")),
+        ("사업의 구분", value("제출구분", "psm.business.project_type")),
+        ("사업자등록번호", value("사업자등록번호", "business.registration_no", "cap.business.registration_no")),
+        ("대표자 성명", value("대표자", "business.representative", "cap.business.representative")),
+        ("소재지", stage1_address if stage1_address != MISSING else value("사업장 소재지")),
+        ("심사대상 설비명", value("대상 유해·위험설비", "psm.business.target_facility")),
+        ("표준산업분류", value("한국표준산업분류", "business.ksic")),
+        ("예상근무 근로자수", value("근로자수", "business.employee_count")),
+        ("전기계약용량", value("계약전력(kW)", "business.electric_contract_capacity")),
+        ("보고서 작성자 / 작성자 자격", writer),
+        ("주요 사업 내용 또는 변경내용", value("사업개요", "psm.business.overview")),
         ("주원료 또는 재료", raw_names),
-        ("주생산품", _text(project, "business.main_products", default=MISSING)),
-        ("사업장 위치·부지·건물", _text(project, "psm.business.site_building", default=MISSING)),
-        ("공사·가동 일정", _text(project, "psm.business.schedule", default=MISSING)),
+        ("주생산품", value("주요 생산품", "business.main_products")),
+        (
+            "사업장 위치·부지·건물",
+            " / ".join(v for v in (
+                stage1_address if stage1_address != MISSING else value("사업장 소재지"),
+                value("부지면적", "psm.business.site_area", "business.site_area"),
+                value("주요 건물", "psm.business.main_building", "business.main_building", "psm.business.site_building"),
+            ) if v != MISSING) or MISSING,
+        ),
+        (
+            "공사·가동 일정",
+            " / ".join(v for v in (
+                value("총 사업기간", "psm.business.total_period", "psm.business.schedule"),
+                value("착공예정일", "psm.business.start_date"),
+                value("시운전기간", "psm.business.commissioning_period"),
+            ) if v != MISSING) or MISSING,
+        ),
     )
     _add_key_value_form(doc, "별지 제12호서식", "사업개요", rows)
 
@@ -711,12 +746,64 @@ def _psm_form19_2(doc: Document, project: Stage2Project) -> None:
         "누출구의 크기(mm2)", "웅덩이 크기(m2)", "누출결과", "화재-복사열이 미치는 거리", "폭발-과압이 미치는 거리",
         "확산결과-인화성", "확산결과-독성",
     )
-    source = _value(project, "psm.risk.consequence", default={})
+
+    structured = _rows(project, "psm.risk.consequence_table")
     worst: Mapping[str, object] = {}
     alternative: Mapping[str, object] = {}
-    if isinstance(source, Mapping):
-        worst = source.get("최악의 사고 시나리오", source.get("worst_case", {})) if isinstance(source.get("최악의 사고 시나리오", source.get("worst_case", {})), Mapping) else {}
-        alternative = source.get("대안의 사고 시나리오", source.get("alternative_case", {})) if isinstance(source.get("대안의 사고 시나리오", source.get("alternative_case", {})), Mapping) else {}
+
+    def case_from_row(row: Mapping[str, object]) -> Mapping[str, object]:
+        return {
+            "풍속(m/s)": _row_value(row, "풍속(m/s)"),
+            "대기안정도(A~F)": _row_value(row, "대기안정도(A~F)"),
+            "대기온도(℃)": _row_value(row, "대기온도(℃)"),
+            "습도(%)": _row_value(row, "습도(%)"),
+            "표면거칠기(m)": _row_value(row, "표면거칠기"),
+            "물질명": _row_value(row, "물질명"),
+            "물질의 상태": _row_value(row, "물질의 상태"),
+            "설비명(또는 배관부위)": _row_value(row, "설비명(또는 배관부위)"),
+            "운전압력(MPa)": _row_value(row, "운전압력(MPa)"),
+            "운전온도(℃)": _row_value(row, "운전온도(℃)"),
+            "누출구의 크기(mm2)": _row_value(row, "누출구의 크기(mm2)"),
+            "웅덩이 크기(m2)": _row_value(row, "웅덩이 크기(m2)"),
+            "누출결과": _row_value(row, "누출결과"),
+            "화재-복사열이 미치는 거리": " / ".join((
+                f"4 kW/m2: {_row_value(row, '화재-4 kW/m2')}",
+                f"12.5 kW/m2: {_row_value(row, '화재-12.5 kW/m2')}",
+                f"37.5 kW/m2: {_row_value(row, '화재-37.5 kW/m2')}",
+            )),
+            "폭발-과압이 미치는 거리": " / ".join((
+                f"7 kPa: {_row_value(row, '폭발-7 kPa')}",
+                f"21 kPa: {_row_value(row, '폭발-21 kPa')}",
+                f"70 kPa: {_row_value(row, '폭발-70 kPa')}",
+            )),
+            "확산결과-인화성": " / ".join((
+                f"25% LEL: {_row_value(row, '인화성-25% LEL')}",
+                f"LEL: {_row_value(row, '인화성-LEL')}",
+                f"UEL: {_row_value(row, '인화성-UEL')}",
+            )),
+            "확산결과-독성": " / ".join((
+                f"ERPG 1: {_row_value(row, '독성-ERPG 1')}",
+                f"ERPG 2: {_row_value(row, '독성-ERPG 2')}",
+                f"ERPG 3: {_row_value(row, '독성-ERPG 3')}",
+            )),
+        }
+
+    for row in structured:
+        if not isinstance(row, Mapping):
+            continue
+        scenario = _norm(_row_value(row, "시나리오 구분", "시나리오구분"))
+        if "최악" in scenario:
+            worst = case_from_row(row)
+        elif "대안" in scenario:
+            alternative = case_from_row(row)
+
+    if not worst and not alternative:
+        source = _value(project, "psm.risk.consequence", default={})
+        if isinstance(source, Mapping):
+            worst_value = source.get("최악의 사고 시나리오", source.get("worst_case", {}))
+            alt_value = source.get("대안의 사고 시나리오", source.get("alternative_case", {}))
+            worst = worst_value if isinstance(worst_value, Mapping) else {}
+            alternative = alt_value if isinstance(alt_value, Mapping) else {}
     table = doc.add_table(rows=len(fields) + 1, cols=3)
     _set_table_borders(table)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER

@@ -68,9 +68,9 @@ class PSMLaterFormWorkbookTests(unittest.TestCase):
         self.assertTrue(expected_sheets.issubset(set(wb.sheetnames)))
 
         app = wb["09_PSM_조건부서식_적용여부"]
-        form_numbers = [app.cell(row=row, column=1).value for row in range(5, 12)]
-        self.assertEqual(form_numbers, ["17-2", "17-3", "17-4", "17-5", "18", "19", "20"])
-        self.assertTrue(all(app.cell(row=row, column=3).value in (None, "") for row in range(5, 12)))
+        form_numbers = [app.cell(row=row, column=1).value for row in range(5, 13)]
+        self.assertEqual(form_numbers, ["17-2", "17-3", "17-4", "17-5", "18", "19", "20", "19-2"])
+        self.assertTrue(all(app.cell(row=row, column=3).value in (None, "") for row in range(5, 13)))
         self.assertTrue(any(
             "_선택목록" in str(dv.formula1)
             for dv in app.data_validations.dataValidation
@@ -110,8 +110,9 @@ class PSMLaterFormWorkbookTests(unittest.TestCase):
             "18": ("해당 없음", "내화 적용대상 없음 검토"),
             "19": ("해당 없음", "국소배기 적용대상 없음 검토"),
             "20": ("적용", "폭발위험장소 구분도"),
+            "19-2": ("해당 없음", "사고피해예측 별지 미적용 검토"),
         }
-        for row in range(5, 12):
+        for row in range(5, 13):
             form_no = str(ws.cell(row, 1).value)
             applicable, basis = values[form_no]
             ws.cell(row, 3, applicable)
@@ -124,7 +125,7 @@ class PSMLaterFormWorkbookTests(unittest.TestCase):
         record = project.get_field("psm.psi.form_applicability")
         self.assertIsNotNone(record)
         self.assertEqual(record.status, "USER_CONFIRMED")
-        self.assertEqual(len(record.value), 7)
+        self.assertEqual(len(record.value), 8)
 
     def test_structured_table_import_uses_table_field_not_attachment_field(self):
         project = self._project()

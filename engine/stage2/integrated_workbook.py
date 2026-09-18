@@ -11,6 +11,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .project import EvidenceRef, Stage2Project
+from .psm_applicability import requirement_explicitly_not_applicable
 from .requirements import cap_field_labels, psm_field_labels
 from .intake import field_label, selected_requirement_specs
 
@@ -118,6 +119,28 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
              "30초 이내", "접촉연소식", "10% LEL", "중앙제어실",
              "예", "HH 경보 시 원료 이송펌프 정지", "±3% F.S.", "월 1회 기능점검·연 1회 교정",
              "예", "GA-101", "예시값"),
+        ),
+    },
+    {
+        "sheet": "08_PSM_별지12_사업개요",
+        "scope": "PSM",
+        "title": "별지 제12호서식 입력자료 · 사업개요",
+        "targets": ("psm.business.form12_details",),
+        "headers": (
+            "사업장명", "제출구분", "사업자등록번호", "대표자", "대상 유해·위험설비",
+            "한국표준산업분류", "근로자수", "계약전력(kW)", "작성자 성명", "작성자 자격",
+            "주요 원료", "주요 생산품", "사업개요", "사업장 소재지", "전화번호", "전송번호",
+            "부지면적", "주요 건물", "총 사업기간", "착공예정일", "시운전기간",
+        ),
+        "example": (
+            (
+                "예시화학 제1공장", "변경", "123-45-67890", "홍길동", "반응·저장 공정",
+                "C20119", 85, 1500, "김작성", "산업안전기사",
+                "톨루엔, 아세톤", "혼합제품 A", "원료 저장·혼합·제품출하 공정",
+                "대구광역시 ○○구 산업로 1", "053-000-0000", "053-000-0001",
+                "12,500㎡", "생산동 2동 / 연면적 3,200㎡", "2026-10-01 ~ 2027-03-31",
+                "2026-10-01", "2027-03-01 ~ 2027-03-31",
+            ),
         ),
     },
     {
@@ -262,6 +285,36 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
         "example": (
             ("공정", "홍길동", "예시화학", "공정팀장", "공정설계 및 운전 15년"),
             ("안전", "김안전", "예시화학", "안전팀장", "공정안전관리 12년"),
+        ),
+    },
+    {
+        "sheet": "19_PSM_사고피해예측",
+        "scope": "PSM",
+        "title": "별지 제19호의2서식 입력자료 · 시나리오 및 피해예측 결과",
+        "targets": ("psm.risk.consequence_table",),
+        "headers": (
+            "시나리오 구분", "풍속(m/s)", "대기안정도(A~F)", "대기온도(℃)", "습도(%)",
+            "표면거칠기", "물질명", "물질의 상태", "설비명(또는 배관부위)",
+            "운전압력(MPa)", "운전온도(℃)", "누출구의 크기(mm2)", "웅덩이 크기(m2)",
+            "누출결과", "직접계산(kg/s or kg)", "웅덩이(kg/s)", "설비/배관(kg/s)",
+            "화재-4 kW/m2", "화재-12.5 kW/m2", "화재-37.5 kW/m2",
+            "폭발-7 kPa", "폭발-21 kPa", "폭발-70 kPa",
+            "인화성-25% LEL", "인화성-LEL", "인화성-UEL",
+            "독성-ERPG 1", "독성-ERPG 2", "독성-ERPG 3", "계산모델·결과 근거",
+        ),
+        "example": (
+            (
+                "최악의 사고 시나리오", 1.5, "F", 25, 50, "도시", "염소", "기체", "V-201",
+                "0.7", "25", "25", "해당 없음", "연속누출", "0.25", "해당 없음", "0.25",
+                "해당 없음", "해당 없음", "해당 없음", "해당 없음", "해당 없음", "해당 없음",
+                "해당 없음", "해당 없음", "해당 없음", 650, 300, 180, "ALOHA/KORA 계산결과 파일 RISK-01",
+            ),
+            (
+                "대안의 사고 시나리오", 3.0, "D", 25, 50, "도시", "염소", "기체", "V-201",
+                "0.7", "25", "10", "해당 없음", "연속누출", "0.10", "해당 없음", "0.10",
+                "해당 없음", "해당 없음", "해당 없음", "해당 없음", "해당 없음", "해당 없음",
+                "해당 없음", "해당 없음", "해당 없음", 320, 150, 90, "ALOHA/KORA 계산결과 파일 RISK-02",
+            ),
         ),
     },
     {
@@ -683,6 +736,7 @@ PSM_CONDITIONAL_FORMS: tuple[tuple[str, str], ...] = (
     ("18", "내화구조 명세"),
     ("19", "국소배기장치 개요"),
     ("20", "방폭전기/계장 기계·기구 선정기준"),
+    ("19-2", "시나리오 및 피해예측 결과"),
 )
 
 
@@ -709,9 +763,75 @@ def _prefill_psm_form_applicability(project: Stage2Project) -> list[list[Any]]:
     return rows
 
 
+def _prefill_psm_form12(project: Stage2Project) -> list[list[Any]]:
+    saved = project.get_field("psm.business.form12_details")
+    if saved is not None and isinstance(saved.value, list) and saved.value:
+        row = next((item for item in saved.value if isinstance(item, Mapping)), None)
+        if row is not None:
+            headers = next(
+                spec["headers"] for spec in TABLE_SPECS
+                if spec["sheet"] == "08_PSM_별지12_사업개요"
+            )
+            return [[_pick(row, header) for header in headers]]
+
+    chemicals = project.get_field("psm.psi.chemical_details") or project.get_field("inventory.chemicals")
+    raw_materials: list[str] = []
+    if chemicals is not None and isinstance(chemicals.value, list):
+        for item in chemicals.value[:8]:
+            if isinstance(item, Mapping):
+                name = _pick(item, "물질명", "화학물질명", "제품명")
+                if name:
+                    raw_materials.append(str(name))
+
+    def scalar(*keys: str) -> Any:
+        for key in keys:
+            record = project.get_field(key)
+            if record is not None and record.value not in (None, "", [], {}):
+                if isinstance(record.value, (str, int, float, bool)):
+                    return record.value
+        return ""
+
+    writer = project.get_field("psm.business.writer_info")
+    writer_name = ""
+    writer_qualification = ""
+    if writer is not None and isinstance(writer.value, Mapping):
+        writer_name = _pick(writer.value, "작성자", "성명", "이름", "name")
+        writer_qualification = _pick(writer.value, "작성자 자격", "자격", "qualification")
+    elif writer is not None and isinstance(writer.value, str):
+        parts = [part.strip() for part in writer.value.split("/", 1)]
+        writer_name = parts[0] if parts else ""
+        writer_qualification = parts[1] if len(parts) > 1 else ""
+
+    return [[
+        project.company_name,
+        scalar("psm.business.project_type"),
+        scalar("business.registration_no", "cap.business.registration_no"),
+        scalar("business.representative", "cap.business.representative"),
+        scalar("psm.business.target_facility"),
+        scalar("business.ksic"),
+        scalar("business.employee_count"),
+        scalar("business.electric_contract_capacity"),
+        writer_name,
+        writer_qualification,
+        ", ".join(raw_materials),
+        scalar("business.main_products"),
+        scalar("psm.business.overview"),
+        scalar("business.address"),
+        scalar("business.phone", "psm.business.phone"),
+        scalar("business.fax", "psm.business.fax"),
+        scalar("psm.business.site_area", "business.site_area"),
+        scalar("psm.business.main_building", "business.main_building", "psm.business.site_building"),
+        scalar("psm.business.total_period", "psm.business.schedule"),
+        scalar("psm.business.start_date"),
+        scalar("psm.business.commissioning_period"),
+    ]]
+
+
 def _table_rows_for(project: Stage2Project, sheet: str, example: bool, spec: Mapping[str, Any]) -> list[list[Any]]:
     if example:
         return [list(row) for row in spec.get("example", ())]
+    if sheet == "08_PSM_별지12_사업개요":
+        return _prefill_psm_form12(project)
     if sheet == "09_PSM_조건부서식_적용여부":
         return _prefill_psm_form_applicability(project)
     if sheet == "02_화학물질정보":
@@ -872,6 +992,8 @@ def _attachment_specs(project: Stage2Project) -> list[tuple[str, str, str]]:
     rows: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for spec in selected_requirement_specs(project):
+        if requirement_explicitly_not_applicable(project, spec.key):
+            continue
         if spec.input_kind not in ATTACHMENT_KINDS and spec.input_kind not in {"DOCUMENT_SET", "DRAWING"}:
             continue
         for key in spec.field_keys:
