@@ -272,22 +272,25 @@ def _fill_label_rows(table, mapping: Mapping[str, object], *, start: int = 0) ->
 
 
 def _fill_label_rows_replace(table, mapping: Mapping[str, object], *, start: int = 0) -> None:
-    """Replace answer cells instead of appending to preprinted option text.
+    """Replace values in every label/value pair contained in a row.
 
-    Choice rows in the statutory baseline already contain empty checkbox
-    options. Appending another option set produces duplicated lines. For fields
-    where the program renders the complete option set itself, replace the
-    answer cell so exactly one checkbox set remains.
+    Most statutory rows contain one label and one answer. Some official rows,
+    including the final row of Annex Form 3, contain two independent pairs in
+    the same row. Writing only to the row's last cell shifts the first value
+    into the second field and leaves the second value blank.
+
+    Match every label cell and write to its immediate next unique XML cell.
+    Replacement is retained so preprinted checkbox text cannot accumulate.
     """
     normalized = {base._norm(key): value for key, value in mapping.items()}
     for row in table.rows[start:]:
         cells = _unique_cells(row)
         if len(cells) < 2:
             continue
-        label = cells[0].text.strip()
-        value = normalized.get(base._norm(label))
-        if value not in (None, "", MISSING):
-            _write_cell(cells[-1], value)
+        for index, cell in enumerate(cells[:-1]):
+            value = normalized.get(base._norm(cell.text.strip()))
+            if value not in (None, "", MISSING):
+                _write_cell(cells[index + 1], value)
 
 
 def _fill_single_column_labels(table, mapping: Mapping[str, object]) -> None:
@@ -436,30 +439,125 @@ def _fill_form3(table, project: Stage2Project) -> None:
     _fill_label_rows_replace(table, mapping, start=1)
 
 
-def _fill_facility_overview(table, project: Stage2Project) -> None:
-    prepared = build_cap_form1_data(project)
-    chem_lines = [
-        " / ".join(
-            part for part in (
-                _clean(row.get("물질명")),
-                _clean(row.get("CAS No.")),
-                (f"{_clean(row.get('사업장 내 최대보유량(ton)'))} ton"
-                 if _clean(row.get("사업장 내 최대보유량(ton)")) else ""),
-            )
-            if part
+def _rendered_facility_choices(project: Stage2Project) -> dict[str, str]:
+    rendered: dict[str, str] = {}
+    for line in render_facility_type_counts(project).splitlines():
+        match = re.match(r"^[☒☐]\s*(.+)\s+\(([^)]*)\)기$", line.strip())
+        if match:
+            rendered[base._norm(match.group(1))] = line.strip()
+    return rendered
+
+
+def _rendered_loading_choices(value: object) -> dict[str, str]:
+    text = render_loading_transport(value)
+    rendered: dict[str, str] = {}
+    for label in ("입·출하 시설", "보유 탱크로리"):
+        match = re.search(
+            rf"([☒☐]\s*{re.escape(label)}\s*\([^)]*\)기)",
+            text,
         )
-        for row in prepared.chemical_rows[:12]
-    ]
-    mapping = {
-        "단위공장 구성": base._text(project, "cap.basic.unit_facility_overview", default=""),
-        "공정개요": base._text(project, "process.description", default=""),
-        "장치 ․ 설비 종류 및 수량": render_facility_type_counts(project),
-        "입·출하 및 운반시설": render_loading_transport(
-            base._text(project, "cap.basic.loading_transport", default="")
-        ),
-        "유해화학물질 및 취급량": "\n".join(line for line in chem_lines if line),
-    }
-    _fill_label_rows_replace(table, mapping, start=1)
+        if match:
+            rendered[base._norm(label)] = match.group(1).strip()
+    return rendered
+
+
+def _fill_choice_cells(table, *, row_start: int, row_end: int, rendered: Mapping[str, str]) -> None:
+    """Replace each preprinted option cell with the corresponding checked line."""
+    for row in table.rows[row_start:row_end]:
+        cells = _unique_cells(row)
+        for cell in cells[1:]:
+            original = base._norm(cell.text)
+            if not original:
+                continue
+            for label_norm, value in rendered.items():
+                if label_norm and label_norm in original:
+                    _write_cell(cell, value)
+                    break
+
+
+def _fill_facility_chemical_rows(table, project: Stage2Project) -> None:
+    prepared = build_cap_form1_data(project)
+    unique: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in prepared.chemical_rows:
+        name = _clean(row.get("물질명"))
+        cas = _clean(row.get("CAS No."))
+        holding = _clean(row.get("사업장 내 최대보유량(ton)"))
+        key = (name, cas)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((name, cas, holding))
+
+    data_rows = []
+    in_section = False
+    for row in table.rows:
+        cells = _unique_cells(row)
+        if not cells:
+            continue
+        label = base._norm(cells[0].text)
+        if label != base._norm("유해화학물질 및 취급량"):
+            continue
+        in_section = True
+        # The first repeated row is the fixed header row because it contains
+        # the CAS/max-holding column labels. Preserve those official headers.
+        trailing = " ".join(cell.text for cell in cells[1:])
+        if "CAS" in trailing or "최대 보유량" in trailing or "최대보유량" in trailing:
+            continue
+        if len(cells) >= 4:
+            data_rows.append(cells)
+
+    if not in_section:
+        return
+
+    for cells in data_rows:
+        for cell in cells[1:4]:
+            _write_cell(cell, "")
+
+    if len(unique) > len(data_rows):
+        raise ValueError(
+            f"별지 제4·5호 유해화학물질 표의 작성 가능 행({len(data_rows)}행)보다 "
+            f"확정 물질({len(unique)}건)이 많아 일부를 누락할 수 없으므로 DOCX 생성을 중단합니다."
+        )
+
+    for cells, (name, cas, holding) in zip(data_rows, unique):
+        _write_cell(cells[1], name)
+        _write_cell(cells[2], cas)
+        _write_cell(cells[3], holding)
+
+
+def _fill_facility_overview(
+    table,
+    project: Stage2Project,
+    *,
+    detailed: bool,
+) -> None:
+    overview_key = "cap.basic.unit_facility_overview" if detailed else "cap.basic.total_facility_overview"
+    _fill_label_rows_replace(
+        table,
+        {
+            "단위공장 구성": base._text(project, overview_key, default=""),
+            "공정개요": base._text(project, "process.description", default=""),
+        },
+        start=1,
+    )
+
+    _fill_choice_cells(
+        table,
+        row_start=3,
+        row_end=8,
+        rendered=_rendered_facility_choices(project),
+    )
+
+    loading_value = base._text(project, "cap.basic.loading_transport", default="")
+    _fill_choice_cells(
+        table,
+        row_start=8,
+        row_end=9,
+        rendered=_rendered_loading_choices(loading_value),
+    )
+
+    _fill_facility_chemical_rows(table, project)
 
 
 def _fill_form6(table, project: Stage2Project) -> None:
@@ -1116,8 +1214,8 @@ def build_cap_baseline_draft(project: Stage2Project) -> bytes:
     _fill_form1([tables[i] for i in FORM_TABLE_INDEX["1"]], project)
     _fill_form2([tables[i] for i in FORM_TABLE_INDEX["2"]], project)
     _fill_form3(tables[FORM_TABLE_INDEX["3"][0]], project)
-    _fill_facility_overview(tables[FORM_TABLE_INDEX["4"][0]], project)
-    _fill_facility_overview(tables[FORM_TABLE_INDEX["5"][0]], project)
+    _fill_facility_overview(tables[FORM_TABLE_INDEX["4"][0]], project, detailed=False)
+    _fill_facility_overview(tables[FORM_TABLE_INDEX["5"][0]], project, detailed=True)
     _fill_form6(tables[FORM_TABLE_INDEX["6"][0]], project)
     _fill_form7(tables[FORM_TABLE_INDEX["7"][0]], project)
     _fill_form8([tables[i] for i in FORM_TABLE_INDEX["8"]], project)
