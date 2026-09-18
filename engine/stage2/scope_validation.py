@@ -3,6 +3,7 @@ from __future__ import annotations
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form2_engine import build_cap_form2_readiness
 from .cap_form3_5_engine import (
     build_cap_form3_readiness,
     build_cap_form4_readiness,
@@ -64,6 +65,55 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     message="물질구분, 규정수량 및 최대보유량 ton 정규화 결과를 확인했습니다.",
                     field_keys=("inventory.chemicals", "inventory.facilities"),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제1호서식",
+                )
+            )
+
+        checked_rules += 1
+        form2 = build_cap_form2_readiness(project)
+        form2_fields = (
+            "cap.business.submission_type",
+            "cap.business.submission_reason",
+            "cap.prevention.change_log",
+        )
+        if form2.status == "NOT_APPLICABLE":
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM2-NOT-APPLICABLE",
+                    status="NOT_APPLICABLE",
+                    system="CAP",
+                    section="기본정보",
+                    legal_item="별지 제2호 변경내역 관리대장",
+                    message=form2.messages[0] if form2.messages else "현재 제출유형에서는 별지 제2호를 필수 작성항목으로 적용하지 않습니다.",
+                    field_keys=form2_fields,
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제2호서식",
+                )
+            )
+        elif form2.status in {"HOLD", "REVIEW_REQUIRED"}:
+            issue_status = form2.status
+            for index, blocker in enumerate(form2.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM2-{index}",
+                        status=issue_status,
+                        system="CAP",
+                        section="기본정보",
+                        legal_item="별지 제2호 변경내역 관리대장",
+                        message=str(blocker),
+                        field_keys=form2_fields,
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제2호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM2-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="기본정보",
+                    legal_item="별지 제2호 변경내역 관리대장",
+                    message=form2.messages[0] if form2.messages else "변경내역 관리대장을 확인했습니다.",
+                    field_keys=form2_fields,
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제2호서식",
                 )
             )
 
