@@ -30,6 +30,7 @@ from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
+from .cap_risk_hwpx import render_form14_single_scenario, render_form15_risk
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -358,7 +359,7 @@ def _resolve_down(source: bytes, table_anchor: str, header: str):
     return resolve_cell_target(source, {
         "section_path": section,
         "table_anchor": table_anchor,
-        "cell_anchor": {"label": header, "direction": "down"},
+        "cell_anchor": {"label": header, "direction": "below"},
     })
 
 
@@ -605,39 +606,34 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     applied += count
     warnings.extend(warn)
 
-    form14 = build_cap_form14_data(project)
-    warnings.extend(f"별지 제14호 확인 필요: {msg}" for msg in form14.blockers)
-    source, count, warn = _fill_structured_table(
-        source,
-        table_anchor="사고시나리오별 시설빈도",
-        rows=form14.event_rows,
-        columns=(
-            ("연번", ("__rowno__",)),
-            ("개시사건", ("개시사건",)),
-            ("빈도", ("기준빈도(/연)",)),
-            ("개수", ("개수",)),
-            ("사고빈도", ("사고빈도(/연)",)),
-        ),
-    )
-    applied += count
-    warnings.extend(warn)
+    marker_norms = {_norm(marker) for marker in validation.found_markers}
+    has_form14 = _norm("[별지 제14호서식]") in marker_norms
+    has_form15 = _norm("[별지 제15호서식]") in marker_norms
 
+    form14 = build_cap_form14_data(project)
     form15 = build_cap_form15_data(project)
-    warnings.extend(f"별지 제15호 확인 필요: {msg}" for msg in form15.blockers)
-    source, count, warn = _fill_structured_table(
-        source,
-        table_anchor="위험도 분석",
-        rows=form15.scenario_rows,
-        columns=(
-            ("연번", ("__rowno__",)),
-            ("사고시나리오 명", ("사고시나리오 명",)),
-            ("사고시나리오 시설빈도", ("사고시나리오 시설빈도",)),
-            ("사고시나리오 거리", ("사고시나리오 거리(장외)",)),
-            ("주민수", ("위험도 주민수",)),
-        ),
-    )
-    applied += count
-    warnings.extend(warn)
+
+    if has_form14 and not form15.no_offsite_scenario:
+        warnings.extend(f"별지 제14호 확인 필요: {msg}" for msg in form14.blockers)
+        if not form14.blockers:
+            if len(form14.scenario_rows) == 1:
+                rendered14 = render_form14_single_scenario(source, form14, form15)
+                source = rendered14.data
+                applied += rendered14.applied_count
+                warnings.extend(rendered14.warnings)
+            elif len(form14.scenario_rows) > 1:
+                warnings.append(
+                    "별지 제14호는 사고시나리오별 공식 원본 1부씩 작성해야 합니다. "
+                    "복수 시나리오는 법제처 원본서식 ZIP 경로에서 시나리오별로 분리 작성합니다."
+                )
+
+    if has_form15 and not form15.no_offsite_scenario:
+        warnings.extend(f"별지 제15호 확인 필요: {msg}" for msg in form15.blockers)
+        if form15.ready:
+            rendered15 = render_form15_risk(source, form15)
+            source = rendered15.data
+            applied += rendered15.applied_count
+            warnings.extend(rendered15.warnings)
 
     warnings = list(dict.fromkeys(warnings))
     return CAPHwpxBuildResult(
