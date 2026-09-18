@@ -174,7 +174,10 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
         core = [
             issue
             for issue in report.issues
-            if issue.code.startswith("PSM-FORM")
+            if (
+                issue.code.startswith(("PSM-FORM13-", "PSM-FORM14-", "PSM-FORM15-", "PSM-FORM16-"))
+                or (issue.code.startswith("PSM-FORM17-") and issue.code.count("-") == 2)
+            )
         ]
 
         self.assertTrue(core)
