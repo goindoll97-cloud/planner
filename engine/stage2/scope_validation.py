@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
@@ -87,6 +88,36 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     message="현행 별표 2 고유번호와 별표 2·3 물질구분을 확인했습니다.",
                     field_keys=("inventory.chemicals", "cap.chemical.details"),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제6호서식",
+                )
+            )
+
+        checked_rules += 1
+        form8 = build_cap_form8_data(project)
+        if form8.blockers:
+            for index, blocker in enumerate(form8.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM8-{index}",
+                        status="HOLD",
+                        system="CAP",
+                        section="기본정보",
+                        legal_item="별지 제8호 사업장 주변 환경 정보",
+                        message=str(blocker),
+                        field_keys=("cap.site.surrounding_environment", "documents.site_plan"),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제8호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM8-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="기본정보",
+                    legal_item="별지 제8호 사업장 주변 환경 정보",
+                    message="500m 내 보호대상 명세 또는 보호대상 없음 확인과 GIS/현장 근거를 확인했습니다.",
+                    field_keys=("cap.site.surrounding_environment",),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제8호서식",
                 )
             )
 
