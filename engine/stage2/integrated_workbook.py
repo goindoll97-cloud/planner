@@ -277,6 +277,24 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
             ),
         ),
     },
+    {
+        "sheet": "30_운전책임자_작업자현황",
+        "scope": "CAP",
+        "title": "운전책임자 및 작업자 현황",
+        "targets": ("cap.facility.operator_staffing",),
+        "headers": (
+            "공정·단위공장", "운전책임자", "작업자 수", "교대 형태", "비고",
+        ),
+        "example": (
+            (
+                "제1공장 염소 저장·공급공정",
+                "환경안전팀 홍길동",
+                4,
+                "2조 2교대",
+                "공정별 실제 운영인원 기준",
+            ),
+        ),
+    },
 )
 
 ATTACHMENT_KINDS = {
