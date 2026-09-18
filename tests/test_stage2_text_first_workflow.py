@@ -117,7 +117,7 @@ class Stage2TextFirstWorkflowTests(unittest.TestCase):
         validation = (PROJECT_ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
         review = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("if intake_ready:", app)
-        self.assertIn("if validation_ready:", app)
+        self.assertIn("if authoring_ready:", app)
         self.assertIn('title="4. 작성자료 점검·보완"', app)
         self.assertIn('title="5. 보고서 작성"', app)
         self.assertIn("도면·이미지·첨부자료는 담당자가 별도 작성·취합", intake)

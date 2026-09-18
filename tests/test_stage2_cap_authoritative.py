@@ -148,7 +148,7 @@ class Stage2CAPAuthoritativeSourceTests(unittest.TestCase):
         self.assertIn("강산화제", rows[0]["물리적 위험성 후보"])
         self.assertIn("수생생물", rows[0]["환경유해성 후보"])
 
-    def test_cap_report_starts_with_form1_and_separates_candidates(self):
+    def test_cap_report_starts_with_form1_and_does_not_append_kosha_candidate_reviews(self):
         data = build_report_draft(self._project(), "CAP")
         doc = Document(BytesIO(data))
         text = "\n".join(
@@ -161,11 +161,9 @@ class Stage2CAPAuthoritativeSourceTests(unittest.TestCase):
         # title page, not a synthetic cover this program generated).
         self.assertNotIn("화학물질안전원고시 제2026-07호", first_visible)
         self.assertNotIn("국가법령정보센터 별표·별지 서식", first_visible)
-        self.assertIn("NICS-GP2026-8", text)
-        self.assertIn("별지 제6호 자동입력 후보 검토", text)
-        self.assertIn("법정서식 외 검토자료", text)
-        self.assertIn("제품 SDS/증빙 확인 후 회사자료에 확정 입력", text)
-        self.assertIn("별지 제7호 유해성정보 후보 검토", text)
+        self.assertNotIn("별지 제6호 자동입력 후보 검토", text)
+        self.assertNotIn("KOSHA MSDS", text)
+        self.assertNotIn("별지 제7호 유해성정보 후보 검토", text)
 
 
 if __name__ == "__main__":
