@@ -375,5 +375,16 @@ class PSMFullStatutoryE2ETests(unittest.TestCase):
         self.assertNotIn("[확인 필요]", full_text)
 
 
+    def test_psm_statutory_writer_is_byte_deterministic(self):
+        project = self._project()
+
+        first = build_psm_baseline_draft(project)
+        second = build_psm_baseline_draft(project)
+
+        self.assertEqual(first, second)
+        self.assertGreater(len(first), 0)
+
+
+
 if __name__ == "__main__":
     unittest.main()
