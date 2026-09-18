@@ -518,7 +518,7 @@ def _build_bundle_zip(project, bundle: CAPOfficialFormBundle, original_build):
 
             result = builder(project, template_bytes=form.hwpx_data)
             total_applied += int(result.applied_count)
-            warnings = _meaningful_warnings(result.warnings)
+            warnings = _meaningful_warnings(result.warnings, form.markers)
             user_warnings.extend(warnings)
 
             output_index += 1
