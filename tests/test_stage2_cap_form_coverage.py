@@ -84,11 +84,11 @@ class CAPFormCoverageTests(unittest.TestCase):
             ASK_COMPANY,
         )
         self.assertEqual(
-            by_key[(12, "사고시나리오명·반경·장외거리·사고원점")].state,
+            by_key[(12, "사고시나리오·장외거리·주민수·보호대상·사고원점")].state,
             EXTERNAL_ANALYSIS,
         )
         self.assertEqual(
-            by_key[(15, "시나리오 수·시설빈도·장외거리·주민수·구간점수·위험도")].state,
+            by_key[(15, "A·B·C·D 합계·구간점수·사고빈도/영향점수")].state,
             CALCULATION,
         )
 

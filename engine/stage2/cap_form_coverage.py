@@ -17,6 +17,7 @@ from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
+from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -146,6 +147,8 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     form9 = build_cap_form9_data(project)
     form10 = build_cap_form10_data(project)
     form11 = build_cap_form11_data(project)
+    form14 = build_cap_form14_data(project)
+    form15 = build_cap_form15_data(project)
     threshold_rows_ready = bool(form1.chemical_rows) and all(
         str(row.get("물질구분") or "").strip()
         and str(row.get("하위규정수량(ton)") or "").strip()
@@ -350,35 +353,55 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제12~15호
+    scenario_impact = _rows(project, "cap.offsite.scenario_impact_table", "cap.offsite.impact_range_result")
     items.append(CAPFormCoverageItem(
-        12, "사고시나리오 사업장 주변지역 영향 평가", "사고시나리오명·반경·장외거리·사고원점",
-        EXTERNAL_ANALYSIS, "KORA/영향평가",
-        ("cap.offsite.impact_range_result",),
-        "확정된 누출조건·기상조건·영향평가 결과",
-    ))
-    items.append(CAPFormCoverageItem(
-        12, "사고시나리오 사업장 주변지역 영향 평가", "주민수·산업단지 내외 구분·보호대상",
-        EXTERNAL_ANALYSIS, "GIS/인구·보호대상 분석",
-        ("cap.offsite.population_and_protected_targets",),
-        "영향범위와 공간·인구자료",
+        12, "사고시나리오 사업장 주변지역 영향 평가", "사고시나리오·장외거리·주민수·보호대상·사고원점",
+        READY if scenario_impact else EXTERNAL_ANALYSIS,
+        "KORA/영향평가 + GIS",
+        ("cap.offsite.scenario_impact_table",),
+        "시나리오별 장외거리, 거주민·근로자 수, 보호대상, 사고원점 좌표와 결과파일 근거",
+        "AI가 거리·주민수를 생성하지 않고 KORA/GIS 확정값만 사용",
     ))
     items.append(CAPFormCoverageItem(
         13, "총괄영향범위 사업장 주변지역 영향 평가", "총괄영향범위·보호대상 목록",
-        CALCULATION, "별지 12 결과 통합",
-        ("cap.offsite.impact_range_result", "cap.offsite.population_and_protected_targets"),
-        "개별 사고시나리오 영향범위 결과",
+        CALCULATION if scenario_impact else EXTERNAL_ANALYSIS,
+        "별지 12 결과 통합 + 공간분석",
+        ("cap.offsite.scenario_impact_table", "cap.offsite.population_and_protected_targets"),
+        "개별 시나리오 영향범위의 공간적 외곽과 보호대상 목록",
+        "거리 최대값만으로 총괄영향범위 지도를 대체하지 않음",
     ))
     items.append(CAPFormCoverageItem(
-        14, "사고시나리오별 시설빈도", "개시사건 개수·사고빈도 합계",
-        CALCULATION, "설비구성 × 규정 빈도",
-        ("inventory.facilities",),
-        "사고구획별 설비·배관·플랜지·펌프 등 개수",
+        14, "사고시나리오별 시설빈도", "개시사건 개수·사고빈도·시나리오 시설빈도",
+        READY if (form14.ready or form15.no_offsite_scenario) else CALCULATION,
+        "P&ID·설비 개수 × 현행 별지 제14호 기준빈도",
+        ("cap.offsite.scenario_frequency",),
+        "시나리오별 10개 개시사건 개수와 개수 산정근거",
+        "공식 CAP_DRAFT가 CURRENT일 때만 기준빈도 자동적용",
     ))
     items.append(CAPFormCoverageItem(
-        15, "위험도 분석", "시나리오 수·시설빈도·장외거리·주민수·구간점수·위험도",
-        CALCULATION, "별지 12·14 + 별표 3", (),
-        "완성된 사고시나리오 영향평가와 시설빈도 결과",
+        15, "위험도 분석", "A·B·C·D 합계·구간점수·사고빈도/영향점수",
+        READY if form15.ready else CALCULATION,
+        "별지 12·14 + 별표 3",
+        ("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
+        "KORA/GIS 결과와 완성된 시설빈도",
+        "증감 전 점수는 자동계산하되 최종 위험도는 안전원 결정 전에는 확정하지 않음",
     ))
+
+    if not form15.no_offsite_scenario:
+        items.append(CAPFormCoverageItem(
+            14, "사고시나리오별 시설빈도", "공식 HWPX 시나리오별 반복블록",
+            READY if len(form14.scenario_rows) <= 1 else RENDERER_GAP,
+            "출력엔진", (),
+            "사고시나리오마다 반복되는 10개 개시사건 표 블록",
+            "복수 시나리오에서는 계산결과와 별개로 HWPX 반복블록 자동복제 검증 필요",
+        ))
+        items.append(CAPFormCoverageItem(
+            15, "위험도 분석", "공식 HWPX A·B·C·D 및 점수 셀",
+            RENDERER_GAP,
+            "출력엔진", (),
+            "A·B·C·D 합계, 구간점수, 사고빈도·사고영향점수",
+            "검토용 DOCX 계산은 가능하나 현행 HWPX 점수셀 자동기입은 별도 검증 필요",
+        ))
 
     # 별지 제16호
     items.append(CAPFormCoverageItem(

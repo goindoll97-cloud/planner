@@ -97,6 +97,8 @@ def _field_labels() -> dict[str, str]:
         "documents.pid": "공정배관·계장도(P&ID)",
         "documents.site_plan": "각종 건물·설비의 배치도",
         "cap.safety.dike_calculation": "확산방지설비 계산자료",
+        "cap.offsite.scenario_impact_table": "사고시나리오 영향평가 확정값",
+        "cap.offsite.risk_control": "장외 사고시나리오 존재 여부 확인",
     }
     labels.update(cap_field_labels())
     psm_labels = psm_field_labels()
