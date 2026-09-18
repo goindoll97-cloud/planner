@@ -214,6 +214,20 @@ TABLE_SPECS: tuple[dict[str, Any], ...] = (
             ("○○초등학교", "갑종", "교육·연구시설", "○○시 ○○로 10", "35.0,129.0", 420, 350, "GIS-PT-01", "예시"),
         ),
     },
+    {
+        "sheet": "27_사업장주변_500m_보호대상",
+        "scope": "CAP",
+        "title": "사업장 경계 500m 내 보호대상 현황",
+        "targets": ("cap.site.surrounding_environment",),
+        "headers": (
+            "보호대상 없음 여부", "보호대상 명칭", "보호대상 구분", "세부유형",
+            "주소·위치", "좌표", "사업장 경계와 거리(m)", "GIS/현장 근거", "비고",
+        ),
+        "example": (
+            ("아니오", "○○초등학교", "갑종", "교육·연구시설",
+             "○○시 ○○로 10", "35.0,129.0", 420, "GIS-SITE-01", "500m 내 보호대상 예시"),
+        ),
+    },
 )
 
 ATTACHMENT_KINDS = {
@@ -574,6 +588,10 @@ def _attachment_specs(project: Stage2Project) -> list[tuple[str, str, str]]:
             continue
         for key in spec.field_keys:
             if key in seen or key in PROTECTED_STAGE1_FIELDS:
+                continue
+            if key == "cap.site.surrounding_environment":
+                # Form 8 surroundings are captured as a structured GIS/field
+                # table. Site/layout drawings remain separate attachment keys.
                 continue
             if not _target_in_scope(project, key):
                 continue
