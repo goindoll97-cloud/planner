@@ -21,6 +21,7 @@ from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
 from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
+from .cap_form16_engine import build_cap_form16_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -1285,34 +1286,82 @@ def _cap_form15(doc: Document, project: Stage2Project) -> None:
 
 
 def _cap_form16(doc: Document, project: Stage2Project) -> None:
+    prepared = build_cap_form16_data(project)
     _add_form_heading(doc, "별지 제16호서식", "화학사고예방관리계획서 비상대응분야 요약서")
+
+    business = prepared.business
     _add_key_value_form(doc, "", "1. 사업장 일반정보", (
-        ("사업장명", project.company_name or MISSING),
-        ("대표자", _text(project, "cap.business.representative", default=MISSING)),
-        ("우편번호/주소", _text(project, "business.address", default=MISSING)),
-        ("사업자 등록번호", _text(project, "cap.business.registration_no", default=MISSING)),
-        ("담당자 및 연락처", _text(project, "cap.business.writer_info", "cap.business.writer_contact", default=MISSING)),
-        ("작성일", MISSING),
+        ("사업장명", str(business.get("사업장명") or MISSING)),
+        ("대표자", str(business.get("대표자") or MISSING)),
+        ("우편번호/주소", str(business.get("우편번호/주소") or MISSING)),
+        ("사업자 등록번호", str(business.get("사업자 등록번호") or MISSING)),
+        ("담당자", str(business.get("담당자") or MISSING)),
+        ("담당자 연락처", str(business.get("담당자 연락처") or MISSING)),
+        ("담당자 메일주소", str(business.get("담당자 메일주소") or MISSING)),
+        ("작성일", str(business.get("작성일") or MISSING)),
     ))
+
     doc.add_paragraph("2. 사고시나리오 선정 유해화학물질 목록").runs[0].bold = True
-    spec = FormSpec("", "", ("연번", "유해화학물질명", "화학물질식별번호(CAS 번호)", "최대함량(%)", "최대보유량(ton)", "사고유형"))
-    rows = []
-    selected = _rows(project, "cap.offsite.target_facility_selection")
-    if selected:
-        for idx, row in enumerate(selected, 1):
-            rows.append([str(idx), _row_value(row, "유해화학물질명", "물질명"), _row_value(row, "CAS 번호", "화학물질식별번호"), _row_value(row, "최대함량", "함량"), _row_value(row, "최대보유량"), _row_value(row, "사고유형")])
-    _add_form_table(doc, spec, rows)
-    doc.add_paragraph("3. 사업장 환경 및 보호대상·비상연락 요약").runs[0].bold = True
-    _add_attachment_line(doc, "사업장 경계선 기준 반경 500m 내 환경정보", _text(project, "cap.site.surrounding_environment", default=MISSING))
-    _add_attachment_line(doc, "비상연락체계", _text(project, "cap.prevention.emergency_contact_system", default=MISSING))
-    if project.cap_group == "1군":
-        doc.add_paragraph("4. 외부 비상대응 요약").runs[0].bold = True
-        _add_attachment_line(doc, "지역사회 소통·공조", _text(project, "cap.external.communication_plan", "cap.external.mutual_aid_contacts", default=MISSING))
-        _add_attachment_line(doc, "주민 대피경보·대피장소", _text(project, "cap.external.warning_system", "cap.external.shelters", default=MISSING))
-        _add_attachment_line(doc, "응급의료기관", _text(project, "cap.external.medical_contacts", default=MISSING))
-        _add_attachment_line(doc, "지역사회 고지", _text(project, "cap.external.notice_method", "cap.external.notice_content", default=MISSING))
+    chemical_spec = FormSpec(
+        "", "",
+        ("연번", "유해화학물질명", "화학물질식별번호(CAS 번호)", "최대함량(%)", "최대보유량(ton)", "사고유형"),
+    )
+    chemical_rows = [
+        [
+            str(row.get("연번") or ""),
+            str(row.get("유해화학물질명") or ""),
+            str(row.get("화학물질식별번호(CAS 번호)") or ""),
+            str(row.get("최대함량(%)") or ""),
+            str(row.get("최대보유량(ton)") or ""),
+            str(row.get("사고유형") or ""),
+        ]
+        for row in prepared.chemical_rows
+    ]
+    _add_form_table(doc, chemical_spec, chemical_rows or [[MISSING] + [""] * 5])
+
+    doc.add_paragraph("3. 사고시나리오 및 위험도 핵심정보").runs[0].bold = True
+    scenario_spec = FormSpec(
+        "", "",
+        ("연번", "사고시나리오명", "유해화학물질명", "대상 설비번호", "사고유형", "시설빈도(/연)", "장외거리(m)", "위험도 주민수", "KORA/GIS 근거"),
+    )
+    scenario_rows = [
+        [
+            str(row.get("연번") or ""),
+            str(row.get("사고시나리오명") or ""),
+            str(row.get("유해화학물질명") or ""),
+            str(row.get("대상 설비번호") or ""),
+            str(row.get("사고유형") or ""),
+            str(row.get("시설빈도(/연)") or ""),
+            str(row.get("장외거리(m)") if row.get("장외거리(m)") not in (None, "") else ""),
+            str(row.get("위험도 주민수") if row.get("위험도 주민수") not in (None, "") else ""),
+            str(row.get("KORA/GIS 근거") or ""),
+        ]
+        for row in prepared.scenario_rows
+    ]
+    if scenario_rows:
+        _add_form_table(doc, scenario_spec, scenario_rows)
     else:
-        doc.add_paragraph("※ 2군 사업장은 외부 비상대응계획 내용을 생략할 수 있으므로 해당 요약항목을 생성하지 않음.")
+        doc.add_paragraph("장외 사고시나리오 없음 또는 시나리오 영향평가 확인 필요")
+
+    doc.add_paragraph("4. 내부 비상대응 핵심내용").runs[0].bold = True
+    _add_key_value_form(
+        doc, "", "",
+        tuple((label, value or MISSING) for label, value in prepared.internal_summary),
+    )
+
+    if project.cap_group == "1군":
+        doc.add_paragraph("5. 외부 비상대응 핵심내용").runs[0].bold = True
+        _add_key_value_form(
+            doc, "", "",
+            tuple((label, value or MISSING) for label, value in prepared.external_summary),
+        )
+    else:
+        doc.add_paragraph("※ 2군 사업장은 외부 비상대응 요약항목을 작성대상에서 제외함.")
+
+    if prepared.blockers:
+        note = doc.add_paragraph()
+        note.add_run("확인 필요: ").bold = True
+        note.add_run(" / ".join(prepared.blockers))
 
 
 def _render_cap(doc: Document, project: Stage2Project) -> None:

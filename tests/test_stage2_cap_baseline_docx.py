@@ -115,15 +115,14 @@ class CAPBaselineDocxTests(unittest.TestCase):
         self.assertIn("홍길동", example_text)
         self.assertIn("장치 설비 목록 및 명세", example_text)
 
-    def test_form6_fills_kosha_reference_only_where_company_left_it_unconfirmed(self):
+    def test_form6_does_not_use_kosha_reference_in_company_sds_only_mode(self):
         project = _project()
         _set(project, "inventory.chemicals", [
             {
                 "물질명": "톨루엔",
                 "CAS 번호": "108-88-3",
                 "물질구분": "사고대비물질",
-                # 물질상태 deliberately left unconfirmed so the KOSHA reference
-                # should fill it in; 비중 is company-confirmed and must win.
+                # 회사가 확인한 비중만 사용하고 미확인 물질상태는 공란 유지.
                 "비중": "0.87 (회사 확인값)",
             }
         ])
@@ -144,8 +143,8 @@ class CAPBaselineDocxTests(unittest.TestCase):
         doc = Document(BytesIO(out))
         form6_text = "\n".join(cell.text for row in doc.tables[15].rows for cell in row.cells)
 
-        self.assertIn("액체 (KOSHA 참고값·확인필요)", form6_text)
         self.assertIn("0.87 (회사 확인값)", form6_text)
+        self.assertNotIn("KOSHA 참고값", form6_text)
         self.assertNotIn("1.0 (KOSHA 값", form6_text)
 
     def test_cap_regulation_filename_is_distinct_from_internal_review(self):

@@ -23,14 +23,23 @@ from typing import Any, Mapping, Sequence
 from docx import Document
 
 from . import statutory_report as base
-from .cap_authoritative import (
-    cap_form6_msds_candidates,
-    cap_form7_reference_candidates,
+from .cap_form1_engine import build_cap_form1_data
+from .cap_form9_engine import build_cap_form9_data
+from .cap_form10_engine import build_cap_form10_data
+from .cap_form11_engine import build_cap_form11_data
+from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
+from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
+from .cap_form16_engine import build_cap_form16_data
+from .cap_final_form_runtime import (
+    render_facility_type_counts,
+    render_joint_emergency,
+    render_loading_transport,
+    render_other_system_review,
+    render_submission_type,
+    render_writing_level,
+    render_yes_no,
 )
-from .project import Stage2Project
-
-
-MSDS_REFERENCE_SUFFIX = " (KOSHA 참고값·확인필요)"
+from .project import CONFIRMED_STATUSES, Stage2Project
 
 # Intake workbook templates have used different header wording for the same
 # fields over time (e.g. an older "물질명" column vs. a newer
@@ -136,6 +145,42 @@ def _clean(value: object) -> str:
     return str(value).strip()
 
 
+def _confirmed_text(project: Stage2Project, *keys: str) -> str:
+    values: list[str] = []
+    for key in keys:
+        rec = project.get_field(key)
+        if rec is None or rec.status not in CONFIRMED_STATUSES:
+            continue
+        text = _clean(rec.value)
+        if text and text not in values:
+            values.append(text)
+    return " / ".join(values)
+
+
+def _fill_text_block(table, value: object, *, header_rows: int = 1) -> None:
+    """Place confirmed narrative in an existing official table without parsing it.
+
+    Some company-facing inputs are narrative plans rather than columnar facts.
+    We must not invent 기관명/전화번호/일정 by splitting prose heuristically.
+    Put the confirmed text in the first available answer cell so the statutory
+    section is not falsely blank while preserving fail-closed semantics.
+    """
+    text = _clean(value)
+    if not text:
+        return
+    start = min(max(header_rows, 0), max(len(table.rows) - 1, 0))
+    if not table.rows:
+        return
+    cells = _unique_cells(table.rows[start])
+    if not cells:
+        return
+    target = cells[-1]
+    if not target.text.strip():
+        _write_cell(target, text)
+    else:
+        _append_value(target, text)
+
+
 def _write_cell(cell, value: object) -> None:
     text = _clean(value)
     runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
@@ -223,6 +268,25 @@ def _fill_label_rows(table, mapping: Mapping[str, object], *, start: int = 0) ->
             _append_value(cells[-1], value)
 
 
+def _fill_label_rows_replace(table, mapping: Mapping[str, object], *, start: int = 0) -> None:
+    """Replace answer cells instead of appending to preprinted option text.
+
+    Choice rows in the statutory baseline already contain empty checkbox
+    options. Appending another option set produces duplicated lines. For fields
+    where the program renders the complete option set itself, replace the
+    answer cell so exactly one checkbox set remains.
+    """
+    normalized = {base._norm(key): value for key, value in mapping.items()}
+    for row in table.rows[start:]:
+        cells = _unique_cells(row)
+        if len(cells) < 2:
+            continue
+        label = cells[0].text.strip()
+        value = normalized.get(base._norm(label))
+        if value not in (None, "", MISSING):
+            _write_cell(cells[-1], value)
+
+
 def _fill_single_column_labels(table, mapping: Mapping[str, object]) -> None:
     """별지 제7호서식-style tables: one column, each row starts with a label
     like "가. 물질명" and the answer is appended after it in the same cell."""
@@ -241,36 +305,57 @@ def _fill_single_column_labels(table, mapping: Mapping[str, object]) -> None:
 
 def _fill_form1(tables, project: Stage2Project) -> None:
     t1, t2, t3 = tables
-    facilities = base._facility_rows(project)
-    chemicals = base._chemical_rows(project)
-    chem_by_name = {base._norm(base._row_value(c, *_CHEMICAL_NAME_ALIASES)): c for c in chemicals}
-    t1_rows = []
-    for facility in facilities:
-        material = base._row_value(facility, "취급물질", "물질명")
-        chem = chem_by_name.get(base._norm(material), {})
-        t1_rows.append([
-            base._row_value(facility, "단위공장·공정", "단위공장", "공정"),
-            material,
-            base._row_value(chem, *_CAS_ALIASES),
-            base._row_value(chem, "함량(%)", "함량"),
-            base._row_value(facility, "설비번호", "구분기호"),
-            base._row_value(facility, "설비명", "취급시설"),
-            base._row_value(facility, "용량", "설계용량"),
-            base._row_value(facility, "최대보유량(kg)", "취급량", "최대보유량"),
-        ])
+    prepared = build_cap_form1_data(project)
+
+    t1_rows = [
+        [
+            row.get("단위공장", ""),
+            row.get("유해화학물질", ""),
+            row.get("CAS No.", ""),
+            row.get("함량(%)", ""),
+            row.get("구분기호", ""),
+            row.get("취급시설", ""),
+            row.get("설계용량(m3)", ""),
+            row.get("취급량(ton)", ""),
+        ]
+        for row in prepared.facility_rows
+    ]
     _fill_table_rows(t1, _sanitize_rows(t1_rows), header_rows=1)
 
-    t2_rows = []
-    for chem in chemicals:
-        t2_rows.append([
-            base._row_value(chem, *_CHEMICAL_NAME_ALIASES),
-            base._row_value(chem, *_CAS_ALIASES),
-            base._row_value(chem, "물질구분"),
-            base._row_value(chem, "최대보유량", "최대보유량(kg)"),
-            project.cap_group or "",
-            base._row_value(chem, "하위규정수량"),
-            base._row_value(chem, "상위규정수량"),
-        ])
+    if not t1_rows:
+        chemicals = base._chemical_rows(project)
+        chem_by_name = {
+            base._norm(base._row_value(row, *_CHEMICAL_NAME_ALIASES)): row
+            for row in chemicals
+        }
+        legacy_rows = []
+        for facility in base._facility_rows(project):
+            material = base._row_value(facility, "취급물질", "물질명")
+            chem = chem_by_name.get(base._norm(material), {})
+            legacy_rows.append([
+                base._row_value(facility, "단위공장·공정", "단위공장", "공정"),
+                material,
+                base._row_value(chem, *_CAS_ALIASES),
+                base._row_value(chem, "함량(%)", "함량"),
+                base._row_value(facility, "설비번호", "구분기호"),
+                base._row_value(facility, "설비명", "취급시설"),
+                base._row_value(facility, "용량", "설계용량"),
+                base._row_value(facility, "최대보유량(kg)", "취급량", "최대보유량"),
+            ])
+        _fill_table_rows(t1, _sanitize_rows(legacy_rows), header_rows=1)
+
+    t2_rows = [
+        [
+            row.get("물질명", ""),
+            row.get("CAS No.", ""),
+            row.get("물질구분", ""),
+            row.get("사업장 내 최대보유량(ton)", ""),
+            row.get("작성수준", "") or project.cap_group,
+            row.get("하위규정수량(ton)", ""),
+            row.get("상위규정수량(ton)", ""),
+        ]
+        for row in prepared.chemical_rows
+    ]
     _fill_table_rows(t2, _sanitize_rows(t2_rows), header_rows=2)
 
     _write_cell(_unique_cells(t3.rows[0])[1], project.cap_group or "")
@@ -302,94 +387,98 @@ def _fill_form2(tables, project: Stage2Project) -> None:
 
 def _fill_form3(table, project: Stage2Project) -> None:
     level = project.cap_group or base._text(project, "cap.business.writing_level", default="")
+    writer_name = base._text(project, "cap.business.writer_name", default="")
+    writer_department = base._text(project, "cap.business.writer_department", default="")
+    writer = " ".join(part for part in (writer_department, writer_name) if part)
+    if not writer:
+        writer = base._text(project, "cap.business.writer_info", default="")
+
+    residents_state = base._text(project, "cap.business.residents_in_overall_range", default="")
+    if not residents_state:
+        form13 = build_cap_form13_data(project)
+        value = form13.summary.get("총괄영향범위 내 거주민수") if form13.summary else ""
+        if value not in (None, ""):
+            try:
+                residents_state = "있음" if float(value) > 0 else "없음"
+            except (TypeError, ValueError):
+                residents_state = ""
+
     mapping = {
         "사업장명": project.company_name or "",
-        "단위공장명": base._text(project, "cap.business.unit_plant_name", default=""),
+        "단위공장명": base._text(project, "cap.business.unit_plant_name", default=project.site_name or ""),
         "사업자 등록번호": base._text(project, "cap.business.registration_no", default=""),
         "대표자": base._text(project, "cap.business.representative", default=""),
         "우편번호/주소": base._text(project, "business.address", default=""),
         "산업단지": base._text(project, "cap.business.industrial_complex", default=""),
         "대표전화": base._text(project, "cap.business.contact", default=""),
-        "제출구분": base._text(project, "cap.business.submission_type", default=""),
-        "작성수준": level,
-        "공동비상대응계획 수립 여부": base._text(project, "cap.business.joint_emergency_plan", default=""),
-        "유사제도 심사결과 활용": base._text(project, "cap.business.other_system_review", default=""),
-        "총괄영향범위내 주민여부": base._text(project, "cap.business.residents_in_overall_range", default=""),
-        "최근 3년간 화학사고 발생 여부": base._text(project, "cap.business.recent_accident", default=""),
-        "화학사고예방관리계획서 작성자": base._text(project, "cap.business.writer_info", default=""),
+        "제출구분": render_submission_type(
+            base._text(project, "cap.business.submission_type", default=""),
+            base._text(project, "cap.business.submission_reason", default=""),
+        ),
+        "작성수준": render_writing_level(level),
+        "공동비상대응계획 수립 여부": render_joint_emergency(
+            base._text(project, "cap.business.joint_emergency_plan", default="")
+        ),
+        "유사제도 심사결과 활용": render_other_system_review(
+            base._text(project, "cap.business.other_system_review", default="")
+        ),
+        "총괄영향범위내 주민여부": render_yes_no(residents_state),
+        "최근 3년간 화학사고 발생 여부": render_yes_no(
+            base._text(project, "cap.business.recent_accident", default="")
+        ),
+        "화학사고예방관리계획서 작성자": writer,
         "담당자 연락처": base._text(project, "cap.business.writer_contact", default=""),
         "담당자 메일주소": base._text(project, "cap.business.writer_email", default=""),
     }
-    _fill_label_rows(table, mapping, start=1)
+    _fill_label_rows_replace(table, mapping, start=1)
 
 
 def _fill_facility_overview(table, project: Stage2Project) -> None:
-    facilities = base._facility_rows(project)
-    chemicals = base._chemical_rows(project)
-    chem_lines = []
-    for row in chemicals[:12]:
-        chem_lines.append(
-            f"{base._row_value(row, '물질명', '유해화학물질명')} / {base._row_value(row, 'CAS 번호', '화학물질식별번호')} / {base._row_value(row, '최대보유량', '최대보유량(kg)')}"
+    prepared = build_cap_form1_data(project)
+    chem_lines = [
+        " / ".join(
+            part for part in (
+                _clean(row.get("물질명")),
+                _clean(row.get("CAS No.")),
+                (f"{_clean(row.get('사업장 내 최대보유량(ton)'))} ton"
+                 if _clean(row.get("사업장 내 최대보유량(ton)")) else ""),
+            )
+            if part
         )
+        for row in prepared.chemical_rows[:12]
+    ]
     mapping = {
         "단위공장 구성": base._text(project, "cap.basic.unit_facility_overview", default=""),
         "공정개요": base._text(project, "process.description", default=""),
-        "장치 ․ 설비 종류 및 수량": base._facility_counts(facilities),
-        "입·출하 및 운반시설": base._text(project, "cap.basic.loading_transport", default=""),
-        "유해화학물질 및 취급량": "\n".join(chem_lines) if chem_lines else "",
+        "장치 ․ 설비 종류 및 수량": render_facility_type_counts(project),
+        "입·출하 및 운반시설": render_loading_transport(
+            base._text(project, "cap.basic.loading_transport", default="")
+        ),
+        "유해화학물질 및 취급량": "\n".join(line for line in chem_lines if line),
     }
-    _fill_label_rows(table, mapping, start=1)
-
-
-def _form6_msds_lookup(project: Stage2Project) -> dict[str, dict[str, str]]:
-    """Map CAS -> {FORM6_FIELDS field: KOSHA reference value}.
-
-    Only fields this project has never received a confirmed company value for
-    reach this lookup (see ``_fill_form6``); it never overrides company data.
-    """
-    lookup: dict[str, dict[str, str]] = {}
-    for candidate in cap_form6_msds_candidates(project):
-        lookup.setdefault(candidate.cas, {})[candidate.field] = candidate.value
-    return lookup
-
-
-def _cell_value_with_msds_fallback(company_value: str, cas: str, field: str, lookup: Mapping[str, Mapping[str, str]]) -> str:
-    # base._row_value() returns the "[확인 필요]" placeholder, not "", when no
-    # company alias matched — treat that the same as blank for fallback.
-    if company_value and company_value != MISSING:
-        return company_value
-    reference = (lookup.get(cas) or {}).get(field)
-    if not reference:
-        return ""
-    return reference + MSDS_REFERENCE_SUFFIX
+    _fill_label_rows_replace(table, mapping, start=1)
 
 
 def _fill_form6(table, project: Stage2Project) -> None:
-    msds_lookup = _form6_msds_lookup(project)
     rows = []
     for idx, row in enumerate(base._chemical_rows(project), 1):
-        cas = base._row_value(row, *_CAS_ALIASES)
-
-        def field(company_alias_field: str, msds_field: str) -> str:
-            return _cell_value_with_msds_fallback(company_alias_field, cas, msds_field, msds_lookup)
-
         rows.append([
             str(idx),
             base._row_value(row, *_CHEMICAL_NAME_ALIASES),
             base._row_value(row, "물질구분"),
-            cas,
+            base._row_value(row, *_CAS_ALIASES),
             base._row_value(row, "고유번호"),
-            field(base._row_value(row, "물리적 상태", "물질상태"), "물질상태"),
+            base._row_value(row, "물리적 상태", "물질상태"),
             base._row_value(row, "함량(%)", "함량"),
-            field(base._row_value(row, "비중"), "비중"),
-            field(base._row_value(row, "폭발한계 하한", "폭발하한"), "폭발한계 하한(%)"),
-            field(base._row_value(row, "폭발한계 상한", "폭발상한"), "폭발한계 상한(%)"),
-            field(base._row_value(row, "독성구분 항목", "독성구분-항목"), "독성구분-항목"),
-            field(base._row_value(row, "독성구분", "독성구분-구분"), "독성구분-구분"),
-            field(base._row_value(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"), "위험노출수준"),
-            field(base._row_value(row, "허용농도값", "TWA", "노출기준"), "허용농도값"),
-            field(base._row_value(row, "증기압", "증기압(20℃, mmHg)"), "증기압(20℃, mmHg)"),
-            field(base._row_value(row, "부식성", "부식성(유, 무)"), "부식성(유, 무)"),
+            base._row_value(row, "비중"),
+            base._row_value(row, "폭발한계 하한", "폭발하한"),
+            base._row_value(row, "폭발한계 상한", "폭발상한"),
+            base._row_value(row, "독성구분 항목", "독성구분-항목"),
+            base._row_value(row, "독성구분", "독성구분-구분"),
+            base._row_value(row, "위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"),
+            base._row_value(row, "허용농도값", "TWA", "노출기준"),
+            base._row_value(row, "증기압", "증기압(20℃, mmHg)"),
+            base._row_value(row, "부식성", "부식성(유, 무)"),
         ])
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
 
@@ -401,46 +490,21 @@ def _fill_form7(table, project: Stage2Project) -> None:
         items = [dict(v) for v in source if isinstance(v, Mapping)]
     elif isinstance(source, Mapping):
         items = [dict(source)]
-
-    if items:
-        row = items[0]
-        mapping = {
-            "물질명": base._row_value(row, *_CHEMICAL_NAME_ALIASES),
-            "화학물질식별번호(CAS 번호)": base._row_value(row, *_CAS_ALIASES),
-            "유해화학물질 고유번호": base._row_value(row, "고유번호"),
-            "농도(또는 함량 %)": base._row_value(row, "농도", "함량"),
-            "최대보유량": base._row_value(row, "최대보유량"),
-            "인체유해성": base._row_value(row, "인체유해성"),
-            "물리적 위험성": base._row_value(row, "물리적 위험성"),
-            "환경유해성": base._row_value(row, "환경유해성"),
-            "출처": base._row_value(row, "출처"),
-            "선정 사유": base._row_value(row, "선정 사유", "선정사유"),
-        }
-        _fill_single_column_labels(table, mapping)
+    if not items:
         return
 
-    # No company-selected representative substance. Never guess which
-    # chemical to feature (that selection and its reason are the company's
-    # judgment call), but when there is exactly one confirmed chemical the
-    # "selection" is unambiguous, so surface its KOSHA hazard reference text
-    # while still requiring the company to confirm 선정 사유 explicitly.
-    chemicals = base._chemical_rows(project)
-    if len(chemicals) != 1:
-        return
-    all_candidates = cap_form7_reference_candidates(project)
-    if not all_candidates:
-        return
-    reference = all_candidates[0]
-
-    def as_reference(text: str) -> str:
-        return text + MSDS_REFERENCE_SUFFIX if text else ""
-
+    row = items[0]
     mapping = {
-        "물질명": reference.get("유해화학물질명", ""),
-        "화학물질식별번호(CAS 번호)": reference.get("CAS 번호", ""),
-        "인체유해성": as_reference(reference.get("인체유해성 후보", "")),
-        "물리적 위험성": as_reference(reference.get("물리적 위험성 후보", "")),
-        "환경유해성": as_reference(reference.get("환경유해성 후보", "")),
+        "물질명": base._row_value(row, *_CHEMICAL_NAME_ALIASES),
+        "화학물질식별번호(CAS 번호)": base._row_value(row, *_CAS_ALIASES),
+        "유해화학물질 고유번호": base._row_value(row, "고유번호"),
+        "농도(또는 함량 %)": base._row_value(row, "농도", "함량"),
+        "최대보유량": base._row_value(row, "최대보유량"),
+        "인체유해성": base._row_value(row, "인체유해성"),
+        "물리적 위험성": base._row_value(row, "물리적 위험성"),
+        "환경유해성": base._row_value(row, "환경유해성"),
+        "출처": base._row_value(row, "출처"),
+        "선정 사유": base._row_value(row, "선정 사유", "선정사유"),
     }
     _fill_single_column_labels(table, mapping)
 
@@ -457,132 +521,326 @@ def _fill_form8(tables, project: Stage2Project) -> None:
 
 
 def _fill_form9(table, project: Stage2Project) -> None:
-    chemicals = {base._norm(base._row_value(c, *_CHEMICAL_NAME_ALIASES)): c for c in base._chemical_rows(project)}
-    rows = []
-    for idx, row in enumerate(base._facility_rows(project), 1):
-        material = base._row_value(row, "취급물질", "물질명")
-        chem = chemicals.get(base._norm(material), {})
-        rows.append([
-            str(idx),
-            base._row_value(row, "설비번호", "구분기호", "장치번호"),
-            base._row_value(row, "설비명", "장치·설비명", "장치명"),
-            material,
-            base._row_value(chem, *_CAS_ALIASES),
-            base._row_value(chem, "물리적 상태", "물질상태"),
-            base._row_value(chem, "함량(%)", "함량"),
-            base._row_value(row, "연결구 크기", "호칭경"),
-            base._row_value(row, "설계압력"),
-            base._row_value(row, "운전압력"),
-            base._row_value(row, "설계온도"),
-            base._row_value(row, "운전온도"),
-            base._row_value(row, "용량", "설계용량"),
-            base._row_value(row, "최대보유량(kg)", "취급량", "최대보유량"),
-            base._row_value(row, "비고", "P&ID 번호"),
-        ])
+    prepared = build_cap_form9_data(project)
+    rows = [
+        [
+            row.get("연번", ""),
+            row.get("구분기호", ""),
+            row.get("장치·설비명", ""),
+            row.get("취급물질", ""),
+            row.get("CAS No.", ""),
+            row.get("물질상태", ""),
+            row.get("함량(%)", ""),
+            row.get("연결구 크기(mm)", ""),
+            row.get("압력(MPa)-설계", ""),
+            row.get("압력(MPa)-운전", ""),
+            row.get("온도(℃)-설계", ""),
+            row.get("온도(℃)-운전", ""),
+            row.get("설계용량(m3)", ""),
+            row.get("취급량(ton)", ""),
+            row.get("비고", ""),
+        ]
+        for row in prepared.rows
+    ]
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
-
+    if not rows:
+        chemicals = {
+            base._norm(base._row_value(item, *_CHEMICAL_NAME_ALIASES)): item
+            for item in base._chemical_rows(project)
+        }
+        fallback = []
+        for idx, row in enumerate(base._facility_rows(project), 1):
+            material = base._row_value(row, "취급물질", "물질명")
+            chem = chemicals.get(base._norm(material), {})
+            fallback.append([
+                str(idx),
+                base._row_value(row, "설비번호", "구분기호", "장치번호"),
+                base._row_value(row, "설비명", "장치·설비명", "장치명"),
+                material,
+                base._row_value(chem, *_CAS_ALIASES),
+                base._row_value(chem, "물리적 상태", "물질상태"),
+                base._row_value(chem, "함량(%)", "함량"),
+                base._row_value(row, "연결구 크기", "호칭경"),
+                base._row_value(row, "설계압력"),
+                base._row_value(row, "운전압력"),
+                base._row_value(row, "설계온도"),
+                base._row_value(row, "운전온도"),
+                base._row_value(row, "용량", "설계용량"),
+                base._row_value(row, "최대보유량(kg)", "취급량", "최대보유량"),
+                base._row_value(row, "비고", "P&ID 번호"),
+            ])
+        _fill_table_rows(table, _sanitize_rows(fallback), header_rows=2)
 
 def _fill_form10(table, project: Stage2Project) -> None:
-    rows = []
-    for idx, row in enumerate(base._rows(project, "cap.safety.dike_layout"), 1):
-        rows.append([
-            str(idx), base._row_value(row, "설비형태"), base._row_value(row, "구분기호", "설비번호"),
-            base._row_value(row, "장치·설비명", "설비명"), base._row_value(row, "설계용량"),
-            base._row_value(row, "설비종류"), base._row_value(row, "필요용량"), base._row_value(row, "유효용량"),
-            base._row_value(row, "검토결과"), base._row_value(row, "비고"),
-        ])
+    prepared = build_cap_form10_data(project)
+    rows = [
+        [
+            row.get("연번", ""),
+            row.get("설비형태", ""),
+            row.get("구분기호", ""),
+            row.get("장치·설비명", ""),
+            row.get("설계용량", ""),
+            row.get("설비종류", ""),
+            row.get("필요용량", ""),
+            row.get("유효용량", ""),
+            row.get("검토결과", ""),
+            row.get("비고", ""),
+        ]
+        for row in prepared.rows
+    ]
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
-
+    if not rows:
+        fallback = []
+        for idx, row in enumerate(base._rows(project, "cap.safety.dike_layout"), 1):
+            fallback.append([
+                str(idx), base._row_value(row, "설비형태"),
+                base._row_value(row, "구분기호", "설비번호"),
+                base._row_value(row, "장치·설비명", "설비명"),
+                base._row_value(row, "설계용량"),
+                base._row_value(row, "설비종류"),
+                base._row_value(row, "필요용량"),
+                base._row_value(row, "유효용량"),
+                base._row_value(row, "검토결과"),
+                base._row_value(row, "비고"),
+            ])
+        _fill_table_rows(table, _sanitize_rows(fallback), header_rows=2)
 
 def _fill_form11(table, project: Stage2Project) -> None:
-    rows = []
-    for idx, row in enumerate(base._rows(project, "cap.safety.gas_detection", "psm.psi.gas_detection"), 1):
-        rows.append([
-            str(idx),
-            base._row_value(row, "감지기 번호", "구분기호", "감지기번호"),
-            base._row_value(row, "검출대상 물질", "감지대상"),
-            base._row_value(row, "설치위치", "설치장소"),
-            base._row_value(row, "작동시간"),
-            base._row_value(row, "감지방식", "측정방식"),
-            base._row_value(row, "경보 설정값", "경보설정값"),
-            base._row_value(row, "경보 위치", "경보기 설치장소"),
-            base._row_value(row, "연동여부"),
-            base._row_value(row, "정밀도"),
-            base._row_value(row, "유지관리", "점검주기"),
-            base._row_value(row, "비고", "관련 도면번호"),
-        ])
+    prepared = build_cap_form11_data(project)
+    rows = [
+        [
+            row.get("연번", ""),
+            row.get("구분기호", ""),
+            row.get("감지대상", ""),
+            row.get("설치위치", ""),
+            row.get("작동시간", ""),
+            row.get("측정방식", ""),
+            row.get("경보설정값", ""),
+            row.get("경보기 설치장소", ""),
+            row.get("연동여부", ""),
+            row.get("정밀도", ""),
+            row.get("유지관리", ""),
+            row.get("비고", ""),
+        ]
+        for row in prepared.rows
+    ]
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=1)
-
+    if not rows:
+        fallback = []
+        for idx, row in enumerate(base._rows(project, "cap.safety.gas_detection", "psm.psi.gas_detection"), 1):
+            fallback.append([
+                str(idx),
+                base._row_value(row, "감지기 번호", "구분기호", "감지기번호"),
+                base._row_value(row, "검출대상 물질", "감지대상"),
+                base._row_value(row, "설치위치", "설치장소"),
+                base._row_value(row, "작동시간"),
+                base._row_value(row, "감지방식", "측정방식"),
+                base._row_value(row, "경보 설정값", "경보설정값"),
+                base._row_value(row, "경보 위치", "경보기 설치장소"),
+                base._row_value(row, "연동여부"),
+                base._row_value(row, "정밀도"),
+                base._row_value(row, "유지관리", "점검주기"),
+                base._row_value(row, "비고", "관련 도면번호"),
+            ])
+        _fill_table_rows(table, _sanitize_rows(fallback), header_rows=1)
 
 def _fill_form12(tables, project: Stage2Project) -> None:
     scenario_table, list_table = tables
-    range_result = base._text(project, "cap.offsite.impact_range_result", default="")
-    if range_result:
-        _append_value(_unique_cells(scenario_table.rows[1])[1], range_result)
-    population = base._text(project, "cap.offsite.population_and_protected_targets", default="")
-    if population:
-        _append_value(_unique_cells(scenario_table.rows[2])[0], population)
-    spec = base.FormSpec("", "", ("일련번호", "보호대상 종류", "보호대상 명칭", "장외거리(m)"))
-    rows = base._generic_form_rows(
-        project, "cap.offsite.population_and_protected_targets", spec,
-        (("일련번호", "연번"), ("보호대상 종류", "종류"), ("보호대상 명칭", "명칭"), ("장외거리", "거리(m)")),
-    )
-    _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
+    prepared = build_cap_form12_data(project)
 
+    if prepared.rows:
+        first = prepared.rows[0]
+        _fill_label_rows(
+            scenario_table,
+            {
+                "사고시나리오명": first.get("사고시나리오명", ""),
+                "사고시나리오 명": first.get("사고시나리오명", ""),
+                "유해화학물질명": first.get("유해화학물질명", ""),
+                "대상 설비번호": first.get("대상 설비번호", ""),
+                "사고유형": first.get("사고유형", ""),
+                "장외거리": first.get("장외거리(m)", ""),
+                "장외거리(m)": first.get("장외거리(m)", ""),
+                "거주민수": first.get("거주민수", ""),
+                "근로자수": first.get("근로자수", ""),
+                "사고원점의 좌표": first.get("사고원점 좌표", ""),
+                "사고원점 좌표": first.get("사고원점 좌표", ""),
+            },
+            start=1,
+        )
+        summaries = []
+        for row in prepared.rows:
+            summaries.append(
+                " / ".join(
+                    part for part in (
+                        f"시나리오: {_clean(row.get('사고시나리오명'))}",
+                        f"물질: {_clean(row.get('유해화학물질명'))}",
+                        f"설비: {_clean(row.get('대상 설비번호'))}",
+                        f"사고유형: {_clean(row.get('사고유형'))}",
+                        f"장외거리: {_clean(row.get('장외거리(m)'))} m",
+                        f"거주민: {_clean(row.get('거주민수'))}명",
+                        f"근로자: {_clean(row.get('근로자수'))}명",
+                        f"사고원점: {_clean(row.get('사고원점 좌표'))}",
+                        f"근거: {_clean(row.get('KORA/GIS 근거'))}",
+                    )
+                    if part and not part.endswith(": ")
+                )
+            )
+        if len(scenario_table.rows) > 1:
+            cells = _unique_cells(scenario_table.rows[1])
+            if cells:
+                _append_value(cells[-1], "\n".join(summaries))
+
+    # Form 12 protected-target rows are scenario-specific. Do not reuse the
+    # overall Form 13 target list unless the company/GIS data explicitly names
+    # the scenario to which each target belongs.
+    source_targets = base._rows(project, "cap.offsite.population_and_protected_targets")
+    scenario_names = {_clean(row.get("사고시나리오명")) for row in prepared.rows}
+    rows = []
+    for idx, row in enumerate(source_targets, 1):
+        scenario = _clean(base._row_value(row, "사고시나리오명", "시나리오명"))
+        if not scenario or scenario not in scenario_names:
+            continue
+        rows.append([
+            str(idx),
+            base._row_value(row, "보호대상 종류", "세부유형", "종류"),
+            base._row_value(row, "보호대상 명칭", "명칭"),
+            base._row_value(row, "장외거리(m)", "사업장 경계와 거리(m)", "거리(m)"),
+        ])
+    _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
 
 def _fill_form13(tables, project: Stage2Project) -> None:
-    _checkbox_table, list_table, freq_table, _blank, summary_table = tables
-    spec = base.FormSpec("", "", ("일련번호", "보호대상 명칭", "보호대상 종류"))
-    rows = base._generic_form_rows(
-        project, "cap.offsite.population_and_protected_targets", spec,
-        (("일련번호", "연번"), ("보호대상 명칭", "명칭"), ("보호대상 종류", "종류")),
-    )
-    _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
+    overall_table, list_table, freq_table, safety_table, protected_summary_table = tables
+    form13 = build_cap_form13_data(project)
+    form14 = build_cap_form14_data(project)
+    form15 = build_cap_form15_data(project)
 
-    freq_rows = []
-    for idx, row in enumerate(base._rows(project, "cap.offsite.scenario_frequency"), 1):
-        freq_rows.append([
-            str(idx), base._row_value(row, "개시사건"), base._row_value(row, "빈도"),
-            base._row_value(row, "개수"), base._row_value(row, "사고빈도"),
-        ])
-    if freq_rows:
-        _fill_table_rows(freq_table, _sanitize_rows(freq_rows), header_rows=1)
+    if form13.summary:
+        summary = form13.summary
+        _fill_label_rows(
+            overall_table,
+            {
+                "총괄영향범위 산출방법": summary.get("총괄영향범위 산출방법", ""),
+                "총괄영향범위 결과 요약": summary.get("총괄영향범위 결과 요약", ""),
+                "거주민수": summary.get("총괄영향범위 내 거주민수", ""),
+                "근로자수": summary.get("총괄영향범위 내 근로자수", ""),
+                "보호대상 없음 여부": summary.get("보호대상 없음 여부", ""),
+                "GIS/KORA 근거": summary.get("GIS/KORA 근거", ""),
+            },
+            start=1,
+        )
+        _fill_text_block(
+            overall_table,
+            " / ".join(
+                f"{key}: {value}"
+                for key, value in summary.items()
+                if _clean(value)
+            ),
+            header_rows=1,
+        )
 
-    scores = base._value(project, "cap.offsite.risk_analysis", default={})
-    if isinstance(scores, Mapping) and scores:
-        mapping = {
-            "보호대상 종류": base._row_value(scores, "보호대상 종류", "종류"),
-            "보호대상 명칭": base._row_value(scores, "보호대상 명칭", "명칭"),
-            "장외거리(m)": base._row_value(scores, "장외거리", "거리"),
-            "주민수(개수)": base._row_value(scores, "주민수", "개수"),
-        }
-        _fill_label_rows(summary_table, mapping, start=2)
+    target_rows = [
+        [
+            row.get("일련번호", ""),
+            row.get("보호대상 명칭", ""),
+            row.get("보호대상 종류", ""),
+        ]
+        for row in form13.protected_targets
+    ]
+    if form13.no_protected_targets and not target_rows:
+        target_rows = [["-", "해당 없음", "-"]]
+    _fill_table_rows(list_table, _sanitize_rows(target_rows), header_rows=1)
 
+    event_rows = [
+        [
+            str(index),
+            (
+                f"[{_clean(row.get('사고시나리오명'))}] {_clean(row.get('개시사건'))}"
+                if len(form14.scenario_rows) > 1
+                else row.get("개시사건", "")
+            ),
+            row.get("기준빈도(/연)", ""),
+            row.get("개수", ""),
+            row.get("사고빈도(/연)", ""),
+        ]
+        for index, row in enumerate(form14.event_rows, 1)
+    ]
+    _fill_table_rows(freq_table, _sanitize_rows(event_rows), header_rows=1)
+
+    safety_lines = []
+    for row in form14.scenario_rows:
+        parts = [
+            f"시나리오: {_clean(row.get('사고시나리오명'))}",
+            f"수동적 완화장치: {_clean(row.get('수동적 완화장치'))}",
+            f"능동적 완화장치: {_clean(row.get('능동적 완화장치'))}",
+            f"증빙: {_clean(row.get('안전성확보설비 증빙'))}",
+        ]
+        safety_lines.append(" / ".join(part for part in parts if not part.endswith(": ")))
+    _fill_text_block(safety_table, "\n".join(safety_lines), header_rows=1)
+
+    protected_lines = []
+    for row in form15.scenario_rows:
+        protected_lines.append(
+            " / ".join(
+                part for part in (
+                    f"시나리오: {_clean(row.get('사고시나리오 명'))}",
+                    f"갑종: {_clean(row.get('갑종 보호대상 수'))}",
+                    f"을종: {_clean(row.get('을종 보호대상 수'))}",
+                    f"환경수용체: {_clean(row.get('환경수용체 수'))}",
+                    f"장외거리: {_clean(row.get('사고시나리오 거리(장외)'))} m",
+                    f"주민수: {_clean(row.get('위험도 주민수'))}",
+                )
+                if not part.endswith(": ")
+            )
+        )
+    _fill_text_block(protected_summary_table, "\n".join(protected_lines), header_rows=1)
 
 def _fill_form15(tables, project: Stage2Project) -> None:
     list_table, total_table, score_table = tables
-    rows = []
-    for idx, row in enumerate(base._rows(project, "cap.offsite.risk_analysis"), 1):
-        rows.append([
-            str(idx),
-            base._row_value(row, "사고시나리오 명", "시나리오"),
-            base._row_value(row, "사고시나리오 시설빈도", "시설 빈도"),
-            base._row_value(row, "사고시나리오 거리(장외)", "장외거리"),
-            base._row_value(row, "주민수"),
-        ])
+    prepared = build_cap_form15_data(project)
+
+    rows = [
+        [
+            row.get("연번", ""),
+            row.get("사고시나리오 명", ""),
+            row.get("사고시나리오 시설빈도", ""),
+            row.get("사고시나리오 거리(장외)", ""),
+            row.get("위험도 주민수", ""),
+        ]
+        for row in prepared.scenario_rows
+    ]
     _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
 
-    scores = base._value(project, "cap.offsite.risk_analysis", default={})
-    if isinstance(scores, Mapping) and scores:
+    totals = prepared.totals or {}
+    if len(total_table.rows) > 1:
         total_cells = _unique_cells(total_table.rows[1])
-        _write_cell(total_cells[1], base._row_value(scores, "사고시나리오 총 개수", "A"))
-        _write_cell(total_cells[2], base._row_value(scores, "사고시나리오 시설빈도의 합", "B"))
-        _write_cell(total_cells[3], base._row_value(scores, "사고시나리오 거리의 합", "C"))
-        _write_cell(total_cells[4], base._row_value(scores, "주민수 합", "D"))
-        score_cells = _unique_cells(score_table.rows[1])
-        _write_cell(score_cells[0], base._row_value(scores, "사고빈도점수", "A+B"))
-        _write_cell(score_cells[1], base._row_value(scores, "사고영향점수", "C+D"))
+        values = (
+            totals.get("사고시나리오 총 개수(A)", ""),
+            totals.get("사고시나리오 시설빈도의 합(B)", ""),
+            totals.get("사고시나리오 거리의 합(C)", ""),
+            totals.get("주민수 합(D)", ""),
+        )
+        for offset, value in enumerate(values, start=1):
+            if offset < len(total_cells):
+                _write_cell(total_cells[offset], value)
 
+    scores = prepared.scores or {}
+    if len(score_table.rows) > 1:
+        score_cells = _unique_cells(score_table.rows[1])
+        if score_cells:
+            _write_cell(score_cells[0], scores.get("사고빈도점수(A+B)", ""))
+        if len(score_cells) > 1:
+            _write_cell(score_cells[1], scores.get("사고영향점수(C+D)", ""))
+    _fill_label_rows(
+        score_table,
+        {
+            "사고빈도점수(A+B)": scores.get("사고빈도점수(A+B)", ""),
+            "사고영향점수(C+D)": scores.get("사고영향점수(C+D)", ""),
+            "위험도 판정표 점수(증감 전)": scores.get("위험도 판정표 점수(증감 전)", ""),
+            "증감 전 위험도": scores.get("증감 전 위험도", ""),
+            "최종 위험도": scores.get("최종 위험도", ""),
+        },
+        start=0,
+    )
 
 def _fill_form16(tables, project: Stage2Project) -> None:
     (
@@ -591,40 +849,72 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         local_gov_table, hospital_table, shelter_table, disclosure_table,
     ) = tables
 
+    prepared = build_cap_form16_data(project)
+    form13 = build_cap_form13_data(project)
+    business = prepared.business
+    contact_display = " / ".join(
+        part for part in (
+            _clean(business.get("담당자")),
+            _clean(business.get("담당자 연락처")),
+            _clean(business.get("담당자 메일주소")),
+        )
+        if part
+    )
     mapping = {
-        "사업장명": project.company_name or "",
-        "대표자": base._text(project, "cap.business.representative", default=""),
-        "우편번호/주소": base._text(project, "business.address", default=""),
-        "사업자 등록번호": base._text(project, "cap.business.registration_no", default=""),
-        "담당자 및 연락처": base._text(project, "cap.business.writer_contact", default=""),
+        "사업장명": business.get("사업장명", ""),
+        "대표자": business.get("대표자", ""),
+        "우편번호/주소": business.get("우편번호/주소", ""),
+        "사업자 등록번호": business.get("사업자 등록번호", ""),
+        "담당자 및 연락처": contact_display,
+        "담당자": business.get("담당자", ""),
+        "담당자 연락처": business.get("담당자 연락처", ""),
+        "담당자 메일주소": business.get("담당자 메일주소", ""),
+        "작성일": business.get("작성일", ""),
     }
     _fill_label_rows(info_table, mapping, start=1)
 
-    chem_rows = []
-    for idx, row in enumerate(base._chemical_rows(project), 1):
-        chem_rows.append([
-            str(idx),
-            base._row_value(row, *_CHEMICAL_NAME_ALIASES),
-            base._row_value(row, *_CAS_ALIASES),
-            base._row_value(row, "함량(%)", "최대함량"),
-            base._row_value(row, "최대보유량", "최대보유량(kg)"),
-            base._row_value(row, "사고유형"),
-        ])
+    chem_rows = [
+        [
+            row.get("연번", ""),
+            row.get("유해화학물질명", ""),
+            row.get("화학물질식별번호(CAS 번호)", ""),
+            row.get("최대함량(%)", ""),
+            row.get("최대보유량(ton)", ""),
+            row.get("사고유형", ""),
+        ]
+        for row in prepared.chemical_rows
+    ]
     _fill_table_rows(chem_table, _sanitize_rows(chem_rows), header_rows=1)
 
-    protection_rows = []
-    for idx, row in enumerate(base._rows(project, "cap.offsite.population_and_protected_targets"), 1):
-        protection_rows.append([str(idx), base._row_value(row, "종류"), base._row_value(row, "명칭")])
+    protection_rows = [
+        [
+            row.get("일련번호", ""),
+            row.get("보호대상 구분", ""),
+            row.get("보호대상 종류", ""),
+        ]
+        for row in form13.protected_targets
+    ]
+    if form13.no_protected_targets and not protection_rows:
+        protection_rows = [["-", "해당 없음", "-"]]
     _fill_table_rows(protection_types_table, _sanitize_rows(protection_rows), header_rows=1)
 
-    protection_list_rows = []
-    for idx, row in enumerate(base._rows(project, "cap.offsite.population_and_protected_targets"), 1):
-        protection_list_rows.append([
-            str(idx), base._row_value(row, "보호대상 종류", "종류"), base._row_value(row, "보호대상 명칭", "명칭"),
-            base._row_value(row, "실제거리(m)", "거리"), base._row_value(row, "비고"),
-        ])
+    protection_list_rows = [
+        [
+            row.get("일련번호", ""),
+            row.get("보호대상 종류", ""),
+            row.get("보호대상 명칭", ""),
+            row.get("사업장 경계와 거리(m)", ""),
+            row.get("GIS 근거", ""),
+        ]
+        for row in form13.protected_targets
+    ]
+    if form13.no_protected_targets and not protection_list_rows:
+        protection_list_rows = [["-", "-", "해당 없음", "-", form13.summary.get("GIS/KORA 근거", "")]]
     _fill_table_rows(protection_list_table, _sanitize_rows(protection_list_rows), header_rows=1)
 
+    # Legacy structured tables remain supported. If the company supplied only
+    # narrative confirmed facts, keep the original table structure and place
+    # that narrative in its first answer row instead of inventing columns.
     contact_rows = []
     for row in base._rows(project, "cap.prevention.emergency_system"):
         contact_rows.append([
@@ -632,38 +922,88 @@ def _fill_form16(tables, project: Stage2Project) -> None:
             base._row_value(row, "관계기관2", "관계기관"), base._row_value(row, "전화번호2", "전화번호"),
         ])
     _fill_table_rows(contacts_table, _sanitize_rows(contact_rows), header_rows=1)
+    if not contact_rows:
+        _fill_text_block(
+            contacts_table,
+            _confirmed_text(
+                project,
+                "cap.prevention.emergency_contact_system",
+                "cap.external.mutual_aid_contacts",
+            ),
+            header_rows=1,
+        )
 
     notice_rows = []
     for row in base._rows(project, "cap.external.community_coordination"):
         notice_rows.append([
-            base._row_value(row, "대상 기관(협의체)명", "기관명"), base._row_value(row, "제공 정보"),
-            base._row_value(row, "제공 방법"), base._row_value(row, "제공 시기"),
+            base._row_value(row, "대상 기관(협의체)명", "기관명"),
+            base._row_value(row, "제공 정보"),
+            base._row_value(row, "제공 방법"),
+            base._row_value(row, "제공 시기"),
         ])
     _fill_table_rows(notice_table, _sanitize_rows(notice_rows), header_rows=1)
+    if not notice_rows:
+        _fill_text_block(
+            notice_table,
+            _confirmed_text(
+                project,
+                "cap.external.stakeholders",
+                "cap.external.communication_plan",
+                "cap.external.communication_schedule",
+            ),
+            header_rows=1,
+        )
 
     coordination_rows = []
     for row in base._rows(project, "cap.external.community_coordination"):
         coordination_rows.append([
-            base._row_value(row, "종류"), base._row_value(row, "참석 대상"), base._row_value(row, "일정"),
-            base._row_value(row, "장소"), base._row_value(row, "소통방법"),
+            base._row_value(row, "종류"), base._row_value(row, "참석 대상"),
+            base._row_value(row, "일정"), base._row_value(row, "장소"),
+            base._row_value(row, "소통방법"),
         ])
     _fill_table_rows(coordination_table, _sanitize_rows(coordination_rows), header_rows=1)
+    if not coordination_rows:
+        _fill_text_block(
+            coordination_table,
+            _confirmed_text(
+                project,
+                "cap.external.communication_plan",
+                "cap.external.mutual_aid_contacts",
+                "cap.external.resource_support",
+                "cap.external.joint_drill_plan",
+            ),
+            header_rows=1,
+        )
 
     evac_rows = []
     for row in base._rows(project, "cap.external.evacuation"):
         evac_rows.append([
-            base._row_value(row, "구분"), base._row_value(row, "대상 명칭"), base._row_value(row, "대피경보 방법"),
-            base._row_value(row, "연락처"), base._row_value(row, "담당자"),
+            base._row_value(row, "구분"), base._row_value(row, "대상 명칭"),
+            base._row_value(row, "대피경보 방법"), base._row_value(row, "연락처"),
+            base._row_value(row, "담당자"),
         ])
     _fill_table_rows(evacuation_table, _sanitize_rows(evac_rows), header_rows=1)
+    if not evac_rows:
+        _fill_text_block(
+            evacuation_table,
+            _confirmed_text(project, "cap.external.warning_system", "cap.external.evacuation_routes"),
+            header_rows=1,
+        )
 
     local_gov_rows = []
     for row in base._rows(project, "cap.external.evacuation"):
         local_gov_rows.append([
-            base._row_value(row, "지자체ㆍ협의체명", "지자체명"), base._row_value(row, "담당부서"),
-            base._row_value(row, "대상"), base._row_value(row, "대피경보 방법"), base._row_value(row, "연락처"),
+            base._row_value(row, "지자체ㆍ협의체명", "지자체명"),
+            base._row_value(row, "담당부서"), base._row_value(row, "대상"),
+            base._row_value(row, "대피경보 방법"), base._row_value(row, "연락처"),
         ])
     _fill_table_rows(local_gov_table, _sanitize_rows(local_gov_rows), header_rows=1)
+    if not local_gov_rows:
+        _fill_text_block(
+            local_gov_table,
+            _confirmed_text(project, "cap.external.mutual_aid_contacts", "cap.external.warning_system"),
+            header_rows=1,
+        )
 
     hospital_rows = []
     for row in base._rows(project, "cap.external.evacuation"):
@@ -674,6 +1014,12 @@ def _fill_form16(tables, project: Stage2Project) -> None:
             base._row_value(row, "주소"), base._row_value(row, "전화번호"),
         ])
     _fill_table_rows(hospital_table, _sanitize_rows(hospital_rows), header_rows=1)
+    if not hospital_rows:
+        _fill_text_block(
+            hospital_table,
+            _confirmed_text(project, "cap.external.medical_contacts"),
+            header_rows=1,
+        )
 
     shelter_rows = []
     for row in base._rows(project, "cap.external.evacuation"):
@@ -681,18 +1027,36 @@ def _fill_form16(tables, project: Stage2Project) -> None:
             continue
         shelter_rows.append([
             base._row_value(row, "대피장소"), base._row_value(row, "수용 인원"),
-            base._row_value(row, "사업장으로부터 거리(m)", "거리"), base._row_value(row, "연락처"),
+            base._row_value(row, "사업장으로부터 거리(m)", "거리"),
+            base._row_value(row, "연락처"),
         ])
     _fill_table_rows(shelter_table, _sanitize_rows(shelter_rows), header_rows=1)
+    if not shelter_rows:
+        _fill_text_block(
+            shelter_table,
+            _confirmed_text(project, "cap.external.shelters", "cap.external.evacuation_routes"),
+            header_rows=1,
+        )
 
     disclosure_rows = []
     for row in base._rows(project, "cap.external.community_notice"):
         disclosure_rows.append([
-            base._row_value(row, "고지 방법", "방법"), base._row_value(row, "고지 대상 목록", "대상"),
+            base._row_value(row, "고지 방법", "방법"),
+            base._row_value(row, "고지 대상 목록", "대상"),
             base._row_value(row, "고지 예정 시기", "시기"),
         ])
     _fill_table_rows(disclosure_table, _sanitize_rows(disclosure_rows), header_rows=1)
-
+    if not disclosure_rows:
+        _fill_text_block(
+            disclosure_table,
+            _confirmed_text(
+                project,
+                "cap.external.notice_method",
+                "cap.external.notice_targets",
+                "cap.external.notice_content",
+            ),
+            header_rows=1,
+        )
 
 def build_cap_baseline_draft(project: Stage2Project) -> bytes:
     if not project.cap_in_scope:
