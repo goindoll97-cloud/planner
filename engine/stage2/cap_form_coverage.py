@@ -372,7 +372,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
     items.append(CAPFormCoverageItem(
         14, "사고시나리오별 시설빈도", "개시사건 개수·사고빈도·시나리오 시설빈도",
-        READY if form14.ready else CALCULATION,
+        READY if (form14.ready or form15.no_offsite_scenario) else CALCULATION,
         "P&ID·설비 개수 × 현행 별지 제14호 기준빈도",
         ("cap.offsite.scenario_frequency",),
         "시나리오별 10개 개시사건 개수와 개수 산정근거",
@@ -386,6 +386,22 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         "KORA/GIS 결과와 완성된 시설빈도",
         "증감 전 점수는 자동계산하되 최종 위험도는 안전원 결정 전에는 확정하지 않음",
     ))
+
+    if not form15.no_offsite_scenario:
+        items.append(CAPFormCoverageItem(
+            14, "사고시나리오별 시설빈도", "공식 HWPX 시나리오별 반복블록",
+            READY if len(form14.scenario_rows) <= 1 else RENDERER_GAP,
+            "출력엔진", (),
+            "사고시나리오마다 반복되는 10개 개시사건 표 블록",
+            "복수 시나리오에서는 계산결과와 별개로 HWPX 반복블록 자동복제 검증 필요",
+        ))
+        items.append(CAPFormCoverageItem(
+            15, "위험도 분석", "공식 HWPX A·B·C·D 및 점수 셀",
+            RENDERER_GAP,
+            "출력엔진", (),
+            "A·B·C·D 합계, 구간점수, 사고빈도·사고영향점수",
+            "검토용 DOCX 계산은 가능하나 현행 HWPX 점수셀 자동기입은 별도 검증 필요",
+        ))
 
     # 별지 제16호
     items.append(CAPFormCoverageItem(
