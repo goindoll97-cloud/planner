@@ -551,7 +551,7 @@ def _render_submission_readiness(project) -> None:
 
     if final_ready:
         st.success(
-            "프로그램 검증 기준상 제출 전 자료점검이 완료되었고, 최종 체크포인트 확인도 완료되었습니다. "
+            "프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다. 최종 체크포인트 확인도 완료되었습니다. "
             "다만 실제 제출 전에는 담당자가 DOCX, 도면, 제품 SDS/MSDS 및 모든 첨부자료의 최신본·서명·날짜를 최종 대조해야 합니다."
         )
         return
