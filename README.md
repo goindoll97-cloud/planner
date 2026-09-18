@@ -200,6 +200,8 @@ data/runtime/stage2/projects/<project_id>/
   - 문서별 최종 readiness가 통과한 경우에만 `작성본`으로 표시
 - CAP/PSM 내부 검토용 DOCX
   - 법정 규정서식 제출본과 구분하여 설명문·작성항목 검토에만 사용
+- 규정서식 출력물 검증정보 JSON
+  - 동일 DOCX bytes의 SHA-256, 생성시점(UTC), Stage 1 source fingerprint, 현재 validation fingerprint, Stage 4 확인상태, 작성본/검토용 상태를 함께 기록
 - 선택사항: 로컬 AI를 이용한 내부 설명문 보강 검토용 DOCX
 
 DOCX가 생성되더라도 프로그램이 이를 자동으로 제출 확정본으로 간주하지 않습니다. 최종 제출 전 담당자가 회사 사실, 수치, 도면, 제품 SDS/MSDS 및 첨부자료와 대조하여 확인해야 합니다. PDF/XLSX/ZIP 형태의 별도 최종 제출 패키지는 현재 Stage 5의 기본 출력 형식이 아닙니다.
