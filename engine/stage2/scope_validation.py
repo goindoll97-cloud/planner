@@ -5,6 +5,7 @@ from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
+from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .cross_validation import CrossValidationReport, ValidationIssue, validate_stage2_project
 from .project import Stage2Project
 
@@ -176,6 +177,53 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제11호서식",
                 )
             )
+
+        checked_rules += 2
+        form14 = build_cap_form14_data(project)
+        form15 = build_cap_form15_data(project)
+        for form_no, prepared, field_keys, legal_item in (
+            (
+                14, form14,
+                ("cap.offsite.scenario_frequency",),
+                "별지 제14호 사고시나리오별 시설빈도",
+            ),
+            (
+                15, form15,
+                ("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
+                "별지 제15호 위험도 분석",
+            ),
+        ):
+            if prepared.blockers:
+                for index, blocker in enumerate(prepared.blockers, start=1):
+                    issues_list.append(
+                        ValidationIssue(
+                            code=f"CAP-FORM{form_no}-{index}",
+                            status="HOLD",
+                            system="CAP",
+                            section="장외평가정보",
+                            legal_item=legal_item,
+                            message=str(blocker),
+                            field_keys=field_keys,
+                            legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
+                        )
+                    )
+            else:
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM{form_no}-READY",
+                        status="PASS",
+                        system="CAP",
+                        section="장외평가정보",
+                        legal_item=legal_item,
+                        message=(
+                            "개시사건 빈도×개수와 시나리오 시설빈도를 확인했습니다."
+                            if form_no == 14
+                            else "A·B·C·D 합계와 별표 3 구간점수를 확인했습니다."
+                        ),
+                        field_keys=field_keys,
+                        legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
+                    )
+                )
 
     order = {"HOLD": 0, "REVIEW_REQUIRED": 1, "PASS": 2, "NOT_APPLICABLE": 3}
     issues_list.sort(key=lambda issue: (order.get(issue.status, 9), issue.system, issue.section, issue.code))
