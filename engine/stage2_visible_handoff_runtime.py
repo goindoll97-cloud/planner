@@ -26,6 +26,7 @@ from typing import Any, Mapping
 
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 
 HANDOFF_SHEET = "00A_Stage1승계정보"
@@ -302,8 +303,8 @@ def _annotate_table_provenance(wb: Any, project: Any) -> None:
                     ws.cell(row_no, col).fill = PatternFill("solid", fgColor=STAGE1_FILL)
             ws.cell(row_no, info_col).fill = PatternFill("solid", fgColor=STAGE1_FILL)
             ws.cell(row_no, source_col).fill = PatternFill("solid", fgColor=STAGE1_FILL)
-        ws.column_dimensions[chr(64 + info_col)].width = 20
-        ws.column_dimensions[chr(64 + source_col)].width = 48
+        ws.column_dimensions[get_column_letter(info_col)].width = 20
+        ws.column_dimensions[get_column_letter(source_col)].width = 48
 
 
 def _decorate_workbook(project: Any, raw: bytes, *, example: bool) -> bytes:
