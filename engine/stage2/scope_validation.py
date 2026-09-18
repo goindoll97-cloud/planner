@@ -232,32 +232,37 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     )
                 )
 
-        if not form15.no_offsite_scenario and len(form14.scenario_rows) > 1:
-            issues_list.append(
-                ValidationIssue(
-                    code="CAP-FORM14-HWPX-REPEAT-BLOCK",
-                    status="HOLD",
-                    system="CAP",
-                    section="장외평가정보",
-                    legal_item="별지 제14호 사고시나리오별 시설빈도",
-                    message="공식 HWPX의 사고시나리오별 10개 개시사건 반복블록 자동복제 검증이 아직 필요합니다. 계산결과는 생성되지만 최종 HWPX 제출본은 보류합니다.",
-                    field_keys=("cap.offsite.scenario_frequency",),
-                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제14호서식",
+        if not form15.no_offsite_scenario and not form14.blockers and form15.ready:
+            from .cap_multi_form_runtime import preflight_cap_risk_hwpx
+
+            renderer = preflight_cap_risk_hwpx(project)
+            if renderer.ready:
+                issues_list.append(
+                    ValidationIssue(
+                        code="CAP-FORM14-15-HWPX-READY",
+                        status="PASS",
+                        system="CAP",
+                        section="장외평가정보",
+                        legal_item="별지 제14·15호 공식 HWPX 자동작성",
+                        message="현재 승인된 법제처 원본에 별지 제14호 시나리오별 작성과 별지 제15호 A·B·C·D·구간점수 셀 매핑을 시험작성하여 확인했습니다.",
+                        field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제14호·제15호서식",
+                    )
                 )
-            )
-        if not form15.no_offsite_scenario and form15.ready:
-            issues_list.append(
-                ValidationIssue(
-                    code="CAP-FORM15-HWPX-SCORE-CELLS",
-                    status="HOLD",
-                    system="CAP",
-                    section="장외평가정보",
-                    legal_item="별지 제15호 위험도 분석",
-                    message="공식 HWPX의 A·B·C·D 및 구간점수/위험도 점수 셀 자동기입 검증이 아직 필요합니다. 검토용 DOCX 계산표는 작성되지만 최종 HWPX는 보류합니다.",
-                    field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
-                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제15호서식",
-                )
-            )
+            else:
+                for index, blocker in enumerate(renderer.blockers, start=1):
+                    issues_list.append(
+                        ValidationIssue(
+                            code=f"CAP-FORM14-15-HWPX-{index}",
+                            status="HOLD",
+                            system="CAP",
+                            section="장외평가정보",
+                            legal_item="별지 제14·15호 공식 HWPX 자동작성",
+                            message=str(blocker),
+                            field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
+                            legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제14호·제15호서식",
+                        )
+                    )
 
     order = {"HOLD": 0, "REVIEW_REQUIRED": 1, "PASS": 2, "NOT_APPLICABLE": 3}
     issues_list.sort(key=lambda issue: (order.get(issue.status, 9), issue.system, issue.section, issue.code))
