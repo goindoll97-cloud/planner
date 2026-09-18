@@ -74,6 +74,23 @@ def build_output_provenance(
     if not str(file_name or "").strip():
         raise ValueError("출력 파일명이 비어 있습니다.")
 
+    selected = project.psm_in_scope if system == "PSM" else project.cap_in_scope
+    if not selected:
+        raise ValueError(
+            f"현재 작성범위에 {SYSTEM_LABELS[system]}이(가) 포함되어 있지 않아 검증정보를 만들 수 없습니다."
+        )
+
+    clean_file_name = Path(file_name).name
+    current_validation_confirmed = validation_confirmed(project)
+    if final_ready and not current_validation_confirmed:
+        raise ValueError(
+            "현재 프로젝트의 Stage 4 검증 fingerprint가 확정 상태가 아니므로 AUTHORING_READY 검증정보를 만들 수 없습니다."
+        )
+    if final_ready and "검토용" in clean_file_name:
+        raise ValueError("AUTHORING_READY 출력물 파일명에 '검토용'을 사용할 수 없습니다.")
+    if not final_ready and "작성본" in clean_file_name:
+        raise ValueError("REVIEW_ONLY 출력물 파일명에 '작성본'을 사용할 수 없습니다.")
+
     return OutputProvenance(
         schema_version=SCHEMA_VERSION,
         system=system,
@@ -86,9 +103,9 @@ def build_output_provenance(
         project_updated_at=project.updated_at,
         stage1_source_fingerprint=str(project.stage1_source_fingerprint or ""),
         validation_fingerprint=validation_fingerprint(project),
-        validation_confirmed=validation_confirmed(project),
+        validation_confirmed=current_validation_confirmed,
         final_ready=bool(final_ready),
-        file_name=Path(file_name).name,
+        file_name=clean_file_name,
         mime_type=str(mime_type),
         sha256=sha256(bytes(data)).hexdigest(),
         size_bytes=len(data),

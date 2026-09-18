@@ -202,6 +202,7 @@ data/runtime/stage2/projects/<project_id>/
   - 법정 규정서식 제출본과 구분하여 설명문·작성항목 검토에만 사용
 - 규정서식 출력물 검증정보 JSON
   - 동일 DOCX bytes의 SHA-256, 생성시점(UTC), Stage 1 source fingerprint, 현재 validation fingerprint, Stage 4 확인상태, 작성본/검토용 상태를 함께 기록
+  - Stage 4 fingerprint가 현재 프로젝트와 일치하지 않거나 작성범위 밖 문서이거나 파일명 상태와 readiness가 모순되면 검증정보 생성을 중단
 - 규정서식 검증 묶음 ZIP
   - 동일 DOCX, 해당 DOCX의 검증정보 JSON, SHA-256 확인 안내문을 한 묶음으로 제공하며 해시 불일치 시 생성을 중단
 - 선택사항: 로컬 AI를 이용한 내부 설명문 보강 검토용 DOCX

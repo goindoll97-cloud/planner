@@ -20,14 +20,17 @@ from engine.stage2.workflow import (
 
 class OutputProvenanceTests(unittest.TestCase):
     @staticmethod
-    def _project() -> Stage2Project:
+    def _project(*, cap: bool = False) -> Stage2Project:
         project = Stage2Project(
             project_id="S2-PROVENANCE",
             company_name="검증화학",
             site_name="제1공장",
             psm_required=True,
+            cap_required=True if cap else None,
+            cap_group="1군" if cap else "",
             scope_confirmed=True,
             psm_selected=True,
+            cap_selected=cap,
             stage1_source_fingerprint="a" * 64,
         )
         project.set_field(
@@ -102,7 +105,7 @@ class OutputProvenanceTests(unittest.TestCase):
         self.assertNotEqual(result.validation_fingerprint, old_fingerprint)
 
     def test_json_bytes_preserve_hash_and_state(self):
-        project = self._project()
+        project = self._project(cap=True)
         result = build_output_provenance(
             project,
             "CAP",
@@ -116,6 +119,61 @@ class OutputProvenanceTests(unittest.TestCase):
         self.assertEqual(payload["state"], "REVIEW_ONLY")
         self.assertEqual(payload["system"], "CAP")
         self.assertIn("generated_at_utc", payload)
+
+    def test_authoring_ready_requires_current_stage4_validation(self):
+        project = self._project()
+        project.set_field(
+            "business.address",
+            "사업장 소재지",
+            "Stage 4 이후 변경된 주소",
+            "USER_CONFIRMED",
+        )
+        self.assertFalse(validation_confirmed(project))
+
+        with self.assertRaisesRegex(ValueError, "Stage 4"):
+            build_output_provenance(
+                project,
+                "PSM",
+                b"stale-output",
+                file_name="stale_규정서식_작성본.docx",
+                final_ready=True,
+            )
+
+    def test_unselected_system_cannot_create_provenance(self):
+        project = self._project()
+
+        with self.assertRaisesRegex(ValueError, "작성범위"):
+            build_output_provenance(
+                project,
+                "CAP",
+                b"cap-output",
+                file_name="cap_규정서식_검토용.docx",
+                final_ready=False,
+            )
+
+    def test_authoring_ready_cannot_use_review_filename(self):
+        project = self._project()
+
+        with self.assertRaisesRegex(ValueError, "검토용"):
+            build_output_provenance(
+                project,
+                "PSM",
+                b"ready-output",
+                file_name="psm_규정서식_검토용.docx",
+                final_ready=True,
+            )
+
+    def test_review_only_cannot_use_authoring_filename(self):
+        project = self._project()
+
+        with self.assertRaisesRegex(ValueError, "작성본"):
+            build_output_provenance(
+                project,
+                "PSM",
+                b"review-output",
+                file_name="psm_규정서식_작성본.docx",
+                final_ready=False,
+            )
 
     def test_manifest_filename_is_derived_from_exact_output_filename(self):
         self.assertEqual(
