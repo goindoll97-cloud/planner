@@ -19,6 +19,7 @@ from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
 from .cap_form11_engine import build_cap_form11_data
+from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -1150,32 +1151,92 @@ def _cap_form13(doc: Document, project: Stage2Project) -> None:
     _add_form_table(doc, spec, rows)
 
 
-def _cap_form14_rows(project: Stage2Project) -> list[list[str]]:
-    out = []
-    for idx, row in enumerate(_rows(project, "cap.offsite.scenario_frequency"), 1):
-        out.append([str(idx), _row_value(row, "개시사건"), _row_value(row, "빈도"), _row_value(row, "개수"), _row_value(row, "사고빈도")])
-    return out
+def _cap_form14(doc: Document, project: Stage2Project) -> None:
+    prepared = build_cap_form14_data(project)
+    _add_form_heading(doc, "별지 제14호서식", "사고시나리오별 시설빈도")
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in prepared.event_rows:
+        grouped.setdefault(str(row.get("사고시나리오명") or ""), []).append(dict(row))
+
+    if not grouped:
+        doc.add_paragraph(MISSING)
+    for scenario, rows in grouped.items():
+        p = doc.add_paragraph()
+        p.add_run(f"1) {scenario or MISSING}").bold = True
+        spec = FormSpec("", "", ("연번", "개시사건", "빈도", "개수", "사고빈도"))
+        values = [
+            [
+                str(idx),
+                str(row.get("개시사건") or ""),
+                str(row.get("기준빈도(/연)") or ""),
+                str(row.get("개수") if row.get("개수") is not None else ""),
+                str(row.get("사고빈도(/연)") or ""),
+            ]
+            for idx, row in enumerate(rows, 1)
+        ]
+        _add_form_table(doc, spec, values)
+        summary = next(
+            (item for item in prepared.scenario_rows if str(item.get("사고시나리오명") or "") == scenario),
+            {},
+        )
+        _add_key_value_form(doc, "", "안전성 확보설비", (
+            ("시설빈도 합(/연)", str(summary.get("시설빈도(/연)") or MISSING)),
+            ("수동적 완화장치", str(summary.get("수동적 완화장치") or MISSING)),
+            ("능동적 완화장치", str(summary.get("능동적 완화장치") or MISSING)),
+            ("증빙자료", str(summary.get("안전성확보설비 증빙") or MISSING)),
+        ))
+    if prepared.blockers:
+        note = doc.add_paragraph()
+        note.add_run("확인 필요: ").bold = True
+        note.add_run(" / ".join(prepared.blockers))
 
 
 def _cap_form15(doc: Document, project: Stage2Project) -> None:
-    _add_form_table(
-        doc, CAP_FORMS["15"],
-        _generic_form_rows(project, "cap.offsite.risk_analysis", CAP_FORMS["15"], (("연번",), ("사고시나리오 명", "시나리오"), ("시설 빈도", "사고시나리오 시설빈도"), ("거리(장외)", "장외거리"), ("주민수",))),
-    )
-    doc.add_paragraph("2. 위험도 판단 요소 점수")
-    scores = _value(project, "cap.offsite.risk_analysis", default={})
-    if isinstance(scores, Mapping):
-        _add_key_value_form(doc, "", "", (
-            ("사고시나리오 총 개수(A)", _row_value(scores, "사고시나리오 총 개수", "A")),
-            ("사고시나리오 시설빈도의 합(B)", _row_value(scores, "사고시나리오 시설빈도의 합", "B")),
-            ("사고시나리오 거리의 합(C)", _row_value(scores, "사고시나리오 거리의 합", "C")),
-            ("주민수 합(D)", _row_value(scores, "주민수 합", "D")),
-            ("사고빈도점수(A+B)", _row_value(scores, "사고빈도점수", "A+B")),
-            ("사고영향점수(C+D)", _row_value(scores, "사고영향점수", "C+D")),
-            ("최종 위험도", _row_value(scores, "최종 위험도", "위험도")),
-        ))
+    prepared = build_cap_form15_data(project)
+    _add_form_heading(doc, "별지 제15호서식", "위험도 분석")
+
+    if prepared.no_offsite_scenario:
+        doc.add_paragraph("장외 사고시나리오 없음: 제24조 및 제25조 작성 생략, 위험도 '다' 적용")
     else:
-        doc.add_paragraph(MISSING)
+        spec = FormSpec(
+            "", "1. 사업장 내 위험도 판단 요소 선정",
+            ("연번", "사고시나리오 명", "사고시나리오 시설빈도", "사고시나리오 거리(장외)", "주민수"),
+        )
+        rows = [
+            [
+                str(row.get("연번") or ""),
+                str(row.get("사고시나리오 명") or ""),
+                str(row.get("사고시나리오 시설빈도") or ""),
+                str(row.get("사고시나리오 거리(장외)") or ""),
+                str(row.get("위험도 주민수") if row.get("위험도 주민수") not in (None, "") else ""),
+            ]
+            for row in prepared.scenario_rows
+        ]
+        _add_form_table(doc, spec, rows or [[MISSING] + [""] * 4])
+
+    doc.add_paragraph("2. 위험도 판단 요소 점수").runs[0].bold = True
+    totals = prepared.totals or {}
+    scores = prepared.scores or {}
+    _add_key_value_form(doc, "", "", (
+        ("사고시나리오 총 개수(A)", str(totals.get("사고시나리오 총 개수(A)", MISSING))),
+        ("사고시나리오 시설빈도의 합(B)", str(totals.get("사고시나리오 시설빈도의 합(B)", MISSING))),
+        ("사고시나리오 거리의 합(C)", str(totals.get("사고시나리오 거리의 합(C)", MISSING))),
+        ("주민수 합(D)", str(totals.get("주민수 합(D)", MISSING))),
+        ("사고시나리오 개수 구간점수", str(scores.get("사고시나리오 개수 구간점수", MISSING))),
+        ("시설빈도 구간점수", str(scores.get("시설빈도 구간점수", MISSING))),
+        ("거리 구간점수", str(scores.get("거리 구간점수", MISSING))),
+        ("주민수 구간점수", str(scores.get("주민수 구간점수", MISSING))),
+        ("사고빈도점수(A+B)", str(scores.get("사고빈도점수(A+B)", MISSING))),
+        ("사고영향점수(C+D)", str(scores.get("사고영향점수(C+D)", MISSING))),
+        ("위험도 판정표 점수(증감 전)", str(scores.get("위험도 판정표 점수(증감 전)", MISSING))),
+        ("증감 전 위험도", str(scores.get("증감 전 위험도", MISSING))),
+        ("최종 위험도", str(scores.get("최종 위험도", MISSING))),
+    ))
+    if prepared.blockers:
+        note = doc.add_paragraph()
+        note.add_run("확인 필요: ").bold = True
+        note.add_run(" / ".join(prepared.blockers))
+
 
 
 def _cap_form16(doc: Document, project: Stage2Project) -> None:
@@ -1251,7 +1312,7 @@ def _render_cap(doc: Document, project: Stage2Project) -> None:
         p.add_run(_text(project, key, default=MISSING))
     _cap_form12(doc, project)
     _cap_form13(doc, project)
-    _add_form_table(doc, CAP_FORMS["14"], _cap_form14_rows(project))
+    _cap_form14(doc, project)
     _cap_form15(doc, project)
 
     specs = [s for s in selected_requirement_specs(project) if s.system == "CAP"]
