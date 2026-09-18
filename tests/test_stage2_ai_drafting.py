@@ -260,7 +260,7 @@ class Stage2GroundedAIDraftingTests(unittest.TestCase):
         self.assertIn("generate_system_ai_drafts", source)
         self.assertIn("if use_ai:", source)
         self.assertIn("법적 판정이나 회사자료를 바꾸지 않고", source)
-        self.assertIn("내부 검토용 DOCX 다운로드", source)
+        self.assertIn("검토용 DOCX 다운로드", source)
         self.assertIn("AI 문장 검토용 내부 DOCX", source)
         self.assertIn("AI 문장 다듬기 시작", source)
         self.assertIn("st.progress", source)
