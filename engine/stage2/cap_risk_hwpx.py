@@ -124,7 +124,7 @@ def _resolve(
     table_anchor: str,
     labels: Sequence[str],
     *,
-    directions: Sequence[str] = ("down",),
+    directions: Sequence[str] = ("below",),
 ):
     section = _section_for_anchor(data, table_anchor)
     errors: list[str] = []
@@ -186,7 +186,7 @@ def _fill_semantic_text(
     table_anchor: str,
     labels: Sequence[str],
     text: str,
-    directions: Sequence[str] = ("down", "right"),
+    directions: Sequence[str] = ("below", "right"),
     max_lines: int = 8,
 ) -> tuple[bytes, int, list[str]]:
     if not str(text or "").strip():
@@ -457,7 +457,7 @@ def render_form15_risk(source: bytes, form15: CAPForm15Data) -> CAPRiskHwpxRende
             table_anchor=FORM15_ANCHOR,
             labels=labels,
             text=str(form15.scores.get(score_key, "")),
-            directions=("down", "right"),
+            directions=("below", "right"),
             max_lines=2,
         )
         applied += count
