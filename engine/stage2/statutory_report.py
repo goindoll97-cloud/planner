@@ -14,6 +14,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
+from .cap_form1_engine import build_cap_form1_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -901,42 +902,53 @@ def _render_psm_narrative(doc: Document, project: Stage2Project) -> None:
 
 def _cap_form1(doc: Document, project: Stage2Project) -> None:
     _add_form_heading(doc, "별지 제1호서식", "사업장의 작성수준 구분")
-    facilities = _facility_rows(project)
-    chemicals = _chemical_rows(project)
-    chem_by_name = {_norm(_row_value(c, "물질명", "유해화학물질명")): c for c in chemicals}
-    t1_rows = []
-    for facility in facilities:
-        material = _row_value(facility, "취급물질", "물질명")
-        chem = chem_by_name.get(_norm(material), {})
-        t1_rows.append([
-            _row_value(facility, "단위공장·공정", "단위공장", "공정"),
-            material,
-            _row_value(chem, "CAS 번호", "화학물질식별번호"),
-            _row_value(chem, "함량(%)", "함량"),
-            _row_value(facility, "설비번호", "구분기호"),
-            _row_value(facility, "설비명", "취급시설"),
-            _row_value(facility, "용량", "설계용량"),
-            _row_value(facility, "최대보유량(kg)", "취급량", "최대보유량"),
-        ])
-    spec1 = FormSpec("", "", ("단위공장", "유해화학물질", "CAS No.", "함량(%)", "구분기호", "취급시설", "설계용량(m3)", "취급량(ton)"))
-    _add_form_table(doc, spec1, t1_rows)
+    prepared = build_cap_form1_data(project)
+
+    doc.add_paragraph("1. 단위공장 내 취급시설별 최대보유량 산출").runs[0].bold = True
+    spec1 = FormSpec(
+        "", "",
+        ("단위공장", "유해화학물질", "CAS No.", "함량(%)", "구분기호", "취급시설", "설계용량(m3)", "취급량(ton)"),
+    )
+    t1_rows = [
+        [
+            str(row.get("단위공장") or ""),
+            str(row.get("유해화학물질") or ""),
+            str(row.get("CAS No.") or ""),
+            str(row.get("함량(%)") or ""),
+            str(row.get("구분기호") or ""),
+            str(row.get("취급시설") or ""),
+            str(row.get("설계용량(m3)") or ""),
+            str(row.get("취급량(ton)") or ""),
+        ]
+        for row in prepared.facility_rows
+    ]
+    _add_form_table(doc, spec1, t1_rows or [[MISSING] + [""] * 7])
+
     p = doc.add_paragraph("2. 유해화학물질별 사업장 내의 최대보유량 산출")
     p.runs[0].bold = True
-    t2_rows = []
-    for chem in chemicals:
-        t2_rows.append([
-            _row_value(chem, "물질명", "유해화학물질명"),
-            _row_value(chem, "CAS 번호", "화학물질식별번호"),
-            _row_value(chem, "물질구분"),
-            _row_value(chem, "최대보유량", "최대보유량(kg)"),
-            project.cap_group or MISSING,
-            _row_value(chem, "하위규정수량"),
-            _row_value(chem, "상위규정수량"),
-        ])
-    spec2 = FormSpec("", "", ("물질명", "CAS No.", "물질구분", "사업장 내 최대보유량(ton)", "작성수준", "하위규정수량(ton)", "상위규정수량(ton)"))
-    _add_form_table(doc, spec2, t2_rows)
-    doc.add_paragraph("3. 작성수준 도출: " + (project.cap_group or MISSING))
+    spec2 = FormSpec(
+        "", "",
+        ("물질명", "CAS No.", "물질구분", "사업장 내 최대보유량(ton)", "작성수준", "하위규정수량(ton)", "상위규정수량(ton)"),
+    )
+    t2_rows = [
+        [
+            str(row.get("물질명") or ""),
+            str(row.get("CAS No.") or ""),
+            str(row.get("물질구분") or MISSING),
+            str(row.get("사업장 내 최대보유량(ton)") or MISSING),
+            str(row.get("작성수준") or project.cap_group or MISSING),
+            str(row.get("하위규정수량(ton)") or MISSING),
+            str(row.get("상위규정수량(ton)") or MISSING),
+        ]
+        for row in prepared.chemical_rows
+    ]
+    _add_form_table(doc, spec2, t2_rows or [[MISSING] + [""] * 6])
 
+    doc.add_paragraph("3. 작성수준 도출: " + (project.cap_group or MISSING))
+    if prepared.blockers:
+        note = doc.add_paragraph()
+        note.add_run("확인 필요: ").bold = True
+        note.add_run(" / ".join(prepared.blockers))
 
 def _cap_form3(doc: Document, project: Stage2Project) -> None:
     level = project.cap_group or _text(project, "cap.business.writing_level", default=MISSING)
