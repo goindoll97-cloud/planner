@@ -17,6 +17,7 @@ from docx.shared import Cm, Pt
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
+from .cap_form10_engine import build_cap_form10_data
 from .intake import selected_requirement_specs
 from .project import CONFIRMED_STATUSES, Stage2Project
 
@@ -1083,12 +1084,20 @@ def _cap_form9_rows(project: Stage2Project) -> list[list[str]]:
 
 
 def _cap_form10_rows(project: Stage2Project) -> list[list[str]]:
-    out = []
-    for idx, row in enumerate(_rows(project, "cap.safety.dike_layout"), 1):
+    prepared = build_cap_form10_data(project)
+    out: list[list[str]] = []
+    for row in prepared.rows:
         out.append([
-            str(idx), _row_value(row, "설비형태"), _row_value(row, "구분기호", "설비번호"), _row_value(row, "장치·설비명", "설비명"),
-            _row_value(row, "설계용량"), _row_value(row, "설비종류"), _row_value(row, "필요용량"), _row_value(row, "유효용량"),
-            _row_value(row, "검토결과"), _row_value(row, "비고"),
+            str(row.get("연번") or ""),
+            str(row.get("설비형태") or ""),
+            str(row.get("구분기호") or ""),
+            str(row.get("장치·설비명") or ""),
+            str(row.get("설계용량") or ""),
+            str(row.get("설비종류") or ""),
+            str(row.get("필요용량") or ""),
+            str(row.get("유효용량") or ""),
+            str(row.get("검토결과") or ""),
+            str(row.get("비고") or ""),
         ])
     return out
 

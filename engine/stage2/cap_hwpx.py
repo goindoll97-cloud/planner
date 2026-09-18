@@ -27,6 +27,7 @@ from ..law_attachment_archive import approved_source_files, approved_source_is_c
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
+from .cap_form10_engine import build_cap_form10_data
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 
@@ -554,7 +555,9 @@ def build_cap_hwpx_draft(project: Stage2Project, template_bytes: bytes | None = 
     applied += count
     warnings.extend(warn)
 
-    dikes = _confirmed_rows(project, "cap.safety.dike_layout")
+    form10 = build_cap_form10_data(project)
+    dikes = list(form10.rows)
+    warnings.extend(f"별지 제10호 확인 필요: {msg}" for msg in form10.blockers)
     source, count, warn = _fill_structured_table(
         source,
         table_anchor="확산방지설비 현황",

@@ -15,6 +15,7 @@ from typing import Any
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
+from .cap_form10_engine import build_cap_form10_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -142,6 +143,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     form1 = build_cap_form1_data(project)
     form6 = build_cap_chemical_legal_data(project)
     form9 = build_cap_form9_data(project)
+    form10 = build_cap_form10_data(project)
     threshold_rows_ready = bool(form1.chemical_rows) and all(
         str(row.get("물질구분") or "").strip()
         and str(row.get("하위규정수량(ton)") or "").strip()
@@ -312,15 +314,19 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
 
     # 별지 제10호
     items.append(CAPFormCoverageItem(
-        10, "확산방지설비 현황", "방류벽·방지턱·트렌치 현황",
+        10, "확산방지설비 현황", "배치도·현장 증빙",
         READY if _has(project, "cap.safety.dike_layout") else ASK_COMPANY,
-        "회사 방유제/트렌치 자료", ("cap.safety.dike_layout",),
-        "형태·치수·연결 설비",
+        "회사 방유제/트렌치 배치도", ("cap.safety.dike_layout",),
+        "확산방지설비 위치·형태와 대상 취급시설을 확인할 수 있는 도면",
+        "계산표와 도면 증빙을 별도 필드로 유지하여 첨부파일 HOLD가 계산자료를 덮어쓰지 않음",
     ))
     items.append(CAPFormCoverageItem(
         10, "확산방지설비 현황", "필요용량·유효용량·검토결과",
-        CALCULATION, "법정 계산식", ("cap.safety.dike_layout",),
-        "확산방지설비 치수와 적용 기준",
+        READY if form10.ready else CALCULATION,
+        "회사 확인 적용기준 + 치수계산 엔진",
+        ("cap.safety.dike_calculation",),
+        "필요용량 기준·근거, 내부치수·차감용적 또는 직접확인 유효용량",
+        "유효용량만 산술계산하며 필요용량에 일률적인 임의 비율을 적용하지 않음",
     ))
 
     # 별지 제11호
