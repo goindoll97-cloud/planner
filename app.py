@@ -3,36 +3,16 @@ from __future__ import annotations
 import streamlit as st
 
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
-from engine.stage2.cap_multi_form_runtime import install_cap_multi_form_runtime
 from engine.stage2.storage import list_projects, load_project
 from engine.stage2.workflow import draft_authoring_allowed, intake_confirmed
 
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 
-# engine.stage2.cap_hwpx.registered_cap_template already makes the current
-# approved law.go.kr CAP form the layout authority, with an older
-# project-specific template as fallback only while no CURRENT central legal
-# template is available.
-
-# law.go.kr may publish CAP appendices as several approved HWP/HWPX files rather
-# than one monolithic file. Treat the CURRENT approved set as one official form
-# bundle, fill each original independently, and package the written forms as ZIP.
-# (Split official files intentionally contain only some statutory form markers;
-# cap_multi_form_runtime._partial_builder relaxes the monolithic validation only
-# for that approved split-form writer, and cap_hwpx.convert_hwp_to_hwpx quiets
-# pyhwpx's local DLL-path diagnostic noise during HWP conversion.)
-install_cap_multi_form_runtime()
-# Keep statutory checkbox/choice cells as full official option sets instead of
-# replacing them with short free text, and omit internal review notes from the
-# CAP final-facing DOCX. This runs after the split-form writer is installed.
+# Stage 2 final output is DOCX-only. Keep only the CAP DOCX formatting runtime
+# for checkbox/choice rendering; HWPX template loading/conversion is not
+# installed during ordinary app startup.
 install_cap_final_form_runtime()
-# The legal Word output (engine.stage2.cap_official_docx.build_cap_official_word)
-# is not a python-docx redraw: it exports the completed law.go.kr HWPX through
-# local Hancom Office so official table/font/page layout is retained. It is
-# invoked explicitly rather than through Stage 5, which renders its own
-# internal-review-labeled DOCX and the PSM regulation-form baseline directly
-# (see ui/stage2_review_page.py).
 
 # ui/stage2_review_page.py imports build_local_llm_client/
 # local_llm_config_from_sources/generate_system_ai_drafts directly from
