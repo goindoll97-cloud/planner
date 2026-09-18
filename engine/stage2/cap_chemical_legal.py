@@ -136,10 +136,11 @@ def _adapt_for_scope(chemicals: list[dict[str, Any]]) -> IntakeData:
 def _app2_direct_matches(
     chemicals: list[dict[str, Any]],
     tables: dict[str, pd.DataFrame],
-) -> dict[int, list[dict[str, Any]]]:
+) -> tuple[dict[int, list[dict[str, Any]]], set[int]]:
     matches: dict[int, list[dict[str, Any]]] = {}
+    solution_review_rows: set[int] = set()
     if not tables:
-        return matches
+        return matches, solution_review_rows
 
     frames: list[pd.DataFrame] = []
     for source_key, raw in tables.items():
@@ -152,7 +153,7 @@ def _app2_direct_matches(
             frame = frame[frame["active"].map(_truthy)].copy()
         frames.append(frame)
     if not frames:
-        return matches
+        return matches, solution_review_rows
     master = pd.concat(frames, ignore_index=True, sort=False)
 
     for row_no, chem in enumerate(chemicals, start=1):
@@ -160,18 +161,27 @@ def _app2_direct_matches(
         if not re.fullmatch(r"\d{2,7}-\d{2}-\d", cas):
             continue
         pct = _num(_row_value(chem, "함량(%)", "함량", "농도(%)"))
+        cas_rows = [
+            dict(legal)
+            for _, legal in master.iterrows()
+            if cas in _split_cas(legal.get("direct_cas"))
+        ]
+        if any(_norm(legal.get("hazard_category")) == _norm("용액") for legal in cas_rows):
+            # Keep parity with Stage 1: the solution-specific legal row must be
+            # confirmed before exact-CAS Appendix-2 applicability is promoted.
+            solution_review_rows.add(row_no)
+            continue
+
         selected: list[dict[str, Any]] = []
-        for _, legal in master.iterrows():
-            if cas not in _split_cas(legal.get("direct_cas")):
-                continue
+        for legal in cas_rows:
             threshold = _num(legal.get("content_threshold_pct"))
             if threshold is not None:
                 if pct is None or pct < threshold:
                     continue
-            selected.append(dict(legal))
+            selected.append(legal)
         if selected:
             matches[row_no] = selected
-    return matches
+    return matches, solution_review_rows
 
 
 def build_cap_chemical_legal_data(project: Stage2Project) -> CAPChemicalLegalData:
@@ -187,7 +197,7 @@ def build_cap_chemical_legal_data(project: Stage2Project) -> CAPChemicalLegalDat
     if missing:
         blockers.append("현행 유해화학물질 규정수량 별표 2 승인 DB가 없어 고유번호·물질구분을 확정할 수 없습니다.")
 
-    direct = _app2_direct_matches(chemicals, tables)
+    direct, solution_review_rows = _app2_direct_matches(chemicals, tables)
     intake = _adapt_for_scope(chemicals)
     broad = screen_cap_scope_candidates_from_tables(intake, tables) if tables else pd.DataFrame()
     broad_rows = {
@@ -236,6 +246,13 @@ def build_cap_chemical_legal_data(project: Stage2Project) -> CAPChemicalLegalDat
 
         row["법적분류 근거"] = " / ".join(dict.fromkeys(legal_sources))
         enriched.append(row)
+
+        if row_no in solution_review_rows:
+            blockers.append(
+                f"{name or cas or f'{row_no}행'}: 현행 별표 2에 동일 CAS의 '용액' 특수행이 있어 "
+                "용액 적용조건 확인 전에는 고유번호·물질구분을 자동확정하지 않습니다."
+            )
+            continue
 
         if row_no in broad_rows and not legal_rows:
             blockers.append(
