@@ -70,6 +70,9 @@ TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
         "적용여부": "yes_no_na",
         "확산방지설비 종류": "containment_type",
     },
+    "24_장외시나리오_확인": {
+        "장외 사고시나리오 없음 여부": "yes_no",
+    },
 }
 
 FIELD_DROPDOWNS = {
