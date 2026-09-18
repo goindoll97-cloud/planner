@@ -565,7 +565,7 @@ def _facility_counts(rows: Sequence[Mapping[str, object]]) -> str:
 
 
 def _psm_form12(doc: Document, project: Stage2Project) -> None:
-    chemicals = _chemical_rows(project)
+    chemicals = _psm_chemical_rows(project)
     raw_names = ", ".join(_row_value(r, "물질명", "화학물질", "유해화학물질명") for r in chemicals[:8]) if chemicals else MISSING
     rows = (
         ("사업장명", project.company_name or MISSING),
