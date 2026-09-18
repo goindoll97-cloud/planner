@@ -59,6 +59,11 @@ def _row_value(row: Mapping[str, Any], aliases: tuple[str, ...]) -> Any:
     return ""
 
 
+def _unit_plant_available(project: Stage2Project) -> bool:
+    value = _confirmed_value(project, "cap.business.unit_plant_name")
+    return bool(str(value or project.site_name or "").strip())
+
+
 def _confirmed_change_rows(project: Stage2Project) -> tuple[dict[str, Any], ...]:
     value = _confirmed_value(project, "cap.prevention.change_log")
     if not isinstance(value, list):
@@ -126,13 +131,15 @@ def build_cap_form2_readiness(project: Stage2Project) -> CAPForm2Readiness:
         )
 
     if is_change:
-        blockers = _validate_rows(rows)
+        blockers = list(_validate_rows(rows))
+        if not _unit_plant_available(project):
+            blockers.insert(0, "단위공장명이 확인되지 않았습니다.")
         return CAPForm2Readiness(
             status=HOLD if blockers else PASS,
             submission_type=submission_type,
             submission_reason=submission_reason,
             rows=rows,
-            blockers=blockers,
+            blockers=tuple(blockers),
             messages=("변경제출에 필요한 변경내역 관리대장을 확인했습니다.",) if not blockers else (),
         )
 
@@ -140,13 +147,15 @@ def build_cap_form2_readiness(project: Stage2Project) -> CAPForm2Readiness:
     # 적용 여부를 단정하지 않는다. 다만 회사가 확정된 변경대장을
     # 제공했다면 그 사실을 근거로 작성 가능 상태로 본다.
     if rows:
-        blockers = _validate_rows(rows)
+        blockers = list(_validate_rows(rows))
+        if not _unit_plant_available(project):
+            blockers.insert(0, "단위공장명이 확인되지 않았습니다.")
         return CAPForm2Readiness(
             status=HOLD if blockers else PASS,
             submission_type=submission_type,
             submission_reason=submission_reason,
             rows=rows,
-            blockers=blockers,
+            blockers=tuple(blockers),
             messages=("회사에서 확정한 변경내역 관리대장을 확인했습니다.",) if not blockers else (),
         )
 
