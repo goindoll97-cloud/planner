@@ -226,6 +226,20 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     )
                 )
 
+        if form12.ready or form13.ready:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM12-13-HWPX-RENDERER",
+                    status="HOLD",
+                    system="CAP",
+                    section="장외평가정보",
+                    legal_item="별지 제12·13호 공식 HWPX 자동작성",
+                    message="별지 제12·13호의 KORA/GIS 확정값은 검증되었지만 현재 법제처 원본 HWPX의 시나리오별 반복작성·보호대상 표 셀 매핑은 아직 검증되지 않았습니다.",
+                    field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.overall_impact_summary", "cap.offsite.population_and_protected_targets"),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제12호·제13호서식",
+                )
+            )
+
         checked_rules += 2
         form14 = build_cap_form14_data(project)
         form15 = build_cap_form15_data(project)
