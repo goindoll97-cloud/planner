@@ -377,7 +377,12 @@ def _pick(row: Mapping[str, Any], *aliases: str) -> Any:
 
 
 def _prefill_chemicals(project: Stage2Project) -> list[list[Any]]:
-    record = project.get_field("inventory.chemicals")
+    # After the company enriches the chemical table with SDS facts, preserve
+    # that richer table on subsequent downloads. Fall back to Stage-1 inventory
+    # only for the first authoring pass.
+    record = project.get_field("cap.chemical.details")
+    if record is None or not isinstance(record.value, list) or not record.value:
+        record = project.get_field("inventory.chemicals")
     rows = record.value if record and isinstance(record.value, list) else []
     out: list[list[Any]] = []
     for row in rows:
@@ -485,6 +490,19 @@ def _table_rows_for(project: Stage2Project, sheet: str, example: bool, spec: Map
         return _prefill_facilities(project)
     if sheet == "05_가스누출감지_경보장치":
         return _prefill_detectors(project)
+
+    # Generic structured-table re-download support. This preserves previously
+    # confirmed rows such as Form 7 hazard information, GIS target tables and
+    # scenario tables instead of returning a blank sheet on the next download.
+    headers = list(spec.get("headers", ()))
+    for key in spec.get("targets", ()):
+        record = project.get_field(str(key))
+        if record is None or not isinstance(record.value, list):
+            continue
+        source_rows = [row for row in record.value if isinstance(row, Mapping)]
+        if not source_rows:
+            continue
+        return [[_pick(row, header) for header in headers] for row in source_rows]
     return []
 
 
