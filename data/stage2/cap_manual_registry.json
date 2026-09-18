@@ -146,7 +146,7 @@
       "source_owner": "COMPANY",
       "suggested_evidence": ["제품 SDS", "물질목록", "시험·검사·연구용 물질 목록(해당 시)"],
       "automation": "PREFILL_AND_CONFIRM",
-      "request": "사업장에서 취급하는 유해화학물질의 물질명, CAS, 함량, 상태, 보유량 등 명세를 확인해 주세요.",
+      "request": "사업장에서 취급하는 유해화학물질의 물질명, CAS, 함량, 상태, 보유량과 회사 제품 SDS의 물성 확인값·SDS 파일명·개정일을 확인해 주세요.",
       "manual_basis": "매뉴얼 p.41~42, 작성규정 별지 제6호서식"
     },
     {
@@ -157,11 +157,11 @@
       "manual_pages": [43, 44],
       "applies_to": ["1군", "2군"],
       "field_keys": ["cap.chemical.hazard_information"],
-      "input_kind": "STRUCTURED_FORM",
+      "input_kind": "STRUCTURED_TABLE",
       "source_owner": "COMPANY",
-      "suggested_evidence": ["제품 SDS 제2·9·10·11·12항 등 유해성 자료", "공식 물질정보 자료"],
+      "suggested_evidence": ["회사 제품 SDS 제2·9·10·11·12항 등 유해성 자료", "회사 승인 물질정보 자료"],
       "automation": "EXTRACT_AND_CONFIRM",
-      "request": "대표 사고유형 판단에 필요한 인체·물리·환경 유해성과 독성 정보를 확인해 주세요.",
+      "request": "별지 제7호 대표물질의 인체·물리·환경 유해성, 출처, 선정 사유와 근거 SDS 파일명·개정일을 확인해 주세요.",
       "manual_basis": "매뉴얼 p.43~44, 작성규정 별지 제7호서식"
     },
     {
