@@ -272,22 +272,25 @@ def _fill_label_rows(table, mapping: Mapping[str, object], *, start: int = 0) ->
 
 
 def _fill_label_rows_replace(table, mapping: Mapping[str, object], *, start: int = 0) -> None:
-    """Replace answer cells instead of appending to preprinted option text.
+    """Replace values in every label/value pair contained in a row.
 
-    Choice rows in the statutory baseline already contain empty checkbox
-    options. Appending another option set produces duplicated lines. For fields
-    where the program renders the complete option set itself, replace the
-    answer cell so exactly one checkbox set remains.
+    Most statutory rows contain one label and one answer. Some official rows,
+    including the final row of Annex Form 3, contain two independent pairs in
+    the same row. Writing only to the row's last cell shifts the first value
+    into the second field and leaves the second value blank.
+
+    Match every label cell and write to its immediate next unique XML cell.
+    Replacement is retained so preprinted checkbox text cannot accumulate.
     """
     normalized = {base._norm(key): value for key, value in mapping.items()}
     for row in table.rows[start:]:
         cells = _unique_cells(row)
         if len(cells) < 2:
             continue
-        label = cells[0].text.strip()
-        value = normalized.get(base._norm(label))
-        if value not in (None, "", MISSING):
-            _write_cell(cells[-1], value)
+        for index, cell in enumerate(cells[:-1]):
+            value = normalized.get(base._norm(cell.text.strip()))
+            if value not in (None, "", MISSING):
+                _write_cell(cells[index + 1], value)
 
 
 def _fill_single_column_labels(table, mapping: Mapping[str, object]) -> None:
