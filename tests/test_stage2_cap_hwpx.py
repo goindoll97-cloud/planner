@@ -124,7 +124,8 @@ class CAPHwpxTemplateTests(unittest.TestCase):
 
     def test_report_page_does_not_expose_hwpx_in_docx_only_mode(self):
         text = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("화학사고예방관리계획서 · DOCX 작성본", text)
+        self.assertIn("화학사고예방관리계획서 · 규정서식 작성본", text)
+        self.assertIn("화학사고예방관리계획서 · 내부 검토용", text)
         self.assertNotIn("normalize_cap_template_upload", text)
         self.assertNotIn("build_cap_hwpx_draft", text)
         self.assertNotIn("법제처 원본서식 HWPX", text)
