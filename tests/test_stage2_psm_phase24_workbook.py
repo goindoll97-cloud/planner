@@ -209,6 +209,30 @@ class PSMPhase24WorkbookTests(unittest.TestCase):
         self.assertEqual(item["state"], "HOLD")
         self.assertIn("psm.risk.consequence", item["missing_fields"])
 
+    def test_explicit_form19_2_non_applicability_removes_model_attachment_request(self):
+        project = self._project()
+        project.set_field(
+            "psm.psi.form_applicability",
+            "PSM 조건부 별지서식 적용여부",
+            [{
+                "서식번호": "19-2",
+                "적용여부": "해당 없음",
+                "확인근거": "위험성평가 결과 별지 제19호의2 미적용 확인",
+            }],
+            "USER_CONFIRMED",
+        )
+
+        wb = load_workbook(BytesIO(
+            build_enhanced_integrated_authoring_workbook(project, example=False)
+        ))
+        ws = wb["07_도면_첨부자료목록"]
+        labels = {
+            str(ws.cell(row, 1).value or "").strip()
+            for row in range(5, ws.max_row + 1)
+        }
+
+        self.assertNotIn("사고피해예측 결과", labels)
+
     def test_explicit_form19_2_non_applicability_aligns_completeness_and_intake(self):
         project = self._project()
         project.set_field(
