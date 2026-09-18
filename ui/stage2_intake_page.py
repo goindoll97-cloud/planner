@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import streamlit as st
 
+from engine.stage2.field_evidence import attach_evidence_to_confirmed_field
 from engine.stage2.guidance import ACTION_PROGRAM, build_requirement_guidance
 from engine.stage2.integrated_workbook import apply_integrated_authoring_workbook, attach_company_file
 from engine.stage2.intake import COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE, build_intake_catalog
+from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 from engine.stage2.workbook_enhancements import build_enhanced_integrated_authoring_workbook
 from engine.stage2.workflow import (
@@ -293,6 +295,115 @@ if project.cap_in_scope:
             st.rerun()
         else:
             st.info("새로 저장할 확인내용이 없습니다.")
+
+if project.cap_in_scope:
+    other_review_record = project.get_field("cap.business.other_system_review")
+    joint_record = project.get_field("cap.business.joint_emergency_plan")
+    other_review_value = (
+        str(other_review_record.value or "").strip()
+        if other_review_record is not None and other_review_record.status in CONFIRMED_STATUSES
+        else ""
+    )
+    joint_value = (
+        str(joint_record.value or "").strip()
+        if joint_record is not None and joint_record.status in CONFIRMED_STATUSES
+        else ""
+    )
+    needs_other_review_evidence = other_review_value.startswith("해당")
+    needs_joint_evidence = "공동" in joint_value
+
+    if needs_other_review_evidence or needs_joint_evidence:
+        st.markdown("#### 최종 제출 관련 증빙 연결")
+        st.caption(
+            "아래 파일은 선택값을 새로 판단하기 위한 자료가 아니라, 회사가 이미 확인한 "
+            "타 제도 심사결과 활용 또는 공동비상대응계획 사실의 제출 증빙으로 연결됩니다."
+        )
+
+        if needs_other_review_evidence:
+            record = project.get_field("cap.business.other_system_review")
+            linked_names = [ref.source_name for ref in (record.evidence if record else []) if ref.source_name]
+            if linked_names:
+                st.success("타 제도 심사결과 증빙 연결됨: " + ", ".join(linked_names))
+            other_review_upload = st.file_uploader(
+                "타 제도 심사결과 증빙파일",
+                key=f"stage2_other_review_evidence_{project.project_id}",
+                help="공정안전보고서 또는 안전성향상계획 심사결과 등 실제 회사 보유 증빙파일을 연결합니다.",
+            )
+            if st.button(
+                "타 제도 심사결과 증빙 연결",
+                width="stretch",
+                key=f"stage2_link_other_review_{project.project_id}",
+            ):
+                if other_review_upload is None:
+                    st.warning("연결할 타 제도 심사결과 증빙파일을 선택하세요.")
+                else:
+                    ref = save_attachment(
+                        project.project_id,
+                        other_review_upload.name,
+                        other_review_upload.getvalue(),
+                        source_type="COMPANY_EVIDENCE",
+                        note="타 제도 심사결과 활용 최종 제출 증빙",
+                    )
+                    try:
+                        linked = attach_evidence_to_confirmed_field(
+                            project,
+                            "cap.business.other_system_review",
+                            ref,
+                            note="Stage 3에서 회사가 타 제도 심사결과 증빙파일을 직접 연결",
+                        )
+                    except Exception as exc:
+                        st.error(f"타 제도 심사결과 증빙을 연결하지 못했습니다: {type(exc).__name__}: {exc}")
+                    else:
+                        if linked:
+                            reset_after_intake_change(project)
+                            save_project(project)
+                            st.success("타 제도 심사결과 증빙파일을 연결했습니다.")
+                            st.rerun()
+                        else:
+                            st.info("같은 증빙파일이 이미 연결되어 있습니다.")
+
+        if needs_joint_evidence:
+            record = project.get_field("cap.business.joint_emergency_plan")
+            linked_names = [ref.source_name for ref in (record.evidence if record else []) if ref.source_name]
+            if linked_names:
+                st.success("공동비상대응계획 증빙 연결됨: " + ", ".join(linked_names))
+            joint_upload = st.file_uploader(
+                "공동비상대응계획 증빙파일",
+                key=f"stage2_joint_emergency_evidence_{project.project_id}",
+                help="공동제출에 필요한 실제 회사 보유 공동비상대응계획 관련 증빙파일을 연결합니다.",
+            )
+            if st.button(
+                "공동비상대응계획 증빙 연결",
+                width="stretch",
+                key=f"stage2_link_joint_emergency_{project.project_id}",
+            ):
+                if joint_upload is None:
+                    st.warning("연결할 공동비상대응계획 증빙파일을 선택하세요.")
+                else:
+                    ref = save_attachment(
+                        project.project_id,
+                        joint_upload.name,
+                        joint_upload.getvalue(),
+                        source_type="COMPANY_EVIDENCE",
+                        note="공동비상대응계획 최종 제출 증빙",
+                    )
+                    try:
+                        linked = attach_evidence_to_confirmed_field(
+                            project,
+                            "cap.business.joint_emergency_plan",
+                            ref,
+                            note="Stage 3에서 회사가 공동비상대응계획 증빙파일을 직접 연결",
+                        )
+                    except Exception as exc:
+                        st.error(f"공동비상대응계획 증빙을 연결하지 못했습니다: {type(exc).__name__}: {exc}")
+                    else:
+                        if linked:
+                            reset_after_intake_change(project)
+                            save_project(project)
+                            st.success("공동비상대응계획 증빙파일을 연결했습니다.")
+                            st.rerun()
+                        else:
+                            st.info("같은 증빙파일이 이미 연결되어 있습니다.")
 
 st.markdown("### 5. 회사 보유 SDS/MSDS·도면·첨부자료")
 if manual_mode:

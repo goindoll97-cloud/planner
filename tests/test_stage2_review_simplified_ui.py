@@ -78,6 +78,14 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn("item.state not in {CAP_FORM_READY, CAP_FORM_NOT_APPLICABLE}", text)
         self.assertIn('c2.metric("해당 없음", not_applicable_coverage)', text)
 
+    def test_stage5_uses_cap_final_registry_checkpoint_gate(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("evaluate_cap_final_gate", text)
+        self.assertIn("화학사고예방관리계획서 · 최종 제출 체크포인트", text)
+        self.assertIn("final_gate_ready = cap_gate.ready", text)
+        self.assertIn("최종 체크포인트에서 보완 필요", text)
+        self.assertIn("담당자 확인 필요 항목은 프로그램이 임의로 완료 처리하지 않습니다", text)
+
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
         self.assertIn('st.title("🔎 4. 작성자료 점검·보완")', text)
