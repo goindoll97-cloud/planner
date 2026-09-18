@@ -137,14 +137,14 @@ for blocker in form.blockers:
 for message in form.messages:
     st.caption(message)
 
-st.subheader("서식 1페이지 — 취급시설 목록")
+st.subheader("1. 단위공장별 최대보유량 산출")
 if form.facility_rows:
     st.dataframe(pd.DataFrame(form.facility_rows).drop(columns=["산정근거"], errors="ignore"), width="stretch")
 else:
     st.caption("취급시설 자료가 입력되면 서식 표가 여기에 나타납니다.")
 
 chem = ws.section(1, "chemical_table")
-st.subheader("서식 2페이지 — 유해화학물질별 최대보유량·작성수준")
+st.subheader("2. 유해화학물질별 사업장 내의 최대보유량 산출")
 if form.chemical_rows:
     chem_help = ws.column_help(1, "chemical_table")
     st.dataframe(
@@ -155,7 +155,7 @@ if form.chemical_rows:
 else:
     st.caption("화학물질 목록이 확정되면 표시됩니다.")
 
-st.subheader("서식 3페이지 — 작성수준")
+st.subheader("3. 작성수준 도출")
 st.metric("작성수준", form.writing_level or "미확정", help=ws.section(1, "writing_level")["help"])
 
 # ---- 3. output --------------------------------------------------------------
