@@ -77,7 +77,7 @@ Stage 1 법적 대상 여부 판정
         ↓
 확인사실 기반 작성·검토
         ↓
-최종 검증 후 제출 산출물 생성(후속 단계)
+최종 검증 후 법정서식 기반 DOCX 작성본 생성
 ```
 
 ## Stage 1 판정엔진
@@ -187,14 +187,20 @@ data/runtime/stage2/projects/<project_id>/
 
 ## 현재 산출물
 
-현재 단계에서는 다음 검토용 산출물을 제공합니다.
+현재 단계에서는 다음 산출물을 제공합니다.
 
 - 프로젝트 원본 JSON
 - 자료준비용 프로그램 입력양식 XLSX
 - 작성현황·근거·요청자료 XLSX
 - 교차검증 결과 JSON
+- 화학사고예방관리계획서 법정서식 기반 DOCX 작성본
+  - 현행 별지 제1호~제16호를 기준으로 확인된 회사자료와 검증된 계산결과를 입력
+  - 별지서식에 없는 서술형 작성항목은 같은 DOCX 뒤에 이어서 작성
+  - 미확인 값은 추정하지 않고 공란 또는 확인 필요 상태로 유지
+- 공정안전보고서 규정서식 기반 DOCX 작성본
+- 선택사항: 로컬 AI를 이용한 설명문 보강 검토용 DOCX
 
-법정 제출용 최종 DOCX/PDF/XLSX/ZIP은 세부 계산·문서작성·최종 validation gate를 완성한 뒤 활성화합니다.
+DOCX가 생성되더라도 프로그램이 이를 자동으로 제출 확정본으로 간주하지 않습니다. 최종 제출 전 담당자가 회사 사실, 수치, 도면, 제품 SDS/MSDS 및 첨부자료와 대조하여 확인해야 합니다. PDF/XLSX/ZIP 형태의 별도 최종 제출 패키지는 현재 Stage 5의 기본 출력 형식이 아닙니다.
 
 ## API 설정
 
@@ -202,8 +208,10 @@ data/runtime/stage2/projects/<project_id>/
 
 ```text
 LAW_OC=국가법령정보_공동활용_인증값
-KOSHA_SERVICE_KEY=KOSHA_MSDS_API_인증값
+KOSHA_MSDS_SERVICE_KEY=KOSHA_MSDS_API_인증값
 ```
+
+Stage 2 최종 작성 경로는 회사가 제공한 제품 SDS/MSDS를 우선하며, KOSHA MSDS 조회값은 회사 제품 SDS/MSDS를 대체하는 법정 근거로 사용하지 않습니다. `KOSHA_MSDS_SERVICE_KEY`는 참고 조회 기능을 사용할 때만 필요합니다.
 
 `.env`와 Streamlit secrets는 GitHub에 올리지 않습니다.
 
