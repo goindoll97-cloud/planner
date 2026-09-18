@@ -136,8 +136,18 @@ EXAMPLE_VALUES: dict[str, Any] = {
     "cap.business.representative": "홍길동",
     "cap.business.registration_no": "123-45-67890",
     "cap.business.contact": "053-000-0000",
-    "cap.business.submission_type": "신규",
-    "cap.business.writer_info": "환경안전팀 김담당 / 053-000-0001",
+    "cap.business.unit_plant_name": "제1공장",
+    "cap.business.industrial_complex": "○○국가산업단지",
+    "cap.business.submission_type": "신규제출",
+    "cap.business.submission_reason": "최초",
+    "cap.business.joint_emergency_plan": "단독제출",
+    "cap.business.other_system_review": "미해당",
+    "cap.business.residents_in_overall_range": "없음",
+    "cap.business.recent_accident": "없음",
+    "cap.business.writer_name": "김담당",
+    "cap.business.writer_department": "환경안전팀",
+    "cap.business.writer_contact": "053-000-0001",
+    "cap.business.writer_email": "safety@example.com",
     "psm.business.overview": "본 사업장은 원료 저장, 혼합 및 제품 출하 공정으로 구성되며 주요 공정설비는 저장탱크, 혼합기 및 이송펌프이다.",
     "process.description": "원료는 저장탱크에서 이송펌프로 혼합공정에 공급되고, 정해진 운전조건에서 혼합 후 제품저장설비로 이송된다.",
     "psm.risk.purpose": "공정 내 잠재 유해·위험요인을 체계적으로 확인하고 필요한 개선대책을 도출하기 위함.",
@@ -533,8 +543,12 @@ def _write_business_sheet(wb: Workbook, project: Stage2Project, *, example: bool
         labels = cap_field_labels()
         for key in (
             "cap.business.representative", "cap.business.registration_no", "cap.business.contact",
-            "cap.business.submission_type", "cap.business.writing_level", "cap.business.other_system_review",
-            "cap.business.writer_info",
+            "cap.business.unit_plant_name", "cap.business.industrial_complex",
+            "cap.business.submission_type", "cap.business.submission_reason",
+            "cap.business.joint_emergency_plan", "cap.business.other_system_review",
+            "cap.business.residents_in_overall_range", "cap.business.recent_accident",
+            "cap.business.writer_name", "cap.business.writer_department",
+            "cap.business.writer_contact", "cap.business.writer_email",
         ):
             label = labels.get(key, field_label(key))
             record = project.get_field(key)
