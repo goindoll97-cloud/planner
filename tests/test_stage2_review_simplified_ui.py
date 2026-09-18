@@ -115,6 +115,8 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn('final_ready=download_readiness.get("CAP", False)', text)
         self.assertIn('final_ready=download_readiness.get("PSM", False)', text)
         self.assertIn("review_only=True", text)
+        self.assertIn("_내부_검토용.docx", text)
+        self.assertIn("_내부_AI보강_검토용.docx", text)
         self.assertIn("검토용 DOCX는 내려받을 수 있지만", text)
 
     def test_cap_regulation_form_renders_before_cap_internal_review(self):
