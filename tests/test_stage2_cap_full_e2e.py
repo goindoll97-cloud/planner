@@ -364,8 +364,23 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
 
         for index in (13, 14):
             overview = self._table_text(doc, index)
+            row_debug = []
+            for row_no, row in enumerate(doc.tables[index].rows):
+                seen = set()
+                values = []
+                for cell in row.cells:
+                    marker = id(cell._tc)
+                    if marker in seen:
+                        continue
+                    seen.add(marker)
+                    values.append(cell.text)
+                row_debug.append((row_no, values))
             self.assertIn("☒ 저장탱크 (1)기", overview)
-            self.assertEqual(overview.count("☒ 저장탱크 (1)기"), 1)
+            self.assertEqual(
+                overview.count("☒ 저장탱크 (1)기"),
+                1,
+                msg="facility overview rows=" + repr(row_debug),
+            )
             self.assertNotIn("반응기 1기 / 저장탱크", overview)
 
         form6 = self._table_text(doc, 15)
