@@ -14,6 +14,7 @@ from typing import Any
 
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form9_engine import build_cap_form9_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -140,6 +141,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     facilities = _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     form1 = build_cap_form1_data(project)
     form6 = build_cap_chemical_legal_data(project)
+    form9 = build_cap_form9_data(project)
     threshold_rows_ready = bool(form1.chemical_rows) and all(
         str(row.get("물질구분") or "").strip()
         and str(row.get("하위규정수량(ton)") or "").strip()
@@ -280,17 +282,32 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제9호
-    process_conditions_ready = bool(facilities) and _all_rows_have(facilities, ("설계압력", "design pressure"))
+    form9_data_ready = bool(form9.rows) and not form9.blockers
     items.append(CAPFormCoverageItem(
         9, "장치·설비 목록 및 명세", "설계·운전 압력/온도·설계용량·취급량",
-        READY if process_conditions_ready else ASK_COMPANY, "회사 설비명세",
-        ("inventory.facilities",), "설비별 설계/운전조건",
+        READY if form9_data_ready else ASK_COMPANY,
+        "회사 설비명세 + 법정 단위 정규화",
+        ("inventory.facilities",),
+        "설비별 설계/운전조건과 최대보유량",
+        "kg→ton, L→m3, kPa/bar→MPa를 정규화하고 유량단위는 설계용량(m3)에 복사하지 않음",
     ))
-    connection_ready = bool(facilities) and _all_rows_have(facilities, ("연결구 크기", "호칭경"))
+    connection_ready = bool(form9.rows) and all(
+        str(row.get("연결구 크기(mm)") or "").strip() for row in form9.rows
+    )
     items.append(CAPFormCoverageItem(
         9, "장치·설비 목록 및 명세", "최대 연결구 크기",
-        READY if connection_ready else ASK_COMPANY, "P&ID/배관명세",
-        ("inventory.facilities", "documents.pid"), "누출 가능한 최대 연결구 크기",
+        READY if connection_ready else ASK_COMPANY,
+        "P&ID/배관명세 또는 회사 확인",
+        ("inventory.facilities", "documents.pid"),
+        "누출 가능한 최대 연결구 크기(mm)",
+    ))
+    items.append(CAPFormCoverageItem(
+        9, "장치·설비 목록 및 명세", "공식 HWPX 다단헤더 압력·온도 셀 매핑",
+        RENDERER_GAP,
+        "출력엔진",
+        (),
+        "현행 법제처 HWPX의 압력/온도 하위 '설계·운전' 셀",
+        "데이터는 준비하되 반복되는 다단헤더 위치를 검증 없이 추정하지 않음",
     ))
 
     # 별지 제10호
