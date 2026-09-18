@@ -16,6 +16,7 @@ from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
+from .cap_form11_engine import build_cap_form11_data
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -144,6 +145,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     form6 = build_cap_chemical_legal_data(project)
     form9 = build_cap_form9_data(project)
     form10 = build_cap_form10_data(project)
+    form11 = build_cap_form11_data(project)
     threshold_rows_ready = bool(form1.chemical_rows) and all(
         str(row.get("물질구분") or "").strip()
         and str(row.get("하위규정수량(ton)") or "").strip()
@@ -330,24 +332,21 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제11호
-    detector_rows = _rows(project, "cap.safety.gas_detection", "psm.psi.gas_detection")
     items.append(CAPFormCoverageItem(
-        11, "고정식 유해감지시설 명세", "감지대상·설치위치·경보설정값·경보기 위치",
-        READY if detector_rows else ASK_COMPANY, "회사 감지기 명세",
-        ("cap.safety.gas_detection",), "감지기 Tag와 설정값",
+        11, "고정식 유해감지시설 명세", "고정식 대상선별·감지대상·설치위치·경보설정값",
+        READY if form11.rows and not form11.blockers else ASK_COMPANY,
+        "회사 감지기 명세 + 고정식 대상선별",
+        ("cap.safety.gas_detection",),
+        "감지기 Tag, 설치형태, 감지대상, 설치위치, 경보설정값",
+        "휴대식은 회사자료에는 유지하되 별지 제11호 자동기입 대상에서 제외",
     ))
-    detector_detail_ready = bool(detector_rows) and all(
-        _row_value(row, "작동시간") not in (None, "")
-        and _row_value(row, "연동여부") not in (None, "")
-        and _row_value(row, "정밀도") not in (None, "")
-        and _row_value(row, "유지관리") not in (None, "")
-        for row in detector_rows
-    )
     items.append(CAPFormCoverageItem(
         11, "고정식 유해감지시설 명세", "작동시간·측정방식·연동여부·정밀도·유지관리",
-        READY if detector_detail_ready else ASK_COMPANY,
-        "감지기 사양서/점검기준", ("cap.safety.gas_detection",),
-        "제조사 사양 및 사업장 유지관리 기준",
+        READY if form11.ready else ASK_COMPANY,
+        "제조사 사양서/점검기준 + 회사 연동정보",
+        ("cap.safety.gas_detection",),
+        "작동시간, 센서 측정원리, 연동 설비·조치, 정밀도, 점검·교정주기",
+        "고정식/휴대식은 설치형태이며 측정방식과 별개로 관리",
     ))
 
     # 별지 제12~15호
