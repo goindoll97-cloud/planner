@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from .guidance import (
@@ -19,6 +21,7 @@ ATTACHMENT_MODE_MANUAL = "MANUAL_SEPARATE"
 ATTACHMENT_MODE_PROGRAM = "PROGRAM_MANAGED"
 ATTACHMENT_MODES = {ATTACHMENT_MODE_MANUAL, ATTACHMENT_MODE_PROGRAM}
 DRAFT_WITH_HOLDS_KEY = "draft_with_holds_acknowledged"
+VALIDATION_FINGERPRINT_KEY = "validation_fingerprint"
 
 BUCKET_CORE_INPUT = "CORE_INPUT"
 BUCKET_AI_TEXT = "AI_TEXT"
@@ -43,6 +46,66 @@ def _prefs(project: Stage2Project) -> dict[str, Any]:
     return raw
 
 
+def _validation_fingerprint_payload(project: Stage2Project) -> dict[str, Any]:
+    """Return the source-of-truth payload covered by Stage 4 validation.
+
+    Runtime workflow flags and AI-authored draft prose are intentionally excluded:
+    they do not change the company facts, legal scope, calculations, or evidence
+    that Stage 4 validated. Any other field/scope/source change makes the stored
+    validation fingerprint stale and forces a fresh Stage 4 confirmation.
+    """
+    fields: dict[str, Any] = {}
+    for key in sorted(project.fields):
+        if key.startswith("ai_draft."):
+            continue
+        record = project.fields[key]
+        fields[key] = {
+            "label": record.label,
+            "value": record.value,
+            "status": record.status,
+            "note": record.note,
+            "evidence": [
+                {
+                    "source_type": ev.source_type,
+                    "source_name": ev.source_name,
+                    "sha256": ev.sha256,
+                    "page": ev.page,
+                    "location": ev.location,
+                    "note": ev.note,
+                }
+                for ev in record.evidence
+            ],
+        }
+
+    stage1_snapshot = {
+        key: value
+        for key, value in project.stage1_snapshot.items()
+        if key != PREF_KEY
+    }
+    return {
+        "psm_required": project.psm_required,
+        "cap_required": project.cap_required,
+        "cap_group": project.cap_group,
+        "scope_confirmed": project.scope_confirmed,
+        "psm_selected": project.psm_selected,
+        "cap_selected": project.cap_selected,
+        "stage1_source_fingerprint": project.stage1_source_fingerprint,
+        "stage1_snapshot": stage1_snapshot,
+        "fields": fields,
+    }
+
+
+def validation_fingerprint(project: Stage2Project) -> str:
+    payload = json.dumps(
+        _validation_fingerprint_payload(project),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def attachment_mode(project: Stage2Project) -> str:
     value = str(_prefs(project).get("attachment_mode") or ATTACHMENT_MODE_MANUAL)
     return value if value in ATTACHMENT_MODES else ATTACHMENT_MODE_MANUAL
@@ -57,6 +120,7 @@ def set_attachment_mode(project: Stage2Project, mode: str) -> None:
     prefs["attachment_mode"] = mode
     prefs["intake_confirmed"] = False
     prefs["validation_confirmed"] = False
+    prefs.pop(VALIDATION_FINGERPRINT_KEY, None)
     prefs[DRAFT_WITH_HOLDS_KEY] = False
     project.touch()
 
@@ -66,7 +130,14 @@ def intake_confirmed(project: Stage2Project) -> bool:
 
 
 def validation_confirmed(project: Stage2Project) -> bool:
-    return bool(_prefs(project).get("validation_confirmed", False))
+    prefs = _prefs(project)
+    if not bool(prefs.get("validation_confirmed", False)):
+        return False
+    stored = str(prefs.get(VALIDATION_FINGERPRINT_KEY) or "").strip()
+    if not stored:
+        # Legacy projects with only the old Boolean flag must be re-confirmed.
+        return False
+    return stored == validation_fingerprint(project)
 
 
 def draft_with_holds_acknowledged(project: Stage2Project) -> bool:
@@ -88,6 +159,7 @@ def mark_intake_confirmed(project: Stage2Project, value: bool = True) -> None:
     prefs["intake_confirmed"] = bool(value)
     if not value:
         prefs["validation_confirmed"] = False
+        prefs.pop(VALIDATION_FINGERPRINT_KEY, None)
         prefs[DRAFT_WITH_HOLDS_KEY] = False
     project.touch()
 
@@ -96,7 +168,10 @@ def mark_validation_confirmed(project: Stage2Project, value: bool = True) -> Non
     prefs = _prefs(project)
     prefs["validation_confirmed"] = bool(value)
     if value:
+        prefs[VALIDATION_FINGERPRINT_KEY] = validation_fingerprint(project)
         prefs[DRAFT_WITH_HOLDS_KEY] = False
+    else:
+        prefs.pop(VALIDATION_FINGERPRINT_KEY, None)
     project.touch()
 
 
