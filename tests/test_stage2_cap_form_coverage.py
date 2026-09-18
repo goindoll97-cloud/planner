@@ -8,6 +8,7 @@ from engine.stage2.cap_form_coverage import (
     CALCULATION,
     EXTERNAL_ANALYSIS,
     LEGAL_ENGINE,
+    NOT_APPLICABLE,
     READY,
     RENDERER_GAP,
     audit_cap_form_coverage,
@@ -74,6 +75,10 @@ class CAPFormCoverageTests(unittest.TestCase):
         self.assertEqual(
             by_key[(1, "최대보유량 단위 정규화(ton)")].state,
             READY,
+        )
+        self.assertEqual(
+            by_key[(2, "제출유형에 따른 적용 여부")].state,
+            NOT_APPLICABLE,
         )
         self.assertEqual(
             by_key[(3, "제출구분·최초/부적합")].state,

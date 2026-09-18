@@ -28,6 +28,7 @@ from engine.stage2.local_llm import (
 from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from engine.stage2.report_draft import build_report_draft, draft_filename
+from engine.stage2.scope_validation import validate_selected_scope
 from engine.stage2.storage import list_projects, load_project, save_project
 from engine.stage2.workflow import (
     draft_authoring_allowed,
@@ -487,7 +488,8 @@ def _render_basic_docx(project, system: str, label: str) -> None:
 
 
 def _render_psm_regulation_form(project) -> None:
-    st.markdown("### 공정안전보고서 · 규정서식 작성본")
+    clean = validation_confirmed(project)
+    st.markdown("### 공정안전보고서 · 규정서식 작성본" if clean else "### 공정안전보고서 · 규정서식 검토용")
     st.caption(
         "규정서식 baseline의 표·병합셀·글꼴·페이지 구성을 유지하고, 4단계까지 확인된 회사자료만 해당 칸에 입력합니다. "
         "확인되지 않은 값은 추정하지 않고 빈칸으로 둡니다."
@@ -499,13 +501,53 @@ def _render_psm_regulation_form(project) -> None:
         return
 
     st.download_button(
-        "공정안전보고서 규정서식 작성본 DOCX 다운로드",
+        "공정안전보고서 규정서식 작성본 DOCX 다운로드" if clean else "공정안전보고서 규정서식 검토용 DOCX 다운로드",
         data=data,
-        file_name=psm_baseline_filename(project),
+        file_name=(
+            psm_baseline_filename(project)
+            if clean
+            else psm_baseline_filename(project).replace("_규정서식_작성본.docx", "_규정서식_검토용.docx")
+        ),
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"download_psm_regulation_form_{project.project_id}",
         width="stretch",
-        type="primary",
+        type="primary" if clean else "secondary",
+    )
+
+
+def _render_submission_readiness(project) -> None:
+    """Separate report-body readiness from final submission-package readiness."""
+    confirmed = validation_confirmed(project)
+    try:
+        report = validate_selected_scope(project)
+    except Exception as exc:
+        st.warning(
+            "최종 제출 준비상태를 다시 계산하지 못했습니다. "
+            f"현재 DOCX는 검토용으로 취급해 주세요: {type(exc).__name__}: {exc}"
+        )
+        return
+
+    if confirmed and report.final_export_allowed:
+        st.success(
+            "프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다. "
+            "다만 실제 제출 전에는 담당자가 DOCX, 도면, 제품 SDS/MSDS 및 모든 첨부자료의 최신본·서명·날짜를 최종 대조해야 합니다."
+        )
+        return
+
+    if confirmed:
+        st.warning(
+            "보고서 본문 작성자료 확인은 완료되었지만 최종 제출자료 준비는 아직 완료되지 않았습니다. "
+            f"보완 필요 {report.hold_count}건, 담당자 확인 필요 {report.review_count}건이 남아 있습니다."
+        )
+        st.caption(
+            "DOCX 작성본은 내려받을 수 있지만, 도면·제품 SDS/MSDS·계산서·영향평가 결과 등 "
+            "별도 제출자료가 남아 있으면 이를 결합·확인한 뒤 제출해야 합니다."
+        )
+        return
+
+    st.warning(
+        "현재는 검토용 초안 단계입니다. 4단계의 보완 필요 또는 담당자 확인 필요 항목이 남아 있어 "
+        "최종 제출 준비 완료 상태로 표시하지 않습니다."
     )
 
 
@@ -513,7 +555,7 @@ st.set_page_config(page_title="보고서 작성", page_icon="📝", layout="wide
 st.title("📝 5. 보고서 작성")
 st.caption(
     "4단계에서 확인한 회사자료를 바탕으로 DOCX 보고서를 작성합니다. "
-    "화학사고예방관리계획서는 HWPX를 생성하지 않고 DOCX만 최종 출력하며, 필요하면 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
+    "화학사고예방관리계획서는 HWPX를 생성하지 않고 DOCX를 기본 출력으로 사용하며, 필요하면 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
 )
 
 project_id = _project_selector()
@@ -536,6 +578,7 @@ if not draft_authoring_allowed(project):
 
 scope = [SYSTEM_LABELS[system] for system in _systems(project)]
 st.success("현재 작성 문서: " + ", ".join(scope))
+_render_submission_readiness(project)
 
 if draft_with_holds_acknowledged(project) and not validation_confirmed(project):
     st.warning(
@@ -549,9 +592,10 @@ st.caption("AI를 실행하지 않아도 확인된 자료를 반영한 DOCX를 �
 if project.cap_in_scope:
     st.markdown("### 화학사고예방관리계획서 · DOCX 작성본")
     st.caption(
-        "프로그램의 화학사고예방관리계획서 최종 출력 형식은 DOCX입니다. "
+        "프로그램의 화학사고예방관리계획서 기본 출력 형식은 DOCX입니다. "
         "법령·작성규정에 따른 항목, 회사 확정자료, 계산·검증 결과를 한 문서에 작성하며 "
-        "확인되지 않은 값은 추정하지 않고 HOLD 또는 공란으로 유지합니다."
+        "확인되지 않은 값은 추정하지 않고 HOLD 또는 공란으로 유지합니다. "
+        "DOCX 작성 가능 상태와 최종 제출자료 준비 완료 상태는 별도로 표시합니다."
     )
     _render_basic_docx(project, "CAP", CAP_FULL)
 

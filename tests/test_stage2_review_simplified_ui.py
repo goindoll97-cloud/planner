@@ -58,10 +58,25 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
     def test_cap_output_is_docx_only_and_does_not_require_hwpx_setup(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
         self.assertIn("화학사고예방관리계획서 · DOCX 작성본", text)
-        self.assertIn("HWPX를 생성하지 않고 DOCX만 최종 출력", text)
+        self.assertIn("HWPX를 생성하지 않고 DOCX를 기본 출력으로 사용", text)
         self.assertNotIn("build_cap_hwpx_draft", text)
         self.assertNotIn("법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다", text)
         self.assertNotIn("원본서식 등록", text)
+
+    def test_stage5_separates_docx_authoring_from_final_submission_readiness(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("validate_selected_scope", text)
+        self.assertIn("report.final_export_allowed", text)
+        self.assertIn("보고서 본문 작성자료 확인은 완료되었지만 최종 제출자료 준비는 아직 완료되지 않았습니다", text)
+        self.assertIn("프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다", text)
+        self.assertIn("DOCX 작성 가능 상태와 최종 제출자료 준비 완료 상태는 별도로 표시합니다", text)
+        self.assertIn("공정안전보고서 규정서식 검토용 DOCX 다운로드", text)
+
+    def test_stage4_does_not_count_non_applicable_forms_as_unresolved(self):
+        text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
+        self.assertIn("CAP_FORM_NOT_APPLICABLE", text)
+        self.assertIn("item.state not in {CAP_FORM_READY, CAP_FORM_NOT_APPLICABLE}", text)
+        self.assertIn('c2.metric("해당 없음", not_applicable_coverage)', text)
 
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")

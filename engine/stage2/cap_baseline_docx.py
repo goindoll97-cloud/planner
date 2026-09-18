@@ -24,6 +24,7 @@ from docx import Document
 
 from . import statutory_report as base
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form2_engine import NOT_APPLICABLE as FORM2_NOT_APPLICABLE, build_cap_form2_readiness
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form8_engine import build_cap_form8_data
@@ -371,11 +372,12 @@ def _fill_form2(tables, project: Stage2Project) -> None:
     context_table, log_table = tables
     context_cells = _unique_cells(context_table.rows[0])
     _append_value(context_cells[1], project.company_name)
-    unit_plant = base._text(project, "cap.business.unit_plant_name", default="")
+    unit_plant = base._text(project, "cap.business.unit_plant_name", default=project.site_name or "")
     if unit_plant:
         _append_value(context_cells[3], unit_plant)
 
-    change_log = base._rows(project, "cap.prevention.change_log")
+    prepared = build_cap_form2_readiness(project)
+    change_log = [] if prepared.status == FORM2_NOT_APPLICABLE else list(prepared.rows)
     rows = [
         [
             str(idx),

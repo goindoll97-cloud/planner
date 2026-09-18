@@ -15,6 +15,7 @@ from typing import Any
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form1_engine import build_cap_form1_data
+from .cap_form2_engine import build_cap_form2_readiness
 from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
 from .cap_form10_engine import build_cap_form10_data
@@ -31,6 +32,7 @@ LEGAL_ENGINE = "LEGAL_ENGINE"
 CALCULATION = "CALCULATION"
 EXTERNAL_ANALYSIS = "EXTERNAL_ANALYSIS"
 CONDITIONAL = "CONDITIONAL"
+NOT_APPLICABLE = "NOT_APPLICABLE"
 RENDERER_GAP = "RENDERER_GAP"
 
 STATE_LABELS = {
@@ -40,6 +42,7 @@ STATE_LABELS = {
     CALCULATION: "계산 필요",
     EXTERNAL_ANALYSIS: "영향평가·GIS 필요",
     CONDITIONAL: "해당 시 작성",
+    NOT_APPLICABLE: "해당 없음",
     RENDERER_GAP: "출력엔진 보완 필요",
 }
 
@@ -158,6 +161,7 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     chemicals = _rows(project, "inventory.chemicals", "cap.chemical.details")
     facilities = _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
     form1 = build_cap_form1_data(project)
+    form2 = build_cap_form2_readiness(project)
     form6 = build_cap_chemical_legal_data(project)
     form6_sds = build_cap_form6_sds_data(project)
     form7 = build_cap_form7_data(project)
@@ -210,15 +214,34 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
     ))
 
     # 별지 제2호
-    items.append(_company_item(
-        project, 2, "변경내역 관리대장", "단위공장명",
-        ("cap.business.unit_plant_name",), "회사 내부 단위공장명",
+    if form2.status == "NOT_APPLICABLE":
+        form2_state = NOT_APPLICABLE
+        form2_source = "확정된 제출구분"
+        form2_note = form2.messages[0] if form2.messages else "최초 신규제출로 변경내역 관리대장 비적용"
+    elif form2.status == "PASS":
+        form2_state = READY
+        form2_source = "회사 확정 변경내역"
+        form2_note = form2.messages[0] if form2.messages else "변경내역 관리대장 확인 완료"
+    else:
+        form2_state = ASK_COMPANY
+        form2_source = "회사 제출유형·변경이력 확인"
+        form2_note = " / ".join(form2.blockers)
+
+    items.append(CAPFormCoverageItem(
+        2, "변경내역 관리대장", "제출유형에 따른 적용 여부",
+        form2_state,
+        form2_source,
+        ("cap.business.submission_type", "cap.business.submission_reason", "cap.prevention.change_log"),
+        "제출구분·사유와 변경내역 관리대장",
+        form2_note,
     ))
     items.append(CAPFormCoverageItem(
-        2, "변경내역 관리대장", "접수번호·결과번호·변경이력",
-        CONDITIONAL, "회사 제출이력", (),
-        "기존 제출·변경 이력이 있는 경우 접수/결과번호 및 변경대장",
-        "최초 신규제출 전이라면 미부여/해당없음 처리 여부를 서식 기준에 맞게 표시",
+        2, "변경내역 관리대장", "변경내역 필수항목",
+        form2_state,
+        "회사 확정 변경내역",
+        ("cap.prevention.change_log",),
+        "일자, 변경항목, 변경의 종류, 변경 전·후 내용, 후속조치, 담당자",
+        form2_note,
     ))
 
     # 별지 제3호

@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from engine.stage2.cap_form_coverage import audit_cap_form_coverage, STATE_LABELS as CAP_FORM_STATE_LABELS
+from engine.stage2.cap_form_coverage import (
+    NOT_APPLICABLE as CAP_FORM_NOT_APPLICABLE,
+    READY as CAP_FORM_READY,
+    audit_cap_form_coverage,
+    STATE_LABELS as CAP_FORM_STATE_LABELS,
+)
 from engine.stage2.cap_requests import build_cap_data_requests
 from engine.stage2.intake import selected_requirement_specs
 from engine.stage2.psm_requests import build_psm_data_requests
@@ -172,11 +177,18 @@ if project.cap_in_scope:
             "비고": item.note,
         })
     if coverage_rows:
-        unresolved_coverage = sum(item.state != "READY" for item in cap_coverage)
-        ready_coverage = len(cap_coverage) - unresolved_coverage
-        c1, c2 = st.columns(2)
+        unresolved_coverage = sum(
+            item.state not in {CAP_FORM_READY, CAP_FORM_NOT_APPLICABLE}
+            for item in cap_coverage
+        )
+        ready_coverage = sum(item.state == CAP_FORM_READY for item in cap_coverage)
+        not_applicable_coverage = sum(
+            item.state == CAP_FORM_NOT_APPLICABLE for item in cap_coverage
+        )
+        c1, c2, c3 = st.columns(3)
         c1.metric("현재 작성 가능", ready_coverage)
-        c2.metric("추가 처리 필요", unresolved_coverage)
+        c2.metric("해당 없음", not_applicable_coverage)
+        c3.metric("추가 처리 필요", unresolved_coverage)
         st.dataframe(pd.DataFrame(coverage_rows), width="stretch", hide_index=True)
         st.caption(
             "‘추가 처리 필요’가 곧 회사자료 누락만을 뜻하지는 않습니다. "

@@ -10,6 +10,7 @@ from docx import Document
 
 from engine.stage2.project import Stage2Project
 from engine.stage2.cap_baseline_docx import (
+    FORM_TABLE_INDEX,
     build_cap_baseline_draft,
     cap_baseline_filename,
     load_cap_baseline_bytes,
@@ -114,6 +115,48 @@ class CAPBaselineDocxTests(unittest.TestCase):
         example_text = "\n".join(cell.text for row in example_table.rows for cell in row.cells)
         self.assertIn("홍길동", example_text)
         self.assertIn("장치 설비 목록 및 명세", example_text)
+
+    def test_form2_initial_submission_does_not_render_change_log_rows(self):
+        project = _project()
+        _set(project, "cap.business.submission_type", "신규제출")
+        _set(project, "cap.business.submission_reason", "최초")
+        _set(project, "cap.prevention.change_log", [{
+            "일자": "2026-09-18",
+            "변경항목": "테스트 변경항목",
+            "변경의 종류": "테스트 변경",
+            "변경 내용(변경전 → 변경후)": "OLD → NEW",
+            "후속조치": "테스트 후속조치",
+            "담당자": "테스트담당자",
+        }])
+
+        out = build_cap_baseline_draft(project)
+        doc = Document(BytesIO(out))
+        log_table = doc.tables[FORM_TABLE_INDEX["2"][1]]
+        text = "\n".join(cell.text for row in log_table.rows for cell in row.cells)
+
+        self.assertNotIn("테스트 변경항목", text)
+        self.assertNotIn("OLD → NEW", text)
+
+    def test_form2_change_submission_renders_confirmed_change_log_rows(self):
+        project = _project()
+        _set(project, "cap.business.submission_type", "변경제출")
+        _set(project, "cap.prevention.change_log", [{
+            "일자": "2026-09-18",
+            "변경항목": "장치 설비 목록 및 명세",
+            "변경의 종류": "설비변경",
+            "변경 내용(변경전 → 변경후)": "TK-101 → TK-101A",
+            "후속조치": "관련 도면 및 명세 갱신",
+            "담당자": "홍길동",
+        }])
+
+        out = build_cap_baseline_draft(project)
+        doc = Document(BytesIO(out))
+        log_table = doc.tables[FORM_TABLE_INDEX["2"][1]]
+        text = "\n".join(cell.text for row in log_table.rows for cell in row.cells)
+
+        self.assertIn("장치 설비 목록 및 명세", text)
+        self.assertIn("TK-101 → TK-101A", text)
+        self.assertIn("관련 도면 및 명세 갱신", text)
 
     def test_form6_does_not_use_kosha_reference_in_company_sds_only_mode(self):
         project = _project()
