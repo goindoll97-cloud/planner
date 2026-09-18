@@ -86,6 +86,7 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     "cap.business.residents_in_overall_range",
                     "cap.business.recent_accident",
                     "cap.business.writer_name",
+                    "cap.business.writer_info",
                     "cap.business.writer_contact",
                     "cap.business.writer_email",
                 ),
