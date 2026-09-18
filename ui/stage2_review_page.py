@@ -612,8 +612,8 @@ def _render_submission_readiness(project) -> None:
                 )
         if cap_gate is not None and not cap_gate.ready:
             notes.append(
-                "화학사고예방관리계획서 최종 체크포인트에서 "
-                f"보완 필요 {cap_gate.hold_count}건, 담당자 확인 필요 {cap_gate.review_count}건"
+                f"화학사고예방관리계획서 최종 체크포인트에서 보완 필요 "
+                f"{cap_gate.hold_count}건, 담당자 확인 필요 {cap_gate.review_count}건"
             )
         checkpoint_note = (" " + " / ".join(notes) + ".") if notes else ""
 
