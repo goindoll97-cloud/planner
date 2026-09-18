@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .cap_final_gate import evaluate_cap_final_gate
+from .cap_final_gate import CAPFinalGateResult, evaluate_cap_final_gate
 from .cross_validation import CrossValidationReport
 from .project import Stage2Project
 from .system_final_gate import SystemFinalGateResult, evaluate_system_final_gate
@@ -16,6 +16,7 @@ class DocumentOutputReadiness:
     stage4_confirmed: bool
     system_gate: SystemFinalGateResult
     cap_manual_gate_ready: bool
+    cap_gate: CAPFinalGateResult | None
     reasons: tuple[str, ...]
 
 
@@ -72,5 +73,6 @@ def evaluate_document_output_readiness(
         stage4_confirmed=stage4_ready,
         system_gate=system_gate,
         cap_manual_gate_ready=cap_manual_ready,
+        cap_gate=cap_gate,
         reasons=tuple(reasons),
     )
