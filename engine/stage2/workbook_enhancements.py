@@ -69,6 +69,7 @@ TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
         "비상전원 여부": "yes_no_na",
     },
     "10_동력기계": {"형식": "machinery_type"},
+    "11_배관_개스킷": {"후열처리여부": "yes_no_na"},
     "20_배출물질_처리시설": {"처리방식": "treatment_type"},
     "21_확산방지설비": {
         "적용여부": "yes_no_na",
