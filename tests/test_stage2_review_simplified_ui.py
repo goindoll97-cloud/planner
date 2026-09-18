@@ -85,7 +85,8 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn("evaluate_system_final_gate", text)
         self.assertIn("system_gate_ready = all(gate.ready for gate in system_gates)", text)
         self.assertIn("cap_manual_gate_ready = cap_gate.ready", text)
-        self.assertIn("공정안전보고서 · 작성완성도·자동검증", text.replace("f\"{gate.system_label} · 작성완성도·자동검증\"", "공정안전보고서 · 작성완성도·자동검증"))
+        self.assertIn('f"{gate.system_label} · 작성완성도·자동검증"', text)
+        self.assertIn('evaluate_system_final_gate(project, "PSM", report)', text)
         self.assertIn("최종 체크포인트에서 보완 필요", text)
         self.assertIn("담당자 확인 필요 항목은 프로그램이 임의로 완료 처리하지 않습니다", text)
 
