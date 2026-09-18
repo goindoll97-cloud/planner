@@ -490,7 +490,7 @@ def render_form15_risk(source: bytes, form15: CAPForm15Data) -> CAPRiskHwpxRende
             table_anchor=FORM15_ANCHOR,
             labels=labels,
             text=str(form15.scores.get(score_key, "")),
-            directions=("below", "right"),
+            directions=("right", "below"),
             max_lines=2,
         )
         applied += count
