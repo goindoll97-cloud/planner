@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .cap_chemical_legal import build_cap_chemical_legal_data
+from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form1_engine import build_cap_form1_data
 from .cap_form8_engine import build_cap_form8_data
 from .cap_form9_engine import build_cap_form9_data
@@ -62,7 +63,7 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
             )
 
         checked_rules += 1
-        form6 = build_cap_chemical_legal_data(project)
+        form6 = build_cap_form6_sds_data(project)
         if form6.blockers:
             for index, blocker in enumerate(form6.blockers, start=1):
                 issues_list.append(
@@ -85,9 +86,39 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     system="CAP",
                     section="기본정보",
                     legal_item="별지 제6호 유해화학물질 목록 및 명세",
-                    message="현행 별표 2 고유번호와 별표 2·3 물질구분을 확인했습니다.",
+                    message="현행 법적 물질정보와 회사 제품 SDS의 물성값·파일명·개정일을 확인했습니다.",
                     field_keys=("inventory.chemicals", "cap.chemical.details"),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제6호서식",
+                )
+            )
+
+        checked_rules += 1
+        form7 = build_cap_form7_data(project)
+        if form7.blockers:
+            for index, blocker in enumerate(form7.blockers, start=1):
+                issues_list.append(
+                    ValidationIssue(
+                        code=f"CAP-FORM7-{index}",
+                        status="HOLD",
+                        system="CAP",
+                        section="기본정보",
+                        legal_item="별지 제7호 유해화학물질의 유해성 정보",
+                        message=str(blocker),
+                        field_keys=("cap.chemical.hazard_information", "cap.chemical.details"),
+                        legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제7호서식",
+                    )
+                )
+        else:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM7-READY",
+                    status="PASS",
+                    system="CAP",
+                    section="기본정보",
+                    legal_item="별지 제7호 유해화학물질의 유해성 정보",
+                    message="회사 SDS의 인체·물리·환경 유해성, 출처·선정사유와 별지 제1·6호 연계값을 확인했습니다.",
+                    field_keys=("cap.chemical.hazard_information", "cap.chemical.details"),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제7호서식",
                 )
             )
 
