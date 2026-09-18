@@ -80,6 +80,10 @@ TABLE_DROPDOWNS: dict[str, dict[str, str]] = {
     "26_총괄영향범위_보호대상": {
         "보호대상 구분": "protected_class",
     },
+    "27_사업장주변_500m_보호대상": {
+        "보호대상 없음 여부": "yes_no",
+        "보호대상 구분": "protected_class",
+    },
 }
 
 FIELD_DROPDOWNS = {
