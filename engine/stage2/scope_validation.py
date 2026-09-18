@@ -181,6 +181,13 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
         checked_rules += 2
         form14 = build_cap_form14_data(project)
         form15 = build_cap_form15_data(project)
+        if form15.no_offsite_scenario:
+            form14 = type(form14)(
+                scenario_rows=(),
+                event_rows=(),
+                blockers=(),
+                messages=("장외 사고시나리오 없음 확정으로 별지 제14호 시설빈도 작성대상 없음",),
+            )
         for form_no, prepared, field_keys, legal_item in (
             (
                 14, form14,
@@ -224,6 +231,33 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                         legal_basis=f"화학사고예방관리계획서 작성 등에 관한 규정 별지 제{form_no}호서식",
                     )
                 )
+
+        if not form15.no_offsite_scenario and len(form14.scenario_rows) > 1:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM14-HWPX-REPEAT-BLOCK",
+                    status="HOLD",
+                    system="CAP",
+                    section="장외평가정보",
+                    legal_item="별지 제14호 사고시나리오별 시설빈도",
+                    message="공식 HWPX의 사고시나리오별 10개 개시사건 반복블록 자동복제 검증이 아직 필요합니다. 계산결과는 생성되지만 최종 HWPX 제출본은 보류합니다.",
+                    field_keys=("cap.offsite.scenario_frequency",),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제14호서식",
+                )
+            )
+        if not form15.no_offsite_scenario and form15.ready:
+            issues_list.append(
+                ValidationIssue(
+                    code="CAP-FORM15-HWPX-SCORE-CELLS",
+                    status="HOLD",
+                    system="CAP",
+                    section="장외평가정보",
+                    legal_item="별지 제15호 위험도 분석",
+                    message="공식 HWPX의 A·B·C·D 및 구간점수/위험도 점수 셀 자동기입 검증이 아직 필요합니다. 검토용 DOCX 계산표는 작성되지만 최종 HWPX는 보류합니다.",
+                    field_keys=("cap.offsite.scenario_impact_table", "cap.offsite.scenario_frequency"),
+                    legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제15호서식",
+                )
+            )
 
     order = {"HOLD": 0, "REVIEW_REQUIRED": 1, "PASS": 2, "NOT_APPLICABLE": 3}
     issues_list.sort(key=lambda issue: (order.get(issue.status, 9), issue.system, issue.section, issue.code))
