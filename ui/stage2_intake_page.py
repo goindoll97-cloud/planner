@@ -6,6 +6,7 @@ from engine.stage2.field_evidence import attach_evidence_to_confirmed_field
 from engine.stage2.guidance import ACTION_PROGRAM, build_requirement_guidance
 from engine.stage2.integrated_workbook import apply_integrated_authoring_workbook, attach_company_file
 from engine.stage2.intake import COVERAGE_CONFIRMED, COVERAGE_NOT_APPLICABLE, build_intake_catalog
+from engine.stage2.project import CONFIRMED_STATUSES
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 from engine.stage2.workbook_enhancements import build_enhanced_integrated_authoring_workbook
 from engine.stage2.workflow import (
@@ -296,8 +297,18 @@ if project.cap_in_scope:
             st.info("새로 저장할 확인내용이 없습니다.")
 
 if project.cap_in_scope:
-    other_review_value = _confirmed_text(project, "cap.business.other_system_review")
-    joint_value = _confirmed_text(project, "cap.business.joint_emergency_plan")
+    other_review_record = project.get_field("cap.business.other_system_review")
+    joint_record = project.get_field("cap.business.joint_emergency_plan")
+    other_review_value = (
+        str(other_review_record.value or "").strip()
+        if other_review_record is not None and other_review_record.status in CONFIRMED_STATUSES
+        else ""
+    )
+    joint_value = (
+        str(joint_record.value or "").strip()
+        if joint_record is not None and joint_record.status in CONFIRMED_STATUSES
+        else ""
+    )
     needs_other_review_evidence = other_review_value.startswith("해당")
     needs_joint_evidence = "공동" in joint_value
 
