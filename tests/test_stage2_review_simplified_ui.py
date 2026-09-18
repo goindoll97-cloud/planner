@@ -57,7 +57,11 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
 
     def test_cap_output_is_docx_only_and_does_not_require_hwpx_setup(self):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("화학사고예방관리계획서 · DOCX 작성본", text)
+        self.assertIn("화학사고예방관리계획서 · 규정서식 작성본", text)
+        self.assertIn("화학사고예방관리계획서 규정서식 작성본 DOCX 다운로드", text)
+        self.assertIn("build_cap_baseline_draft", text)
+        self.assertIn("cap_baseline_filename", text)
+        self.assertIn("화학사고예방관리계획서 · 내부 검토용", text)
         self.assertIn("HWPX를 생성하지 않고 DOCX를 기본 출력으로 사용", text)
         self.assertNotIn("build_cap_hwpx_draft", text)
         self.assertNotIn("법제처 원본 HWPX가 이 실행환경에 아직 준비되지 않았습니다", text)
@@ -71,6 +75,7 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn("프로그램 검증 기준상 제출 전 자료점검이 완료되었습니다", text)
         self.assertIn("DOCX 작성 가능 상태와 최종 제출자료 준비 완료 상태는 별도로 표시합니다", text)
         self.assertIn("공정안전보고서 규정서식 검토용 DOCX 다운로드", text)
+        self.assertIn("화학사고예방관리계획서 규정서식 검토용 DOCX 다운로드", text)
 
     def test_stage4_does_not_count_non_applicable_forms_as_unresolved(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
@@ -94,7 +99,7 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
 
         basic_start = text.index("def _render_basic_docx(")
-        basic_end = text.index("def _render_psm_regulation_form", basic_start)
+        basic_end = text.index("def _render_cap_regulation_form", basic_start)
         basic = text[basic_start:basic_end]
         self.assertIn("final_ready: bool", basic)
         self.assertIn("authoring_ready = bool(final_ready and not review_only)", basic)
@@ -111,6 +116,24 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         self.assertIn('final_ready=download_readiness.get("PSM", False)', text)
         self.assertIn("review_only=True", text)
         self.assertIn("검토용 DOCX는 내려받을 수 있지만", text)
+
+    def test_cap_regulation_form_renders_before_cap_internal_review(self):
+        text = (ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
+        self.assertIn("def _render_cap_regulation_form(project, *, final_ready: bool)", text)
+        self.assertIn("build_cap_baseline_draft(project)", text)
+        self.assertIn("cap_baseline_filename(project)", text)
+
+        call_site = text.rindex("_render_cap_regulation_form(\n        project,")
+        heading = text.index('st.markdown("### 화학사고예방관리계획서 · 내부 검토용")')
+        self.assertLess(call_site, heading)
+        self.assertGreater(
+            call_site,
+            text.index("def _render_cap_regulation_form(project, *, final_ready: bool)")
+        )
+        self.assertIn('final_ready=download_readiness.get("CAP", False)', text[call_site:heading])
+
+        internal_slice = text[heading:text.index("if project.psm_in_scope:", heading)]
+        self.assertIn("review_only=True", internal_slice)
 
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
