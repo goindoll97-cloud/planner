@@ -8,7 +8,12 @@ from unittest.mock import patch
 from docx import Document
 import pandas as pd
 
-from engine.stage2.cap_baseline_docx import build_cap_baseline_draft
+from engine.stage2.cap_baseline_docx import (
+    _facility_chemical_data_rows,
+    _unique_cells,
+    build_cap_baseline_draft,
+)
+from engine.stage2.report_draft import build_report_draft
 from engine.stage2.project import Stage2Project
 from engine.stage2.scope_validation import validate_selected_scope
 
@@ -468,6 +473,60 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
             msg="\n".join(f"{issue.code}: {issue.message}" for issue in holds),
         )
 
+
+    @patch("engine.stage2.cap_baseline_docx.build_cap_form1_data")
+    def test_forms4_and5_auto_expand_for_twelve_confirmed_chemicals(self, form1_mock):
+        chemical_rows = [
+            {
+                "물질명": f"확정물질-{index:02d}",
+                "CAS No.": f"9000-{index:02d}-{index % 10}",
+                "물질구분": "사고대비물질",
+                "사업장 내 최대보유량(ton)": f"{index / 10:.1f}",
+                "작성수준": "1군",
+                "하위규정수량(ton)": "0.1",
+                "상위규정수량(ton)": "1.0",
+            }
+            for index in range(1, 13)
+        ]
+        form1_mock.return_value = SimpleNamespace(
+            facility_rows=[],
+            chemical_rows=chemical_rows,
+        )
+        project = self._project()
+
+        official = Document(BytesIO(build_cap_baseline_draft(project)))
+        self.assertEqual(len(official.tables), 44)
+
+        for table_index in (13, 14):
+            rows = _facility_chemical_data_rows(official.tables[table_index])
+            self.assertEqual(len(rows), 12)
+            rendered = []
+            for row in rows:
+                cells = _unique_cells(row)
+                rendered.append((cells[1].text, cells[2].text, cells[3].text))
+            expected = [
+                (
+                    item["물질명"],
+                    item["CAS No."],
+                    item["사업장 내 최대보유량(ton)"],
+                )
+                for item in chemical_rows
+            ]
+            self.assertEqual(rendered, expected)
+
+        internal = Document(BytesIO(build_report_draft(project, "CAP")))
+        self.assertGreaterEqual(len(internal.tables), 44)
+        for table_index in (13, 14):
+            rows = _facility_chemical_data_rows(internal.tables[table_index])
+            self.assertEqual(len(rows), 12)
+            text = "\n".join(
+                cell.text
+                for row in rows
+                for cell in _unique_cells(row)[1:4]
+            )
+            for item in chemical_rows:
+                self.assertIn(item["물질명"], text)
+                self.assertIn(item["CAS No."], text)
 
     @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
     @patch("engine.stage2.cap_chemical_legal.screen_cap_scope_candidates_from_tables", return_value=pd.DataFrame())
