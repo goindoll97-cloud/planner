@@ -100,6 +100,18 @@ def mass_to_ton(value: object, unit: object) -> float | None:
     return None
 
 
+def volume_to_m3(value: object, unit: object) -> float | None:
+    amount = _num(value)
+    if amount is None or amount < 0:
+        return None
+    norm = _clean(unit).lower().replace(" ", "")
+    if norm in {"m3", "m³", "㎥"}:
+        return amount
+    if norm in {"l", "liter", "litre", "리터"}:
+        return amount / 1000.0
+    return None
+
+
 def _fmt_num(value: float | None) -> str:
     if value is None:
         return ""
@@ -239,7 +251,13 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
 
         cap = _row_value(facility, "용량", "설계용량")
         cap_unit = _row_value(facility, "용량단위", "설계용량 단위")
-        design_capacity = " ".join(v for v in (_clean(cap), _clean(cap_unit)) if v)
+        capacity_m3 = volume_to_m3(cap, cap_unit)
+        design_capacity = _fmt_num(capacity_m3)
+        if _clean(cap) and not design_capacity:
+            blockers.append(
+                f"{_clean(_row_value(facility, '설비명', '취급시설')) or material}: "
+                "설계용량을 m3로 환산할 수 없는 단위입니다."
+            )
         facility_rows.append({
             "단위공장": _row_value(facility, "단위공장·공정", "단위공장", "공정") or default_unit_plant,
             "유해화학물질": material,
