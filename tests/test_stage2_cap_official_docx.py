@@ -115,14 +115,14 @@ class CAPOfficialWordTests(unittest.TestCase):
         self.assertNotIn("render_official_word_ui", text)
         self.assertNotIn("install_cap_official_word_runtime", text)
 
-    def test_stage5_uses_review_only_titles_for_combined_docx(self):
+    def test_stage5_uses_cap_docx_as_final_facing_output(self):
         text = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("### 화학사고예방관리계획서 · 내부 검토용", text)
+        self.assertIn("### 화학사고예방관리계획서 · DOCX 작성본", text)
         self.assertIn("### 공정안전보고서 · 내부 검토용", text)
-        self.assertNotIn("### 화학사고예방관리계획서 · 내부 검토용 통합 DOCX", text)
-        self.assertIn("법제처 원본과 표 형식·글꼴·크기·여백이 같지 않으며", text)
-        self.assertIn("내부 검토용 DOCX 다운로드", text)
+        self.assertIn("검토용 DOCX 다운로드", text)
+        self.assertIn("DOCX 작성본 다운로드", text)
         self.assertIn("AI 문장 검토용 내부 DOCX", text)
+        self.assertNotIn("법제처 원본서식 HWPX", text)
 
 
 if __name__ == "__main__":
