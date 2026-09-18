@@ -76,6 +76,7 @@ class Stage2ReviewSimplifiedUITests(unittest.TestCase):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
         self.assertIn("CAP_FORM_NOT_APPLICABLE", text)
         self.assertIn("item.state not in {CAP_FORM_READY, CAP_FORM_NOT_APPLICABLE}", text)
+        self.assertIn('c2.metric("해당 없음", not_applicable_coverage)', text)
 
     def test_stage4_uses_practical_labels_and_explains_what_is_checked(self):
         text = (ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
