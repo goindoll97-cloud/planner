@@ -236,6 +236,8 @@ def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
 
     return CAPForm7Data(
         row=row,
-        blockers=tuple(dict.fromkeys(blockers + list(legal.blockers) + list(form1.blockers))),
+        # Form 7 should fail on the selected representative substance, not on
+        # an unrelated material's blocker elsewhere in the company inventory.
+        blockers=tuple(dict.fromkeys(blockers)),
         messages=tuple(dict.fromkeys(messages)),
     )
