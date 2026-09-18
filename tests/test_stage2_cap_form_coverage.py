@@ -73,7 +73,7 @@ class CAPFormCoverageTests(unittest.TestCase):
         )
         self.assertEqual(
             by_key[(1, "최대보유량 단위 정규화(ton)")].state,
-            RENDERER_GAP,
+            READY,
         )
         self.assertEqual(
             by_key[(3, "제출구분·최초/부적합")].state,
