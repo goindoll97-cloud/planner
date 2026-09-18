@@ -372,7 +372,7 @@ def _fill_form2(tables, project: Stage2Project) -> None:
     context_table, log_table = tables
     context_cells = _unique_cells(context_table.rows[0])
     _append_value(context_cells[1], project.company_name)
-    unit_plant = base._text(project, "cap.business.unit_plant_name", default="")
+    unit_plant = base._text(project, "cap.business.unit_plant_name", default=project.site_name or "")
     if unit_plant:
         _append_value(context_cells[3], unit_plant)
 
