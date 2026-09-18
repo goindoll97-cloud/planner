@@ -284,8 +284,26 @@ def _partial_builder(original_build):
     return build_partial
 
 
-def _meaningful_warnings(values: Sequence[str]) -> tuple[str, ...]:
-    """Hide only warnings caused by another official form living in another file."""
+def _meaningful_warnings(
+    values: Sequence[str],
+    active_markers: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    """Keep only warnings relevant to the official form file being written.
+
+    Split law.go.kr attachments are built through the same generic CAP writer,
+    so data engines for other annexes may legitimately report missing company
+    facts. Those warnings are not meaningful for a Form-14-only HWPX. When the
+    current file's markers are known, suppress only a warning that explicitly
+    names an annex not present in that file.
+    """
+    active_form_numbers: set[str] | None = None
+    if active_markers is not None:
+        active_form_numbers = set()
+        for marker in active_markers:
+            match = re.search(r"별지\s*제?\s*(\d+)\s*호", str(marker))
+            if match:
+                active_form_numbers.add(match.group(1))
+
     out: list[str] = []
     for value in values:
         text = str(value or "").strip()
@@ -293,6 +311,10 @@ def _meaningful_warnings(values: Sequence[str]) -> tuple[str, ...]:
             continue
         if "서식 제목" in text and "고유하게 찾지 못했습니다" in text:
             continue
+        if active_form_numbers is not None:
+            match = re.search(r"별지\s*제?\s*(\d+)\s*호", text)
+            if match and match.group(1) not in active_form_numbers:
+                continue
         if text not in out:
             out.append(text)
     return tuple(out)
@@ -473,7 +495,7 @@ def _build_bundle_zip(project, bundle: CAPOfficialFormBundle, original_build):
                     scoped = _project_for_scenario(project, scenario)
                     result = builder(scoped, template_bytes=form.hwpx_data)
                     total_applied += int(result.applied_count)
-                    warnings = _meaningful_warnings(result.warnings)
+                    warnings = _meaningful_warnings(result.warnings, form.markers)
                     user_warnings.extend(warnings)
 
                     output_index += 1
