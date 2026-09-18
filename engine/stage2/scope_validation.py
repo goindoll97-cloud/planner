@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from . import statutory_report as statutory
 from .cap_chemical_legal import build_cap_chemical_legal_data
 from .cap_sds_engine import build_cap_form6_sds_data, build_cap_form7_data
 from .cap_form1_engine import build_cap_form1_data
@@ -95,10 +96,7 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
         }
         for prepared in build_all_psm_later_form_readiness(project):
             checked_rules += 1
-            spec = __import__(
-                "engine.stage2.statutory_report",
-                fromlist=["PSM_FORMS"],
-            ).PSM_FORMS[prepared.form_no]
+            spec = statutory.PSM_FORMS[prepared.form_no]
             legal_item = f"{spec.reference} {prepared.form_name}"
             legal_basis = (
                 "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정 "
