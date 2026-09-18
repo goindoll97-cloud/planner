@@ -121,12 +121,13 @@ class Stage2MSDSReferenceTests(unittest.TestCase):
         self.assertEqual(set(result.matched_cas), {"108-88-3", "67-56-1"})
         self.assertEqual(result.missing_cas, ())
 
-    def test_ui_explains_only_cas_is_sent_and_supplier_msds_is_not_replaced(self):
+    def test_stage2_ui_defers_kosha_lookup_and_keeps_company_sds_msds(self):
         source = Path("ui/stage2_intake_page.py").read_text(encoding="utf-8")
-        self.assertIn("CAS 번호만", source)
-        self.assertIn("실제 제품 MSDS를 대체하지 않습니다", source)
-        self.assertIn("KOSHA MSDS 16개 항목 조회", source)
-        self.assertIn("로컬 PC 안에서만", source)
+        self.assertNotIn("KOSHA MSDS 16개 항목 조회", source)
+        self.assertNotIn("CAS 번호만", source)
+        self.assertNotIn("refresh_msds_references", source)
+        self.assertIn("회사 보유 SDS/MSDS·도면·첨부자료", source)
+        self.assertIn("제품 SDS/MSDS", source)
 
 
 if __name__ == "__main__":
