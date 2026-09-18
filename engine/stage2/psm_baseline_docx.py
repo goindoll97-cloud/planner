@@ -40,11 +40,11 @@ LATER_FORM_FIELDS: dict[str, tuple[str, ...]] = {
     # renderer first; keep the older aliases only as fallback so no interlock
     # data is inferred that the company never confirmed.
     "17-2": ("psm.psi.interlock_conditions", "psm.psi.interlock_specs", "psm.psi.interlocks"),
-    "17-3": ("psm.psi.fire_protection",),
-    "17-4": ("psm.psi.fire_detection",),
-    "17-5": ("psm.psi.gas_detection",),
-    "18": ("psm.psi.fireproofing",),
-    "19": ("psm.psi.local_exhaust",),
+    "17-3": ("psm.psi.fire_protection_table", "psm.psi.fire_protection"),
+    "17-4": ("psm.psi.fire_detection_table", "psm.psi.fire_detection"),
+    "17-5": ("psm.psi.gas_detection_table", "psm.psi.gas_detection"),
+    "18": ("psm.psi.fireproofing_table", "psm.psi.fireproofing"),
+    "19": ("psm.psi.local_exhaust_table", "psm.psi.local_exhaust"),
     "20": ("psm.psi.ex_equipment",),
     "21": ("psm.risk.team",),
 }
