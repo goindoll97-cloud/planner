@@ -503,7 +503,11 @@ def _render_psm_regulation_form(project) -> None:
     st.download_button(
         "공정안전보고서 규정서식 작성본 DOCX 다운로드" if clean else "공정안전보고서 규정서식 검토용 DOCX 다운로드",
         data=data,
-        file_name=psm_baseline_filename(project),
+        file_name=(
+            psm_baseline_filename(project)
+            if clean
+            else psm_baseline_filename(project).replace("_규정서식_작성본.docx", "_규정서식_검토용.docx")
+        ),
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         key=f"download_psm_regulation_form_{project.project_id}",
         width="stretch",
@@ -551,7 +555,7 @@ st.set_page_config(page_title="보고서 작성", page_icon="📝", layout="wide
 st.title("📝 5. 보고서 작성")
 st.caption(
     "4단계에서 확인한 회사자료를 바탕으로 DOCX 보고서를 작성합니다. "
-    "화학사고예방관리계획서는 HWPX를 생성하지 않고 DOCX만 최종 출력하며, 필요하면 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
+    "화학사고예방관리계획서는 HWPX를 생성하지 않고 DOCX를 기본 출력으로 사용하며, 필요하면 로컬 AI로 빈 설명문만 다듬을 수 있습니다."
 )
 
 project_id = _project_selector()
