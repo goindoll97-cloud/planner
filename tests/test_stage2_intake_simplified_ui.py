@@ -29,6 +29,14 @@ class Stage2IntakeSimplifiedUITests(unittest.TestCase):
         self.assertNotIn("resolve_official_form_for_program", self.source)
         self.assertNotIn("LEGAL_FOCUS_KEY", self.source)
 
+    def test_stage2_defers_external_msds_lookup_but_keeps_company_sds_upload(self):
+        self.assertNotIn("KOSHA MSDS", self.source)
+        self.assertNotIn("lookup_kosha_msds", self.source)
+        self.assertNotIn("credential_status", self.source)
+        self.assertNotIn("refresh_msds_references", self.source)
+        self.assertIn("회사 보유 SDS/MSDS·도면·첨부자료", self.source)
+        self.assertIn("SDS/MSDS", self.source)
+
     def test_upload_success_is_emitted_before_optional_refresh(self):
         """Workbook import must save and acknowledge before refreshing CAS controls."""
         marker = "통합 작성자료를 반영했습니다. 입력·확인"
