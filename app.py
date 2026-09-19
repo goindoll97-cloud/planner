@@ -100,6 +100,9 @@ if _psm_selected_somewhere():
         psm_pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
     if authoring_ready:
         psm_pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
+if _psm_selected_somewhere():
+    # 공정안전보고서를 새 방식(화학사고예방관리계획서에서 입력한 사실 재사용)으로 작성하는 화면
+    sections["공정안전보고서"] = [st.Page("ui/psm_workspace_page.py", title="공정안전보고서 작성", icon="🏭")]
 sections["공정안전보고서 (기존 방식)"] = psm_pages
 
 sections["참고"] = [
