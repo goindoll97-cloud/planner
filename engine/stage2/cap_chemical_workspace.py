@@ -11,6 +11,7 @@ them, never over a value the company already entered.
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
+from . import cap_endpoints
 from .cap_authoritative import cap_form6_msds_candidates
 from .msds_reference import (
     MSDSRefreshItem,
@@ -89,13 +90,35 @@ def fetch_references(project: Stage2Project, lookup: Callable | None = None) -> 
     return refresh_msds_references(project, cas_numbers=cas, **kwargs)
 
 
+GUIDELINE_SOURCE = "기술지침 붙임 1 (ERPG-2 → AEGL-2 → PAC-2 → IDLH 우선순위)"
+
+
+def guideline_candidates(project: Stage2Project) -> list[Candidate]:
+    """위험노출수준 from the 기술지침 끝점농도 tables (law tier; no KOSHA call needed)."""
+    _, rows = _rows(project)
+    out = []
+    for row in rows:
+        if _is_mixture(row):
+            continue
+        cas = _row_cas(row)[0]
+        endpoint = cap_endpoints.endpoint_for(cas)
+        if endpoint is None:
+            continue
+        name = _clean(row.get("물질명") or row.get("유해화학물질명"))
+        out.append(Candidate(cas, name, "위험노출수준", f"{endpoint.table} {endpoint.value:g} {endpoint.unit}", GUIDELINE_SOURCE))
+    return out
+
+
 def candidates(project: Stage2Project) -> list[Candidate]:
     allowed = set(single_substance_cas(project))
-    return [
+    guideline = guideline_candidates(project)
+    covered = {c.cas for c in guideline}
+    kosha = [
         Candidate(c.cas, c.chemical_name, c.field, c.value, c.source_text)
         for c in cap_form6_msds_candidates(project)
-        if c.cas in allowed and c.field in ROW_COLUMN
+        if c.cas in allowed and c.field in ROW_COLUMN and not (c.field == "위험노출수준" and c.cas in covered)
     ]
+    return guideline + kosha
 
 
 def has_reference(project: Stage2Project, cas: str) -> bool:
@@ -117,15 +140,17 @@ def apply_candidates(project: Stage2Project, cas_numbers: list[str]) -> int:
         cas_list = _row_cas(row)
         if len(cas_list) != 1 or cas_list[0] not in by_cas:
             continue
+        from_kosha = False
         for candidate in by_cas[cas_list[0]]:
             column = ROW_COLUMN[candidate.field]
             if not _clean(row.get(column)):
                 row[column] = candidate.value
                 written += 1
+                from_kosha = from_kosha or candidate.source != GUIDELINE_SOURCE
         reference = stored_msds_reference(project, cas_list[0]) or {}
-        if not _clean(row.get("SDS 파일명")):
+        if from_kosha and not _clean(row.get("SDS 파일명")):
             row["SDS 파일명"] = KOSHA_SDS_FILE
-        if not _clean(row.get("SDS 개정일")):
+        if from_kosha and not _clean(row.get("SDS 개정일")):
             row["SDS 개정일"] = _clean(reference.get("checked_at_utc"))[:10]
     if written:
         project.set_field(

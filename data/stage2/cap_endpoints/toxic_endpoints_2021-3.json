@@ -1,0 +1,5071 @@
+{
+ "meta": {
+  "source": "사고시나리오 선정 및 위험도 분석에 관한 기술지침 붙임 1 (화학물질안전원지침 제2021-3호, 2021.6.18.)",
+  "source_url": "https://www.me.go.kr/home/file/readDownloadFile.do?fileId=114498&fileSeq=2",
+  "priority": [
+   "ERPG-2",
+   "AEGL-2",
+   "PAC-2",
+   "IDLH"
+  ],
+  "idlh_factor": 0.1,
+  "unit_conversion": "X ppm = (Y mg/m3 × 24.45) / 분자량 (25℃, 1기압)",
+  "notes": "AEGL-2는 1시간 값. 표에 두 단위가 함께 있는 물질은 alternative에 나머지 값을 둔다. IDLH 열은 mg Pb/m3 같은 표기를 mg/m3로 단순화했다.",
+  "row_counts": {
+   "ERPG-2": 74,
+   "AEGL-2": 80,
+   "PAC-2": 536,
+   "IDLH": 149
+  },
+  "table_max_serial": {
+   "ERPG-2": 74,
+   "AEGL-2": 80,
+   "PAC-2": 536,
+   "IDLH": 149
+  }
+ },
+ "tables": {
+  "ERPG-2": {
+   "50-00-0": {
+    "name": "Formalin",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "56-23-5": {
+    "name": "Carbon tetrachloride",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "64-18-6": {
+    "name": "Formic acid",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "67-56-1": {
+    "name": "Methylalcohol",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "67-66-3": {
+    "name": "Chloroform",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "68-12-2": {
+    "name": "N,N-Dimethylformamide",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "71-43-2": {
+    "name": "Benzene",
+    "value": 150.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-83-9": {
+    "name": "Methyl bromide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-87-3": {
+    "name": "Methyl chloride",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-88-4": {
+    "name": "Methyl iodide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-89-5": {
+    "name": "Methylamine",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-90-8": {
+    "name": "Hydrogen cyanide",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-01-4": {
+    "name": "Vinyl chloride",
+    "value": 5000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-15-0": {
+    "name": "Carbon disulfide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-21-8": {
+    "name": "Ethylene oxide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-35-4": {
+    "name": "1,1-Dichloroethene",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-44-5": {
+    "name": "Phosgene",
+    "value": 0.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-50-3": {
+    "name": "Trimethylamine",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-56-9": {
+    "name": "Propyleneoxide",
+    "value": 250.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-79-6": {
+    "name": "Trichloromethylsilane",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-94-5": {
+    "name": "Trichloroethenylsilane",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "76-06-2": {
+    "name": "Chloropicrin",
+    "value": 0.15,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-79-5": {
+    "name": "Isoprene",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-82-0": {
+    "name": "2-Methylpropanenitrile",
+    "value": 30.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-01-6": {
+    "name": "Trichloroethylene",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-10-7": {
+    "name": "Acrylic acid",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "91-08-7": {
+    "name": "Toluene diisocyanate",
+    "value": 0.15,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "98-01-1": {
+    "name": "Furfural",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-44-7": {
+    "name": "Benzyl chloride",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "101-68-8": {
+    "name": "Diphenylmethane 4,4'-diisocyanate",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "106-89-8": {
+    "name": "Epichlorohydrin",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-99-0": {
+    "name": "1,3-Butadiene",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-02-8": {
+    "name": "Acrolein",
+    "value": 0.15,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-05-1": {
+    "name": "Allyl chloride",
+    "value": 40.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-06-2": {
+    "name": "1,2-Dichloroethane",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-13-1": {
+    "name": "Acrylonitrile",
+    "value": 35.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-30-2": {
+    "name": "Chloromethyl methyl ether",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-88-3": {
+    "name": "Toluene",
+    "value": 300.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-95-2": {
+    "name": "Phenol",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "111-30-8": {
+    "name": "Glutaraldehyde",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "116-14-3": {
+    "name": "Tetrafluoroethene",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "127-18-4": {
+    "name": "Tetrachloroethylene",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "302-01-2": {
+    "name": "Hydrazine",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "506-77-4": {
+    "name": "Cyanogen chloride",
+    "value": 0.05,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "542-88-1": {
+    "name": "Bis(chloromethyl)ether",
+    "value": 0.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "584-84-9": {
+    "name": "Toluene diisocyanate",
+    "value": 0.15,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "630-08-0": {
+    "name": "Carbon monoxide",
+    "value": 350.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1310-73-2": {
+    "name": "Sodium hydroxide",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1314-56-3": {
+    "name": "Phosphorus pentoxide",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "4170-30-3": {
+    "name": "Crotonaldehyde",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7439-97-6": {
+    "name": "Mercury",
+    "value": 0.25,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7550-45-0": {
+    "name": "Titanium tetrachloride",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7637-07-2": {
+    "name": "Trifluoroborane",
+    "value": 30.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7647-01-0": {
+    "name": "Hydrogen chloride",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-39-3": {
+    "name": "Hydrogen fluoride",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-41-7": {
+    "name": "Ammonia",
+    "value": 150.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-93-9": {
+    "name": "Sulfuric acid",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7697-37-2": {
+    "name": "Nitric acid",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7719-09-7": {
+    "name": "Thionyl chloride",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7719-12-2": {
+    "name": "Phosphorus trichloride",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7722-84-1": {
+    "name": "Hydrogen peroxide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7726-95-6": {
+    "name": "Bromine",
+    "value": 0.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-41-4": {
+    "name": "Fluorine",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-50-5": {
+    "name": "Chlorine",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-06-4": {
+    "name": "Hydrogen sulfide",
+    "value": 30.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-07-5": {
+    "name": "Dihydrogen selenide",
+    "value": 0.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7784-42-1": {
+    "name": "Arsine",
+    "value": 0.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7790-94-5": {
+    "name": "Chlorosulfonic acid",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7803-51-2": {
+    "name": "Phosphine",
+    "value": 0.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "8014-95-7": {
+    "name": "Fuming sulfuric acid",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10025-78-2": {
+    "name": "Trichlorosilane",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10026-04-7": {
+    "name": "Silicon tetrachloride",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10049-04-4": {
+    "name": "Chlorine dioxide",
+    "value": 0.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "19287-45-7": {
+    "name": "Diborane",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": "1. mg/m3"
+   }
+  },
+  "AEGL-2": {
+   "56-23-5": {
+    "name": "Carbon tetrachloride",
+    "value": 13.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "60-34-4": {
+    "name": "Methylhydrazine",
+    "value": 0.9,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "62-53-3": {
+    "name": "Aniline",
+    "value": 12.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "67-66-3": {
+    "name": "Chloroform",
+    "value": 64.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "68-12-2": {
+    "name": "N,N-Dimethylformamide",
+    "value": 91.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-83-9": {
+    "name": "Methyl bromide",
+    "value": 210.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-87-3": {
+    "name": "Methyl chloride",
+    "value": 910.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-90-8": {
+    "name": "Hydrogen cyanide",
+    "value": 7.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-01-4": {
+    "name": "Vinyl chloride",
+    "value": 1200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-15-0": {
+    "name": "Carbon disulfide",
+    "value": 160.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-21-8": {
+    "name": "Ethylene oxide",
+    "value": 45.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-44-5": {
+    "name": "Phosgene",
+    "value": 0.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-54-7": {
+    "name": "Methyldichlorosilane",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-56-9": {
+    "name": "Propyleneoxide",
+    "value": 290.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-79-6": {
+    "name": "Trichloromethylsilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-86-5": {
+    "name": "Acetone cyanohydrin",
+    "value": 7.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-94-5": {
+    "name": "Trichloroethenylsilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-82-0": {
+    "name": "2-Methylpropanenitrile",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-93-3": {
+    "name": "Methyl ethyl ketone",
+    "value": 2700.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-11-8": {
+    "name": "Chloroacetic acid",
+    "value": 6.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "91-08-7": {
+    "name": "Toluene diisocyanate",
+    "value": 0.083,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-89-8": {
+    "name": "Epichlorohydrin",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-02-8": {
+    "name": "Acrolein",
+    "value": 0.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-07-3": {
+    "name": "2-Chloroethanol",
+    "value": 1.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-12-0": {
+    "name": "Propiononitrile",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-13-1": {
+    "name": "Acrylonitrile",
+    "value": 1.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-15-3": {
+    "name": "Ethylenediamine",
+    "value": 9.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-18-6": {
+    "name": "Allyl alcohol",
+    "value": 1.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-19-7": {
+    "name": "2-Propyn-1-ol",
+    "value": 16.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-30-2": {
+    "name": "Chloromethyl methyl ether",
+    "value": 0.47,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-44-8": {
+    "name": "O-Isopropyl methyl phosphonofiuoridate",
+    "value": 0.006,
+    "unit": "ppm",
+    "alternative": "0.035 mg/m3"
+   },
+   "108-88-3": {
+    "name": "Toluene",
+    "value": 560.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-91-8": {
+    "name": "Cyclohexylamine",
+    "value": 8.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-95-2": {
+    "name": "Phenol",
+    "value": 23.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-77-3": {
+    "name": "Malononitrile",
+    "value": 0.77,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "115-21-9": {
+    "name": "Trichloroethylsilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "116-14-3": {
+    "name": "Tetrafluoroethene",
+    "value": 55.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "123-73-9": {
+    "name": "Crotonaldehyde",
+    "value": 4.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "124-63-0": {
+    "name": "Methanesulfonyl chloride",
+    "value": 0.21,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "124-70-9": {
+    "name": "Dichloroethenylmethylsilane",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "126-98-7": {
+    "name": "Methacrylonitrile",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "143-33-9": {
+    "name": "Sodium cyanide",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "151-50-8": {
+    "name": "Potassium cyanide",
+    "value": 19.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "151-56-4": {
+    "name": "Ethylenimine",
+    "value": 4.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "302-01-2": {
+    "name": "Hydrazine",
+    "value": 13.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "505-60-2": {
+    "name": "Mustard gas",
+    "value": 0.02,
+    "unit": "ppm",
+    "alternative": "0.10 mg/m3"
+   },
+   "541-25-3": {
+    "name": "(2-Chloroethenyl)arsonous dichloride",
+    "value": 0.25,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "542-88-1": {
+    "name": "Bis(chloromethyl)ether",
+    "value": 0.044,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "556-61-6": {
+    "name": "Methyl isothiocyanate",
+    "value": 17.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "584-84-9": {
+    "name": "Toluene diisocyanate",
+    "value": 0.083,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "592-01-8": {
+    "name": "Calcium cyanide",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "598-31-2": {
+    "name": "Bromo-2-propanone",
+    "value": 0.33,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "630-08-0": {
+    "name": "Carbon monoxide",
+    "value": 83.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1066-35-9": {
+    "name": "Chlorodimethylsilane",
+    "value": 22.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1314-84-7": {
+    "name": "Zinc phosphide",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1330-20-7": {
+    "name": "Xylene",
+    "value": 920.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "4109-96-0": {
+    "name": "Dichlorosilane",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "4170-30-3": {
+    "name": "Crotonaldehyde",
+    "value": 4.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7637-07-2": {
+    "name": "Trifluoroborane",
+    "value": 29.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7647-01-0": {
+    "name": "Hydrogen chloride",
+    "value": 22.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-39-3": {
+    "name": "Hydrogen fluoride",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-41-7": {
+    "name": "Ammonia",
+    "value": 160.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7697-37-2": {
+    "name": "Nitric acid",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7719-12-2": {
+    "name": "Phosphorus trichloride",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7726-95-6": {
+    "name": "Bromine",
+    "value": 0.24,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-41-4": {
+    "name": "Fluorine",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-50-5": {
+    "name": "Chlorine",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-06-4": {
+    "name": "Hydrogen sulfide",
+    "value": 27.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-07-5": {
+    "name": "Dihydrogen selenide",
+    "value": 0.11,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7784-42-1": {
+    "name": "Arsine",
+    "value": 0.17,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7789-30-2": {
+    "name": "Bormine pentafluoride",
+    "value": 0.17,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7803-51-2": {
+    "name": "Phosphine",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10025-78-2": {
+    "name": "Trichlorosilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10026-04-7": {
+    "name": "Silicon tetrachloride",
+    "value": 5.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10035-10-6": {
+    "name": "Hydrogen bromide",
+    "value": 40.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10049-04-4": {
+    "name": "Chlorine dioxide",
+    "value": 1.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "13463-39-3": {
+    "name": "Nickel carbonyl",
+    "value": 0.036,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "13463-40-6": {
+    "name": "Pentacarbonyliron",
+    "value": 0.06,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "19287-45-7": {
+    "name": "Diborane",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "20859-73-8": {
+    "name": "Aluminum phosphide",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": "1. mg/m3"
+   }
+  },
+  "PAC-2": {
+   "50-00-0": {
+    "name": "Formalin",
+    "value": 14.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "50-29-3": {
+    "name": "DDT",
+    "value": 34.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "51-28-5": {
+    "name": "2,4-Dinitrophenol",
+    "value": 6.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "51-75-2": {
+    "name": "Mechlorethamine",
+    "value": 0.022,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "51-79-6": {
+    "name": "Ethyl carbamate",
+    "value": 60.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "52-68-6": {
+    "name": "Trichlorfon",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "54-11-5": {
+    "name": "Nicotine",
+    "value": 3.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "55-38-9": {
+    "name": "Fenthion",
+    "value": 5.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "55-91-4": {
+    "name": "Isofluorphate",
+    "value": 3.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "56-18-8": {
+    "name": "3,3'-Imino di(propylamine)",
+    "value": 4.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "56-23-5": {
+    "name": "Carbon tetrachloride",
+    "value": 13.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "56-38-2": {
+    "name": "Parathion",
+    "value": 1.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "57-09-0": {
+    "name": "Cetrimonium, salts",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "57-12-5": {
+    "name": "Cyanide (inorganic) compound",
+    "value": 8.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "57-24-9": {
+    "name": "Strychnine",
+    "value": 0.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "57-74-9": {
+    "name": "Chlordan",
+    "value": 50.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "58-36-6": {
+    "name": "Diphenoxarsin-10-yl oxide",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "58-89-9": {
+    "name": "1,2,3,4,5,6-Hexachlorocyclohexane",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "60-09-3": {
+    "name": "p-Aminoazobenzene",
+    "value": 7.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "60-34-4": {
+    "name": "Methylhydrazine",
+    "value": 0.9,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "60-41-3": {
+    "name": "Strychnine sulphate",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "60-51-5": {
+    "name": "Dimethoate",
+    "value": 30.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "60-57-1": {
+    "name": "Dieldrin",
+    "value": 6.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "61-82-5": {
+    "name": "Amitrole",
+    "value": 23.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "62-38-4": {
+    "name": "Phenylmercury acetate",
+    "value": 22.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "62-53-3": {
+    "name": "Aniline",
+    "value": 12.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "62-73-7": {
+    "name": "Dichlorvos",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "62-74-8": {
+    "name": "Sodium fluoroacetate",
+    "value": 0.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "63-25-2": {
+    "name": "Carbaryl",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "64-18-6": {
+    "name": "Formic acid",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "64-67-5": {
+    "name": "Diethyl sulfate",
+    "value": 1.8,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "66-81-9": {
+    "name": "Cycloheximide",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "67-56-1": {
+    "name": "Methylalcohol",
+    "value": 2100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "67-66-3": {
+    "name": "Chloroform",
+    "value": 64.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "68-11-1": {
+    "name": "Mercaptoacetic acid",
+    "value": 33.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "68-12-2": {
+    "name": "N,N-Dimethylformamide",
+    "value": 91.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "71-43-2": {
+    "name": "Benzene",
+    "value": 800.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "72-20-8": {
+    "name": "Endrin",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "74-83-9": {
+    "name": "Methyl bromide",
+    "value": 210.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-87-3": {
+    "name": "Methyl chloride",
+    "value": 910.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-88-4": {
+    "name": "Methyl iodide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-89-5": {
+    "name": "Methylamine",
+    "value": 64.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-90-8": {
+    "name": "Hydrogen cyanide",
+    "value": 7.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-00-3": {
+    "name": "Ethyl chloride",
+    "value": 5100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-01-4": {
+    "name": "Vinyl chloride",
+    "value": 1200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-15-0": {
+    "name": "Carbon disulfide",
+    "value": 160.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-21-8": {
+    "name": "Ethylene oxide",
+    "value": 45.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-35-4": {
+    "name": "1,1-Dichloroethene",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-44-5": {
+    "name": "Phosgene",
+    "value": 0.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-50-3": {
+    "name": "Trimethylamine",
+    "value": 120.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-52-5": {
+    "name": "Nitromethane",
+    "value": 210.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-54-7": {
+    "name": "Methyldichlorosilane",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-56-9": {
+    "name": "Propyleneoxide",
+    "value": 290.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-57-0": {
+    "name": "Tetramethylammonium chloride",
+    "value": 1.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "75-59-2": {
+    "name": "Tetramethylammonium hydroxide",
+    "value": 0.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "75-74-1": {
+    "name": "Tetramethyl lead",
+    "value": 4.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "75-75-2": {
+    "name": "Methanesulfonic acid",
+    "value": 11.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "75-76-3": {
+    "name": "Tetramethylsilane",
+    "value": 360.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-79-6": {
+    "name": "Trichloromethylsilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-86-5": {
+    "name": "Acetone cyanohydrin",
+    "value": 7.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-89-8": {
+    "name": "2,2,2-Trifluoroethanol",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-94-5": {
+    "name": "Trichloroethenylsilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "76-03-9": {
+    "name": "Trichloroacetic acid",
+    "value": 16.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "76-06-2": {
+    "name": "Chloropicrin",
+    "value": 0.15,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "76-44-8": {
+    "name": "Heptachlor",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "77-47-4": {
+    "name": "Hexachlorocyclopentadiene",
+    "value": 0.55,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "77-78-1": {
+    "name": "Dimethyl sulfate",
+    "value": 0.12,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-00-2": {
+    "name": "Tetraethyl lead",
+    "value": 4.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "78-34-2": {
+    "name": "Dioxathion",
+    "value": 3.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "78-53-5": {
+    "name": "Amiton",
+    "value": 0.11,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "78-79-5": {
+    "name": "Isoprene",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-81-9": {
+    "name": "Isobutylamine",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-82-0": {
+    "name": "2-Methylpropanenitrile",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-93-3": {
+    "name": "Methyl ethyl ketone",
+    "value": 2700.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-94-4": {
+    "name": "Methyl vinyl ketone",
+    "value": 1.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-01-6": {
+    "name": "Trichloroethylene",
+    "value": 450.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-06-1": {
+    "name": "Acrylamide",
+    "value": 44.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "79-10-7": {
+    "name": "Acrylic acid",
+    "value": 46.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-11-8": {
+    "name": "Chloroacetic acid",
+    "value": 6.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-19-6": {
+    "name": "Thiosemicarbazide",
+    "value": 12.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "79-27-6": {
+    "name": "1,1,2,2-Tetrabromoethane",
+    "value": 4.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-43-6": {
+    "name": "Dichloroacetic acid",
+    "value": 8.9,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "81-81-2": {
+    "name": "Warfarin",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "82-66-6": {
+    "name": "Diphacinone",
+    "value": 0.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "83-79-4": {
+    "name": "Rotenone",
+    "value": 420.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "84-74-2": {
+    "name": "Dibutyl phthalate",
+    "value": 1600.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "85-68-7": {
+    "name": "Butylbenzyl phthalate",
+    "value": 77.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "86-50-0": {
+    "name": "Azinphos-methyl",
+    "value": 0.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "86-88-4": {
+    "name": "Antu",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "87-86-5": {
+    "name": "Pentachlorophenol",
+    "value": 15.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "87-90-1": {
+    "name": "Symclosene; 1,3,5-Trichloro-1,3,5-triazine-2,4,6(1H,3H,5H)-trione",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "88-72-2": {
+    "name": "2-Nitrotoluene",
+    "value": 33.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "88-85-7": {
+    "name": "Dinoseb",
+    "value": 4.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "88-89-1": {
+    "name": "Picric acid",
+    "value": 17.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "91-08-7": {
+    "name": "Toluene diisocyanate",
+    "value": 0.083,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "91-22-5": {
+    "name": "Quinoline",
+    "value": 2.9,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "91-59-8": {
+    "name": "2-Naphthylamine",
+    "value": 24.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "91-66-7": {
+    "name": "N,N-Diethylbenzenamine",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "91-94-1": {
+    "name": "3,3'-Dichlorobenzidine",
+    "value": 23.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "92-67-1": {
+    "name": "4-Aminobiphenyl",
+    "value": 17.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "92-87-5": {
+    "name": "Benzidine",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "93-76-5": {
+    "name": "2,4,5-T",
+    "value": 42.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "94-36-0": {
+    "name": "Benzoyl peroxide",
+    "value": 1200.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "94-75-7": {
+    "name": "2,4-D",
+    "value": 94.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "95-53-4": {
+    "name": "o-Toluidine",
+    "value": 8.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "95-54-5": {
+    "name": "1,2-Benzenediamine",
+    "value": 35.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "95-80-7": {
+    "name": "4-Methyl-1,3-benzenediamine",
+    "value": 3.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-09-3": {
+    "name": "(Epoxyethyl)benzene",
+    "value": 3.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-12-8": {
+    "name": "1,2-Dibromo-3-chloropropane",
+    "value": 2.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-23-1": {
+    "name": "1,3-Dichloro-2-propanol",
+    "value": 3.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-24-2": {
+    "name": "Chlorohydrin",
+    "value": 0.12,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-33-3": {
+    "name": "Methyl acrylate",
+    "value": 170.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-45-7": {
+    "name": "2-Imidazolidinethione",
+    "value": 0.94,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "97-02-9": {
+    "name": "2,4-Dinitroaniline",
+    "value": 9.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "98-00-0": {
+    "name": "2-Furanmethanol",
+    "value": 42.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "98-01-1": {
+    "name": "Furfural",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "98-95-3": {
+    "name": "Nitrobenzene",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "99-99-0": {
+    "name": "4-Nitrotoluene",
+    "value": 33.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-44-7": {
+    "name": "Benzyl chloride",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-61-8": {
+    "name": "N-Methylbenzenamine",
+    "value": 17.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-63-0": {
+    "name": "Phenylhydrazine",
+    "value": 6.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-97-0": {
+    "name": "Hexamine",
+    "value": 610.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "101-14-4": {
+    "name": "4,4'-Methylenebis(2-chloroaniline)",
+    "value": 0.94,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "101-68-8": {
+    "name": "Diphenylmethane 4,4'-diisocyanate",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "101-77-9": {
+    "name": "4,4'-Methylenedianiline",
+    "value": 3.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "102-82-9": {
+    "name": "Tributylamine",
+    "value": 0.54,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "105-67-9": {
+    "name": "2,4-Dimethylphenol",
+    "value": 76.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "106-49-0": {
+    "name": "p-Toluidine",
+    "value": 8.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-50-3": {
+    "name": "1,4-Benzenediamine",
+    "value": 6.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "106-51-4": {
+    "name": "1,4-benzoquinone",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-89-8": {
+    "name": "Epichlorohydrin",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-90-1": {
+    "name": "Glycidyl acrylate",
+    "value": 0.89,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-93-4": {
+    "name": "1,2-Dibromoethane",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-99-0": {
+    "name": "1,3-Butadiene",
+    "value": 5300.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-02-8": {
+    "name": "Acrolein",
+    "value": 0.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-05-1": {
+    "name": "Allyl chloride",
+    "value": 54.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-06-2": {
+    "name": "1,2-Dichloroethane",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-07-3": {
+    "name": "2-Chloroethanol",
+    "value": 1.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-12-0": {
+    "name": "Propiononitrile",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-13-1": {
+    "name": "Acrylonitrile",
+    "value": 1.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-15-3": {
+    "name": "Ethylenediamine",
+    "value": 9.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-18-6": {
+    "name": "Allyl alcohol",
+    "value": 1.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-19-7": {
+    "name": "2-Propyn-1-ol",
+    "value": 16.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-30-2": {
+    "name": "Chloromethyl methyl ether",
+    "value": 0.47,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-44-8": {
+    "name": "O-Isopropyl methyl phosphonofiuoridate",
+    "value": 0.006,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-46-0": {
+    "name": "Hexamethyldisiloxane; HMDS",
+    "value": 140.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-49-3": {
+    "name": "Tetraethyl pyrophosphate",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "108-38-3": {
+    "name": "m-xylene",
+    "value": 920.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-44-1": {
+    "name": "m-Toluidine",
+    "value": 8.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-45-2": {
+    "name": "1,3-Benzenediamine",
+    "value": 21.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "108-88-3": {
+    "name": "Toluene",
+    "value": 560.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-91-8": {
+    "name": "Cyclohexylamine",
+    "value": 8.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-95-2": {
+    "name": "Phenol",
+    "value": 23.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-61-5": {
+    "name": "n-Propyl chloroformate",
+    "value": 3.7,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-73-9": {
+    "name": "n-Butylamine",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-74-0": {
+    "name": "Butanenitrile",
+    "value": 8.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-77-3": {
+    "name": "Malononitrile",
+    "value": 0.77,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-86-4": {
+    "name": "2-Methoxyethanol",
+    "value": 14.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-92-2": {
+    "name": "Ethoxyethene",
+    "value": 110.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "110-57-6": {
+    "name": "(2E)-1,4-Dichloro-2-butene",
+    "value": 0.86,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "110-65-6": {
+    "name": "2-Butyne-1,4-diol",
+    "value": 5.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "110-80-5": {
+    "name": "2-Ethoxyethanol",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "111-30-8": {
+    "name": "Glutaraldehyde",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "111-44-4": {
+    "name": "Bis(2-chloroethyl)ether",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "111-92-2": {
+    "name": "Di-n-butylamine",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "112-02-7": {
+    "name": "Cetrimonium, salts",
+    "value": 12.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "114-26-1": {
+    "name": "Propoxur",
+    "value": 6.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "115-21-9": {
+    "name": "Trichloroethylsilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "115-26-4": {
+    "name": "Dimefox",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "115-29-7": {
+    "name": "Endosulfan",
+    "value": 0.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "115-78-6": {
+    "name": "Chlorphonium chloride",
+    "value": 5.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "115-86-6": {
+    "name": "Triphenylphosphate",
+    "value": 360.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "115-90-2": {
+    "name": "Fensulfothion",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "116-06-3": {
+    "name": "Aldicarb",
+    "value": 0.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "116-14-3": {
+    "name": "Tetrafluoroethene",
+    "value": 55.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "117-81-7": {
+    "name": "Bis(2-ethylhexyl) phthalate",
+    "value": 1000.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "119-38-0": {
+    "name": "Isolan",
+    "value": 5.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "119-90-4": {
+    "name": "3,3'-Dimethoxy-[1,1'-biphenyl]-4,4'-diamine",
+    "value": 220.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "120-94-5": {
+    "name": "1-Methylpyrrolidine",
+    "value": 6.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "121-14-2": {
+    "name": "2,4-Dinitrotoluene",
+    "value": 12.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "121-44-8": {
+    "name": "Triethylamine",
+    "value": 170.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "121-69-7": {
+    "name": "N,N-Dimethylaniline",
+    "value": 330.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "121-75-5": {
+    "name": "Malathion",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "121-82-4": {
+    "name": "Cyclonite",
+    "value": 26.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "122-19-0": {
+    "name": "Benzyldimethyloctadecylammonium chloride",
+    "value": 41.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "123-31-9": {
+    "name": "Hydroquinone",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "123-33-1": {
+    "name": "Maleichydrazide",
+    "value": 130.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "123-73-9": {
+    "name": "Crotonaldehyde",
+    "value": 4.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "124-43-6": {
+    "name": "Urea peroxide",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "124-63-0": {
+    "name": "Methanesulfonyl chloride",
+    "value": 0.21,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "124-70-9": {
+    "name": "Dichloroethenylmethylsilane",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "126-98-7": {
+    "name": "Methacrylonitrile",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "127-18-4": {
+    "name": "Tetrachloroethylene",
+    "value": 230.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "131-52-2": {
+    "name": "Pentachlorophenol sodium salt, sodium pentachlorophenolate NaPCP",
+    "value": 2.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "133-06-2": {
+    "name": "Captan",
+    "value": 26.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "137-26-8": {
+    "name": "Thiram",
+    "value": 250.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "140-29-4": {
+    "name": "Benzeneacetonitrile",
+    "value": 4.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "141-66-2": {
+    "name": "Dicrotophos",
+    "value": 0.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "141-78-6": {
+    "name": "Ethyl acetate",
+    "value": 1700.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "143-33-9": {
+    "name": "Sodium cyanide",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "144-49-0": {
+    "name": "Fluoroacetic acid",
+    "value": 0.47,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "151-50-8": {
+    "name": "Potassium cyanide",
+    "value": 19.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "151-56-4": {
+    "name": "Ethylenimine",
+    "value": 4.6,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "152-16-9": {
+    "name": "Schradan",
+    "value": 0.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "297-78-9": {
+    "name": "Isobenzan",
+    "value": 0.11,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "297-97-2": {
+    "name": "Thionazin",
+    "value": 3.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "298-00-0": {
+    "name": "Methyl parathion",
+    "value": 1.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "298-02-2": {
+    "name": "Phorate",
+    "value": 0.04,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "298-04-4": {
+    "name": "Disulfoton",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "301-04-2": {
+    "name": "Lead acetate",
+    "value": 55.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "302-01-2": {
+    "name": "Hydrazine",
+    "value": 13.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "309-00-2": {
+    "name": "Aldrin",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "315-18-4": {
+    "name": "Mexacarbate",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "327-98-0": {
+    "name": "Trichloronat",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "354-32-5": {
+    "name": "Trifluoroacetyl chloride",
+    "value": 35.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "420-04-2": {
+    "name": "Cyanamide",
+    "value": 66.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "470-90-6": {
+    "name": "Chlorfenvinphos",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "504-24-5": {
+    "name": "4-Aminopyridine",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "505-60-2": {
+    "name": "Mustard gas",
+    "value": 0.02,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "506-61-6": {
+    "name": "Potassium dicyanoargentate",
+    "value": 32.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "506-64-9": {
+    "name": "Silver cyanide",
+    "value": 4.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "506-77-4": {
+    "name": "Cyanogen chloride",
+    "value": 0.05,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "507-28-8": {
+    "name": "Tetraphenylarsonium chloride",
+    "value": 92.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "510-15-6": {
+    "name": "Chlorobenzilate",
+    "value": 92.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "513-78-0": {
+    "name": "Cadmium carbonate",
+    "value": 1.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "534-16-7": {
+    "name": "Silver carbonate",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "534-52-1": {
+    "name": "DNOC",
+    "value": 0.83,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "535-89-7": {
+    "name": "Crimidine",
+    "value": 0.069,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "540-51-2": {
+    "name": "2-Bromoethanol",
+    "value": 0.66,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "541-25-3": {
+    "name": "(2-Chloroethenyl)arsonous dichloride",
+    "value": 0.25,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "542-62-1": {
+    "name": "Barium cyanide (Ba(CN)2)",
+    "value": 60.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "542-75-6": {
+    "name": "1,3-Dichloropropene",
+    "value": 19.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "542-88-1": {
+    "name": "Bis(chloromethyl)ether",
+    "value": 0.044,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "543-90-8": {
+    "name": "Cadmium acetate",
+    "value": 1.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "544-92-3": {
+    "name": "Copper cyanide",
+    "value": 29.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "556-52-5": {
+    "name": "Glycidol",
+    "value": 83.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "556-61-6": {
+    "name": "Methyl isothiocyanate",
+    "value": 17.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "557-19-7": {
+    "name": "Nickel dicyanide",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "557-21-1": {
+    "name": "Zinc cyanide",
+    "value": 18.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "563-12-2": {
+    "name": "Ethion",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "563-68-8": {
+    "name": "Thallium acetate",
+    "value": 4.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "569-64-2": {
+    "name": "[4-[α-[4-(Dimethylamino)phenyl]benzylidene]cyclohexa-2,5-dien-1-ylid ene]dimethylammonium chloride",
+    "value": 1.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "576-26-1": {
+    "name": "2,6-Xylenol",
+    "value": 26.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "584-84-9": {
+    "name": "Toluene diisocyanate",
+    "value": 0.083,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "592-01-8": {
+    "name": "Calcium cyanide",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "592-04-1": {
+    "name": "Mercury dicyanide",
+    "value": 0.13,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "592-06-3": {
+    "name": "Platinum dicyanide",
+    "value": 0.083,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "592-85-8": {
+    "name": "Mercuric thiocyanate",
+    "value": 0.16,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "598-31-2": {
+    "name": "Bromo-2-propanone",
+    "value": 0.33,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "603-35-0": {
+    "name": "Triphenylphosphine",
+    "value": 32.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "615-28-1": {
+    "name": "1,2-Benzenediamine dihydrochloride",
+    "value": 19.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "624-18-0": {
+    "name": "1,4-Benzenediamine dihydrochloride",
+    "value": 4.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "630-08-0": {
+    "name": "Carbon monoxide",
+    "value": 83.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "639-58-7": {
+    "name": "Triphenyltin chloride; Fentin chloride",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "640-19-7": {
+    "name": "Fluoroacetamide",
+    "value": 5.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "644-64-4": {
+    "name": "Dimetilan",
+    "value": 25.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "732-11-6": {
+    "name": "Phosmet",
+    "value": 0.54,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "786-19-6": {
+    "name": "Carbophenothion",
+    "value": 6.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "814-49-3": {
+    "name": "Phosphorochloridic acid diethyl ester",
+    "value": 8.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "814-68-6": {
+    "name": "Acrylyl chloride",
+    "value": 0.24,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "822-06-0": {
+    "name": "Hexamethylene diisocyanate",
+    "value": 0.2,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "823-40-5": {
+    "name": "2-Methyl-1,3-benzenediamine",
+    "value": 33.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "872-50-4": {
+    "name": "1-Methyl-2-pyrrolidinone",
+    "value": 32.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "900-95-8": {
+    "name": "Triphenyltin acetate",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "920-46-7": {
+    "name": "2-Methyl-2-propenoylchloride",
+    "value": 0.14,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "944-22-9": {
+    "name": "Fonofos",
+    "value": 1.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "947-02-4": {
+    "name": "Phosfolan",
+    "value": 9.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "950-10-7": {
+    "name": "Mephosfolan",
+    "value": 9.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "950-37-8": {
+    "name": "Methidathion",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1031-47-6": {
+    "name": "Triamiphos",
+    "value": 0.66,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1066-35-9": {
+    "name": "Chlorodimethylsilane",
+    "value": 22.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1120-71-4": {
+    "name": "1,3-Propanesultone",
+    "value": 18.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1303-28-2": {
+    "name": "Arsenic pentoxide",
+    "value": 8.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1303-86-2": {
+    "name": "Diboron trioxide",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1306-19-0": {
+    "name": "Cadmium oxide",
+    "value": 0.87,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1306-23-6": {
+    "name": "Cadmium sulfide",
+    "value": 0.98,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1309-60-0": {
+    "name": "Lead dioxide",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1309-64-4": {
+    "name": "Diantimony trioxide",
+    "value": 16.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1310-58-3": {
+    "name": "Potassium hyroxide",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1310-73-2": {
+    "name": "Sodium hydroxide",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1313-60-6": {
+    "name": "Sodium peroxide",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1313-99-1": {
+    "name": "Nickel monoxide",
+    "value": 220.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1314-56-3": {
+    "name": "Phosphorus pentoxide",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1314-80-3": {
+    "name": "Phosphorus pentasulfide",
+    "value": 130.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1314-84-7": {
+    "name": "Zinc phosphide",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1314-87-0": {
+    "name": "Lead sulfide",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1317-36-8": {
+    "name": "Lead monoxide",
+    "value": 130.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1319-77-3": {
+    "name": "Cresol",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1327-53-3": {
+    "name": "Diarsenic trioxide",
+    "value": 3.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1330-20-7": {
+    "name": "Xylene",
+    "value": 920.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1332-21-4": {
+    "name": "Asbestos",
+    "value": 0.55,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1333-82-0": {
+    "name": "Chromic anhydride",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1335-32-6": {
+    "name": "Lead acetate",
+    "value": 59.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1336-21-6": {
+    "name": "Ammonium hydroxide",
+    "value": 330.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1336-36-3": {
+    "name": "PCBs",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1338-23-4": {
+    "name": "Methyl ethyl ketone peroxide",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1341-49-7": {
+    "name": "Ammonium bifluoride",
+    "value": 130.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1420-07-1": {
+    "name": "Dinoterb",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1493-13-6": {
+    "name": "Triflic acid",
+    "value": 22.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1563-66-2": {
+    "name": "Carbofuran",
+    "value": 0.43,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1582-09-8": {
+    "name": "Trifluralin",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1600-27-7": {
+    "name": "Mercuric acetate",
+    "value": 0.064,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1752-30-3": {
+    "name": "Acetone thiosemicarbazone",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1897-45-6": {
+    "name": "Chlorothalonil",
+    "value": 1.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1910-42-5": {
+    "name": "Paraquat",
+    "value": 1.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2032-65-7": {
+    "name": "Methiocarb",
+    "value": 15.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2074-50-2": {
+    "name": "Paraquat dimethylsulfate",
+    "value": 0.15,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2104-64-5": {
+    "name": "EPN",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2223-93-0": {
+    "name": "Octadecanoic acid cadmium salt",
+    "value": 4.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2275-18-5": {
+    "name": "Prothoate",
+    "value": 1.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2540-82-1": {
+    "name": "Formothion",
+    "value": 24.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2631-37-0": {
+    "name": "Promecarb",
+    "value": 16.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2699-79-8": {
+    "name": "Sulfuryl fluoride",
+    "value": 21.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "2778-04-3": {
+    "name": "Endothion",
+    "value": 17.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2921-88-2": {
+    "name": "Chlorpyrifos",
+    "value": 15.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "3689-24-5": {
+    "name": "Sulfotep",
+    "value": 3.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "3691-35-8": {
+    "name": "Chlorophacinone",
+    "value": 0.051,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "3811-04-9": {
+    "name": "Potassium chlorate",
+    "value": 62.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "4098-71-9": {
+    "name": "Isophoronediisocyanate",
+    "value": 0.14,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "4104-14-7": {
+    "name": "Phosacetim",
+    "value": 3.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "4109-96-0": {
+    "name": "Dichlorosilane",
+    "value": 11.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "4170-30-3": {
+    "name": "Crotonaldehyde",
+    "value": 4.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "5124-30-1": {
+    "name": "1,1'-Methylenebis[4-isocyanatocyclohexane]",
+    "value": 0.29,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "5470-11-1": {
+    "name": "Hydroxylammonium chloride",
+    "value": 4.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "5836-29-3": {
+    "name": "Coumatetralyl",
+    "value": 0.071,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "6080-56-4": {
+    "name": "Lead diacetate trihydrate; Lead acetate trihydrate",
+    "value": 150.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "6484-52-2": {
+    "name": "Ammonium nitrate",
+    "value": 73.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "6923-22-4": {
+    "name": "Monocrotophos",
+    "value": 0.63,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7173-51-5": {
+    "name": "Didecyldimethylammonium chloride",
+    "value": 9.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7439-92-1": {
+    "name": "Lead",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7439-97-6": {
+    "name": "Mercury",
+    "value": 1.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7440-09-7": {
+    "name": "Potassium",
+    "value": 25.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7440-23-5": {
+    "name": "Sodium",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7440-38-2": {
+    "name": "Arsenic",
+    "value": 17.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7440-43-9": {
+    "name": "Cadmium",
+    "value": 0.76,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7446-08-4": {
+    "name": "Selenium dioxide",
+    "value": 1.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7446-18-6": {
+    "name": "Thallium sulfate",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7446-27-7": {
+    "name": "Trilead bis(orthophosphate)",
+    "value": 150.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7487-94-7": {
+    "name": "Mercury dichloride",
+    "value": 0.14,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7488-55-3": {
+    "name": "Tin sulfate",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7488-56-4": {
+    "name": "Selenium disulfide",
+    "value": 4.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7546-30-7": {
+    "name": "Mercury chloride",
+    "value": 0.12,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7550-45-0": {
+    "name": "Titanium tetrachloride",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7631-89-2": {
+    "name": "Arsenic acid, sodium salt",
+    "value": 45.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7631-99-4": {
+    "name": "Sodium nitrate",
+    "value": 45.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7632-00-0": {
+    "name": "Sodium nitrite",
+    "value": 71.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7637-07-2": {
+    "name": "Trifluoroborane",
+    "value": 29.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7646-78-8": {
+    "name": "Tin tetrachloride",
+    "value": 150.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7646-85-7": {
+    "name": "Zinc chloride",
+    "value": 800.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7647-01-0": {
+    "name": "Hydrogen chloride",
+    "value": 22.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7647-18-9": {
+    "name": "Antimony pentachloride",
+    "value": 33.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7664-39-3": {
+    "name": "Hydrogen fluoride",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-41-7": {
+    "name": "Ammonia",
+    "value": 160.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-93-9": {
+    "name": "Sulfuric acid",
+    "value": 8.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7681-49-4": {
+    "name": "Sodium fluoride",
+    "value": 90.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7697-37-2": {
+    "name": "Nitric acid",
+    "value": 24.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7699-45-8": {
+    "name": "Zinc bromide",
+    "value": 66.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7719-09-7": {
+    "name": "Thionyl chloride",
+    "value": 2.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7719-12-2": {
+    "name": "Phosphorus trichloride",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7722-64-7": {
+    "name": "Potassium permanganate",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7722-84-1": {
+    "name": "Hydrogen peroxide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7726-95-6": {
+    "name": "Bromine",
+    "value": 0.24,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7733-02-0": {
+    "name": "Zinc sulfate",
+    "value": 97.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7757-79-1": {
+    "name": "Potassium nitrate",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7758-09-0": {
+    "name": "Potassium nitrite",
+    "value": 45.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7758-19-2": {
+    "name": "Sodium chlorite",
+    "value": 2.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7758-95-4": {
+    "name": "Lead dichloride",
+    "value": 160.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7758-97-6": {
+    "name": "Lead(Ⅱ)chromate",
+    "value": 16.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7761-88-8": {
+    "name": "Silver nitrate",
+    "value": 0.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7772-99-8": {
+    "name": "Tin dichloride",
+    "value": 65.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7774-29-0": {
+    "name": "Mercury diiodide",
+    "value": 0.23,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7775-09-9": {
+    "name": "Sodium chlorate",
+    "value": 40.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7775-11-3": {
+    "name": "Sodiumchromate",
+    "value": 8.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7778-39-4": {
+    "name": "Arsenic acid",
+    "value": 32.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7778-44-1": {
+    "name": "Calcium arsenate",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7778-50-9": {
+    "name": "Chromium(6+) compounds",
+    "value": 8.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7778-74-7": {
+    "name": "Potassium perchlorate",
+    "value": 69.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7779-88-6": {
+    "name": "Zinc nitrate",
+    "value": 190.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7779-90-0": {
+    "name": "Trizinc bis(orthophosphate)",
+    "value": 36.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7782-41-4": {
+    "name": "Fluorine",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-49-2": {
+    "name": "Selenium",
+    "value": 6.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7782-50-5": {
+    "name": "Chlorine",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-65-2": {
+    "name": "Germanium tetrahydride",
+    "value": 0.17,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-86-7": {
+    "name": "Mercurous nitrate monohydrate; Mercury protonitrate",
+    "value": 0.14,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-00-8": {
+    "name": "Selenious acid",
+    "value": 250.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-06-4": {
+    "name": "Hydrogen sulfide",
+    "value": 27.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-07-5": {
+    "name": "Dihydrogen selenide",
+    "value": 0.11,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-34-8": {
+    "name": "Mercury nitrate monohydrate",
+    "value": 0.17,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-35-9": {
+    "name": "Mercury sulfate",
+    "value": 0.15,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-46-2": {
+    "name": "Lead difluoride",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-49-5": {
+    "name": "Zinc fluoride",
+    "value": 230.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-56-4": {
+    "name": "Antimony trifluoride",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-61-1": {
+    "name": "Silicon tetrafluoride",
+    "value": 3.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-70-2": {
+    "name": "Antimony fluoride; Antimony pentafluoride",
+    "value": 23.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7783-79-1": {
+    "name": "Selenium fluoride (SeF6), (OC-6-11)-; Selenium hexafluoride",
+    "value": 0.087,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-99-5": {
+    "name": "Silver nitrite",
+    "value": 0.46,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7784-34-1": {
+    "name": "Arsenic trichloride",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7784-40-9": {
+    "name": "Lead arsenate",
+    "value": 77.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7784-41-0": {
+    "name": "Potassium dihydrogen arsenate",
+    "value": 40.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7784-42-1": {
+    "name": "Arsine",
+    "value": 0.17,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7784-46-5": {
+    "name": "Sodium dioxoarsenate",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7786-81-4": {
+    "name": "Nickel sulfate",
+    "value": 8.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7788-98-9": {
+    "name": "Ammoniumchromate",
+    "value": 7.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7789-00-6": {
+    "name": "Potassiumchromate",
+    "value": 9.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7789-09-5": {
+    "name": "Chromium(6+) compounds",
+    "value": 6.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7789-12-0": {
+    "name": "Sodium dichromate dihydrate",
+    "value": 7.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7789-23-3": {
+    "name": "Potassium fluoride",
+    "value": 250.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7789-24-4": {
+    "name": "Lithium fluoride",
+    "value": 110.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7789-30-2": {
+    "name": "Bormine pentafluoride",
+    "value": 0.17,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7789-42-6": {
+    "name": "Cadmium bromide",
+    "value": 1.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7790-59-2": {
+    "name": "Potassium selenate",
+    "value": 18.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7790-79-6": {
+    "name": "Cadmium fluoride",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7790-83-2": {
+    "name": "Cadmium dinitrite",
+    "value": 1.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7790-84-3": {
+    "name": "Cadmium sulfate octahydrate",
+    "value": 0.76,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7790-85-4": {
+    "name": "Cadmium wolframate",
+    "value": 2.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7790-94-5": {
+    "name": "Chlorosulfonic acid",
+    "value": 4.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7791-23-3": {
+    "name": "Seleninyl dichloride",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7803-49-8": {
+    "name": "Hydroxylamine",
+    "value": 3.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7803-51-2": {
+    "name": "Phosphine",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7803-57-8": {
+    "name": "Hydrazine hydrate",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7803-62-5": {
+    "name": "Silane",
+    "value": 130.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "8001-35-2": {
+    "name": "Camphechlor",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "8001-54-5": {
+    "name": "Alkyldimethylbenzylammonium chloride",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "8014-95-7": {
+    "name": "Fuming sulfuric acid",
+    "value": 8.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "8065-48-3": {
+    "name": "Demeton",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "9016-45-9": {
+    "name": "Nonylphenol ethoxylates",
+    "value": 470.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10022-68-1": {
+    "name": "Cadmium nitrate tetrahydrate",
+    "value": 2.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10025-67-9": {
+    "name": "Sulfur chloride",
+    "value": 6.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10025-69-1": {
+    "name": "Tin chloride dihydrate; Stannous dichloride dihydrate",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10025-78-2": {
+    "name": "Trichlorosilane",
+    "value": 7.3,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10025-87-3": {
+    "name": "Phosphorus oxychloride",
+    "value": 0.48,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10025-91-9": {
+    "name": "Antimony trichloride",
+    "value": 25.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10026-04-7": {
+    "name": "Silicon tetrachloride",
+    "value": 5.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10026-13-8": {
+    "name": "Phosphorus pentachloride",
+    "value": 20.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10031-13-7": {
+    "name": "Lead arsenite",
+    "value": 47.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10031-22-8": {
+    "name": "Lead dibromide",
+    "value": 200.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10034-82-9": {
+    "name": "Sodium chromate tetrahydrate",
+    "value": 15.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10034-85-2": {
+    "name": "Hydrogen iodide",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10035-10-6": {
+    "name": "Hydrogen bromide",
+    "value": 40.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10039-54-0": {
+    "name": "Bis(hydroxylammonium) sulfate",
+    "value": 31.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10045-94-0": {
+    "name": "Mercury dinitrate",
+    "value": 0.16,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10049-04-4": {
+    "name": "Chlorine dioxide",
+    "value": 1.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10099-74-8": {
+    "name": "Lead dinitrate",
+    "value": 180.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10101-63-0": {
+    "name": "Lead diiodide (PbI2)",
+    "value": 270.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10102-18-8": {
+    "name": "Sodium selenite",
+    "value": 2.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10102-43-9": {
+    "name": "Nitric oxide",
+    "value": 12.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10102-45-1": {
+    "name": "Thallium nitrate",
+    "value": 4.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10108-64-2": {
+    "name": "Cadmium chloride",
+    "value": 1.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10112-91-1": {
+    "name": "Dimercury dichloride",
+    "value": 0.12,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10124-36-4": {
+    "name": "Cadmium sulfate",
+    "value": 1.4,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10124-50-2": {
+    "name": "Potassium arsonate",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10196-18-6": {
+    "name": "Nitric acid, zinc salt, hexahydrate",
+    "value": 300.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10265-92-6": {
+    "name": "Methamidophos",
+    "value": 1.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10294-34-5": {
+    "name": "Boron trichloride",
+    "value": 2.1,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10294-40-3": {
+    "name": "Chromium(6+) compounds",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10311-84-9": {
+    "name": "Dialifos",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10325-94-7": {
+    "name": "Cadmium nitrate",
+    "value": 1.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10415-75-5": {
+    "name": "Dimercury dinitrate",
+    "value": 0.13,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10424-65-4": {
+    "name": "Methanaminium, N,N,N-trimethyl-, hydroxide, pentahydrate",
+    "value": 0.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10431-47-7": {
+    "name": "Potassium selenite",
+    "value": 17.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10588-01-9": {
+    "name": "Chromium(6+) compounds",
+    "value": 6.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "11135-81-2": {
+    "name": "Alloy of potassium and sodium",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "12001-28-4": {
+    "name": "Crocidolite",
+    "value": 1.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "12125-01-8": {
+    "name": "Ammonium fluoride",
+    "value": 160.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "12185-10-3": {
+    "name": "White phosphorus",
+    "value": 0.91,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "12208-13-8": {
+    "name": "Potassium hexahydroxoantimonate",
+    "value": 28.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "12656-85-8": {
+    "name": "C.I. pigment red 104",
+    "value": 59.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13071-79-9": {
+    "name": "Terbufos",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13138-45-9": {
+    "name": "Nickel(II) nitrate",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13171-21-6": {
+    "name": "Phosphamidon",
+    "value": 0.3,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13194-48-4": {
+    "name": "Ethoprophos",
+    "value": 1.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13292-87-0": {
+    "name": "Dimethyl sulfide borane",
+    "value": 0.33,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "13410-01-0": {
+    "name": "Selenic acid disodium salt",
+    "value": 1.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13463-39-3": {
+    "name": "Nickel carbonyl",
+    "value": 0.036,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "13463-40-6": {
+    "name": "Pentacarbonyliron",
+    "value": 0.06,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "13464-35-2": {
+    "name": "Potassium arsenite",
+    "value": 32.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13464-38-5": {
+    "name": "Trisodium arsenate",
+    "value": 47.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13465-08-2": {
+    "name": "Hydroxylammonium nitrate",
+    "value": 37.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13465-94-6": {
+    "name": "Nitrous acid, barium salt",
+    "value": 300.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13470-06-9": {
+    "name": "Strontium nitrite",
+    "value": 71.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13530-65-9": {
+    "name": "Chromium(6+) compounds",
+    "value": 9.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13568-33-7": {
+    "name": "Lithium nitrite",
+    "value": 330.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13637-61-1": {
+    "name": "Zinc perchlorate",
+    "value": 270.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13755-29-8": {
+    "name": "Tetrafluoroborate(1-), sodium",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13765-19-0": {
+    "name": "Calcium chromate",
+    "value": 7.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13780-06-8": {
+    "name": "Calcium nitrite",
+    "value": 71.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13814-96-5": {
+    "name": "Lead bis(tetrafluoroborate)",
+    "value": 220.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13814-97-6": {
+    "name": "Tin bis(tetrafluoroborate)",
+    "value": 170.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13826-65-8": {
+    "name": "Nitrous acid, lead(2+) salt",
+    "value": 170.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13826-83-0": {
+    "name": "Ammonium tetrafluoroborate",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13952-84-6": {
+    "name": "1-Methylpropylamine",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "14075-53-7": {
+    "name": "Potassium tetrafluoroborate",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "14307-35-8": {
+    "name": "Lithium chromate",
+    "value": 6.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "14984-71-5": {
+    "name": "Nitrous acid, copper(2+) salt",
+    "value": 79.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "15829-53-5": {
+    "name": "Mercurous oxide",
+    "value": 0.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16079-88-2": {
+    "name": "Halogenated hydantoin",
+    "value": 46.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16752-77-5": {
+    "name": "Methomyl",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16871-90-2": {
+    "name": "Dipotassium hexafluorosilicate",
+    "value": 5.1,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16872-11-0": {
+    "name": "Fluoroboric acid",
+    "value": 97.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16893-85-9": {
+    "name": "Disodium hexafluorosilicate",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16919-19-0": {
+    "name": "Ammonium hexafluorosilicate",
+    "value": 130.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "16961-83-4": {
+    "name": "Fluorosilicic acid",
+    "value": 110.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "17099-70-6": {
+    "name": "Aluminium hexafluorosilicate",
+    "value": 120.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "19287-45-7": {
+    "name": "Diborane",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "19783-14-3": {
+    "name": "Lead hydroxide (Pb(OH)2)",
+    "value": 140.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "20325-40-0": {
+    "name": "3,3`-Dimethoxy -[1,1`-biphenyl]-4,4`-diamine, hydrochloride(1:2)",
+    "value": 13.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "20816-12-0": {
+    "name": "Osmium tetroxide",
+    "value": 0.0084,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "20859-73-8": {
+    "name": "Aluminum phosphide",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "21041-95-2": {
+    "name": "Cadmium hydroxide",
+    "value": 0.99,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "21548-32-3": {
+    "name": "Fosthiethan",
+    "value": 4.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "21609-90-5": {
+    "name": "Leptophos",
+    "value": 30.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "21908-53-2": {
+    "name": "Mercuric monooxide",
+    "value": 16.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "21923-23-9": {
+    "name": "Chlorthiophos",
+    "value": 7.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "22224-92-6": {
+    "name": "Fenamiphos",
+    "value": 0.9,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "23135-22-0": {
+    "name": "Oxamyl",
+    "value": 1.7,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "23505-41-1": {
+    "name": "Pirimiphos-ethyl",
+    "value": 25.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "24017-47-8": {
+    "name": "Triazophos",
+    "value": 2.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "24934-91-6": {
+    "name": "Chlormephos",
+    "value": 7.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "25154-52-3": {
+    "name": "Nonylphenols",
+    "value": 53.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "26027-38-3": {
+    "name": "α-(4-Nonylphenyl)-ω-hydroxypoly(oxy-1,2-ethanediyl)",
+    "value": 49.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "26172-55-4": {
+    "name": "5-Chloro-2-methyl-4-isothiazolin-3-one",
+    "value": 6.6,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "26471-62-5": {
+    "name": "Toluene diisocyanate",
+    "value": 0.083,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "26628-22-8": {
+    "name": "Sodium azide",
+    "value": 0.29,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "28772-56-7": {
+    "name": "Bromadiolone",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "29638-69-5": {
+    "name": "Diantimony tetrapotassium heptaoxide",
+    "value": 28.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "30525-89-4": {
+    "name": "Paraformaldehyde",
+    "value": 23.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "33908-66-6": {
+    "name": "Sodium hexahydroxyantimonate",
+    "value": 27.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "39196-18-4": {
+    "name": "Thiofanox",
+    "value": 8.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "53558-25-1": {
+    "name": "Pyriminil",
+    "value": 6.2,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "61790-14-5": {
+    "name": "Naphthenic acids lead salts",
+    "value": 170.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "68391-01-5": {
+    "name": "Alkyl(C=12-18) benzyl dimethyl ammonium chloride",
+    "value": 6.8,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "68412-54-4": {
+    "name": "Branched α-(nonylphenyl)-ω-hydroxy poly(oxy-1,2-ethanediyl)",
+    "value": 330.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "68424-85-1": {
+    "name": "Quaternary ammonium compounds, benzylalkyl(C=12-16)dimethyl, chlorides",
+    "value": 14.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "81741-28-8": {
+    "name": "Tributyltetradecylphosphonium chloride",
+    "value": 330.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "84852-15-3": {
+    "name": "Nonylphenols",
+    "value": 43.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "127087-87-0": {
+    "name": "α-(4-Nonylphenyl)-ω-hydroxy poly(oxy-1,2-ethanediyl), branched",
+    "value": 330.0,
+    "unit": "mg/m3",
+    "alternative": "1. mg/m3"
+   }
+  },
+  "IDLH": {
+   "50-00-0": {
+    "name": "Formalin",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "50-29-3": {
+    "name": "DDT",
+    "value": 500.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "54-11-5": {
+    "name": "Nicotine",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "56-23-5": {
+    "name": "Carbon tetrachloride",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "56-38-2": {
+    "name": "Parathion",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "57-24-9": {
+    "name": "Strychnine",
+    "value": 3.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "57-74-9": {
+    "name": "Chlordan",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "58-89-9": {
+    "name": "1,2,3,4,5,6-Hexachlorocyclohexane",
+    "value": 50.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "60-34-4": {
+    "name": "Methylhydrazine",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "60-57-1": {
+    "name": "Dieldrin",
+    "value": 50.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "62-53-3": {
+    "name": "Aniline",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "62-73-7": {
+    "name": "Dichlorvos",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "62-74-8": {
+    "name": "Sodium fluoroacetate",
+    "value": 2.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "63-25-2": {
+    "name": "Carbaryl",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "64-18-6": {
+    "name": "Formic acid",
+    "value": 30.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "67-56-1": {
+    "name": "Methylalcohol",
+    "value": 6000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "67-66-3": {
+    "name": "Chloroform",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "68-12-2": {
+    "name": "N,N-Dimethylformamide",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "71-43-2": {
+    "name": "Benzene",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "72-20-8": {
+    "name": "Endrin",
+    "value": 2.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "74-83-9": {
+    "name": "Methyl bromide",
+    "value": 250.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-87-3": {
+    "name": "Methyl chloride",
+    "value": 2000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-88-4": {
+    "name": "Methyl iodide",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-89-5": {
+    "name": "Methylamine",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "74-90-8": {
+    "name": "Hydrogen cyanide",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-00-3": {
+    "name": "Ethyl chloride",
+    "value": 3800.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-15-0": {
+    "name": "Carbon disulfide",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-21-8": {
+    "name": "Ethylene oxide",
+    "value": 800.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-44-5": {
+    "name": "Phosgene",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-52-5": {
+    "name": "Nitromethane",
+    "value": 750.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-56-9": {
+    "name": "Propyleneoxide",
+    "value": 400.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "75-74-1": {
+    "name": "Tetramethyl lead",
+    "value": 40.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "76-06-2": {
+    "name": "Chloropicrin",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "76-44-8": {
+    "name": "Heptachlor",
+    "value": 35.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "77-78-1": {
+    "name": "Dimethyl sulfate",
+    "value": 7.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "78-00-2": {
+    "name": "Tetraethyl lead",
+    "value": 40.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "78-93-3": {
+    "name": "Methyl ethyl ketone",
+    "value": 3000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-01-6": {
+    "name": "Trichloroethylene",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "79-06-1": {
+    "name": "Acrylamide",
+    "value": 60.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "79-27-6": {
+    "name": "1,1,2,2-Tetrabromoethane",
+    "value": 8.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "81-81-2": {
+    "name": "Warfarin",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "83-26-1": {
+    "name": "Pindone",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "83-79-4": {
+    "name": "Rotenone",
+    "value": 2500.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "84-74-2": {
+    "name": "Dibutyl phthalate",
+    "value": 4000.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "86-50-0": {
+    "name": "Azinphos-methyl",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "86-88-4": {
+    "name": "Antu",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "87-86-5": {
+    "name": "Pentachlorophenol",
+    "value": 2.5,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "88-72-2": {
+    "name": "2-Nitrotoluene",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "88-89-1": {
+    "name": "Picric acid",
+    "value": 75.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "93-76-5": {
+    "name": "2,4,5-T",
+    "value": 250.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "94-36-0": {
+    "name": "Benzoyl peroxide",
+    "value": 1500.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "94-75-7": {
+    "name": "2,4-D",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "95-47-6": {
+    "name": "o-Xylene",
+    "value": 900.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "95-48-7": {
+    "name": "2-Methylphenol",
+    "value": 250.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "95-53-4": {
+    "name": "o-Toluidine",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "96-33-3": {
+    "name": "Methyl acrylate",
+    "value": 250.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "98-00-0": {
+    "name": "2-Furanmethanol",
+    "value": 75.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "98-01-1": {
+    "name": "Furfural",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "98-95-3": {
+    "name": "Nitrobenzene",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-44-7": {
+    "name": "Benzyl chloride",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-61-8": {
+    "name": "N-Methylbenzenamine",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "100-63-0": {
+    "name": "Phenylhydrazine",
+    "value": 15.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "101-68-8": {
+    "name": "Diphenylmethane 4,4'-diisocyanate",
+    "value": 75.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "106-50-3": {
+    "name": "1,4-Benzenediamine",
+    "value": 25.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "106-51-4": {
+    "name": "1,4-benzoquinone",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "106-89-8": {
+    "name": "Epichlorohydrin",
+    "value": 75.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-93-4": {
+    "name": "1,2-Dibromoethane",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "106-99-0": {
+    "name": "1,3-Butadiene",
+    "value": 2000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-02-8": {
+    "name": "Acrolein",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-05-1": {
+    "name": "Allyl chloride",
+    "value": 250.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-06-2": {
+    "name": "1,2-Dichloroethane",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-07-3": {
+    "name": "2-Chloroethanol",
+    "value": 7.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-13-1": {
+    "name": "Acrylonitrile",
+    "value": 60.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-15-3": {
+    "name": "Ethylenediamine",
+    "value": 1000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-18-6": {
+    "name": "Allyl alcohol",
+    "value": 20.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "107-49-3": {
+    "name": "Tetraethyl pyrophosphate",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "108-88-3": {
+    "name": "Toluene",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "108-95-2": {
+    "name": "Phenol",
+    "value": 250.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-73-9": {
+    "name": "n-Butylamine",
+    "value": 300.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "109-86-4": {
+    "name": "2-Methoxyethanol",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "110-80-5": {
+    "name": "2-Ethoxyethanol",
+    "value": 500.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "111-44-4": {
+    "name": "Bis(2-chloroethyl)ether",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "115-86-6": {
+    "name": "Triphenylphosphate",
+    "value": 1000.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "117-81-7": {
+    "name": "Bis(2-ethylhexyl) phthalate",
+    "value": 5000.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "121-44-8": {
+    "name": "Triethylamine",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "121-69-7": {
+    "name": "N,N-Dimethylaniline",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "121-75-5": {
+    "name": "Malathion",
+    "value": 250.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "123-31-9": {
+    "name": "Hydroquinone",
+    "value": 50.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "126-98-7": {
+    "name": "Methacrylonitrile",
+    "value": 4.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "127-18-4": {
+    "name": "Tetrachloroethylene",
+    "value": 150.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "137-26-8": {
+    "name": "Thiram",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "141-78-6": {
+    "name": "Ethyl acetate",
+    "value": 2000.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "151-56-4": {
+    "name": "Ethylenimine",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "300-76-5": {
+    "name": "Naled",
+    "value": 200.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "302-01-2": {
+    "name": "Hydrazine",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "309-00-2": {
+    "name": "Aldrin",
+    "value": 25.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "534-52-1": {
+    "name": "DNOC",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "556-52-5": {
+    "name": "Glycidol",
+    "value": 150.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "584-84-9": {
+    "name": "Toluene diisocyanate",
+    "value": 2.5,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "594-72-9": {
+    "name": "1,1-Dichloro-1-nitroethane",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "630-08-0": {
+    "name": "Carbon monoxide",
+    "value": 1200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "1303-86-2": {
+    "name": "Diboron trioxide",
+    "value": 2000.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1306-19-0": {
+    "name": "Cadmium oxide",
+    "value": 9.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1310-73-2": {
+    "name": "Sodium hydroxide",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1314-80-3": {
+    "name": "Phosphorus pentasulfide",
+    "value": 250.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1333-82-0": {
+    "name": "Chromic anhydride",
+    "value": 15.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "1910-42-5": {
+    "name": "Paraquat",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2104-64-5": {
+    "name": "EPN",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "2699-79-8": {
+    "name": "Sulfuryl fluoride",
+    "value": 200.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "3689-24-5": {
+    "name": "Sulfotep",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "4170-30-3": {
+    "name": "Crotonaldehyde",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7439-92-1": {
+    "name": "Lead",
+    "value": 100.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7439-97-6": {
+    "name": "Mercury",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7440-38-2": {
+    "name": "Arsenic",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7440-43-9": {
+    "name": "Cadmium",
+    "value": 9.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7637-07-2": {
+    "name": "Trifluoroborane",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7646-85-7": {
+    "name": "Zinc chloride",
+    "value": 50.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7647-01-0": {
+    "name": "Hydrogen chloride",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-39-3": {
+    "name": "Hydrogen fluoride",
+    "value": 30.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-41-7": {
+    "name": "Ammonia",
+    "value": 300.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7664-93-9": {
+    "name": "Sulfuric acid",
+    "value": 15.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7697-37-2": {
+    "name": "Nitric acid",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7719-12-2": {
+    "name": "Phosphorus trichloride",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7722-84-1": {
+    "name": "Hydrogen peroxide",
+    "value": 75.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7723-14-0": {
+    "name": "Phosphorus",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7726-95-6": {
+    "name": "Bromine",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7778-44-1": {
+    "name": "Calcium arsenate",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7782-41-4": {
+    "name": "Fluorine",
+    "value": 25.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7782-49-2": {
+    "name": "Selenium",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "7782-50-5": {
+    "name": "Chlorine",
+    "value": 10.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-06-4": {
+    "name": "Hydrogen sulfide",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-07-5": {
+    "name": "Dihydrogen selenide",
+    "value": 1.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7783-79-1": {
+    "name": "Selenium fluoride (SeF6), (OC-6-11)-; Selenium hexafluoride",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7784-42-1": {
+    "name": "Arsine",
+    "value": 3.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "7803-51-2": {
+    "name": "Phosphine",
+    "value": 50.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "8001-35-2": {
+    "name": "Camphechlor",
+    "value": 200.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "8065-48-3": {
+    "name": "Demeton",
+    "value": 10.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10025-67-9": {
+    "name": "Sulfur chloride",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10026-13-8": {
+    "name": "Phosphorus pentachloride",
+    "value": 70.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "10035-10-6": {
+    "name": "Hydrogen bromide",
+    "value": 30.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10049-04-4": {
+    "name": "Chlorine dioxide",
+    "value": 5.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "10102-43-9": {
+    "name": "Nitric oxide",
+    "value": 100.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "11097-69-1": {
+    "name": "PCB 1254",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "13463-39-3": {
+    "name": "Nickel carbonyl",
+    "value": 2.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "13463-40-6": {
+    "name": "Pentacarbonyliron",
+    "value": 0.4,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "14807-96-6": {
+    "name": "Talc",
+    "value": 1000.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "19287-45-7": {
+    "name": "Diborane",
+    "value": 15.0,
+    "unit": "ppm",
+    "alternative": ""
+   },
+   "20816-12-0": {
+    "name": "Osmium tetroxide",
+    "value": 1.0,
+    "unit": "mg/m3",
+    "alternative": ""
+   },
+   "53469-21-9": {
+    "name": "Polychlorinated biphenyls (PCBs)",
+    "value": 5.0,
+    "unit": "mg/m3",
+    "alternative": "1. mg/m3"
+   }
+  }
+ }
+}
