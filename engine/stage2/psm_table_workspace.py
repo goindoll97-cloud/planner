@@ -233,7 +233,43 @@ EXPERTS = TableSpec(
     ),
 )
 
+EMERGENCY_RESOURCES = TableSpec(
+    "emergency-resources", "psm.emergency.resources", "비상장비·인력",
+    "사고가 났을 때 쓰는 비상 장비와 대응 인력을 한 줄에 하나씩 적습니다. 회사만 아는 정보라서 직접 적어야 합니다.",
+    _cols(
+        ("구분", "장비인지 인력인지 적습니다. 예: 장비, 인력"),
+        ("명칭", "장비나 인력의 이름입니다. 예: 공기호흡기, 화학복, 자체 소방대"),
+        ("수량", "수량이나 인원수입니다."),
+        ("보관위치", "장비를 두는 곳이나 인력의 근무 위치입니다."),
+        ("비고", "참고할 내용을 적습니다.", "opt"),
+    ),
+)
+
+EMERGENCY_CONTACTS = TableSpec(
+    "emergency-contacts", "psm.emergency.contacts", "비상연락체계",
+    "사고가 났을 때 연락할 곳을 순서대로 적습니다. 사내 담당자와 소방서·경찰서·관할 관서 등 외부 기관을 모두 포함합니다.",
+    _cols(
+        ("연락처 구분", "사내 또는 외부 기관입니다. 예: 사내, 소방서, 지방고용노동관서"),
+        ("기관·부서·담당자", "연락할 기관, 부서 또는 담당자 이름입니다."),
+        ("전화번호", "비상시 연결되는 전화번호입니다."),
+        ("연락 순서", "몇 번째로 연락하는지입니다. 예: 1"),
+        ("비고", "참고할 내용을 적습니다.", "opt"),
+    ),
+)
+
+WASH_PPE = TableSpec(
+    "wash-ppe", "psm.psi.wash_facility", "세안·세척시설 및 안전보호장구",
+    "눈이나 몸을 씻는 시설과 작업자가 착용하는 보호구를 한 줄에 하나씩 적습니다.",
+    _cols(
+        ("구분", "세안·세척시설인지 보호구인지 적습니다. 예: 세안기, 비상샤워, 방독면"),
+        ("위치", "시설이 있는 곳이나 보호구를 두는 곳입니다."),
+        ("수량", "수량입니다."),
+        ("비고", "참고할 내용을 적습니다. 예: 물질별 사용 보호구", "opt"),
+    ),
+)
+
 SPECS: dict[str, TableSpec] = {spec.form_no: spec for spec in (
+    EMERGENCY_RESOURCES, EMERGENCY_CONTACTS, WASH_PPE,
     MACHINERY, PIPING, RELIEF, INTERLOCK, FIRE_FIGHTING, FIRE_DETECTION, GAS_ALARM, FIREPROOF, LOCAL_EXHAUST,
     EX_EQUIPMENT, EXPERTS)}
 APPLICABILITY_KEY = "psm.psi.form_applicability"

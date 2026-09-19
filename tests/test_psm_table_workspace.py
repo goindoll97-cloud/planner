@@ -54,6 +54,8 @@ def _filled(spec, index=1):
 class AllTableFormsTests(unittest.TestCase):
     def test_every_form_saved_here_passes_the_existing_readiness_check(self):
         for form_no, spec in tables.SPECS.items():
+            if not form_no[0].isdigit():
+                continue  # 비상·세안 사실 표는 별지 서식이 아니라 서술형 항목의 사실이다
             with self.subTest(form=form_no):
                 project = _toxic_project()
                 tables.save(project, form_no, [_filled(spec)])
@@ -98,6 +100,8 @@ class AllTableFormsTests(unittest.TestCase):
     def test_every_form_screen_renders(self):
         project = _project()
         for form_no in tables.SPECS:
+            if not form_no[0].isdigit():
+                continue  # 비상·세안 사실 표는 서술형 항목 화면 안에서 렌더된다
             with self.subTest(form=form_no):
                 at = _run(project, form_no)
                 self.assertFalse(at.exception, form_no)

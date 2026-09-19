@@ -28,6 +28,18 @@ SLOTS = (
     Slot("documents.site_plan", "공장 전체배치도", "사업장 전체의 건물·설비 배치를 나타내는 도면입니다."),
     Slot("psm.psi.equipment_layout", "설비배치도", "공정 설비의 배치를 나타내는 도면입니다."),
     Slot("psm.psi.building_structure", "건물·철구조물 평면도 및 입면도", "건물과 철구조물의 평면도·입면도입니다."),
+    Slot("psm.psi.ufd", "유틸리티 계통도·배관계장도(UFD)", "질소·냉각수·증기 같은 유틸리티 계통도입니다."),
+    Slot("psm.psi.single_line", "전기단선도", "전기 계통을 단순하게 나타낸 도면입니다."),
+    Slot("psm.psi.short_circuit", "단락용량 계산서", "전기 단락용량을 계산한 자료입니다."),
+    Slot("psm.psi.emergency_power", "비상전원 설비용량 자료", "비상 발전기 등 비상전원 설비의 용량 자료입니다."),
+    Slot("psm.psi.grounding", "접지계획·배치도", "접지 계획과 접지 배치도입니다."),
+    Slot("psm.psi.hazardous_area", "폭발위험장소 구분도", "폭발 위험이 있는 장소(0·1·2종)를 구분해 그린 도면입니다."),
+    Slot("psm.psi.design_installation_guideline", "안전설계·제작 및 설치 관련 지침서", "회사가 쓰는 안전설계·제작·설치 지침서입니다."),
+    Slot("psm.risk.report", "공정위험성평가 보고서", "회사가 수행한 위험성평가(HAZOP 등) 결과 보고서입니다. 사고예방·피해 최소화 대책 초안의 근거가 됩니다."),
+    Slot("psm.risk.procedure", "위험성평가 절차서", "회사의 위험성평가 절차서입니다."),
+    Slot("psm.operation.work_permit", "안전작업허가 절차·양식", "회사가 쓰는 안전작업허가 절차서와 양식입니다."),
+    Slot("psm.operation.contractor", "도급업체 안전관리계획", "도급업체 안전관리 계획서입니다."),
+    Slot("psm.operation.prestartup", "가동 전 점검지침", "가동 전 점검 지침과 점검표입니다."),
 )
 _BY_KEY = {slot.key: slot for slot in SLOTS}
 
