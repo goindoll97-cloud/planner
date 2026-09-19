@@ -9,6 +9,7 @@ from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import psm_attachments as attachments
 from engine.stage2 import psm_form12_workspace as f12
 from engine.stage2 import psm_form19_2_workspace as f19
+from engine.stage2 import psm_narrative_workspace as narrative
 from engine.stage2 import psm_table_workspace as tables
 from engine.stage2 import statutory_report as report
 from engine.stage2.storage import list_projects, load_project, save_project
@@ -35,6 +36,7 @@ FORMS = {
     "19-2": "별지 제19호의2 · 시나리오 및 피해예측 결과",
     "20": "별지 제20호 · 방폭전기/계장 기계·기구 선정기준",
     "21": "별지 제21호 · 위험성평가 참여 전문가 명단",
+    "facts": "서술형 항목 · 사실 입력과 AI 초안 확인",
     "files": "첨부 자료 · 도면·MSDS 올리기",
 }
 UNSUPPORTED = ()
@@ -272,6 +274,104 @@ def _files(project) -> None:
                 st.rerun()
 
 
+def _local_config():
+    from engine.stage2.local_ai_resilience import build_local_llm_client, local_llm_config_from_sources
+    from engine.stage2.local_llm import DEFAULT_MODEL, LocalLLMConfig, probe_local_llm_runtime, validate_local_base_url
+
+    try:
+        base = local_llm_config_from_sources({})
+    except Exception:
+        base = LocalLLMConfig()
+    with st.expander("AI 설정 · 필요한 경우만"):
+        st.caption("회사 정보는 외부로 보내지 않습니다. 이 PC의 Ollama 같은 로컬 AI만 사용합니다.")
+        model = st.text_input("로컬 모델 이름", value=base.model or DEFAULT_MODEL, key="psm_llm_model")
+        url = st.text_input("로컬 AI 주소", value=base.base_url, key="psm_llm_url")
+    try:
+        config = LocalLLMConfig(provider=base.provider, model=model.strip() or DEFAULT_MODEL,
+                                base_url=validate_local_base_url(url), timeout_seconds=base.timeout_seconds,
+                                max_output_tokens=base.max_output_tokens)
+        return config, probe_local_llm_runtime(config), build_local_llm_client
+    except Exception as exc:
+        st.warning(str(exc))
+        return None, None, None
+
+
+def _facts(project) -> None:
+    st.caption("글로 쓰는 항목은 AI가 초안을 만듭니다. 사람은 프로그램이 알 수 없는 사실만 적고, 완성된 글을 한 번 확인합니다.")
+    st.markdown("### 1. 먼저 적을 사실")
+    defaults = {"business.employee_count": f12.current(project).get("근로자수", "")}
+    values = {}
+    for fact in narrative.BASIC_FACTS:
+        current = narrative.facts_value(project, fact) or defaults.get(fact.key, "")
+        widget = st.text_area if fact.long else st.text_input
+        values[fact.key] = widget(fact.label, value=current, help=fact.help, key=f"psm_fact_{fact.key}")
+    if st.button("사실 저장", type="primary", key="psm_fact_save"):
+        for fact in narrative.BASIC_FACTS:
+            narrative.save_fact(project, fact, values[fact.key])
+        save_project(project)
+        st.rerun()
+    missing = narrative.missing_basics(project)
+    if missing:
+        st.info("아직 적지 않은 사실: " + ", ".join(missing))
+
+    st.markdown("### 2. 회사가 정한 사항")
+    for fact in narrative.DECISION_FACTS:
+        with st.expander(fact.label):
+            st.caption(fact.help)
+            current = narrative.facts_value(project, fact)
+            entered = {name: st.text_input(label, value=current.get(name, ""), help=help_text,
+                                           key=f"psm_fact_{fact.key}_{name}")
+                       for name, label, help_text in fact.fields}
+            if st.button("저장", key=f"psm_fact_save_{fact.key}"):
+                narrative.save_fact(project, fact, entered)
+                save_project(project)
+                st.rerun()
+
+    st.markdown("### 3. 비상장비·연락체계와 세안·보호구")
+    for form_no in ("emergency-resources", "emergency-contacts", "wash-ppe"):
+        with st.expander(tables.SPECS[form_no].title):
+            _grid(form_no)(project)
+
+    st.markdown("### 4. AI가 만든 글 확인")
+    _drafts(project)
+
+
+def _drafts(project) -> None:
+    items = narrative.item_status(project)
+    ready = [i for i in items if i["state"] == "초안 만들기 가능"]
+    config, probe, build_client = _local_config()
+    if ready:
+        st.write(f"초안을 만들 수 있는 항목 {len(ready)}개: " + ", ".join(i["label"] for i in ready))
+        runtime_ok = probe is not None and probe.ready
+        if not runtime_ok and probe is not None:
+            from engine.stage2.local_llm import local_runtime_not_ready_message
+            st.warning(local_runtime_not_ready_message(config, probe))
+        if st.button("초안 만들기", type="primary", key="psm_generate", disabled=not runtime_ok):
+            with st.spinner("확정된 사실로 초안을 만드는 중입니다."):
+                try:
+                    result = narrative.generate(project, build_client(config))
+                    save_project(project)
+                    if result.rejected:
+                        st.warning(f"검증을 통과하지 못한 초안 {len(result.rejected)}개는 저장하지 않았습니다. 사실을 더 적고 다시 시도하세요.")
+                except Exception as exc:
+                    st.error(f"초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+            st.rerun()
+    for item in items:
+        with st.expander(f"{item['label']} — {item['state']}", expanded=item["state"] == "초안 있음"):
+            if item["reason"]:
+                st.caption(item["reason"])
+            if item["text"]:
+                text = st.text_area("초안(고쳐 쓸 수 있습니다)", value=item["text"], height=220, key=f"psm_draft_{item['key']}")
+                st.caption("AI가 확정된 사실만으로 쓴 초안입니다. 회사 실제와 다르면 고치세요. 확인하면 회사 문서로 채택됩니다.")
+                if item["state"] != "확인 완료" and st.button("내용을 확인했습니다", key=f"psm_adopt_{item['key']}"):
+                    try:
+                        narrative.adopt(project, item["key"], text)
+                        save_project(project)
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+
+
 st.set_page_config(page_title="공정안전보고서 작성", page_icon="🏭", layout="wide")
 st.title("🏭 공정안전보고서 작성")
 st.caption("화학사고예방관리계획서에서 이미 입력한 사업장·물질·시설·시나리오는 다시 묻지 않고 그대로 가져옵니다.")
@@ -281,4 +381,4 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 form_key = st.selectbox("작성할 별지", list(FORMS), format_func=lambda key: FORMS[key], key="psm_form_no")
-{"12": _table_12, "13": _table_13, **{no: _grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "files": _files}[form_key](project)
+{"12": _table_12, "13": _table_13, **{no: _grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "facts": _facts, "files": _files}[form_key](project)

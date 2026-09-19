@@ -47,6 +47,13 @@ _GLOBAL_FACT_KEYS = (
     "cap.safety.relief_device_specs",
     "psm.psi.gas_detection",
     "cap.safety.gas_detection",
+    "cap.workspace.facilities",
+    "psm.facts.training",
+    "psm.facts.emergency_training",
+    "psm.facts.public_information",
+    "psm.facts.emergency_org",
+    "psm.emergency.resources",
+    "psm.emergency.contacts",
 )
 
 
@@ -202,6 +209,7 @@ def _global_context_ready(project: Stage2Project) -> bool:
         "process.description",
         "psm.psi.equipment_specs",
         "cap.facility.equipment_specs",
+        "cap.workspace.facilities",
     )
     return sum(1 for key in core if key in facts) >= 3
 
