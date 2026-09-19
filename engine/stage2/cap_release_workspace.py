@@ -11,6 +11,7 @@ import re
 from typing import Any, Mapping
 
 from . import cap_dispersion as disp
+from . import cap_fire as fire
 from . import cap_endpoints
 from . import cap_release as rel
 from . import cap_scenario_workspace as sc
@@ -214,3 +215,81 @@ def toxic_effect_for_scenario(project: Stage2Project, scenario: Mapping[str, Any
     else:
         off_site = max(0.0, radius - boundary)
     return ToxicEffect(radius, off_site, endpoint.basis, source, source_rate, weather.label, tuple(problems), tuple(notes))
+
+
+# ---------------------------------------------------------------------------
+# 화재·폭발 피해반경 (폭발 1 psi, 화재 5 kW/m2)
+# ---------------------------------------------------------------------------
+
+HEAT_COLUMN = "연소열"
+BOILING_COLUMN = "비점"
+LIQUID_CP_KJ_COLUMN = "액체비열"
+VAPORIZATION_COLUMN = "기화열"
+
+
+@dataclass(frozen=True)
+class FireEffect:
+    explosion_m: float | None
+    fire_m: float | None
+    radius_m: float | None
+    off_site_m: float | None
+    explosion_basis: str
+    fire_basis: str
+    problems: tuple[str, ...] = field(default_factory=tuple)
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+def fire_effect_for_scenario(project: Stage2Project, scenario: Mapping[str, Any], *,
+                             weather: disp.Weather | None = None, detection: str = "C", isolation: str = "C") -> FireEffect:
+    weather = weather or default_weather(project)
+    release = release_for_scenario(project, scenario, detection=detection, isolation=isolation)
+    if release.rate_kg_s is None:
+        return FireEffect(None, None, None, None, "", "", release.problems)
+    tag = str(scenario.get("대상 설비번호") or "").strip()
+    target = next(t for t in sc.evaluate(project) if t.tag == tag)
+    facility = next(r for r in sc._facility_rows(project) if str(r.get("설비번호") or "").strip() == tag)
+    material = sc._properties(project).get(target.material, {})
+    heat = _number(material.get(HEAT_COLUMN)) or _number(scenario.get(HEAT_COLUMN))
+    if heat is None:
+        return FireEffect(None, None, None, None, "", "", (
+            "연소열(kJ/kg)이 필요합니다. 제품 SDS 제9항이나 물성표의 값을 별지 제6호 물성 또는 시나리오 표에 입력하세요.",))
+    notes = ["증기운 폭발은 EPA RMP TNT 당량식(효율 10%), 화재는 점광원 복사열 모델(투과율 1, 복사분율 상한). "
+             "TNO 멀티에너지·고체화염·BLEVE 화구는 반영하지 않음"]
+    problems: list[str] = []
+
+    if target.state in ("기체", "기체(액화가스)"):
+        explosion_mass = release.amount_kg
+        jet = fire.jet_fire_distance_m(release.rate_kg_s, heat)
+        explosion_basis = f"기체 누출 전량 {explosion_mass:.0f} kg이 증기운 폭발(지침 3-2 ③ 2))"
+        fire_m, fire_basis = jet, f"제트 화재(누출률 {release.rate_kg_s:.3g} kg/s × 연소열, 복사분율 {fire.JET_RADIATIVE_FRACTION:g})"
+    else:
+        vapor = _vapor_pressure_mmhg(material.get("증기압"))
+        molar = _number(material.get("분자량"))
+        gravity = _number(facility.get("비중"))
+        if vapor is None or molar is None:
+            return FireEffect(None, None, None, None, "", "",
+                              ("액체 풀의 증발·화재 계산에는 증기압과 분자량이 필요합니다(별지 제6호).",))
+        celsius = _number(facility.get("운전온도"))
+        area = disp.pool_area_m2(release.amount_kg, gravity, _dike_area_m2(project, tag))
+        evaporation_kg_min = disp.evaporation_rate_kg_min(weather.wind_ms, molar, area, vapor,
+                                                          (celsius if celsius is not None else 25.0) + 273.15)
+        explosion_mass = min(evaporation_kg_min * 10.0, release.amount_kg)
+        explosion_basis = f"액체층에서 최초 10분간 증발한 {explosion_mass:.1f} kg이 증기운 폭발(지침 3-2 ③ 2))"
+        boiling, cp, latent = (_number(scenario.get(c)) for c in (BOILING_COLUMN, LIQUID_CP_KJ_COLUMN, VAPORIZATION_COLUMN))
+        if None in (boiling, cp, latent):
+            fire_m, fire_basis = None, ""
+            problems.append("풀 화재에는 비점(℃)·액체비열(kJ/kg·K)·기화열(kJ/kg)이 필요합니다(연소속도 계산).")
+        else:
+            burning = fire.burning_rate_kg_m2_s(heat, cp, boiling, 25.0, latent)
+            fire_m = fire.pool_fire_distance_m(area, burning, heat)
+            fire_basis = f"풀 화재(면적 {area:.1f} m2, 연소속도 {burning:.4f} kg/m2·s, 복사분율 {fire.POOL_RADIATIVE_FRACTION:g})"
+
+    explosion_m = fire.vce_distance_1psi_m(explosion_mass, heat)
+    radius = max(explosion_m, fire_m or 0.0)
+    boundary = _number(scenario.get(BOUNDARY_COLUMN))
+    off_site = None
+    if boundary is None:
+        problems.append("설비에서 사업장 경계까지 거리(m)가 있어야 장외거리를 구할 수 있습니다.")
+    else:
+        off_site = max(0.0, radius - boundary)
+    return FireEffect(explosion_m, fire_m, radius, off_site, explosion_basis, fire_basis, tuple(problems), tuple(notes))
