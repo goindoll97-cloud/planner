@@ -442,9 +442,9 @@ def _fill_form3(table, project: Stage2Project) -> None:
     _fill_label_rows_replace(table, mapping, start=1)
 
 
-def _rendered_facility_choices(project: Stage2Project) -> dict[str, str]:
+def _rendered_facility_choices(project: Stage2Project, unit_plant: str | None = None) -> dict[str, str]:
     rendered: dict[str, str] = {}
-    for line in render_facility_type_counts(project).splitlines():
+    for line in render_facility_type_counts(project, unit_plant).splitlines():
         match = re.match(r"^[☒☐]\s*(.+)\s+\(([^)]*)\)기$", line.strip())
         if match:
             rendered[base._norm(match.group(1))] = line.strip()
@@ -528,11 +528,11 @@ def _ensure_facility_chemical_row_capacity(table, required: int) -> list:
     return expanded
 
 
-def _fill_facility_chemical_rows(table, project: Stage2Project) -> None:
-    prepared = build_cap_form1_data(project)
+def _fill_facility_chemical_rows(table, project: Stage2Project, chemical_rows=None) -> None:
     unique: list[tuple[str, str, str]] = []
     seen: set[tuple[str, str]] = set()
-    for row in prepared.chemical_rows:
+    source_rows = chemical_rows if chemical_rows is not None else build_cap_form1_data(project).chemical_rows
+    for row in source_rows:
         name = _clean(row.get("물질명"))
         cas = _clean(row.get("CAS No."))
         holding = _clean(row.get("사업장 내 최대보유량(ton)"))
@@ -583,6 +583,13 @@ def _fill_facility_overview(
     detailed: bool,
 ) -> None:
     overview_key = "cap.basic.unit_facility_overview" if detailed else "cap.basic.total_facility_overview"
+    unit_plant = None
+    unit_chemicals = None
+    if detailed:
+        from .cap_form5_workspace import unit_chemical_rows
+
+        unit_plant = base._text(project, "cap.business.unit_plant_name", default=project.site_name or "")
+        unit_chemicals = unit_chemical_rows(project, unit_plant)
     _fill_label_rows_replace(
         table,
         {
@@ -596,7 +603,7 @@ def _fill_facility_overview(
         table,
         row_start=3,
         row_end=8,
-        rendered=_rendered_facility_choices(project),
+        rendered=_rendered_facility_choices(project, unit_plant),
     )
 
     loading_value = base._text(project, "cap.basic.loading_transport", default="")
@@ -607,7 +614,7 @@ def _fill_facility_overview(
         rendered=_rendered_loading_choices(loading_value),
     )
 
-    _fill_facility_chemical_rows(table, project)
+    _fill_facility_chemical_rows(table, project, unit_chemicals)
 
 
 def _fill_form6(table, project: Stage2Project) -> None:

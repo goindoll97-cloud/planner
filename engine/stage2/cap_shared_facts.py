@@ -17,8 +17,35 @@ WORKSPACE_FACILITY_KEY = "cap.workspace.facilities"
 EXCLUDED_FLAG = "제외시설여부"
 
 
-def workspace_facility_rows(project: Stage2Project) -> list[dict[str, Any]]:
-    """Confirmed workspace facilities that count as the site's 취급시설."""
+UNIT_COLUMN = "단위공장·공정"
+
+
+def _norm(value: object) -> str:
+    return "".join(str(value or "").split()).lower()
+
+
+def unit_plant_names(project: Stage2Project) -> list[str]:
+    names: list[str] = []
+    for row in workspace_facility_rows(project):
+        name = str(row.get(UNIT_COLUMN) or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def workspace_facility_rows(project: Stage2Project, unit_plant: str | None = None) -> list[dict[str, Any]]:
+    """Confirmed workspace facilities that count as the site's 취급시설.
+
+    With `unit_plant`, rows of other named 단위공장 are dropped. Rows without a
+    단위공장 belong to every unit. If the name matches no row, nothing is filtered.
+    """
+    rows = _all_workspace_rows(project)
+    if unit_plant and any(_norm(r.get(UNIT_COLUMN)) == _norm(unit_plant) for r in rows):
+        rows = [r for r in rows if not _norm(r.get(UNIT_COLUMN)) or _norm(r.get(UNIT_COLUMN)) == _norm(unit_plant)]
+    return rows
+
+
+def _all_workspace_rows(project: Stage2Project) -> list[dict[str, Any]]:
     record = project.get_field(WORKSPACE_FACILITY_KEY)
     if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
         return []
