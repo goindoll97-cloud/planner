@@ -80,7 +80,8 @@ class CAPForm15Data:
 
 
 def _clean(value: object) -> str:
-    text = str(value or "").strip()
+    # 숫자 0(예: 거주민수 0명)은 빈 값이 아니라 유효한 답이다.
+    text = "" if value is None else str(value).strip()
     return "" if text.lower() in {"nan", "none", "null", "<na>"} else text
 
 
