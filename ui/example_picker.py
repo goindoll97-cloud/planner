@@ -25,9 +25,9 @@ def text_with_examples(label: str, key: str, *, value: str = "", help_text: str 
         with st.expander("예시에서 고르기 (고른 뒤 고쳐 쓸 수 있습니다)"):
             for index, sample in enumerate(choices):
                 left, right = st.columns([6, 1])
-                left.write(sample)
-                right.button("사용", key=f"{key}__ex{index}", on_click=_use, args=(key, sample))
-            st.caption(examples.notice())
+                left.write(examples.labelled(sample))
+                right.button("사용", key=f"{key}__ex{index}", on_click=_use, args=(key, examples.labelled(sample)))
+            st.caption(examples.notice() + " 고른 문구 앞의 '(예시)' 표시는 우리 회사 내용으로 고친 뒤 지워야 저장됩니다.")
     if checks:
         st.caption("확인할 점: " + " / ".join(checks))
     return text

@@ -86,10 +86,18 @@ def render(project, profile, table_forms, prefix: str, defaults: dict | None = N
             fact.label, f"{prefix}_fact_{fact.key}", value=current, help_text=fact.help, long=fact.long,
             choices=examples.choices(fact.key), template=examples.template(fact.key), checks=examples.checks(fact.key))
     if st.button("사실 저장", type="primary", key=f"{prefix}_fact_save"):
+        problems = []
         for fact in profile.basic_facts:
-            narrative.save_fact(project, fact, values[fact.key])
+            try:
+                narrative.save_fact(project, fact, values[fact.key])
+            except narrative.ExampleMarkLeft as exc:
+                problems.append(str(exc))
         save_project(project)
-        st.rerun()
+        if problems:
+            for problem in problems:
+                st.error(problem)
+        else:
+            st.rerun()
     missing = narrative.missing_basics(project, profile)
     if missing:
         st.info("아직 적지 않은 사실: " + ", ".join(missing))
@@ -106,9 +114,13 @@ def render(project, profile, table_forms, prefix: str, defaults: dict | None = N
                                                 help_text=help_text, choices=examples.choices(fact.key, name))
                        for name, label, help_text in fact.fields}
             if st.button("저장", key=f"{prefix}_fact_save_{fact.key}"):
-                narrative.save_fact(project, fact, entered)
-                save_project(project)
-                st.rerun()
+                try:
+                    narrative.save_fact(project, fact, entered)
+                except narrative.ExampleMarkLeft as exc:
+                    st.error(str(exc))
+                else:
+                    save_project(project)
+                    st.rerun()
 
     st.markdown("### 3. 연락체계·장비 등 표로 적는 사실")
     for form_no in table_forms:
