@@ -83,22 +83,24 @@ def _psm_selected_somewhere() -> bool:
 # 예전의 3~5단계 화면(엑셀 왕복 방식)은 화학사고예방관리계획서에는 더 이상 쓰이지 않는다. 공정안전보고서는 아직
 # 그 방식으로 작성하므로, 그 프로젝트가 있을 때만 "공정안전보고서 (기존 방식)" 묶음으로 보여 준다.
 sections: dict[str, list] = {
-    "시작": [
-        st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅", default=True),
-        st.Page("ui/stage2_scope_page.py", title="2. 작성범위 선택", icon="🧭"),
-    ],
     "화학사고예방관리계획서": [
-        st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성", icon="📝"),
+        st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성", icon="📝", default=True),
     ],
 }
 
+# 화학사고예방관리계획서는 작성 화면의 "새 사업장으로 시작하기"에서 법정 대상 판정까지 끝낸다. 판정진단·작성범위 선택은
+# 공정안전보고서를 기존 방식으로 시작할 때만 필요하므로 그 묶음 안에 둔다.
+psm_pages = [
+    st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅"),
+    st.Page("ui/stage2_scope_page.py", title="2. 작성범위 선택", icon="🧭"),
+]
 if _psm_selected_somewhere():
-    psm_pages = [st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥")]
+    psm_pages.append(st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥"))
     if intake_ready:
         psm_pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
     if authoring_ready:
         psm_pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
-    sections["공정안전보고서 (기존 방식)"] = psm_pages
+sections["공정안전보고서 (기존 방식)"] = psm_pages
 
 sections["참고"] = [
     st.Page("ui/regdb_page.py", title="규정 DB 관리", icon="🗂️"),

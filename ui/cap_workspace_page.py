@@ -21,9 +21,12 @@ DIM_LABELS = {
 
 
 def _project_selector() -> str | None:
+    from ui import cap_start_panel
+
     projects = list_projects()
     if not projects:
-        st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단부터 진행하세요.")
+        st.info("작성할 사업장이 아직 없습니다. 아래에서 사업장과 취급 물질을 적고 시작하세요.")
+        cap_start_panel.render(expanded=True)
         return None
     labels = {row["project_id"]: f"{row['company_name']} · {row['project_id']}" for row in projects}
     ids = list(labels)
@@ -33,6 +36,7 @@ def _project_selector() -> str | None:
         format_func=lambda pid: labels[pid],
     )
     st.session_state[ACTIVE_PROJECT_KEY] = selected
+    cap_start_panel.render(expanded=False)
     return selected
 
 
@@ -66,7 +70,8 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 if not project.cap_in_scope:
-    st.warning("이 프로젝트는 화학사고예방관리계획서를 작성 대상으로 선택하지 않았습니다. 2. 작성범위 선택에서 확인하세요.")
+    st.warning("이 사업장은 화학사고예방관리계획서 작성·제출 대상으로 확인되지 않았습니다. 위에서 다른 사업장을 고르거나 "
+               "'새 사업장으로 시작하기'에서 다시 판정하세요.")
     st.stop()
 
 from ui import cap_excel_panel
@@ -96,7 +101,7 @@ st.header(schema["title"])
 step_title = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form01_step")
 step_id = step_ids[titles.index(step_title)]
 if step_id == "inputs":
-    st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 판정진단에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
+    st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 시작하기에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
     for part in steps:
         if part["id"] in ("scope", "facilities", "chemicals"):
             for item in part["explain"]:
