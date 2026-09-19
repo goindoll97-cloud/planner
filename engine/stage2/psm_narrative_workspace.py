@@ -92,8 +92,19 @@ def facts_value(project: Stage2Project, fact: Fact) -> Any:
     return record.value if fact.fields else _clean(record.value)
 
 
+class ExampleMarkLeft(ValueError):
+    """예시 표시가 남은 채로 저장하려 할 때."""
+
+
+def _check_mark(fact: Fact, value: Any) -> None:
+    texts = value.values() if isinstance(value, dict) else [value]
+    if any(examples.has_mark(t) for t in texts):
+        raise ExampleMarkLeft(f"'{fact.label}'에 '(예시)' 표시가 남아 있습니다. 우리 회사 내용으로 고치고 표시를 지운 뒤 저장하세요.")
+
+
 def save_fact(project: Stage2Project, fact: Fact, value: Any) -> bool:
-    """빈 입력은 저장하지 않는다(이미 적은 값을 지우지 않는다)."""
+    """빈 입력은 저장하지 않는다(이미 적은 값을 지우지 않는다). '(예시)' 표시가 남은 글은 저장하지 않는다."""
+    _check_mark(fact, value)
     if fact.fields:
         cleaned = {name: _clean(value.get(name)) for name, _, _ in fact.fields if _clean(value.get(name))}
         if not cleaned:

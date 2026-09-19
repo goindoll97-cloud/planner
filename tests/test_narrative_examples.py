@@ -56,6 +56,34 @@ class SavingTests(unittest.TestCase):
         self.assertNotIn("주기", record.note)
 
 
+class MarkTests(unittest.TestCase):
+    def test_labelled_and_stripped_round_trip(self):
+        self.assertEqual(ex.labelled("연 1회"), "(예시) 연 1회")
+        self.assertTrue(ex.has_mark("  (예시) 연 1회"))
+        self.assertEqual(ex.strip_mark("(예시) 연 1회"), "연 1회")
+        self.assertEqual(ex.strip_mark("연 1회"), "연 1회")
+        self.assertFalse(ex.has_mark("연 1회 (예시 포함 아님)"))
+
+    def test_text_that_still_carries_the_mark_cannot_be_saved(self):
+        project = _project()
+        fact = next(f for f in nw.BASIC_FACTS if f.key == "business.shift_pattern")
+        sample = ex.labelled(ex.choices(fact.key)[0])
+        with self.assertRaises(nw.ExampleMarkLeft):
+            nw.save_fact(project, fact, sample)
+        self.assertIsNone(project.get_field(fact.key))
+        decision = nw.DECISION_FACTS[0]
+        with self.assertRaises(nw.ExampleMarkLeft):
+            nw.save_fact(project, decision, {"대상": ex.labelled(ex.choices(decision.key, "대상")[0]), "주기": "월 1회"})
+        self.assertIsNone(project.get_field(decision.key))
+
+    def test_removing_only_the_mark_is_still_flagged_as_an_unedited_example(self):
+        project = _project()
+        fact = next(f for f in nw.BASIC_FACTS if f.key == "business.shift_pattern")
+        nw.save_fact(project, fact, ex.strip_mark(ex.labelled(ex.choices(fact.key)[0])))
+        self.assertEqual(nw.chosen_as_is(project), [fact.label])
+        self.assertTrue(ex.is_example(fact.key, "", ex.labelled(ex.choices(fact.key)[0])))
+
+
 class ScreenTests(unittest.TestCase):
     def _facts_screen(self, interact=None):
         from engine.stage2.local_llm import LocalLLMProbe
@@ -72,8 +100,20 @@ class ScreenTests(unittest.TestCase):
             at.button(key="psm_fact_process.description__ex0").click().run()
         project, at = self._facts_screen(click)
         self.assertFalse(at.exception)
-        self.assertEqual(at.text_area(key="psm_fact_process.description").value, sample)
+        self.assertEqual(at.text_area(key="psm_fact_process.description").value, ex.labelled(sample))  # 앞에 (예시) 표시
         self.assertIsNone(project.get_field("process.description"))  # 저장은 사용자가 눌러야 한다
+
+    def test_example_cards_carry_the_mark_and_saving_with_it_shows_an_error(self):
+        sample = ex.choices("business.shift_pattern")[0]
+
+        def click_and_save(at):
+            at.button(key="psm_fact_business.shift_pattern__ex0").click().run()
+            at.button(key="psm_fact_save").click().run()
+        project, at = self._facts_screen(click_and_save)
+        self.assertFalse(at.exception)
+        self.assertIn("(예시)", " ".join(m.value for m in at.markdown))  # 카드에 표시
+        self.assertTrue(any("'(예시)' 표시가 남아 있습니다" in e.value for e in at.error))
+        self.assertIsNone(project.get_field("business.shift_pattern"))
 
     def test_the_screen_shows_the_template_and_the_notice(self):
         _project_, at = self._facts_screen()

@@ -25,6 +25,23 @@ def _doc() -> dict[str, Any]:
     return doc
 
 
+MARK = "(예시)"
+
+
+def labelled(text: str) -> str:
+    """예시 문구 앞에 (예시) 표시를 붙인다."""
+    return f"{MARK} {text}"
+
+
+def has_mark(text: object) -> bool:
+    return str(text or "").lstrip().startswith(MARK)
+
+
+def strip_mark(text: object) -> str:
+    value = str(text or "").lstrip()
+    return value[len(MARK):].lstrip() if value.startswith(MARK) else str(text or "")
+
+
 def notice() -> str:
     return str(_doc()["notice"])
 
@@ -50,5 +67,5 @@ def checks(key: str) -> list[str]:
 
 def is_example(key: str, field: str, text: object) -> bool:
     """입력한 문장이 예시와 글자 그대로 같은지(고치지 않고 그대로 골랐는지)."""
-    value = " ".join(str(text or "").split())
+    value = " ".join(strip_mark(text).split())
     return bool(value) and any(value == " ".join(item.split()) for item in choices(key, field))
