@@ -91,193 +91,199 @@ def _option_label(option) -> str:
     return f"{registry.label(option)} · {form_guidelines()[option].title}"
 
 
-# 별지 제13호(총괄영향범위)는 별지 제12호 화면에서 함께 만든다.
-form_no = st.selectbox("작성할 서식(별지 순서대로)", [*registry.FORM_NUMBERS, *SPECIAL], format_func=_option_label,
-                       key="cap_form_no")
-if form_no == "narrative":
-    from engine.stage2 import cap_narrative_workspace as cap_narrative
-    from ui import narrative_panel
-
-    narrative_panel.render(project, cap_narrative.CAP_PROFILE, ("cap-contacts", "cap-resources"), "cap",
-                           decision_facts=cap_narrative.visible_facts(project))
-    st.stop()
-if form_no == "export":
-    from ui import attachments_panel, cap_final_evidence_panel, report_export_panel
-    from engine.stage2 import psm_attachments
-
-    with st.expander("최종 제출 확인 · 타 제도 심사결과와 공동제출"):
-        cap_final_evidence_panel.render(project)
-    with st.expander("첨부 자료 · 도면과 분석 자료 올리기"):
-        attachments_panel.render(project, psm_attachments.CAP_SLOTS, "cap")
-    st.markdown("### 점검하고 내려받기")
-    report_export_panel.render(project, "CAP")
-    st.stop()
-if form_no != 1:
-    import importlib
-
-    extra_view = importlib.import_module(f"ui.cap_form{form_no}_view")
-
-    extra_view.render(project)
-    st.stop()
-
-schema = ws.load_form_schema(1)
-steps = ws.steps(1)
-titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
-step_ids = ["inputs", "result", "export"]
-
-st.header(schema["title"])
-step_title = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form01_step")
-step_id = step_ids[titles.index(step_title)]
-if step_id == "inputs":
-    st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 시작하기에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
-    for part in steps:
-        if part["id"] in ("scope", "facilities", "chemicals"):
-            for item in part["explain"]:
-                with st.expander(item["term"]):
-                    st.write(item["text"])
-else:
-    current = next((step for step in steps if step["id"] == step_id), None)
-    if current:
-        _explain(current)
-
-fac = ws.section(1, "facility_table")
-columns = ws.facility_columns()
-core_ids = [c["id"] for c in columns]
+from ui import unsaved_guard
 
 
-def _grid_frame() -> pd.DataFrame:
-    frame = pd.DataFrame(ws.facility_editor_rows(project), columns=core_ids)
-    for col in columns:
-        if col.get("kind") == "number":
-            frame[col["id"]] = pd.to_numeric(frame[col["id"]], errors="coerce")
-    return frame
+def _render_form1(project) -> None:
+    schema = ws.load_form_schema(1)
+    steps = ws.steps(1)
+    titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
+    step_ids = ["inputs", "result", "export"]
 
-
-if step_id == "inputs":
-    st.subheader("취급 물질")
-    chemicals = ws.form1._chemical_identity_rows(project)
-    if chemicals:
-        frames.show(
-            pd.DataFrame([
-                {
-                    "물질명": ws.form1._row_value(row, "물질명", "유해화학물질명", "제품명"),
-                    "CAS No.": ws.form1._row_value(row, "CAS 번호", "CAS No."),
-                    "함량(%)": ws.form1._row_value(row, "함량(%)", "함량"),
-                }
-                for row in chemicals
-            ]),
-            width="stretch", hide_index=True,
-        )
+    st.header(schema["title"])
+    step_title = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form01_step")
+    step_id = step_ids[titles.index(step_title)]
+    if step_id == "inputs":
+        st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 시작하기에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
+        for part in steps:
+            if part["id"] in ("scope", "facilities", "chemicals"):
+                for item in part["explain"]:
+                    with st.expander(item["term"]):
+                        st.write(item["text"])
     else:
-        st.warning("확정된 화학물질 목록이 없습니다. 1. 판정진단에서 물질 목록을 먼저 입력하세요.")
-    st.caption("물질 물성(상태·비중·폭발한계 등)은 별지 제6호에서 KOSHA 조회로 채웁니다.")
+        current = next((step for step in steps if step["id"] == step_id), None)
+        if current:
+            _explain(current)
+
+    fac = ws.section(1, "facility_table")
+    columns = ws.facility_columns()
+    core_ids = [c["id"] for c in columns]
 
 
-    st.subheader("시설 표")
-    st.info("※ " + fac["form_note"])
-    edited = st.data_editor(
-        _grid_frame(),
-        column_config=_column_config(columns),
-        num_rows="dynamic",
-        width="stretch",
-        key=f"cap_form01_facilities_{project.project_id}",
-    )
-    rows = [{k: ("" if pd.isna(v) else v) for k, v in row.items()} for row in edited.to_dict("records")]
-    saved_rows = {
-        (str(r.get("설비번호") or ""), str(r.get("설비명") or "")): r for r in ws.facility_editor_rows(project)
-    }
-    for index, row in enumerate(rows):
-        old = saved_rows.get((str(row.get("설비번호") or ""), str(row.get("설비명") or "")), {})
-        row.update({k: old[k] for k in ws.EXTRA_FIELDS if k in old})
-        wanted = ws.extra_fields_for(row)
-        label = str(row.get("설비명") or row.get("설비번호") or f"{index + 1}번째 시설")
-        if wanted:
-            with st.expander(f"{label} — 추가로 필요한 정보", expanded=True):
-                for field_id in wanted:
-                    spec = ws.EXTRA_FIELDS[field_id]
-                    key = f"cap_form01_extra_{project.project_id}_{index}_{field_id}"
-                    value = row.get(field_id, "")
-                    if spec["kind"] == "choice":
-                        options = [""] + list(spec["options"])
-                        row[field_id] = st.selectbox(
-                            spec["label"], options, help=spec["help"], key=key,
-                            index=options.index(value) if value in options else 0,
-                        )
-                    elif spec["kind"] == "number":
-                        number = st.number_input(
-                            spec["label"], min_value=0.0, help=spec["help"], key=key,
-                            value=float(value) if str(value).strip() not in ("", "nan") else 0.0,
-                        )
-                        row[field_id] = number if number else ""
-                    else:
-                        row[field_id] = st.text_input(spec["label"], value=str(value), help=spec["help"], key=key)
-        for field_id in ws.EXTRA_FIELDS:
-            if field_id not in wanted:
-                row.pop(field_id, None)
+    def _grid_frame() -> pd.DataFrame:
+        frame = pd.DataFrame(ws.facility_editor_rows(project), columns=core_ids)
+        for col in columns:
+            if col.get("kind") == "number":
+                frame[col["id"]] = pd.to_numeric(frame[col["id"]], errors="coerce")
+        return frame
 
-    live = ws.compute_holdings(project, rows) if rows else []
-    if live:
-        st.subheader("계산 결과 미리보기")
-        frames.show(
-            pd.DataFrame([
-                {
-                    "취급시설": r.get("설비명") or r.get("설비번호"),
-                    "최대보유량(ton)": None if x.ton is None else round(x.ton, 6),
-                    "산정 방법 / 필요한 정보": x.basis or x.problem,
-                }
-                for r, x in zip(rows, live)
-            ]),
-            width="stretch", hide_index=True,
+
+    if step_id == "inputs":
+        st.subheader("취급 물질")
+        chemicals = ws.form1._chemical_identity_rows(project)
+        if chemicals:
+            frames.show(
+                pd.DataFrame([
+                    {
+                        "물질명": ws.form1._row_value(row, "물질명", "유해화학물질명", "제품명"),
+                        "CAS No.": ws.form1._row_value(row, "CAS 번호", "CAS No."),
+                        "함량(%)": ws.form1._row_value(row, "함량(%)", "함량"),
+                    }
+                    for row in chemicals
+                ]),
+                width="stretch", hide_index=True,
+            )
+        else:
+            st.warning("확정된 화학물질 목록이 없습니다. 1. 판정진단에서 물질 목록을 먼저 입력하세요.")
+        st.caption("물질 물성(상태·비중·폭발한계 등)은 별지 제6호에서 KOSHA 조회로 채웁니다.")
+
+
+        st.subheader("시설 표")
+        st.info("※ " + fac["form_note"])
+        edited = st.data_editor(
+            _grid_frame(),
+            column_config=_column_config(columns),
+            num_rows="dynamic",
+            width="stretch",
+            key=f"cap_form01_facilities_{project.project_id}",
         )
-    if st.button("시설 자료 저장", type="primary", key=f"cap_form01_save_{project.project_id}"):
-        saved = ws.save_facility_rows(project, rows)
-        if saved:
-            save_project(project)
-            st.success(f"시설 {saved}건을 저장했습니다. 4. 결과에서 확인하세요.")
-        else:
-            st.warning("저장할 시설 자료가 없습니다.")
+        rows = [{k: ("" if pd.isna(v) else v) for k, v in row.items()} for row in edited.to_dict("records")]
+        saved_rows = {
+            (str(r.get("설비번호") or ""), str(r.get("설비명") or "")): r for r in ws.facility_editor_rows(project)
+        }
+        for index, row in enumerate(rows):
+            old = saved_rows.get((str(row.get("설비번호") or ""), str(row.get("설비명") or "")), {})
+            row.update({k: old[k] for k in ws.EXTRA_FIELDS if k in old})
+            wanted = ws.extra_fields_for(row)
+            label = str(row.get("설비명") or row.get("설비번호") or f"{index + 1}번째 시설")
+            if wanted:
+                with st.expander(f"{label} — 추가로 필요한 정보", expanded=True):
+                    for field_id in wanted:
+                        spec = ws.EXTRA_FIELDS[field_id]
+                        key = f"cap_form01_extra_{project.project_id}_{index}_{field_id}"
+                        value = row.get(field_id, "")
+                        if spec["kind"] == "choice":
+                            options = [""] + list(spec["options"])
+                            row[field_id] = st.selectbox(
+                                spec["label"], options, help=spec["help"], key=key,
+                                index=options.index(value) if value in options else 0,
+                            )
+                        elif spec["kind"] == "number":
+                            number = st.number_input(
+                                spec["label"], min_value=0.0, help=spec["help"], key=key,
+                                value=float(value) if str(value).strip() not in ("", "nan") else 0.0,
+                            )
+                            row[field_id] = number if number else ""
+                        else:
+                            row[field_id] = st.text_input(spec["label"], value=str(value), help=spec["help"], key=key)
+            for field_id in ws.EXTRA_FIELDS:
+                if field_id not in wanted:
+                    row.pop(field_id, None)
 
-    with st.expander("설계용량 계산기 (치수만 알 때)"):
-        st.caption("치수(m)로 구한 기하학적 내용적입니다. 접시형 경판 등은 반영하지 않으므로 설계도서의 설계용량이 있으면 그 값을 쓰세요.")
-        shape = st.selectbox("형태", list(SHAPES), format_func=lambda key: SHAPES[key], key="cap_form01_shape")
-        dims = {}
-        dim_cols = st.columns(len(SHAPE_DIMENSIONS[shape]))
-        for column, name in zip(dim_cols, SHAPE_DIMENSIONS[shape]):
-            dims[name] = column.number_input(DIM_LABELS[name], min_value=0.0, value=0.0, key=f"cap_form01_dim_{shape}_{name}")
-        volume = ws.volume_from_dimensions(shape, **dims)
-        if volume is None:
-            st.caption("모든 치수를 0보다 크게 입력하면 계산됩니다.")
-        else:
-            st.metric("계산된 설계용량", f"{volume:g} m³")
-            st.caption("표의 '설계용량'에 이 값을 m3 단위로 넣으세요.")
+        live = ws.compute_holdings(project, rows) if rows else []
+        if live:
+            st.subheader("계산 결과 미리보기")
+            frames.show(
+                pd.DataFrame([
+                    {
+                        "취급시설": r.get("설비명") or r.get("설비번호"),
+                        "최대보유량(ton)": None if x.ton is None else round(x.ton, 6),
+                        "산정 방법 / 필요한 정보": x.basis or x.problem,
+                    }
+                    for r, x in zip(rows, live)
+                ]),
+                width="stretch", hide_index=True,
+            )
+        if st.button("시설 자료 저장", type="primary", key=f"cap_form01_save_{project.project_id}"):
+            saved = ws.save_facility_rows(project, rows)
+            if saved:
+                save_project(project)
+                st.success(f"시설 {saved}건을 저장했습니다. 4. 결과에서 확인하세요.")
+            else:
+                st.warning("저장할 시설 자료가 없습니다.")
 
-elif step_id == "result":
-    form = ws.resolve_form1(project)
-    if form.needs:
-        st.warning("아직 필요한 정보가 있습니다")
-        for item in form.needs:
-            st.write(f"• {item}")
-    for blocker in form.blockers:
-        st.error(blocker)
-    for line in ws.result_sentences(list(form.chemical_rows)):
-        st.write("• " + line)
-    hint_label, hint_reason = ws.level_hint(list(form.chemical_rows), form.writing_level)
-    st.metric(
-        "사업장 작성수준", form.writing_level or "미확정",
-        help="판정진단에서 승계된 값입니다. 바꾸려면 판정진단을 다시 수행합니다.",
-    )
-    st.info(f"이 서식의 물질별 최대보유량으로 본 결과: **{hint_label}** — {hint_reason}")
-    st.caption("1군은 주요취급시설(규칙 제19조제8항)을 운영하는 경우에 해당합니다. 그 여부는 판정진단에서 확인한 값을 따릅니다.")
+        with st.expander("설계용량 계산기 (치수만 알 때)"):
+            st.caption("치수(m)로 구한 기하학적 내용적입니다. 접시형 경판 등은 반영하지 않으므로 설계도서의 설계용량이 있으면 그 값을 쓰세요.")
+            shape = st.selectbox("형태", list(SHAPES), format_func=lambda key: SHAPES[key], key="cap_form01_shape")
+            dims = {}
+            dim_cols = st.columns(len(SHAPE_DIMENSIONS[shape]))
+            for column, name in zip(dim_cols, SHAPE_DIMENSIONS[shape]):
+                dims[name] = column.number_input(DIM_LABELS[name], min_value=0.0, value=0.0, key=f"cap_form01_dim_{shape}_{name}")
+            volume = ws.volume_from_dimensions(shape, **dims)
+            if volume is None:
+                st.caption("모든 치수를 0보다 크게 입력하면 계산됩니다.")
+            else:
+                st.metric("계산된 설계용량", f"{volume:g} m³")
+                st.caption("표의 '설계용량'에 이 값을 m3 단위로 넣으세요.")
 
-else:
-    form = ws.resolve_form1(project)
-    st.write("입력한 자료로 아래 서식이 채워집니다. 규정서식 표 그대로의 DOCX로 내려받을 수 있습니다.")
-    with st.expander("서식에 채워지는 내용 미리보기"):
-        st.write("**1. 단위공장별 최대보유량 산출**")
-        if form.facility_rows:
-            frames.show(pd.DataFrame(form.facility_rows).drop(columns=["산정근거"], errors="ignore"), width="stretch", hide_index=True)
-        st.write("**2. 유해화학물질별 사업장 내의 최대보유량 산출**")
-        if form.chemical_rows:
-            frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
-        st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
-    st.info("점검하고 보고서를 내려받는 곳은 위 선택 목록의 '점검·내보내기'입니다.")
+    elif step_id == "result":
+        form = ws.resolve_form1(project)
+        if form.needs:
+            st.warning("아직 필요한 정보가 있습니다")
+            for item in form.needs:
+                st.write(f"• {item}")
+        for blocker in form.blockers:
+            st.error(blocker)
+        for line in ws.result_sentences(list(form.chemical_rows)):
+            st.write("• " + line)
+        hint_label, hint_reason = ws.level_hint(list(form.chemical_rows), form.writing_level)
+        st.metric(
+            "사업장 작성수준", form.writing_level or "미확정",
+            help="판정진단에서 승계된 값입니다. 바꾸려면 판정진단을 다시 수행합니다.",
+        )
+        st.info(f"이 서식의 물질별 최대보유량으로 본 결과: **{hint_label}** — {hint_reason}")
+        st.caption("1군은 주요취급시설(규칙 제19조제8항)을 운영하는 경우에 해당합니다. 그 여부는 판정진단에서 확인한 값을 따릅니다.")
+
+    else:
+        form = ws.resolve_form1(project)
+        st.write("입력한 자료로 아래 서식이 채워집니다. 규정서식 표 그대로의 DOCX로 내려받을 수 있습니다.")
+        with st.expander("서식에 채워지는 내용 미리보기"):
+            st.write("**1. 단위공장별 최대보유량 산출**")
+            if form.facility_rows:
+                frames.show(pd.DataFrame(form.facility_rows).drop(columns=["산정근거"], errors="ignore"), width="stretch", hide_index=True)
+            st.write("**2. 유해화학물질별 사업장 내의 최대보유량 산출**")
+            if form.chemical_rows:
+                frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
+            st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
+        st.info("점검하고 보고서를 내려받는 곳은 위 선택 목록의 '점검·내보내기'입니다.")
+
+
+form_no = unsaved_guard.selector("작성할 서식(별지 순서대로)", [*registry.FORM_NUMBERS, *SPECIAL], key="cap_form_no",
+                                 format_func=_option_label)
+try:
+    if form_no == "narrative":
+        from engine.stage2 import cap_narrative_workspace as cap_narrative
+        from ui import narrative_panel
+
+        narrative_panel.render(project, cap_narrative.CAP_PROFILE, ("cap-contacts", "cap-resources"), "cap",
+                               decision_facts=cap_narrative.visible_facts(project))
+    elif form_no == "export":
+        from ui import attachments_panel, cap_final_evidence_panel, report_export_panel
+        from engine.stage2 import psm_attachments
+
+        with st.expander("최종 제출 확인 · 타 제도 심사결과와 공동제출"):
+            cap_final_evidence_panel.render(project)
+        with st.expander("첨부 자료 · 도면과 분석 자료 올리기"):
+            attachments_panel.render(project, psm_attachments.CAP_SLOTS, "cap")
+        st.markdown("### 점검하고 내려받기")
+        report_export_panel.render(project, "CAP")
+    elif form_no != 1:
+        import importlib
+
+        extra_view = importlib.import_module(f"ui.cap_form{form_no}_view")
+
+        extra_view.render(project)
+    else:
+        _render_form1(project)
+finally:
+    unsaved_guard.finish()
