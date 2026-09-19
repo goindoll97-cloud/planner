@@ -70,6 +70,10 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 if not project.cap_in_scope:
+    if project.psm_in_scope:
+        st.info("이 사업장은 공정안전보고서 작성 대상입니다. 화학사고예방관리계획서 대상은 아닙니다.")
+        st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성으로 이동", icon="🏭")
+        st.stop()
     st.warning("이 사업장은 화학사고예방관리계획서 작성·제출 대상으로 확인되지 않았습니다. 위에서 다른 사업장을 고르거나 "
                "'새 사업장으로 시작하기'에서 다시 판정하세요.")
     st.stop()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""화학사고예방관리계획서 작성 시작하기: 사업장과 취급 물질만 입력하면 법정 대상 여부를 판정하고 작성을 시작한다."""
+"""작성 시작하기: 사업장과 취급 물질만 입력하면 법정 대상 여부를 판정하고 작성을 시작한다(화학사고예방관리계획서·공정안전보고서)."""
 
 import pandas as pd
 import streamlit as st
@@ -32,7 +32,8 @@ def _gate_hold() -> bool:
 def render(expanded: bool) -> None:
     with st.expander("새 사업장으로 시작하기", expanded=expanded):
         st.caption(
-            "사업장 정보와 취급하는 유해화학물질만 적으면 법정 작성 대상인지 먼저 판정합니다. 대상이면 바로 별지 작성으로 이어집니다. "
+            "사업장 정보와 취급하는 유해화학물질만 적으면 법정 작성 대상(화학사고예방관리계획서, 공정안전보고서)인지 먼저 판정합니다. "
+            "대상인 문서는 바로 별지 작성으로 이어집니다. "
             "물질의 최대보유량을 정확히 모르면 비워 두세요. 별지 제1호에서 시설별로 계산합니다."
         )
         left, middle, right = st.columns(3)
@@ -75,7 +76,7 @@ def render(expanded: bool) -> None:
             for message in outcome.messages:
                 st.write(f"• {message}")
         elif outcome.status == "NOT_REQUIRED":
-            st.info(f"판정 결과: {outcome.cap_status}")
+            st.info(f"판정 결과: 화학사고예방관리계획서 — {outcome.cap_status} / 공정안전보고서 — {outcome.psm_status}")
             st.write(outcome.cap_explanation)
             st.caption("작성·제출 대상이 아니면 별지 작성을 시작하지 않습니다.")
         else:
@@ -90,5 +91,7 @@ def render(expanded: bool) -> None:
                     pass
             save_project(outcome.project)
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
-            st.success(f"판정 결과: {outcome.cap_status}. 별지 작성을 시작합니다.")
+            targets = [label for label, on in (("화학사고예방관리계획서", outcome.project.cap_required is True),
+                                                 ("공정안전보고서", outcome.project.psm_required is True)) if on]
+            st.success(f"판정 결과: {' · '.join(targets)} 작성 대상입니다. 작성을 시작합니다.")
             st.rerun()

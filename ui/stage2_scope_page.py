@@ -437,4 +437,4 @@ if project.scope_confirmed:
     if project.cap_in_scope:
         st.page_link("ui/cap_workspace_page.py", label="화학사고예방관리계획서 작성으로 이동", icon="📝")
     if project.psm_in_scope:
-        st.page_link("ui/stage2_intake_page.py", label="3. 통합 작성자료로 이동 (공정안전보고서)", icon="📥")
+        st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성으로 이동", icon="🏭")

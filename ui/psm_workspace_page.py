@@ -60,10 +60,12 @@ def _psm_projects() -> list[dict]:
 
 
 def _project_selector() -> str | None:
+    from ui import cap_start_panel
+
     rows = _psm_projects()
     if not rows:
-        st.info("공정안전보고서를 작성 범위로 선택한 사업장이 없습니다. '공정안전보고서 (기존 방식)'의 판정진단과 "
-                "작성범위 선택에서 먼저 선택하세요.")
+        st.info("공정안전보고서를 작성할 사업장이 아직 없습니다. 아래에서 사업장과 취급 물질을 적고 시작하세요.")
+        cap_start_panel.render(expanded=True)
         return None
     labels = {row["project_id"]: f"{row['company_name']} · {row['project_id']}" for row in rows}
     ids = list(labels)

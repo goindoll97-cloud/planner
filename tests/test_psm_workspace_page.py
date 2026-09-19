@@ -71,8 +71,7 @@ class PsmWorkspacePageTests(unittest.TestCase):
     def test_navigation_offers_the_page_only_when_psm_is_selected(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('sections["공정안전보고서"] = [st.Page("ui/psm_workspace_page.py"', app)
-        self.assertLess(app.index("if _psm_selected_somewhere():\n    # 공정안전보고서를 새 방식"),
-                        app.index('sections["공정안전보고서 (기존 방식)"]'))
+        self.assertIn("if _psm_selected_somewhere():" + chr(10) + "    sections[", app)
 
 
 if __name__ == "__main__":

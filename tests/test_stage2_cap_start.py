@@ -14,9 +14,10 @@ CHEMICALS = [{"제품명": "염소", "CAS No.": "7782-50-5", "함량(%)": 100.0,
              {"제품명": "", "CAS No.": "", "함량(%)": 100.0, "최대 동시보유량(ton)": None}]  # 빈 줄
 
 
-def _decision(cap_status="화학사고예방관리계획서 작성·제출 대상 — 2군", system=(), requests=()):
+def _decision(cap_status="화학사고예방관리계획서 작성·제출 대상 — 2군", system=(), requests=(),
+              psm_status="현재 확인 범위에서 공정안전보고서 제출 대상 기준 미해당"):
     return SimpleNamespace(
-        cap_status=cap_status, cap_explanation="설명", psm_status="공정안전보고서 제출 대상 아님",
+        cap_status=cap_status, cap_explanation="설명", psm_status=psm_status,
         system_blockers=list(system), company_requests=list(requests), psm_explanation="", psm_r_value=None,
         psm_legal_basis=[], cap_legal_basis=[], psm_ratio_rows=[], cap_quantity_rows=[],
     )
@@ -50,6 +51,17 @@ class CapStartTests(unittest.TestCase):
         self.assertEqual(project.get_field("business.address").value, "울산광역시 남구 산업로 1")
         [chemical] = project.get_field("inventory.chemicals").value
         self.assertEqual(chemical["물질명"], "염소")
+
+    def test_a_psm_only_site_starts_with_psm_in_scope(self):
+        outcome = cap_start.start(BUSINESS, CHEMICALS, assess=lambda intake: _decision(
+            cap_status="화학사고예방관리계획서 작성·제출 의무 없음 — 하위 규정수량 미만", psm_status="공정안전보고서 제출 대상"))
+        self.assertEqual(outcome.status, "STARTED")
+        self.assertTrue(outcome.project.psm_in_scope)
+        self.assertFalse(outcome.project.cap_in_scope)
+
+    def test_a_site_targeted_by_both_documents_starts_both(self):
+        outcome = cap_start.start(BUSINESS, CHEMICALS, assess=lambda intake: _decision(psm_status="공정안전보고서 제출 대상"))
+        self.assertTrue(outcome.project.psm_in_scope and outcome.project.cap_in_scope)
 
     def test_the_new_project_feeds_the_form1_workspace(self):
         project = cap_start.start(BUSINESS, CHEMICALS, assess=lambda intake: _decision()).project
