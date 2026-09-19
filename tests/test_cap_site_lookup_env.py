@@ -31,3 +31,23 @@ class EnvFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnvFileVariantsTests(unittest.TestCase):
+    def _read(self, raw: bytes, preset: dict | None = None) -> str:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(kosha_msds, "PROJECT_ROOT", Path(tmp)), \
+             patch("pathlib.Path.cwd", return_value=Path(tmp)):
+            (Path(tmp) / ".env").write_bytes(raw)
+            with patch.dict(os.environ, preset or {}, clear=False):
+                if not preset:
+                    os.environ.pop("KAKAO_REST_API_KEY", None)
+                return lookup.api_key()
+
+    def test_notepad_bom_on_the_first_line_does_not_hide_the_key(self):
+        self.assertEqual(self._read("﻿KAKAO_REST_API_KEY=abc\n".encode("utf-8")), "abc")
+
+    def test_export_prefix_spaces_and_crlf_are_accepted(self):
+        self.assertEqual(self._read(b"LAW_OC=x\r\nexport KAKAO_REST_API_KEY = abc\r\n"), "abc")
+
+    def test_an_empty_environment_variable_does_not_block_the_env_file(self):
+        self.assertEqual(self._read(b"KAKAO_REST_API_KEY=abc\n", {"KAKAO_REST_API_KEY": ""}), "abc")
