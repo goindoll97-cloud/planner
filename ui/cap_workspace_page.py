@@ -89,15 +89,23 @@ if form_no != 1:
 
 schema = ws.load_form_schema(1)
 steps = ws.steps(1)
-titles = [step["title"] for step in steps] + ["5. 서식 내보내기"]
-step_ids = [step["id"] for step in steps] + ["export"]
+titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
+step_ids = ["inputs", "result", "export"]
 
 st.header(schema["title"])
 step_title = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form01_step")
 step_id = step_ids[titles.index(step_title)]
-current = next((step for step in steps if step["id"] == step_id), None)
-if current:
-    _explain(current)
+if step_id == "inputs":
+    st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 판정진단에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
+    for part in steps:
+        if part["id"] in ("scope", "facilities", "chemicals"):
+            for item in part["explain"]:
+                with st.expander(item["term"]):
+                    st.write(item["text"])
+else:
+    current = next((step for step in steps if step["id"] == step_id), None)
+    if current:
+        _explain(current)
 
 fac = ws.section(1, "facility_table")
 columns = ws.facility_columns()
@@ -112,10 +120,8 @@ def _grid_frame() -> pd.DataFrame:
     return frame
 
 
-if step_id == "scope":
-    st.write("이 서식은 규정 별표 1의 산정 방법에 따라 시설별 자료로 계산합니다. 위 설명을 읽고 다음 단계로 넘어가세요.")
-
-elif step_id == "chemicals":
+if step_id == "inputs":
+    st.subheader("취급 물질")
     chemicals = ws.form1._chemical_identity_rows(project)
     if chemicals:
         frames.show(
@@ -133,7 +139,8 @@ elif step_id == "chemicals":
         st.warning("확정된 화학물질 목록이 없습니다. 1. 판정진단에서 물질 목록을 먼저 입력하세요.")
     st.caption("물질 물성(상태·비중·폭발한계 등)은 별지 제6호에서 KOSHA 조회로 채웁니다.")
 
-elif step_id == "facilities":
+
+    st.subheader("시설 표")
     st.info("※ " + fac["form_note"])
     edited = st.data_editor(
         _grid_frame(),

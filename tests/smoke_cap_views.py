@@ -17,7 +17,7 @@ def main(project_id: str) -> int:
     for number in registry.FORM_NUMBERS:
         titles = [step["title"] for step in ws.load_form_schema(number)["steps"]]
         if number == 1:
-            titles.append("5. 서식 내보내기")
+            titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
         step_key = "cap_form01_step" if number == 1 else f"cap_form{number:02d}_step"
         for title in titles:
             app = AppTest.from_file("ui/cap_workspace_page.py", default_timeout=90)
