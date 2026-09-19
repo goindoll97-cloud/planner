@@ -48,7 +48,7 @@ def render(expanded: bool) -> None:
             frame, num_rows="dynamic", width="stretch", hide_index=True, key="cap_start_chemicals",
             column_config={
                 "제품명": st.column_config.TextColumn("제품명(물질명)", help="취급하는 유해화학물질 또는 제품 이름입니다. CAS 번호만 알아도 됩니다."),
-                "CAS No.": st.column_config.TextColumn("CAS No.", help="화학물질 고유 번호입니다. 예: 7782-50-5(염소)"),
+                "CAS No.": st.column_config.TextColumn("CAS No.", help="화학물질 고유 번호입니다. (예시) 7782-50-5(염소)"),
                 "함량(%)": st.column_config.NumberColumn("함량(%)", min_value=0.0, max_value=100.0,
                                                           help="제품 안에 그 물질이 들어 있는 비율입니다. 순수한 물질이면 100입니다."),
                 "최대 동시보유량(ton)": st.column_config.NumberColumn(

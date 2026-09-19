@@ -26,7 +26,7 @@ def grid(form_no: str):
                                   key=f"psm_apply_{form_no}",
                                   help="이 서식은 해당하는 사업장만 작성합니다. 해당하지 않으면 '해당 없음'을 고르고 이유를 적으세요.")
             reason = st.text_input("확인 근거", value=basis, key=f"psm_apply_basis_{form_no}",
-                                   help="왜 적용(또는 해당 없음)인지 한 줄로 적습니다. 예: 옥내 소화 설비 없음(옥외 시설만 있음)")
+                                   help="왜 적용(또는 해당 없음)인지 한 줄로 적습니다. (예시) 옥내 소화 설비 없음(옥외 시설만 있음)")
             if st.button("적용 여부 저장", key=f"psm_apply_save_{form_no}"):
                 if chosen == "선택하세요" or not reason.strip():
                     st.warning("적용 여부와 확인 근거를 모두 적어야 저장됩니다.")

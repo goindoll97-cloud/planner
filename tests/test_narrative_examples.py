@@ -125,3 +125,23 @@ class ScreenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HelpTextMarkTests(unittest.TestCase):
+    def test_help_texts_label_their_examples_instead_of_a_bare_ye(self):
+        import json
+        from pathlib import Path
+
+        from engine.stage2 import cap_narrative_workspace as cn
+        from engine.stage2 import psm_table_workspace as tables
+
+        texts = []
+        for spec in tables.SPECS.values():
+            texts += [spec.summary, *(c.help for c in spec.columns)]
+        for fact in (*nw.BASIC_FACTS, *nw.DECISION_FACTS, *cn.DECISION_FACTS):
+            texts += [fact.help, *(h for _n, _l, h in fact.fields)]
+        for path in (Path(__file__).resolve().parents[1] / "data/stage2/cap_forms").glob("*.json"):
+            texts.append(path.read_text(encoding="utf-8"))
+        for text in texts:
+            self.assertNotIn("예: ", text)  # '(예시) …' 또는 '(예시: …)'로 적는다
+        self.assertTrue(any("(예시)" in t or "(예시:" in t for t in texts))

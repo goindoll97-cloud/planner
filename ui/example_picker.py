@@ -20,7 +20,7 @@ def text_with_examples(label: str, key: str, *, value: str = "", help_text: str 
     widget = st.text_area if long else st.text_input
     text = widget(label, key=key, help=help_text or None)
     if template:
-        st.caption("문장 틀: " + template)
+        st.caption("문장 틀(예시): " + template)
     if choices:
         with st.expander("예시에서 고르기 (고른 뒤 고쳐 쓸 수 있습니다)"):
             for index, sample in enumerate(choices):

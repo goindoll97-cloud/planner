@@ -38,9 +38,9 @@ def render(project) -> None:
         if step["id"] == "capacity":
             ratio = st.text_input("필요용량 기준: 설계용량 대비 비율(%)", value=ratio,
                                   key=f"cap_form10_ratio_{project.project_id}",
-                                  help="법 제24조 기준에서 확인한 값을 적습니다. 예: 기준이 설계용량의 110%면 110")
+                                  help="법 제24조 기준에서 확인한 값을 적습니다. (예시) 기준이 설계용량의 110%면 110")
             basis = st.text_input("기준 근거", value=basis, key=f"cap_form10_basis_{project.project_id}",
-                                  help="예: 화학물질관리법 시행규칙 별표 5 제○호(해당 조문을 확인해 적으세요)")
+                                  help="(예시) 화학물질관리법 시행규칙 별표 5 제○호(해당 조문을 확인해 적으세요)")
         columns = ("적용여부", "설비형태", "확산방지설비 종류") if step["id"] == "targets" else \
             ("확산방지설비 종류", *f10.COLUMN_IDS[3:])
         config = {name: st.column_config.TextColumn(name, disabled=True) for name in READ_ONLY}
