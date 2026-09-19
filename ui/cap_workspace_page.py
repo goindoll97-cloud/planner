@@ -7,7 +7,6 @@ from ui import cap_frames as frames
 
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_guideline import form_guidelines
-from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.cap_calc import SHAPE_DIMENSIONS, SHAPES
 from engine.stage2.storage import list_projects, load_project, save_project
 
@@ -256,13 +255,7 @@ else:
         if form.chemical_rows:
             frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
         st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
-    try:
-        st.download_button(
-            "화학사고예방관리계획서 규정서식 작성본 DOCX 다운로드",
-            data=build_cap_baseline_draft(project),
-            file_name=cap_baseline_filename(project),
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key=f"cap_form01_download_{project.project_id}",
-        )
-    except Exception as exc:
-        st.error(f"규정서식 작성본을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+    st.markdown("### 점검하고 내려받기")
+    from ui import report_export_panel
+
+    report_export_panel.render(project, "CAP")

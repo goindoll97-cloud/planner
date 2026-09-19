@@ -194,7 +194,7 @@ class CAPWorkspaceTests(unittest.TestCase):
         self.assertIn('st.Page("ui/cap_workspace_page.py"', app)
         page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
         self.assertIn("help=col.get(\"help\")", page)
-        self.assertIn("build_cap_baseline_draft", page)
+        self.assertIn('report_export_panel.render(project, "CAP")', page)  # 규정서식 DOCX는 공용 내보내기 단계에서 만든다
 
 class CAPSharedFactsTests(unittest.TestCase):
     """Facilities entered once in 별지 제1호 must reappear in the other 별지."""
