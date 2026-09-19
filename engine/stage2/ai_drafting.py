@@ -54,6 +54,22 @@ _GLOBAL_FACT_KEYS = (
     "psm.facts.emergency_org",
     "psm.emergency.resources",
     "psm.emergency.contacts",
+    "cap.facts.safety_management",
+    "cap.facts.training",
+    "cap.facts.self_inspection",
+    "cap.facts.change_management",
+    "cap.facts.emergency_org",
+    "cap.facts.command_center",
+    "cap.facts.shutdown",
+    "cap.facts.communication",
+    "cap.facts.recovery",
+    "cap.facts.investigation",
+    "cap.facts.community",
+    "cap.facts.mutual_aid",
+    "cap.facts.evacuation",
+    "cap.facts.public_notice",
+    "cap.prevention.emergency_contact_system",
+    "cap.internal.response_equipment",
 )
 
 

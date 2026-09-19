@@ -268,8 +268,32 @@ WASH_PPE = TableSpec(
     ),
 )
 
+CAP_CONTACTS = TableSpec(
+    "cap-contacts", "cap.prevention.emergency_contact_system", "비상연락체계",
+    "사고가 났을 때 연락할 곳을 순서대로 적습니다. 사내 담당자와 소방서·경찰서 등 외부 기관을 모두 포함합니다.",
+    _cols(
+        ("연락처 구분", "사내 또는 외부 기관입니다. 예: 사내, 소방서, 관할 환경 관서"),
+        ("기관·부서·담당자", "연락할 기관, 부서 또는 담당자 이름입니다."),
+        ("전화번호", "비상시 연결되는 전화번호입니다."),
+        ("연락 순서", "몇 번째로 연락하는지입니다."),
+        ("비고", "참고할 내용을 적습니다.", "opt"),
+    ),
+)
+
+CAP_RESOURCES = TableSpec(
+    "cap-resources", "cap.internal.response_equipment", "방재 장비·인력",
+    "사고에 대응할 때 쓰는 장비와 인력을 한 줄에 하나씩 적습니다. 회사만 아는 정보라서 직접 적어야 합니다.",
+    _cols(
+        ("구분", "장비인지 인력인지 적습니다. 예: 장비, 인력"),
+        ("명칭", "장비나 인력의 이름입니다. 예: 공기호흡기, 흡착포, 방재팀"),
+        ("수량", "수량이나 인원수입니다."),
+        ("보관위치", "장비를 두는 곳이나 인력의 근무 위치입니다."),
+        ("비고", "참고할 내용을 적습니다.", "opt"),
+    ),
+)
+
 SPECS: dict[str, TableSpec] = {spec.form_no: spec for spec in (
-    EMERGENCY_RESOURCES, EMERGENCY_CONTACTS, WASH_PPE,
+    CAP_CONTACTS, CAP_RESOURCES, EMERGENCY_RESOURCES, EMERGENCY_CONTACTS, WASH_PPE,
     MACHINERY, PIPING, RELIEF, INTERLOCK, FIRE_FIGHTING, FIRE_DETECTION, GAS_ALARM, FIREPROOF, LOCAL_EXHAUST,
     EX_EQUIPMENT, EXPERTS)}
 APPLICABILITY_KEY = "psm.psi.form_applicability"
