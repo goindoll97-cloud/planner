@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from . import ai_drafting as drafting
+from . import narrative_examples as examples
 from .local_ai_resilience import generate_system_ai_drafts_batched
 from .project import CONFIRMED_STATUSES, Stage2Project
 from .requirements import psm_requirement_specs
@@ -82,13 +83,29 @@ def save_fact(project: Stage2Project, fact: Fact, value: Any) -> bool:
         cleaned = {name: _clean(value.get(name)) for name, _, _ in fact.fields if _clean(value.get(name))}
         if not cleaned:
             return False
-        project.set_field(fact.key, fact.label, cleaned, "USER_CONFIRMED")
+        as_is = [name for name, text in cleaned.items() if examples.is_example(fact.key, name, text)]
+        project.set_field(fact.key, fact.label, cleaned, "USER_CONFIRMED", note=_as_is_note(as_is))
         return True
     text = _clean(value)
     if not text:
         return False
-    project.set_field(fact.key, fact.label, text, "USER_CONFIRMED")
+    as_is = [fact.label] if examples.is_example(fact.key, "", text) else []
+    project.set_field(fact.key, fact.label, text, "USER_CONFIRMED", note=_as_is_note(as_is))
     return True
+
+
+def _as_is_note(names: list[str]) -> str:
+    return ("예시 문구를 고치지 않고 그대로 선택함(" + ", ".join(names) + "). 회사 실제와 같은지 확인 필요.") if names else ""
+
+
+def chosen_as_is(project: Stage2Project) -> list[str]:
+    """예시를 고치지 않고 그대로 저장한 사실들. 회사 실제와 같은지 한 번 더 확인하도록 화면에서 알린다."""
+    out = []
+    for fact in (*BASIC_FACTS, *DECISION_FACTS):
+        record = project.get_field(fact.key)
+        if record is not None and "예시 문구를 고치지 않고" in (record.note or ""):
+            out.append(fact.label)
+    return out
 
 
 def missing_basics(project: Stage2Project) -> list[str]:

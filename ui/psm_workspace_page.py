@@ -10,6 +10,7 @@ from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import psm_attachments as attachments
 from engine.stage2 import psm_form12_workspace as f12
 from engine.stage2 import psm_form19_2_workspace as f19
+from engine.stage2 import narrative_examples as examples
 from engine.stage2 import psm_narrative_workspace as narrative
 from engine.stage2 import psm_weather
 from engine.stage2 import psm_table_workspace as tables
@@ -346,11 +347,14 @@ def _facts(project) -> None:
     st.caption("글로 쓰는 항목은 AI가 초안을 만듭니다. 사람은 프로그램이 알 수 없는 사실만 적고, 완성된 글을 한 번 확인합니다.")
     st.markdown("### 1. 먼저 적을 사실")
     defaults = {"business.employee_count": f12.current(project).get("근로자수", "")}
+    from ui.example_picker import text_with_examples
+
     values = {}
     for fact in narrative.BASIC_FACTS:
         current = narrative.facts_value(project, fact) or defaults.get(fact.key, "")
-        widget = st.text_area if fact.long else st.text_input
-        values[fact.key] = widget(fact.label, value=current, help=fact.help, key=f"psm_fact_{fact.key}")
+        values[fact.key] = text_with_examples(
+            fact.label, f"psm_fact_{fact.key}", value=current, help_text=fact.help, long=fact.long,
+            choices=examples.choices(fact.key), template=examples.template(fact.key), checks=examples.checks(fact.key))
     if st.button("사실 저장", type="primary", key="psm_fact_save"):
         for fact in narrative.BASIC_FACTS:
             narrative.save_fact(project, fact, values[fact.key])
@@ -359,14 +363,17 @@ def _facts(project) -> None:
     missing = narrative.missing_basics(project)
     if missing:
         st.info("아직 적지 않은 사실: " + ", ".join(missing))
+    as_is = narrative.chosen_as_is(project)
+    if as_is:
+        st.warning("예시 문구를 고치지 않고 그대로 저장한 항목이 있습니다. 우리 회사 실제와 같은지 확인하세요: " + ", ".join(as_is))
 
     st.markdown("### 2. 회사가 정한 사항")
     for fact in narrative.DECISION_FACTS:
         with st.expander(fact.label):
             st.caption(fact.help)
             current = narrative.facts_value(project, fact)
-            entered = {name: st.text_input(label, value=current.get(name, ""), help=help_text,
-                                           key=f"psm_fact_{fact.key}_{name}")
+            entered = {name: text_with_examples(label, f"psm_fact_{fact.key}_{name}", value=current.get(name, ""),
+                                                help_text=help_text, choices=examples.choices(fact.key, name))
                        for name, label, help_text in fact.fields}
             if st.button("저장", key=f"psm_fact_save_{fact.key}"):
                 narrative.save_fact(project, fact, entered)
@@ -409,6 +416,7 @@ def _drafts(project) -> None:
             if item["text"]:
                 text = st.text_area("초안(고쳐 쓸 수 있습니다)", value=item["text"], height=220, key=f"psm_draft_{item['key']}")
                 st.caption("AI가 확정된 사실만으로 쓴 초안입니다. 회사 실제와 다르면 고치세요. 확인하면 회사 문서로 채택됩니다.")
+                st.caption("확인할 점: " + " / ".join(examples.draft_checks()))
                 if item["state"] != "확인 완료" and st.button("내용을 확인했습니다", key=f"psm_adopt_{item['key']}"):
                     try:
                         narrative.adopt(project, item["key"], text)
