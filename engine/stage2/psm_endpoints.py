@@ -8,9 +8,11 @@ from __future__ import annotations
 공식 근거가 없는 값은 계산하지 않고 보류로 돌려준다.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
+from . import cap_dispersion as disp
 from . import cap_fire as fire
+from . import psm_erpg
 
 FIRE_KW_M2 = (4.0, 12.5, 37.5)
 OVERPRESSURE_KPA = (7.0, 21.0, 70.0)
@@ -39,7 +41,7 @@ class Endpoints:
 class Distance:
     label: str
     meters: float | None
-    status: str  # OK / HOLD
+    status: str  # OK(표 값) / ESTIMATED(규정 7(2) 산정) / HOLD
     note: str = ""
 
 
@@ -69,24 +71,18 @@ def explosion_distances(mass_kg: float, heat_kj_kg: float, endpoints: Endpoints 
     return out
 
 
-@dataclass(frozen=True)
-class ErpgRecord:
-    cas: str
-    name: str
-    values: dict[int, float | None] = field(default_factory=dict)  # 1·2·3 -> ppm
-    statuses: dict[int, str] = field(default_factory=dict)         # 값이 없을 때 사유(Insufficient Data 등)
-    source: str = "AIHA_ERPG"
-    source_year: str = ""
-
-
-def toxic_distance_inputs(record: ErpgRecord | None) -> list[Distance]:
-    """ERPG 1·2·3 각각을 사용 가능/보류로 나눈다. 없는 등급을 다른 지표(PAC·AEGL)로 대신하지 않는다."""
+def toxic_distances(cas: str, source_rate_kg_s: float, *, wind_ms: float, stability: str, terrain: str,
+                    molar_mass: float | None = None, stel_mg_m3: float | None = None,
+                    twa_mg_m3: float | None = None) -> list[Distance]:
+    """ERPG 1·2·3 각 농도에 이르는 풍하 거리. 농도가 없거나 적용되지 않으면 계산하지 않고 이유를 남긴다."""
     out = []
-    for level, label in zip((1, 2, 3), TOXIC_LABELS):
-        value = record.values.get(level) if record else None
-        if value is not None:
-            out.append(Distance(label, float(value), "OK", "ppm"))
+    for level, label in zip(psm_erpg.resolve(cas, molar_mass=molar_mass, stel_mg_m3=stel_mg_m3, twa_mg_m3=twa_mg_m3),
+                            TOXIC_LABELS):
+        if level.status in ("TABLE", "ESTIMATED") and level.mg_m3:
+            meters = disp.distance_to_endpoint(source_rate_kg_s, disp.mg_m3_to_kg_m3(level.mg_m3),
+                                               wind_ms=wind_ms, stability=stability, terrain=terrain)
+            note = f"{level.mg_m3:g} mg/m3 · {level.basis}"
+            out.append(Distance(label, meters, "OK" if level.status == "TABLE" else "ESTIMATED", note))
         else:
-            reason = (record.statuses.get(level) if record else "") or "공식 ERPG 자료가 확인되지 않음"
-            out.append(Distance(label, None, "HOLD", f"{reason}. 다른 지표로 대체하지 않고 보류합니다."))
+            out.append(Distance(label, None, "HOLD", level.basis))
     return out
