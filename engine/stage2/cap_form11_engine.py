@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from .project import CONFIRMED_STATUSES, Stage2Project
+from .cap_shared_facts import workspace_facility_rows
 
 
 FIXED = {"고정식", "fixed"}
@@ -113,7 +114,9 @@ def _chemical_names(project: Stage2Project) -> set[str]:
 
 
 def _facility_tags(project: Stage2Project) -> set[str]:
-    rows = _confirmed_rows(project, "inventory.facilities", "cap.facility.equipment_specs")
+    rows = workspace_facility_rows(project) or _confirmed_rows(
+        project, "inventory.facilities", "cap.facility.equipment_specs"
+    )
     return {
         _clean(_row_value(row, "설비번호", "구분기호", "장치번호")).upper()
         for row in rows

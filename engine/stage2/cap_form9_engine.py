@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from .cap_form1_engine import mass_to_ton, volume_to_m3
+from .cap_shared_facts import workspace_facility_rows
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -190,7 +191,9 @@ def _chemical_index(project: Stage2Project) -> tuple[dict[str, dict[str, Any]], 
 
 
 def build_cap_form9_data(project: Stage2Project) -> CAPForm9Data:
-    facilities = _confirmed_rows(project, "cap.facility.equipment_specs", "inventory.facilities")
+    facilities = workspace_facility_rows(project) or _confirmed_rows(
+        project, "cap.facility.equipment_specs", "inventory.facilities"
+    )
     if not facilities:
         return CAPForm9Data((), ("장치·설비 목록이 없어 별지 제9호를 작성할 수 없습니다.",), ())
 

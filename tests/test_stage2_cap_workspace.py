@@ -156,6 +156,37 @@ class CAPWorkspaceTests(unittest.TestCase):
         self.assertIn("help=col.get(\"help\")", page)
         self.assertIn("build_cap_baseline_draft", page)
 
+class CAPSharedFactsTests(unittest.TestCase):
+    """Facilities entered once in 별지 제1호 must reappear in the other 별지."""
+
+    def _saved(self):
+        project = _project()
+        rows = ws.facility_editor_rows(project)
+        rows[0].update({"설비번호": "TK-9", "설비명": "염소 저장탱크", "시설유형": "저장탱크",
+                        "물질성상": "액체", "용량": 2.5, "용량단위": "m3", "비중": 1.4})
+        rows.append({"설비번호": "LR-1", "설비명": "탱크로리", "취급물질": "염소", "시설유형": "탱크로리·운송차량"})
+        ws.save_facility_rows(project, rows)
+        return project
+
+    def test_form9_lists_the_same_facilities_with_computed_holding(self):
+        from engine.stage2.cap_form9_engine import build_cap_form9_data
+
+        data = build_cap_form9_data(self._saved())
+        self.assertEqual([r["구분기호"] for r in data.rows], ["TK-9"])
+        self.assertEqual(data.rows[0]["설계용량(m3)"], "2.5")
+        self.assertEqual(data.rows[0]["취급량(ton)"], "3.5")
+
+    def test_form4_5_facility_type_counts_follow_the_grid(self):
+        from engine.stage2.cap_final_form_runtime import render_facility_type_counts
+
+        text = render_facility_type_counts(self._saved())
+        self.assertIn("☒ 저장탱크 (1)기", text)
+
+    def test_unsaved_project_still_uses_legacy_facility_keys(self):
+        from engine.stage2.cap_shared_facts import workspace_facility_rows
+
+        self.assertEqual(workspace_facility_rows(_project()), [])
+
 
 if __name__ == "__main__":
     unittest.main()
