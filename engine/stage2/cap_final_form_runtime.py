@@ -145,7 +145,7 @@ def _row_value(row: Mapping[str, object], *aliases: str) -> object:
     return ""
 
 
-def render_facility_type_counts(project: Stage2Project) -> str:
+def facility_type_counts(project: Stage2Project) -> Counter[str]:
     rows = workspace_facility_rows(project) or _confirmed_rows(
         project, "inventory.facilities", "cap.facility.equipment_specs"
     )
@@ -158,6 +158,11 @@ def render_facility_type_counts(project: Stage2Project) -> str:
             name = _row_value(row, "설비명")
         if name:
             counts[_facility_choice_key(name)] += 1
+    return counts
+
+
+def render_facility_type_counts(project: Stage2Project) -> str:
+    counts = facility_type_counts(project)
     return "\n".join(
         f"{_checked(counts.get(label, 0) > 0, label)} ({counts.get(label, 0) or ' '})기"
         for label, _aliases in _FACILITY_CHOICES

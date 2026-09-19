@@ -26,3 +26,11 @@ def workspace_facility_rows(project: Stage2Project) -> list[dict[str, Any]]:
         dict(row) for row in record.value
         if isinstance(row, Mapping) and str(row.get(EXCLUDED_FLAG, "")).upper() != "Y"
     ]
+
+
+def workspace_rows_of_type(project: Stage2Project, facility_type: str) -> list[dict[str, Any]]:
+    """All confirmed workspace rows of one 시설유형, including ones excluded from holdings."""
+    record = project.get_field(WORKSPACE_FACILITY_KEY)
+    if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
+        return []
+    return [dict(row) for row in record.value if isinstance(row, Mapping) and row.get("시설유형") == facility_type]
