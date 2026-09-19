@@ -295,5 +295,10 @@ project_id = _project_selector()
 if not project_id:
     st.stop()
 project = load_project(project_id)
-form_key = st.selectbox("작성할 별지", list(FORMS), format_func=lambda key: FORMS[key], key="psm_form_no")
-{"12": _table_12, "13": _table_13, **{no: table_grid.grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "facts": _facts, "export": _export, "files": _files}[form_key](project)
+from ui import unsaved_guard
+
+form_key = unsaved_guard.selector("작성할 별지", list(FORMS), key="psm_form_no", format_func=lambda key: FORMS[key])
+try:
+    {"12": _table_12, "13": _table_13, **{no: table_grid.grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "facts": _facts, "export": _export, "files": _files}[form_key](project)
+finally:
+    unsaved_guard.finish()

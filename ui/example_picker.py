@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from engine.stage2 import narrative_examples as examples
+from ui import unsaved_guard
 
 
 def _use(key: str, text: str) -> None:
@@ -15,6 +16,7 @@ def text_with_examples(label: str, key: str, *, value: str = "", help_text: str 
                        long: bool = False, template: str = "", checks: list[str] | None = None) -> str:
     if key not in st.session_state:
         st.session_state[key] = value
+    unsaved_guard.baseline(key, value)  # 저장된 값이 기준이다. 예시를 골라 채우거나 고치면 '저장하지 않은 변경'이 된다.
     widget = st.text_area if long else st.text_input
     text = widget(label, key=key, help=help_text or None)
     if template:
