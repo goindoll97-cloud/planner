@@ -100,3 +100,29 @@ def annex_rules() -> dict[int, tuple[str, ...]]:
         elif current and re.match(r"^\d+\. ", text):
             rules[current].append(text)
     return {no: tuple(items) for no, items in rules.items()}
+
+
+@lru_cache(maxsize=1)
+def protected_target_rules() -> dict[str, dict[str, str]]:
+    """별표 4: 구분(갑종·을종·환경수용체) -> {종류: 보호대상의 종류 설명(규모 조건 포함)}."""
+    doc = Document(str(ANNEX_RULES))
+    in_annex4 = False
+    tables: list[tuple[tuple[str, ...], ...]] = []
+    for block in _blocks(doc):
+        if isinstance(block, Paragraph):
+            text = block.text.strip()
+            if _ANNEX_HEAD.match(text):
+                in_annex4 = text == "[별표 4]"
+            elif text.startswith("■"):
+                in_annex4 = False
+        elif in_annex4 and len(tables) < 3:
+            tables.append(_cells(block))
+    result: dict[str, dict[str, str]] = {}
+    for label, table in zip(("갑종", "을종", "환경수용체"), tables):
+        entries: dict[str, str] = {}
+        for row in table[1:]:
+            cells = list(dict.fromkeys(c for c in row if c))
+            if len(cells) >= 2:
+                entries[" ".join(cells[-2].split())] = cells[-1]
+        result[label] = entries
+    return result

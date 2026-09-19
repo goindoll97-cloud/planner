@@ -707,6 +707,21 @@ def _fill_form8(tables, project: Stage2Project) -> None:
         if cells:
             _write_cell(cells[-1], summary)
 
+    if prepared.rows or prepared.no_protected_targets:
+        from .cap_form8_workspace import SUBTYPES, selected_options
+
+        chosen = selected_options(project)
+        printed = {
+            base._norm(option): f"{'☒' if option in chosen[category] else '☐'} {option}"
+            for category, options in SUBTYPES.items()
+            for option in options
+        }
+        for row in context_table.rows[2:]:
+            for cell in _unique_cells(row)[1:]:
+                text = base._norm(cell.text).replace("□", "").replace("☐", "").replace("☒", "")
+                if text in printed:
+                    _write_cell(cell, printed[text])
+
     rows = [
         [
             row.get("일련번호", ""),
