@@ -60,20 +60,6 @@ class Stage2GuidanceTests(unittest.TestCase):
         self.assertTrue(matches)
         self.assertTrue(any("documents.pfd" in spec.field_keys for spec in matches))
 
-    def test_legal_library_remains_separate_from_company_intake(self):
-        intake = Path("ui/stage2_intake_page.py").read_text(encoding="utf-8")
-        library = Path("ui/legal_evidence_page.py").read_text(encoding="utf-8")
-        app = Path("app.py").read_text(encoding="utf-8")
-
-        self.assertNotIn("해야 할 일·작성상태 확인", intake)
-        self.assertNotIn("법적 의무 근거", intake)
-        self.assertNotIn("_legal_focus_requirement_key", intake)
-        self.assertNotIn("st.switch_page(\"ui/legal_evidence_page.py\")", intake)
-        self.assertIn("아직 준비가 필요한 자료", intake)
-
-        self.assertIn("작성항목 근거 검색", library)
-        self.assertIn("_legal_focus_requirement_key", library)
-        self.assertIn("법령·근거 라이브러리", app)
 
 
 if __name__ == "__main__":

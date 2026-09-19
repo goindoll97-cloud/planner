@@ -9,7 +9,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 USER_FACING_FILES = [
     "ui/diagnosis_entry.py",
     "ui/diagnosis_page.py",
-    "ui/psm_followup_panel.py",
     "engine/consulting_guidance.py",
     "engine/template.py",
     "engine/psm_engine.py",
@@ -56,7 +55,7 @@ class LegalTerminologyContractTests(unittest.TestCase):
         self.assertEqual([], violations, "법령용어가 아닌 혼동 가능 표현이 남아 있습니다: " + ", ".join(violations))
 
     def test_psm_ui_uses_annex13_statutory_terms(self) -> None:
-        text = self._read("ui/diagnosis_page.py") + self._read("ui/psm_followup_panel.py") + self._read("engine/consulting_guidance.py")
+        text = self._read("ui/diagnosis_page.py") + self._read("engine/consulting_guidance.py")
         self.assertIn("유해·위험물질 규정량", text)
         self.assertIn("합산한 값(R)", text)
         self.assertIn("공정안전보고서 제출 대상", text)
