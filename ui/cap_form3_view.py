@@ -13,6 +13,10 @@ def _inputs(project, step_id: str) -> None:
     for item in f3.fields(step_id):
         key = f"cap_form03_{project.project_id}_{item['id']}"
         current = f3.current_value(project, item["key"])
+        hint, origin = f3.suggestion(project, item)
+        if hint:
+            current = hint
+            st.caption(f"'{item['label']}': {origin}로 채운 후보입니다. 맞으면 저장을 누르세요.")
         if item["kind"] == "choice":
             options = [""] + item["options"]
             values[item["id"]] = st.selectbox(

@@ -31,6 +31,62 @@ def current_value(project: Stage2Project, key: str) -> str:
     return "" if record is None or record.value is None else str(record.value).strip()
 
 
+# Other keys under which earlier intake stores the same fact.
+ALT_KEYS = {
+    "registration_no": ("business.registration_no",),
+    "representative": ("business.representative",),
+    "contact": ("business.phone",),
+    "writer_name": ("cap.business.writer_info",),
+}
+_YES = {"y", "yes", "예", "있음", "해당"}
+_NO = {"n", "no", "아니오", "없음", "미해당"}
+
+
+def _normalized_choice(field_id: str, raw: str) -> str:
+    """Map intake answers such as Y/N onto this form's printed options."""
+    text = raw.strip()
+    key = text.lower()
+    if field_id == "joint":
+        if "공동" in text or key in _YES:
+            return "공동제출"
+        if "단독" in text or key in _NO:
+            return "단독제출"
+    elif field_id == "other_review":
+        if key in _NO:
+            return "미해당"
+        for option in ("공정안전보고서", "안전성향상계획"):
+            if option in text:
+                return f"해당({option})"
+    elif field_id in ("recent_accident", "residents"):
+        if key in _YES:
+            return "있음"
+        if key in _NO:
+            return "없음"
+    return ""
+
+
+def suggestion(project: Stage2Project, item: dict[str, Any]) -> tuple[str, str]:
+    """(value, where it came from) for a cell the user has not confirmed yet."""
+    field_id = item["id"]
+    own = current_value(project, item["key"])
+    if item["kind"] == "choice":
+        if own in item["options"]:
+            return "", ""
+        value = _normalized_choice(field_id, own)
+        if value:
+            return value, "회사 자료 입력값"
+        if field_id == "other_review" and project.psm_required is False:
+            return "미해당", "판정진단: 공정안전보고서 대상이 아님"
+        return "", ""
+    if own:
+        return "", ""
+    for key in ALT_KEYS.get(field_id, ()):
+        value = current_value(project, key)
+        if value:
+            return value, "회사 자료 입력값"
+    return "", ""
+
+
 def auto_rows(project: Stage2Project) -> list[AutoRow]:
     """Cells filled from earlier forms; shown read-only with where they came from."""
     sub = f2.submission(project)
