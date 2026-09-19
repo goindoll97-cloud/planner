@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from engine.stage2 import cap_basis_guides as basis
 from engine.stage2 import cap_release_workspace as rw
 from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import cap_workspace as ws
@@ -64,6 +65,19 @@ def render(project) -> None:
                                                    for r in edited.to_dict("records")])
         save_project(project)
         st.success(f"{saved_count}건을 저장했습니다. 별지 제14·15·16호에서도 이 목록을 씁니다.")
+
+    with st.expander("이 계산의 근거 기술지침"):
+        for guide in basis.basis_guides():
+            st.markdown(f"**KOSHA GUIDE {guide['number']}** {guide['title']}  \n쓰이는 곳: {guide['used_in']}"
+                        + (f"  \n검증: {guide['verified_edition']}" if guide.get("verified_edition") else ""))
+        state_key = f"cap_basis_status_{project.project_id}"
+        if st.button("현행 판 확인(코샤가이드 조회)", key=f"cap_basis_check_{project.project_id}",
+                     help="공공데이터포털 코샤가이드 조회서비스로 각 지침의 최신 공표본을 찾습니다. 조회 결과만 표시하며 계산에는 영향이 없습니다."):
+            st.session_state[state_key] = basis.basis_status()
+        for status in st.session_state.get(state_key, []):
+            st.write(f"• {status.summary}")
+            if status.latest and status.latest.download_url:
+                st.markdown(f"  [원문 내려받기]({status.latest.download_url})")
 
     saved_now = sc.saved_scenarios(project)
     if saved_now:
