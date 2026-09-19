@@ -255,7 +255,13 @@ else:
         if form.chemical_rows:
             frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
         st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
+    from ui import attachments_panel, cap_final_evidence_panel, report_export_panel
+    from engine.stage2 import psm_attachments
+
+    with st.expander("최종 제출 확인 · 타 제도 심사결과와 공동제출"):
+        cap_final_evidence_panel.render(project)
+    with st.expander("첨부 자료 · 도면과 분석 자료 올리기"):
+        attachments_panel.render(project, psm_attachments.CAP_SLOTS, "cap")
     st.markdown("### 점검하고 내려받기")
-    from ui import report_export_panel
 
     report_export_panel.render(project, "CAP")

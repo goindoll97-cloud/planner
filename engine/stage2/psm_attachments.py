@@ -41,7 +41,16 @@ SLOTS = (
     Slot("psm.operation.contractor", "도급업체 안전관리계획", "도급업체 안전관리 계획서입니다."),
     Slot("psm.operation.prestartup", "가동 전 점검지침", "가동 전 점검 지침과 점검표입니다."),
 )
-_BY_KEY = {slot.key: slot for slot in SLOTS}
+# 화학사고예방관리계획서에서 파일이 본체인 자료(표로 적는 별지 데이터와 겹치지 않는 키만 쓴다)
+CAP_SLOTS = (
+    Slot("documents.site_plan", "취급시설 입지 도면(사업장 전체배치도)", "사업장 전체와 취급시설의 입지를 나타내는 도면입니다."),
+    Slot("cap.site.unit_plant_layout", "단위공장 배치도", "단위공장의 배치를 나타내는 도면입니다."),
+    Slot("cap.site.equipment_layout", "취급시설 배치도", "취급시설(설비)의 배치를 나타내는 도면입니다."),
+    Slot("documents.pfd", "공정흐름도(PFD)", "공정의 흐름을 나타내는 도면입니다."),
+    Slot("documents.pid", "공정배관계장도(P&ID)", "배관과 계장을 나타내는 도면입니다."),
+    Slot("cap.facility.process_hazard_analysis", "공정위험성 분석 자료", "회사가 수행한 공정위험성 분석 결과 자료입니다."),
+)
+_BY_KEY = {slot.key: slot for slot in (*SLOTS, *CAP_SLOTS)}
 
 
 def attach(project: Stage2Project, key: str, file_name: str, data: bytes, *, reference_no: str = "",
@@ -70,9 +79,9 @@ def confirm(project: Stage2Project, key: str) -> bool:
     return True
 
 
-def status(project: Stage2Project) -> list[dict[str, Any]]:
+def status(project: Stage2Project, slots: tuple[Slot, ...] = SLOTS) -> list[dict[str, Any]]:
     out = []
-    for slot in SLOTS:
+    for slot in slots:
         record = project.get_field(slot.key)
         value = record.value if record is not None and isinstance(record.value, dict) else {}
         out.append({"slot": slot, "file_name": value.get("file_name", ""), "reference_no": value.get("reference_no", ""),
