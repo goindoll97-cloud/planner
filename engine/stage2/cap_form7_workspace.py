@@ -2,9 +2,11 @@ from __future__ import annotations
 
 """별지 제7호(유해화학물질의 유해성 정보) authoring support.
 
-매뉴얼 기준(p.43~45): 사고유형별 유해성이 큰 대표물질(화재·폭발 2종, 독성 2종,
-중복 시 합산)에 대해 인체·물리·환경 유해성과 선정 사유를 적는다. 대표물질은
-별지 제6호 물성(폭발한계 하한, 급성독성 구분)으로 제안하고, 서술 초안은 KOSHA
+법령 기준: 화학물질관리법 시행규칙 별표 4 제1호 나목 2)는 유해성이 가장 큰 대표물질 2종을,
+작성 규정 제19조 ③은 독성 누출·화재·폭발 사고유형별로 유해성이 큰 대표물질을 선정 사유와 함께
+별지 제7호에 적도록 한다. 두 규정이 함께 충족되도록 대표물질은 2종(가능하면 독성 1종 +
+화재·폭발 1종)으로 제안한다. 매뉴얼의 "사고유형별 2종(최대 4종)"보다 법령이 우선한다.
+대표물질은 별지 제6호 물성(폭발한계 하한, 급성독성 구분)으로 제안하고, 서술 초안은 KOSHA
 참고자료(단일물질)에서 가져오며, 사람은 확인·수정만 한다.
 """
 
@@ -21,7 +23,7 @@ from .project import Stage2Project
 HAZARD_KEY = "cap.chemical.hazard_information"
 KOSHA_SOURCE = "KOSHA 물질안전보건자료(참고, CAS 조회)"
 FIRE, TOXIC = "화재·폭발", "독성"
-PER_KIND = 2  # 매뉴얼: 화재·폭발 2종, 독성 2종
+MAX_REPRESENTATIVES = 2  # 시행규칙 별표 4: 대표물질 2종 (매뉴얼의 4종보다 법령 우선)
 
 
 @dataclass(frozen=True)
@@ -52,20 +54,33 @@ def suggest_representatives(project: Stage2Project) -> list[Suggestion]:
     fire = sorted(
         ((_number(r.get("폭발한계 하한")), r) for r in rows if _number(r.get("폭발한계 하한")) is not None),
         key=lambda pair: pair[0],
-    )[:PER_KIND]
+    )
     toxic = sorted(
         ((_category(r.get("독성구분")), r) for r in rows if _category(r.get("독성구분")) is not None),
         key=lambda pair: pair[0],
-    )[:PER_KIND]
+    )
     picked: dict[str, dict[str, Any]] = {}
-    for value, row in fire:
+
+    def add(kind: str, value: float, row: dict[str, Any]) -> None:
         entry = picked.setdefault(row["CAS 번호"], {"row": row, "kinds": [], "reasons": []})
-        entry["kinds"].append(FIRE)
-        entry["reasons"].append(f"폭발한계 하한이 {value:g}%로 낮아 화재·폭발 위험이 큰 물질")
-    for value, row in toxic:
-        entry = picked.setdefault(row["CAS 번호"], {"row": row, "kinds": [], "reasons": []})
-        entry["kinds"].append(TOXIC)
-        entry["reasons"].append(f"{_clean(row.get('독성구분 항목')) or '급성독성'} 구분 {value}로 독성이 큰 물질")
+        if kind in entry["kinds"]:
+            return
+        entry["kinds"].append(kind)
+        if kind == FIRE:
+            entry["reasons"].append(f"폭발한계 하한이 {value:g}%로 낮아 화재·폭발 위험이 큰 물질")
+        else:
+            entry["reasons"].append(f"{_clean(row.get('독성구분 항목')) or '급성독성'} 구분 {value:g}로 독성이 큰 물질")
+
+    # 사고유형별로 가장 유해성이 큰 물질 1종씩, 겹치면 다음 순위로 채워 모두 2종 이내
+    for kind, ranked in ((FIRE, fire), (TOXIC, toxic)):
+        if ranked:
+            add(kind, ranked[0][0], ranked[0][1])
+    for kind, ranked in ((FIRE, fire), (TOXIC, toxic)):
+        for value, row in ranked:
+            if len(picked) >= MAX_REPRESENTATIVES:
+                break
+            if row["CAS 번호"] not in picked:
+                add(kind, value, row)
     return [
         Suggestion(item["row"]["물질명"], cas, tuple(item["kinds"]), "이고, ".join(item["reasons"]) + "이므로 대표물질로 선정함")
         for cas, item in picked.items()

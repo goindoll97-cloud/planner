@@ -44,9 +44,12 @@ def render(project) -> None:
             st.warning("별지 제6호의 폭발한계 하한·독성구분이 비어 있어 제안할 수 없습니다. 별지 제6호 물성을 먼저 채우세요.")
         default = [cas for cas in (saved or suggestions) if cas in names]
         chosen = st.multiselect(
-            "대표물질(화재·폭발 2종 + 독성 2종, 중복 합산)", list(names), default=default,
+            "대표물질(시행규칙 별표 4: 2종)", list(names), default=default,
             format_func=lambda cas: f"{names[cas]} ({cas})", key=_selected_key(project),
         )
+        if len(chosen) > f7.MAX_REPRESENTATIVES:
+            st.warning(f"대표물질은 화학물질관리법 시행규칙 별표 4에 따라 {f7.MAX_REPRESENTATIVES}종입니다. "
+                       f"{len(chosen)}종을 고르면 앞의 {f7.MAX_REPRESENTATIVES}종만 서식에 작성됩니다.")
         if st.button("대표물질 저장", type="primary", key=f"cap_form07_save_sel_{project.project_id}"):
             keep = [dict(saved[cas]) if cas in saved else f7.draft_row(
                 project, cas, names[cas], suggestions[cas].reason if cas in suggestions else "") for cas in chosen]

@@ -53,6 +53,7 @@ class CAPForm7Data:
     row: dict[str, Any]
     blockers: tuple[str, ...]
     messages: tuple[str, ...]
+    extra_rows: tuple[dict[str, Any], ...] = ()  # 별지 제7호는 대표물질 2종(시행규칙 별표 4)
 
     @property
     def ready(self) -> bool:
@@ -158,25 +159,12 @@ def build_cap_form6_sds_data(project: Stage2Project) -> CAPForm6SDSData:
     )
 
 
-def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
-    hazard_rows = _confirmed_rows(project, "cap.chemical.hazard_information")
-    if not hazard_rows:
-        return CAPForm7Data(
-            {},
-            ("별지 제7호 대표물질의 회사 SDS 유해성 정보와 선정 사유를 입력해 주세요.",),
-            (),
-        )
+MAX_REPRESENTATIVES = 2  # 화학물질관리법 시행규칙 별표 4 제1호 나목 2): 대표물질 2종
 
-    blockers: list[str] = []
-    messages: list[str] = []
 
-    if len(hazard_rows) != 1:
-        blockers.append(
-            "현재 별지 제7호 DOCX baseline은 대표물질 1건을 작성하는 구조입니다. "
-            "대표물질로 사용할 1개 행만 남기거나 별도 서식 확장이 필요한지 확인해 주세요."
-        )
-
-    source = dict(hazard_rows[0])
+def _form7_row(source: dict[str, Any], legal_index, form1_index, blockers: list[str]) -> dict[str, Any]:
+    legal_by_cas, legal_by_name = legal_index
+    form1_by_cas, form1_by_name = form1_index
     name = _clean(_row_value(source, "물질명", "유해화학물질명", "제품명"))
     cas = _clean(_row_value(source, "CAS 번호", "CAS No.", "CAS"))
     label = name or cas or "대표물질"
@@ -193,11 +181,6 @@ def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
     ):
         if not any(_present(_row_value(source, alias)) for alias in aliases):
             blockers.append(f"{label}: '{field}'이 비어 있습니다.")
-
-    legal = build_cap_chemical_legal_data(project)
-    form1 = build_cap_form1_data(project)
-    legal_by_cas, legal_by_name = _index_rows(list(legal.rows))
-    form1_by_cas, form1_by_name = _index_rows(list(form1.chemical_rows))
 
     legal_match = legal_by_cas.get(cas) if cas else None
     if legal_match is None and name:
@@ -228,6 +211,32 @@ def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
         blockers.append(f"{label}: 현행 법령 DB에서 별지 제7호에 재사용할 고유번호를 확정하지 못했습니다.")
     if not _clean(row.get("최대보유량(ton)")):
         blockers.append(f"{label}: 별지 제1호에서 재사용할 최대보유량(ton)을 확정하지 못했습니다.")
+    return row
+
+
+def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
+    hazard_rows = _confirmed_rows(project, "cap.chemical.hazard_information")
+    if not hazard_rows:
+        return CAPForm7Data(
+            {},
+            ("별지 제7호 대표물질의 회사 SDS 유해성 정보와 선정 사유를 입력해 주세요.",),
+            (),
+        )
+
+    blockers: list[str] = []
+    messages: list[str] = []
+    if len(hazard_rows) > MAX_REPRESENTATIVES:
+        blockers.append(
+            f"대표물질은 화학물질관리법 시행규칙 별표 4에 따라 {MAX_REPRESENTATIVES}종입니다. "
+            f"현재 {len(hazard_rows)}종이 입력되어 있어 앞의 {MAX_REPRESENTATIVES}종만 서식에 작성합니다. "
+            f"대표물질을 {MAX_REPRESENTATIVES}종으로 정해 주세요."
+        )
+
+    legal = build_cap_chemical_legal_data(project)
+    form1 = build_cap_form1_data(project)
+    legal_index = _index_rows(list(legal.rows))
+    form1_index = _index_rows(list(form1.chemical_rows))
+    built = [_form7_row(dict(source), legal_index, form1_index, blockers) for source in hazard_rows[:MAX_REPRESENTATIVES]]
 
     messages.append(
         "별지 제7호의 고유번호·최대보유량은 회사가 재입력하지 않고 별지 제6호 법령판정과 별지 제1호 계산결과를 재사용합니다."
@@ -235,9 +244,10 @@ def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
     messages.append("인체·물리·환경 유해성과 선정 사유는 회사 SDS/확인자료만 사용합니다.")
 
     return CAPForm7Data(
-        row=row,
+        row=built[0],
         # Form 7 should fail on the selected representative substance, not on
         # an unrelated material's blocker elsewhere in the company inventory.
         blockers=tuple(dict.fromkeys(blockers)),
         messages=tuple(dict.fromkeys(messages)),
+        extra_rows=tuple(built[1:]),
     )

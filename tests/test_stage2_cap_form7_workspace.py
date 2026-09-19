@@ -62,11 +62,35 @@ class CAPForm7WorkspaceTests(unittest.TestCase):
         self.assertNotIn("'인체유해성'이 비어", joined)
         self.assertNotIn("'선정 사유'이 비어", joined)
 
-    def test_more_than_one_representative_is_flagged_until_the_form_supports_it(self):
+    def test_law_allows_two_representatives_and_both_reach_the_docx(self):
+        project = _project()
+        first = f7.draft_row(project, "108-88-3", "시험물질", "사유1")
+        second = dict(first, **{"CAS 번호": "67-64-1", "물질명": "아세톤", "선정 사유": "사유2"})
+        f7.save_rows(project, [first, second])
+        self.assertFalse(any("2종" in item and "입력되어" in item for item in f7.needs(project)))
+        doc = Document(BytesIO(build_cap_baseline_draft(project)))
+        texts = [" ".join(c.text for r in t.rows for c in r.cells) for t in doc.tables]
+        self.assertTrue(any("시험물질" in t and "사유1" in t for t in texts))
+        self.assertTrue(any("아세톤" in t and "사유2" in t for t in texts))
+
+    def test_more_than_two_representatives_is_flagged_by_the_enforcement_rule(self):
         project = _project()
         row = f7.draft_row(project, "108-88-3", "시험물질", "사유")
-        f7.save_rows(project, [row, dict(row, **{"CAS 번호": "67-64-1", "물질명": "아세톤"})])
-        self.assertTrue(any("1개 행" in item for item in f7.needs(project)))
+        f7.save_rows(project, [row, dict(row, **{"CAS 번호": "67-64-1", "물질명": "아세톤"}),
+                               dict(row, **{"CAS 번호": "71-43-2", "물질명": "벤젠"})])
+        self.assertTrue(any("시행규칙 별표 4" in item and "2종" in item for item in f7.needs(project)))
+
+    def test_suggestion_follows_the_law_two_substances_one_per_accident_type(self):
+        project = _project()
+        chem.apply_candidates(project, ["108-88-3"])
+        rows = f6.property_rows(project)
+        other = dict(rows[0], **{"물질명": "아세톤", "CAS 번호": "67-64-1", "폭발한계 하한": "2.6", "독성구분": "구분 4"})
+        third = dict(rows[0], **{"물질명": "벤젠", "CAS 번호": "71-43-2", "폭발한계 하한": "1.3", "독성구분": "구분 3"})
+        details = project.get_field("cap.chemical.details").value + [other, third]
+        project.set_field("cap.chemical.details", "화학물질 상세", details, "USER_CONFIRMED")
+        picked = f7.suggest_representatives(project)
+        self.assertEqual(len(picked), 2)
+        self.assertEqual({s.cas for s in picked}, {"108-88-3", "71-43-2"})  # 최저 폭발하한 1.2 / 최저 독성구분 2
 
     def test_page_is_wired(self):
         root = Path(__file__).resolve().parents[1]

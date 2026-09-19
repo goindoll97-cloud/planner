@@ -642,11 +642,33 @@ def _fill_form6(table, project: Stage2Project) -> None:
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
 
 
+def _clone_table_after(table):
+    """Insert an unfilled copy of `table` right after it (with a paragraph between) and return it."""
+    from docx.oxml import OxmlElement
+    from docx.table import Table
+
+    spacer = OxmlElement("w:p")
+    table._tbl.addnext(spacer)
+    clone = deepcopy(table._tbl)
+    spacer.addnext(clone)
+    return Table(clone, table._parent)
+
+
 def _fill_form7(table, project: Stage2Project) -> None:
     prepared = build_cap_form7_data(project)
-    row = prepared.row
-    if not row:
+    if not prepared.row:
         return
+    # 별지 제7호: 대표물질 2종(시행규칙 별표 4) → one table per substance
+    targets = [(table, prepared.row)]
+    previous = table
+    for extra in prepared.extra_rows:
+        previous = _clone_table_after(previous)
+        targets.append((previous, extra))
+    for target_table, target_row in targets:
+        _fill_form7_table(target_table, target_row)
+
+
+def _fill_form7_table(table, row) -> None:
 
     max_holding = base._row_value(row, "최대보유량(ton)", "최대보유량")
     if max_holding not in (None, "") and "ton" not in str(max_holding).lower():
