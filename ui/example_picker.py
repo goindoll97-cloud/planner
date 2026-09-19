@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+"""예시에서 고르거나 직접 쓰는 입력칸. 예시를 눌러도 저장되지 않고, 입력칸에 채워질 뿐이다(사용자가 저장해야 회사 사실이 된다)."""
+
+import streamlit as st
+
+from engine.stage2 import narrative_examples as examples
+
+
+def _use(key: str, text: str) -> None:
+    st.session_state[key] = text
+
+
+def text_with_examples(label: str, key: str, *, value: str = "", help_text: str = "", choices: list[str] | None = None,
+                       long: bool = False, template: str = "", checks: list[str] | None = None) -> str:
+    if key not in st.session_state:
+        st.session_state[key] = value
+    widget = st.text_area if long else st.text_input
+    text = widget(label, key=key, help=help_text or None)
+    if template:
+        st.caption("문장 틀: " + template)
+    if choices:
+        with st.expander("예시에서 고르기 (고른 뒤 고쳐 쓸 수 있습니다)"):
+            for index, sample in enumerate(choices):
+                left, right = st.columns([6, 1])
+                left.write(sample)
+                right.button("사용", key=f"{key}__ex{index}", on_click=_use, args=(key, sample))
+            st.caption(examples.notice())
+    if checks:
+        st.caption("확인할 점: " + " / ".join(checks))
+    return text
