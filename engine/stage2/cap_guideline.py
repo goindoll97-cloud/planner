@@ -144,3 +144,16 @@ def preliminary_scenario_quantities() -> dict[tuple[str, str], float]:
                     result[(row[0].strip(), row[1].strip())] = float(match.group(1).replace(",", ""))
             break
     return result
+
+
+@lru_cache(maxsize=1)
+def initiating_event_frequencies() -> dict[str, float]:
+    """별지 제14호 서식 표에 인쇄된 개시사건 -> 기준빈도(/연)."""
+    result: dict[str, float] = {}
+    for row in form_guidelines()[14].tables[0]:
+        cells = [c.strip() for c in row]
+        if len(cells) >= 3 and cells[0].isdigit():
+            found = re.match(r"^(\d+(?:\.\d+)?)\s*[×x]\s*10\s*-\s*(\d+)$", cells[2])
+            if found:
+                result[cells[1]] = float(found.group(1)) * 10 ** -int(found.group(2))
+    return result
