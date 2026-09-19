@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import cap_start
+from ui import chemical_upload_panel
 from engine.stage2.storage import save_project
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
@@ -40,12 +41,11 @@ def render(expanded: bool) -> None:
         name = left.text_input("사업장명", key="cap_start_name")
         address = middle.text_input("사업장 주소", key="cap_start_address")
         industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry")
-        frame = pd.DataFrame(
-            [{"제품명": "", "CAS No.": "", "함량(%)": 100.0, "최대 동시보유량(ton)": None}],
-            columns=list(cap_start.CHEMICAL_INPUT_COLUMNS),
-        )
+        blank = {"제품명": "", "CAS No.": "", "함량(%)": 100.0, "최대 동시보유량(ton)": None}
+        generation = st.session_state.get("cap_start_gen", 0)  # 엑셀로 행을 추가하면 새 표로 다시 그린다
+        frame = pd.DataFrame(st.session_state.get("cap_start_seed") or [blank], columns=list(cap_start.CHEMICAL_INPUT_COLUMNS))
         edited = st.data_editor(
-            frame, num_rows="dynamic", width="stretch", hide_index=True, key="cap_start_chemicals",
+            frame, num_rows="dynamic", width="stretch", hide_index=True, key=f"cap_start_chemicals_{generation}",
             column_config={
                 "제품명": st.column_config.TextColumn("제품명(물질명)", help="취급하는 유해화학물질 또는 제품 이름입니다. CAS 번호만 알아도 됩니다."),
                 "CAS No.": st.column_config.TextColumn("CAS No.", help="화학물질 고유 번호입니다. (예시) 7782-50-5(염소)"),
@@ -55,6 +55,29 @@ def render(expanded: bool) -> None:
                     "최대 동시보유량(ton)", min_value=0.0, help="사업장에서 그 물질을 한꺼번에 가장 많이 보유하는 양입니다. 모르면 비워 두세요."),
             },
         )
+
+        def add_uploaded(rows, file_name, sha256):
+            """올린 파일의 정상 행을 이 입력 표에 합친다(이미 적은 행은 그대로, 같은 물질은 건너뜀)."""
+            def number(text):
+                try:
+                    return float(text) if str(text).strip() else None
+                except ValueError:
+                    return None
+
+            current = [r for r in edited.to_dict("records") if str(r.get("제품명") or "").strip() or str(r.get("CAS No.") or "").strip()]
+            have = {str(r.get("CAS No.") or "").strip() for r in current if str(r.get("CAS No.") or "").strip()}
+            added = []
+            for row in rows:
+                if row["CAS No."] and row["CAS No."] in have:
+                    continue
+                added.append({"제품명": row["제품명"], "CAS No.": row["CAS No."], "함량(%)": number(row["함량(%)"]),
+                              "최대 동시보유량(ton)": number(row["최대 동시보유량(ton)"])})
+            st.session_state["cap_start_seed"] = [*current, *added]
+            st.session_state["cap_start_gen"] = generation + 1
+            return f"{file_name}에서 물질 {len(added)}건을 아래 표에 추가했습니다. 확인한 뒤 '법정 대상 판정하고 시작'을 누르세요."
+
+        chemical_upload_panel.render("cap_start_upload", existing=(
+            {str(r.get("CAS No.") or "").strip() for r in edited.to_dict("records")} - {""}, set()), add_rows=add_uploaded)
         if not st.button("법정 대상 판정하고 시작", type="primary", key="cap_start_go"):
             return
         if _gate_hold():
