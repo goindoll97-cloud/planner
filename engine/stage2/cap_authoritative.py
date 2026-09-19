@@ -247,6 +247,7 @@ def cap_form6_msds_candidates(project: Stage2Project) -> list[CAPReferenceCandid
                 out.append(CAPReferenceCandidate(chemical.cas, name, field, value, section, label))
 
         add("물질상태", _physical_state(payload))
+        add("분자량", _first_explicit(payload, (9, 3), ("분자량",)))
         add("비중", _first_explicit(payload, (9,), ("비중", "상대밀도")))
         add("폭발한계 하한(%)", _first_explicit(payload, (9,), ("폭발한계 하한", "폭발하한", "인화하한", "하한 폭발")))
         add("폭발한계 상한(%)", _first_explicit(payload, (9,), ("폭발한계 상한", "폭발상한", "인화상한", "상한 폭발")))

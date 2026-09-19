@@ -214,10 +214,12 @@ elif step_id == "result":
         st.error(blocker)
     for line in ws.result_sentences(list(form.chemical_rows)):
         st.write("• " + line)
+    hint_label, hint_reason = ws.level_hint(list(form.chemical_rows), form.writing_level)
     st.metric(
         "사업장 작성수준", form.writing_level or "미확정",
         help="판정진단에서 승계된 값입니다. 바꾸려면 판정진단을 다시 수행합니다.",
     )
+    st.info(f"이 서식의 물질별 최대보유량으로 본 결과: **{hint_label}** — {hint_reason}")
     st.caption("1군은 주요취급시설(규칙 제19조제8항)을 운영하는 경우에 해당합니다. 그 여부는 판정진단에서 확인한 값을 따릅니다.")
 
 else:
