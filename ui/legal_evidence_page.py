@@ -109,7 +109,7 @@ st.markdown("### 작성항목 근거 검색")
 query = st.text_input(
     "찾고 싶은 작성항목을 입력하세요",
     value=default_query,
-    placeholder="예: 공정흐름도, P&ID, 안전밸브, 비상연락체계",
+    placeholder="(예시) 공정흐름도, P&ID, 안전밸브, 비상연락체계",
 )
 
 if query.strip():

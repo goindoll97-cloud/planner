@@ -110,7 +110,7 @@ def _table_15(project) -> None:
                            **{column: _clean(r.get(column)) for column in PSM_ONLY_COLUMNS}} for r in rows])
     edited = st.data_editor(frames.safe(frame), hide_index=True, width="stretch", key="psm_form15_extra",
                             disabled=["설비번호", "설비명"], column_config={
-                                "용접효율": st.column_config.TextColumn("용접효율", help="용접부의 효율입니다. 예: 0.85"),
+                                "용접효율": st.column_config.TextColumn("용접효율", help="용접부의 효율입니다. (예시) 0.85"),
                                 "비파괴검사율": st.column_config.TextColumn("비파괴검사율(%)", help="비파괴검사를 하는 비율입니다.")})
     if st.button("이 표 저장", key="psm_form15_save"):
         stored = {}

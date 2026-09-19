@@ -65,7 +65,7 @@ def render(project) -> None:
                 item["능동적 완화장치"] = ", ".join(st.multiselect("능동적 완화장치", f14.ACTIVE_OPTIONS, default=active, key=key + "_a"))
                 item["안전성확보설비 증빙"] = st.text_input(
                     "증빙(도면번호·설치 확인 자료)", value=row["안전성확보설비 증빙"], key=key + "_e",
-                    help="선택한 설비가 있으면 필요합니다. 예: P&ID 12번 도면, 설치 사진")
+                    help="선택한 설비가 있으면 필요합니다. (예시) P&ID 12번 도면, 설치 사진")
                 merged.append(item)
         if st.button("저장", type="primary", key=f"cap_form14_save_m_{project.project_id}"):
             f14.save(project, merged)

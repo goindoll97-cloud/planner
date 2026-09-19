@@ -59,7 +59,7 @@ def render(project) -> None:
         edited_rows: list[dict] = []
         if no_target:
             evidence = st.text_input("확인 근거", key=f"cap_form08_evidence_{project.project_id}",
-                                     help="예: 지도 캡처 2026-09-19, 현장 확인")
+                                     help="(예시) 지도 캡처 2026-09-19, 현장 확인")
         else:
             frame = pd.DataFrame(rows_source, columns=list(f8.COLUMNS))
             config = {
@@ -67,7 +67,7 @@ def render(project) -> None:
                                                                help="갑종·을종·환경수용체(별표 4)"),
                 "세부유형": st.column_config.SelectboxColumn(
                     "세부유형", options=[o for opts in f8.SUBTYPES.values() for o in opts],
-                    help="별표 4의 종류입니다. 규모 조건(예: 300명 이상)이 있는 항목은 아래 도움말을 확인하세요."),
+                    help="별표 4의 종류입니다. 규모 조건(예시: 300명 이상)이 있는 항목은 아래 도움말을 확인하세요."),
                 "사업장 경계와 거리(m)": st.column_config.NumberColumn("경계 기준 거리(m)", min_value=0),
                 "거주민수": st.column_config.NumberColumn(
                     "거주민수", min_value=0, help="그 대상에 사는 사람 수입니다. 별지 제12·13호 영향범위 내 주민 수 집계에 쓰입니다(비우면 0)."),
