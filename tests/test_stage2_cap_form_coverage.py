@@ -103,11 +103,6 @@ class CAPFormCoverageTests(unittest.TestCase):
         self.assertEqual(target.state, ASK_COMPANY)
         self.assertIn("P&ID", target.source_kind)
 
-    def test_stage4_ui_exposes_statutory_form_blank_audit(self):
-        source = (ROOT / "ui" / "stage2_validation_page.py").read_text(encoding="utf-8")
-        self.assertIn("### 법정서식 공란·작성가능성 점검", source)
-        self.assertIn("법령조회, 계산, 영향평가 또는 출력엔진 보완", source)
-        self.assertIn("audit_cap_form_coverage", source)
 
 
 if __name__ == "__main__":

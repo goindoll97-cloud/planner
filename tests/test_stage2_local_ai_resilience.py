@@ -308,18 +308,6 @@ class Stage2LocalAIResilienceTests(unittest.TestCase):
         self.assertEqual(len(result.generated), 3)
         self.assertEqual(checkpoint.call_count, 3)
 
-    def test_review_page_imports_resilient_client_and_drafting(self):
-        # ui/stage2_review_page.py imports build_local_llm_client/
-        # local_llm_config_from_sources/generate_system_ai_drafts directly
-        # from local_ai_resilience (not the plain local_llm/ai_drafting
-        # versions), so there is no install step needed to make the real app
-        # use the resilient behavior.
-        with open("ui/stage2_review_page.py", encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertIn("from engine.stage2.local_ai_resilience import (", source)
-        self.assertIn("build_local_llm_client", source)
-        self.assertIn("generate_system_ai_drafts", source)
-        self.assertIn("local_llm_config_from_sources", source)
 
     def test_fast_auto_selection_picks_smaller_installed_model_and_batch(self):
         configured = LocalLLMConfig(

@@ -5,7 +5,7 @@ from __future__ import annotations
 The statutory HWP/HWPX attachment remains the layout authority.  These
 conversion helpers are retained for internal/explicit use; Stage 5 does not
 expose a Word-conversion section.  (Stage 5's own synthetic combined DOCX
-labels/styling live directly in ui/stage2_review_page.py.)
+labels/styling now live in the shared export panel, ui/report_export_panel.py.)
 """
 
 from contextlib import redirect_stderr, redirect_stdout
