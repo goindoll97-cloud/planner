@@ -1,0 +1,65 @@
+{
+  "schema_version": "cap-form-workspace-v1",
+  "form_no": 3,
+  "title": "별지 제3호서식 · 사업장 일반정보",
+  "help_status": "제목·표 구성은 guideline 문서의 별지 제3호를 따릅니다. 앞 서식에서 이미 입력한 값(사업장명·단위공장명·제출구분·작성수준)은 다시 묻지 않고 자동으로 채웁니다.",
+  "sections": [
+    {
+      "id": "fields",
+      "title": "사업장 일반정보",
+      "fields": [
+        {"id": "registration_no", "label": "사업자 등록번호", "key": "cap.business.registration_no", "kind": "text", "step": "identity",
+         "help": "사업자등록증에 적힌 10자리 번호(000-00-00000)입니다."},
+        {"id": "representative", "label": "대표자", "key": "cap.business.representative", "kind": "text", "step": "identity",
+         "help": "사업자등록증상의 대표자 성명입니다."},
+        {"id": "address", "label": "우편번호/주소", "key": "business.address", "kind": "text", "step": "identity",
+         "help": "사업장(공장) 소재지의 우편번호와 도로명 주소입니다. 이 주소는 이후 사업장 주변 환경정보(별지 제8호)에서도 씁니다."},
+        {"id": "industrial_complex", "label": "산업단지", "key": "cap.business.industrial_complex", "kind": "text", "step": "identity",
+         "help": "산업단지 안에 있으면 산업단지 이름을, 아니면 '해당 없음'을 적습니다."},
+        {"id": "contact", "label": "대표전화", "key": "cap.business.contact", "kind": "text", "step": "identity",
+         "help": "사업장 대표 전화번호입니다."},
+        {"id": "joint", "label": "공동비상대응계획 수립 여부", "key": "cap.business.joint_emergency_plan", "kind": "choice", "step": "submission",
+         "options": ["공동제출", "단독제출"],
+         "help": "다른 사업장과 공동으로 비상대응계획을 작성·제출하면 '공동제출', 이 사업장 단독이면 '단독제출'입니다."},
+        {"id": "other_review", "label": "유사제도 심사결과 활용", "key": "cap.business.other_system_review", "kind": "choice", "step": "submission",
+         "options": ["미해당", "해당(공정안전보고서)", "해당(안전성향상계획)"],
+         "help": "공정안전보고서나 안전성향상계획의 심사결과를 활용하면 해당하는 것을 고르고, 활용하지 않으면 '미해당'입니다."},
+        {"id": "residents", "label": "총괄영향범위내 주민여부", "key": "cap.business.residents_in_overall_range", "kind": "choice", "step": "submission",
+         "options": ["있음", "없음"],
+         "help": "총괄영향범위 안에 주민이 있는지입니다. 영향평가(별지 제12·13호)를 작성하면 그 결과로 자동 판단되므로 그때까지 비워 두어도 됩니다."},
+        {"id": "recent_accident", "label": "최근 3년간 화학사고 발생 여부", "key": "cap.business.recent_accident", "kind": "choice", "step": "submission",
+         "options": ["있음", "없음"],
+         "help": "최근 3년 안에 이 사업장에서 화학사고가 발생했으면 '있음'입니다."},
+        {"id": "writer_department", "label": "작성자 소속 부서", "key": "cap.business.writer_department", "kind": "text", "step": "writer",
+         "help": "계획서를 작성한 담당자의 부서입니다."},
+        {"id": "writer_name", "label": "작성자 성명", "key": "cap.business.writer_name", "kind": "text", "step": "writer",
+         "help": "계획서를 작성한 담당자 성명입니다."},
+        {"id": "writer_contact", "label": "담당자 연락처", "key": "cap.business.writer_contact", "kind": "text", "step": "writer",
+         "help": "담당자 직통 전화번호입니다."},
+        {"id": "writer_email", "label": "담당자 메일주소", "key": "cap.business.writer_email", "kind": "text", "step": "writer",
+         "help": "담당자 업무용 메일 주소입니다."}
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "identity",
+      "title": "1. 사업장 기본정보",
+      "summary": "사업자등록증만 있으면 채울 수 있는 정보입니다. 앞에서 입력한 값은 자동으로 들어갑니다.",
+      "explain": [
+        {"term": "이 서식은 무엇인가요?", "text": "계획서 맨 앞에 붙는 사업장 소개 서식입니다. 사업장 이름·대표자·주소·제출 종류·작성 수준·작성자를 한 장에 모아 적습니다."},
+        {"term": "이미 채워진 칸은 뭔가요?", "text": "사업장명·단위공장명·제출구분·작성수준은 앞 서식(별지 제1·2호)에서 입력하거나 계산한 값이라 자동으로 들어갑니다. 고치려면 그 서식에서 고칩니다."}
+      ]
+    },
+    {
+      "id": "submission",
+      "title": "2. 제출·심사 정보",
+      "summary": "해당하는 것을 고르기만 하면 됩니다.",
+      "explain": [
+        {"term": "모르겠으면?", "text": "주민 여부는 영향평가(별지 제12·13호)를 작성하면 자동으로 채워지니 비워 두세요."}
+      ]
+    },
+    {"id": "writer", "title": "3. 작성자", "summary": "계획서를 작성한 담당자를 적습니다.", "explain": []},
+    {"id": "result", "title": "4. 결과", "summary": "서식에 채워지는 내용을 확인합니다.", "explain": []}
+  ]
+}
