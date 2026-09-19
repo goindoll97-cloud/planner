@@ -53,12 +53,15 @@ def burning_rate_kg_m2_s(heat_of_combustion_kj_kg: float, liquid_cp_kj_kg_k: flo
     return 0.001 * heat_of_combustion_kj_kg / denominator
 
 
-def pool_fire_distance_m(pool_area_m2: float, burning_rate: float, heat_of_combustion_kj_kg: float) -> float:
-    """풀 화재 중심에서 5 kW/m2 열류에 이르는 거리(m)."""
+def pool_fire_distance_m(pool_area_m2: float, burning_rate: float, heat_of_combustion_kj_kg: float,
+                         endpoint_kw_m2: float = FIRE_ENDPOINT_KW_M2) -> float:
+    """풀 화재 중심에서 끝점 열류(기본 5 kW/m2)에 이르는 거리(m)."""
     heat_release_w = burning_rate * pool_area_m2 * heat_of_combustion_kj_kg * 1000.0
-    return point_source_radius_m(heat_release_w, POOL_RADIATIVE_FRACTION)
+    return point_source_radius_m(heat_release_w, POOL_RADIATIVE_FRACTION, endpoint_kw_m2)
 
 
-def jet_fire_distance_m(release_rate_kg_s: float, heat_of_combustion_kj_kg: float) -> float:
-    """제트 화재(기체 누출 점화) 화염 중심에서 5 kW/m2 열류에 이르는 거리(m)."""
-    return point_source_radius_m(release_rate_kg_s * heat_of_combustion_kj_kg * 1000.0, JET_RADIATIVE_FRACTION)
+def jet_fire_distance_m(release_rate_kg_s: float, heat_of_combustion_kj_kg: float,
+                        endpoint_kw_m2: float = FIRE_ENDPOINT_KW_M2) -> float:
+    """제트 화재(기체 누출 점화) 화염 중심에서 끝점 열류(기본 5 kW/m2)에 이르는 거리(m)."""
+    return point_source_radius_m(release_rate_kg_s * heat_of_combustion_kj_kg * 1000.0, JET_RADIATIVE_FRACTION,
+                                 endpoint_kw_m2)
