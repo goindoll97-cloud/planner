@@ -105,3 +105,55 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
         return [], f"주변 검색에 실패했습니다({type(exc).__name__}). 보호대상을 직접 입력하세요."
     ordered = sorted(found.values(), key=lambda c: (c.distance_m is None, c.distance_m or 0.0))
     return ordered, f"{len(ordered)}건을 찾았습니다. 규모 조건(별표 4)과 사업장 경계 기준 거리는 확인이 필요합니다."
+
+
+def env_diagnosis() -> list[str]:
+    """키를 못 찾을 때 원인을 사용자가 스스로 확인하도록, 프로그램이 어디를 어떻게 봤는지 알려 준다(키 값은 절대 내보내지 않는다)."""
+    from pathlib import Path
+
+    from ..kosha_msds import PROJECT_ROOT
+
+    lines: list[str] = []
+    variable = os.environ.get(ENV_KEY)
+    lines.append("환경변수 " + (f"{ENV_KEY}: 값이 있음" if variable and variable.strip() else
+                              f"{ENV_KEY}: 비어 있음" if variable is not None else f"{ENV_KEY}: 설정되어 있지 않음"))
+    seen: set[str] = set()
+    for folder in (PROJECT_ROOT, Path.cwd()):
+        folder = folder.resolve()
+        if str(folder) in seen:
+            continue
+        seen.add(str(folder))
+        path = folder / ".env"
+        if not path.exists():
+            lines.append(f"{path}: 파일이 없습니다")
+            similar = sorted(p.name for p in folder.glob(".env*") if p.name != ".env")
+            if similar:
+                lines.append(f"  같은 폴더에 비슷한 이름의 파일이 있습니다: {', '.join(similar)} — 파일 이름이 정확히 .env 인지 확인하세요"
+                             "(메모장이 .env.txt로 저장하는 경우가 많습니다)")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="ignore")
+        except OSError as exc:
+            lines.append(f"{path}: 읽을 수 없습니다({type(exc).__name__})")
+            continue
+        names = []
+        exact_value = False
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].lstrip()
+            key, value = line.split("=", 1)
+            key, value = key.strip(), value.strip().strip('"').strip("'")
+            if "KAKAO" in key.upper():
+                names.append(key)
+            if key == ENV_KEY and value:
+                exact_value = True
+        if exact_value:
+            lines.append(f"{path}: 파일을 찾았고 {ENV_KEY} 값도 있습니다(프로그램을 다시 실행했는지 확인하세요)")
+        elif names:
+            lines.append(f"{path}: 파일은 있지만 정확한 이름 {ENV_KEY}의 값이 없습니다. 파일에 있는 KAKAO 관련 이름: {', '.join(names)}")
+        else:
+            lines.append(f"{path}: 파일은 있지만 {ENV_KEY} 줄이 없습니다(줄 시작에 #이 붙어 있지 않은지, 이름 철자가 맞는지 확인하세요)")
+    return lines

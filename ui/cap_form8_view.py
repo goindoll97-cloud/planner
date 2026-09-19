@@ -29,6 +29,11 @@ def render(project) -> None:
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
         if not lookup.api_key():
             st.info(f"{lookup.ENV_KEY}가 없어 자동 검색을 쓸 수 없습니다. 다음 단계에서 보호대상을 직접 입력하세요.")
+            with st.expander("키를 못 찾는 이유 확인하기"):
+                st.caption("프로그램이 키를 어디에서 찾았는지 보여 줍니다(키 값은 표시하지 않습니다).")
+                for line in lookup.env_diagnosis():
+                    st.write("• " + line)
+                st.caption(".env 파일을 고쳤다면 프로그램을 완전히 껐다가 다시 실행해야 새 값을 읽습니다.")
         elif st.button("주변 보호대상 후보 검색", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
             found, message = lookup.find_candidates(addr)
             st.session_state[CAND_KEY] = [f8.candidate_row(c) for c in found]

@@ -51,3 +51,31 @@ class EnvFileVariantsTests(unittest.TestCase):
 
     def test_an_empty_environment_variable_does_not_block_the_env_file(self):
         self.assertEqual(self._read(b"KAKAO_REST_API_KEY=abc\n", {"KAKAO_REST_API_KEY": ""}), "abc")
+
+
+class DiagnosisTests(unittest.TestCase):
+    def _diagnose(self, files: dict[str, str], env: dict | None = None) -> str:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(kosha_msds, "PROJECT_ROOT", Path(tmp)), \
+             patch("pathlib.Path.cwd", return_value=Path(tmp)):
+            for name, text in files.items():
+                (Path(tmp) / name).write_text(text, encoding="utf-8")
+            with patch.dict(os.environ, env or {}, clear=False):
+                os.environ.pop("KAKAO_REST_API_KEY", None) if env is None else None
+                return "\n".join(lookup.env_diagnosis())
+
+    def test_wrong_file_name_is_pointed_out(self):
+        text = self._diagnose({".env.txt": "KAKAO_REST_API_KEY=secretvalue\n"})
+        self.assertIn("파일이 없습니다", text)
+        self.assertIn(".env.txt", text)
+
+    def test_misspelled_variable_name_is_listed_without_its_value(self):
+        text = self._diagnose({".env": "KAKAO_API_KEY=secretvalue\n"})
+        self.assertIn("정확한 이름 KAKAO_REST_API_KEY의 값이 없습니다", text)
+        self.assertIn("KAKAO_API_KEY", text)
+        self.assertNotIn("secretvalue", text)
+
+    def test_missing_line_and_correct_line_are_distinguished_and_values_never_leak(self):
+        self.assertIn("줄이 없습니다", self._diagnose({".env": "LAW_OC=abc\n# KAKAO_REST_API_KEY=zzz\n"}))
+        ok = self._diagnose({".env": "KAKAO_REST_API_KEY=topsecret\n"})
+        self.assertIn("값도 있습니다", ok)
+        self.assertNotIn("topsecret", ok)
