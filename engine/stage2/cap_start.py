@@ -16,6 +16,7 @@ import pandas as pd
 
 from ..inventory import IntakeData, validate_intake
 from ..stage1_workbook import assess_stage1_from_workbook
+from . import cap_judgement
 from .project import Stage2Project, create_project_from_stage1_snapshot
 
 BUSINESS_FIELDS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
@@ -26,7 +27,7 @@ UNIT = "ton"
 
 @dataclass(frozen=True)
 class StartOutcome:
-    status: str  # STARTED / NOT_REQUIRED / REQUEST / SYSTEM / INVALID
+    status: str  # STARTED / PENDING(판정 대기 사업장을 만듦) / NOT_REQUIRED / SYSTEM / INVALID
     messages: tuple[str, ...] = field(default_factory=tuple)
     project: Stage2Project | None = None
     cap_status: str = ""
@@ -74,12 +75,35 @@ def build_intake(business: Mapping[str, Any], rows: list[Mapping[str, Any]]) -> 
                       source_fingerprint=fingerprint)
 
 
+def _records(intake: IntakeData) -> list[dict[str, Any]]:
+    records = intake.chemicals.astype(object).where(intake.chemicals.notna(), None).to_dict("records")
+    for record in records:
+        record["물질명"] = record.get("물질명(알면 입력)") or record.get("제품명")
+    return records
+
+
+def _pending(intake: IntakeData, messages: tuple[str, ...], **base: str) -> StartOutcome:
+    """판정을 미룬 채 사업장을 만든다. 최대보유량은 별지 제1호 시설 입력으로 계산한 뒤, 판정에 필요한 질문에 답하고 판정한다."""
+    snapshot = {"source_fingerprint": intake.source_fingerprint, "business": dict(intake.business), "documents": {},
+                "chemicals": _records(intake), "mixture_components": [], "facilities": [], "decision": {}}
+    project = create_project_from_stage1_snapshot(snapshot)
+    project.stage1_snapshot[cap_judgement.PENDING_KEY] = True
+    return StartOutcome("PENDING", messages, project, **base)
+
+
 def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
           assess: Callable[[IntakeData], Any] = assess_stage1_from_workbook) -> StartOutcome:
+    """사업장을 만든다. 판정에 필요한 정보가 다 있으면 바로 판정하고, 부족하면(최대보유량을 모르거나 판정에 필요한 확인 사항이
+    남았으면) 판정을 미룬 사업장을 만들어 별지 작성 화면에서 이어 가게 한다."""
     intake = build_intake(business, rows)
     issues = validate_intake(intake)
-    if issues:
-        return StartOutcome("INVALID", tuple(issues))
+    quantity_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE in i]
+    other_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE not in i]
+    if other_issues:
+        return StartOutcome("INVALID", tuple(other_issues))
+    if quantity_issues:
+        return _pending(intake, ("최대보유량을 모르는 물질이 있어 법정 대상 판정을 뒤로 미뤘습니다. 별지 제1호에서 시설을 입력하면 "
+                                 "최대보유량이 계산됩니다. 그 뒤 '법정 대상 판정하기'를 눌러 주세요.",))
     decision = assess(intake)
     cap_status = str(getattr(decision, "cap_status", ""))
     base = dict(cap_status=cap_status, cap_explanation=str(getattr(decision, "cap_explanation", "")),
@@ -87,13 +111,10 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
     if getattr(decision, "system_blockers", None):
         return StartOutcome("SYSTEM", tuple(decision.system_blockers), **base)
     if getattr(decision, "company_requests", None):
-        return StartOutcome("REQUEST", tuple(decision.company_requests), **base)
-    records = intake.chemicals.astype(object).where(intake.chemicals.notna(), None).to_dict("records")
-    for record in records:
-        record["물질명"] = record.get("물질명(알면 입력)") or record.get("제품명")
+        return _pending(intake, tuple(decision.company_requests), **base)
     snapshot = {
         "source_fingerprint": intake.source_fingerprint, "business": dict(intake.business), "documents": {},
-        "chemicals": records, "mixture_components": [], "facilities": [],
+        "chemicals": _records(intake), "mixture_components": [], "facilities": [],
         "decision": asdict(decision) if is_dataclass(decision) else dict(vars(decision)),
     }
     project = create_project_from_stage1_snapshot(snapshot)

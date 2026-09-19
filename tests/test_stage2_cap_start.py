@@ -77,12 +77,28 @@ class CapStartTests(unittest.TestCase):
         self.assertIsNone(outcome.project)
         self.assertIn("의무 없음", outcome.cap_status)
 
-    def test_company_requests_and_system_blockers_stop_the_start(self):
+    def test_engine_requests_create_a_pending_site_and_only_system_blockers_stop_the_start(self):
         request = cap_start.start(BUSINESS, CHEMICALS, assess=lambda intake: _decision(requests=["함량 확인"]))
         system = cap_start.start(BUSINESS, CHEMICALS, assess=lambda intake: _decision(system=["규정 DB 필요"]))
-        self.assertEqual((request.status, request.messages), ("REQUEST", ("함량 확인",)))
+        self.assertEqual((request.status, request.messages), ("PENDING", ("함량 확인",)))
+        self.assertIsNotNone(request.project)  # 막다른 길 대신 사업장을 만들고 판정에 필요한 질문은 그 화면에서 묻는다
+        self.assertTrue(request.project.stage1_snapshot["judgement_pending"])
+        self.assertFalse(request.project.scope_confirmed)
         self.assertEqual((system.status, system.messages), ("SYSTEM", ("규정 DB 필요",)))
-        self.assertIsNone(request.project)
+        self.assertIsNone(system.project)
+
+    def test_unknown_quantity_no_longer_blocks_the_start(self):
+        chemicals = [{**CHEMICALS[0], "최대 동시보유량(ton)": None}]
+        called = []
+        outcome = cap_start.start(BUSINESS, chemicals, assess=lambda intake: called.append(1))
+        self.assertEqual(outcome.status, "PENDING")
+        self.assertEqual(called, [])  # 판정 엔진은 양을 알 때까지 부르지 않는다
+        self.assertIn("최대보유량", outcome.messages[0])
+        self.assertEqual(outcome.project.get_field("inventory.chemicals").value[0]["물질명"], "염소")
+
+    def test_other_input_problems_still_block(self):
+        outcome = cap_start.start({**BUSINESS, "사업장명": ""}, CHEMICALS, assess=lambda intake: None)
+        self.assertEqual(outcome.status, "INVALID")
 
     def test_real_stage1_engine_fails_closed_without_the_approved_database(self):
         outcome = cap_start.start(BUSINESS, CHEMICALS)  # 이 저장소에는 승인 규정 DB가 없다

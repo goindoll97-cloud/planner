@@ -94,10 +94,11 @@ def render(expanded: bool) -> None:
             st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
             for message in outcome.messages:
                 st.write(f"• {message}")
-        elif outcome.status == "REQUEST":
-            st.warning("판정에 필요한 정보가 더 있습니다.")
-            for message in outcome.messages:
-                st.write(f"• {message}")
+        elif outcome.status == "PENDING":
+            save_project(outcome.project)
+            st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
+            st.session_state["cap_start_notice"] = " ".join(outcome.messages[:1]) + " (사업장을 만들었습니다. 판정은 위 '법정 대상 판정'에서 이어서 합니다.)"
+            st.rerun()
         elif outcome.status == "NOT_REQUIRED":
             st.info(f"판정 결과: 화학사고예방관리계획서 — {outcome.cap_status} / 공정안전보고서 — {outcome.psm_status}")
             st.write(outcome.cap_explanation)
