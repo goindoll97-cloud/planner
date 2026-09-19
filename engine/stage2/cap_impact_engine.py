@@ -119,6 +119,14 @@ def _known_names(project: Stage2Project, key: str, aliases: tuple[str, ...]) -> 
     return out
 
 
+def _workspace_tags(project: Stage2Project) -> set[str]:
+    """CAP 작성대 시설 표(탱크로리 등 제외시설 포함)의 구분기호."""
+    rec = project.get_field("cap.workspace.facilities")
+    if rec is None or rec.status not in CONFIRMED_STATUSES or not isinstance(rec.value, list):
+        return set()
+    return {_norm(row.get("설비번호")) for row in rec.value if isinstance(row, Mapping) and _clean(row.get("설비번호"))}
+
+
 def _yes_no(value: object) -> bool | None:
     n = _norm(value)
     if n in {_norm(v) for v in YES}:
@@ -150,7 +158,7 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
         project,
         "inventory.facilities",
         ("설비번호", "구분기호", "장치번호"),
-    )
+    ) | _workspace_tags(project)
 
     blockers: list[str] = []
     out: list[dict[str, Any]] = []
@@ -224,7 +232,7 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
         })
 
     messages = (
-        "장외거리·사고원점·주민수·보호대상 수는 KORA/GIS 확정값만 사용하며 프로그램이 공간값을 추정하지 않습니다.",
+        "장외거리·사고원점·주민수·보호대상 수는 KORA/GIS 확정값 또는 프로그램 자체 영향범위 분석 근거서(방향 미반영, 보수적 원형 범위)의 값을 사용합니다.",
     )
     return CAPForm12Data(
         rows=tuple(out),

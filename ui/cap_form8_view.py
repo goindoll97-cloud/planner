@@ -64,6 +64,10 @@ def render(project) -> None:
                     "세부유형", options=[o for opts in f8.SUBTYPES.values() for o in opts],
                     help="별표 4의 종류입니다. 규모 조건(예: 300명 이상)이 있는 항목은 아래 도움말을 확인하세요."),
                 "사업장 경계와 거리(m)": st.column_config.NumberColumn("경계 기준 거리(m)", min_value=0),
+                "거주민수": st.column_config.NumberColumn(
+                    "거주민수", min_value=0, help="그 대상에 사는 사람 수입니다. 별지 제12·13호 영향범위 내 주민 수 집계에 쓰입니다(비우면 0)."),
+                "근로자수": st.column_config.NumberColumn(
+                    "근로자수", min_value=0, help="그 대상에서 일하는 사람 수입니다. 별지 제12·13호 집계에 쓰입니다(비우면 0)."),
             }
             edited_rows = st.data_editor(frame, column_config=config, num_rows="dynamic", width="stretch",
                                          key=f"cap_form08_rows_{project.project_id}").to_dict("records")

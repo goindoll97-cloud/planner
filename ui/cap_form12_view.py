@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import cap_basis_guides as basis
+from engine.stage2 import cap_impact_workspace as iw
 from engine.stage2 import cap_release_workspace as rw
 from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import cap_workspace as ws
@@ -18,7 +19,6 @@ def render(project) -> None:
     for item in step["explain"]:
         with st.expander(item["term"]):
             st.write(item["text"])
-    st.info("영향범위 내 주민·보호대상 입력은 다음 단계에서 추가됩니다.")
 
     targets = sc.evaluate(project)
     if not targets:
@@ -151,3 +151,28 @@ def render(project) -> None:
             st.caption("끝점은 폭발 1 psi 과압, 화재 40초 5 kW/m²(기술지침 2-3 ① 2))입니다. 증기운 폭발은 EPA RMP TNT 당량식, 화재는 점광원 복사열 "
                        "모델이라 TNO 멀티에너지·BLEVE 화구는 반영되지 않습니다. KORA와 대조 후 확정하세요.")
             st.dataframe(pd.DataFrame(fire_rows), width="stretch", hide_index=True)
+
+        st.subheader("영향범위 내 주민·보호대상 → 별지 제12·13호")
+        st.caption("피해반경이 사업장 경계를 넘는 시나리오만 사고시나리오입니다(규정 제23조 ⑥). 별지 제8호 목록의 보호대상 중 경계 기준 거리가 "
+                   "장외거리 이내인 것을 집계합니다. 풍향·지형은 반영하지 않는 보수적 원형 범위이고, 500m 밖은 별지 제8호에 없어 집계되지 않습니다.")
+        impacts = iw.evaluate(project, worst_case=worst, detection=detection, isolation=isolation)
+        st.dataframe(pd.DataFrame([{
+            "시나리오": i.name, "유형": i.kind,
+            "장외거리(m)": None if i.off_site_m is None else round(i.off_site_m),
+            "사고시나리오": "예" if i.is_off_site else ("아니오" if i.off_site_m is not None else ""),
+            "갑종": i.count("갑종"), "을종": i.count("을종"), "환경수용체": i.count("환경수용체"),
+            "거주민": i.people("거주민수"), "근로자": i.people("근로자수"),
+            "확인할 것": "; ".join(i.problems or i.notes[-1:] if i.off_site_m and i.off_site_m > iw.LISTED_RANGE_M else i.problems),
+        } for i in impacts]), width="stretch", hide_index=True)
+        st.write(iw.summary_text(impacts))
+        apply_col, report_col = st.columns(2)
+        if apply_col.button("결과를 별지 제12·13호에 반영", type="primary", key=f"cap_form12_apply_{project.project_id}"):
+            counts = iw.apply_to_forms(project, impacts, worst_case=worst)
+            save_project(project)
+            st.success(f"장외 사고시나리오 {counts['scenarios']}건, 총괄영향범위 보호대상 {counts['targets']}건을 반영했습니다.")
+        report_col.download_button(
+            "영향범위 분석 근거서 DOCX 내려받기", data=iw.report_docx(project, impacts, worst_case=worst),
+            file_name=f"영향범위_분석_근거서_{project.project_id}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key=f"cap_form12_report_{project.project_id}",
+            help="사고시나리오별 입력·적용 기준·결과·한계를 정리한 자료입니다. 계획서에 첨부하세요(규정 제23조 ⑥).")
