@@ -83,7 +83,7 @@ class CAPForm10WorkspaceTests(unittest.TestCase):
         self.assertEqual(f10.needs(project), [])
 
     def test_page_is_wired(self):
-        self.assertIn('10: "별지 제10호"', (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(10, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

@@ -81,7 +81,7 @@ class CAPForm5WorkspaceTests(unittest.TestCase):
 
     def test_page_offers_form5(self):
         page = (Path(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("5: \"별지 제5호\"", page)
+        self.assertIn(5, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

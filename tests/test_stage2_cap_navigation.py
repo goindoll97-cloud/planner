@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from pathlib import Path
+import unittest
+
+import pandas as pd
+
+from ui import cap_forms_registry as registry
+from ui import cap_frames
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class CAPNavigationTests(unittest.TestCase):
+    def test_every_registered_form_has_a_view_with_render(self):
+        for number in registry.FORM_NUMBERS:
+            if number == 1:
+                continue  # 별지 제1호는 작성 화면 본문에 있다
+            source = (ROOT / f"ui/cap_form{number}_view.py").read_text(encoding="utf-8")
+            self.assertIn("def render(project)", source, number)
+        self.assertEqual(registry.label(12), "별지 제12·13호")
+        self.assertEqual(registry.label(3), "별지 제3호")
+        self.assertNotIn(13, registry.FORM_NUMBERS)
+
+    def test_navigation_groups_cap_and_keeps_the_excel_flow_only_for_psm(self):
+        app = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn('"화학사고예방관리계획서": [', app)
+        self.assertIn('st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성"', app)
+        self.assertIn("_psm_selected_somewhere()", app)
+        self.assertIn('"공정안전보고서 (기존 방식)"', app)
+        # the Excel round-trip pages are registered only inside the PSM branch
+        psm_branch = app[app.index("if _psm_selected_somewhere():"):app.index('sections["참고"]')]
+        for page in ("stage2_intake_page.py", "stage2_validation_page.py", "stage2_review_page.py"):
+            self.assertIn(page, psm_branch)
+            self.assertNotIn(page, app[:app.index("if _psm_selected_somewhere():")].split("sections: dict")[1])
+
+    def test_excel_import_lives_inside_the_cap_page(self):
+        page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        self.assertIn("cap_excel_panel.render(project)", page)
+        panel = (ROOT / "ui/cap_excel_panel.py").read_text(encoding="utf-8")
+        self.assertIn("apply_integrated_authoring_workbook", panel)
+
+    def test_scope_page_sends_cap_projects_to_the_cap_page(self):
+        source = (ROOT / "ui/stage2_scope_page.py").read_text(encoding="utf-8")
+        self.assertIn('st.page_link("ui/cap_workspace_page.py"', source)
+        self.assertIn("if project.psm_in_scope:", source)
+
+
+class ArrowSafetyTests(unittest.TestCase):
+    def test_mixed_number_and_blank_columns_serialize_to_arrow(self):
+        import pyarrow as pa
+
+        frame = pd.DataFrame({"물질명": ["염소", "톨루엔"], "함량(%)": ["", 99.5], "수량": [1, 2]})
+        with self.assertRaises(Exception):
+            pa.Table.from_pandas(frame)  # 원래 프레임은 Arrow로 변환되지 않는다
+        safe = cap_frames.safe(frame)
+        table = pa.Table.from_pandas(safe)
+        self.assertEqual(table.num_rows, 2)
+        self.assertEqual(list(safe["함량(%)"]), ["", "99.5"])
+        self.assertEqual(safe["수량"].dtype, frame["수량"].dtype)  # 숫자 열은 그대로
+
+    def test_none_and_nan_become_empty_text(self):
+        frame = pd.DataFrame({"값": [None, float("nan"), "가"]})
+        self.assertEqual(list(cap_frames.safe(frame)["값"]), ["", "", "가"])
+
+
+if __name__ == "__main__":
+    unittest.main()

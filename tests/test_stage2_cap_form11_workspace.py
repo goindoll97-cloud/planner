@@ -74,7 +74,7 @@ class CAPForm11WorkspaceTests(unittest.TestCase):
         self.assertEqual(f11.save(_project(), [{"감지기 번호": "", "설치위치": ""}]), 0)
 
     def test_page_is_wired(self):
-        self.assertIn('11: "별지 제11호"', (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(11, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

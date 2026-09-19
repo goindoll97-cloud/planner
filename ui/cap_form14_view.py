@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form14_workspace as f14
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_risk_engine import build_cap_form14_data
@@ -72,10 +74,10 @@ def render(project) -> None:
     else:
         data = build_cap_form14_data(project)
         if data.scenario_rows:
-            st.dataframe(pd.DataFrame(data.scenario_rows), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(data.scenario_rows), width="stretch", hide_index=True)
         if data.event_rows:
             with st.expander("개시사건별 계산"):
-                st.dataframe(pd.DataFrame(data.event_rows), width="stretch", hide_index=True)
+                frames.show(pd.DataFrame(data.event_rows), width="stretch", hide_index=True)
         if data.blockers:
             st.warning("아직 필요한 정보")
             for item in data.blockers:

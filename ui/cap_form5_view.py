@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form4_workspace as f4
 from engine.stage2 import cap_form5_workspace as f5
 from engine.stage2 import cap_workspace as ws
@@ -31,12 +33,12 @@ def render(project) -> None:
     if step["id"] == "auto":
         counts = f5.unit_counts(project)
         if counts:
-            st.dataframe(pd.DataFrame(counts, columns=["장치·설비 종류", "수량(기)"]), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(counts, columns=["장치·설비 종류", "수량(기)"]), width="stretch", hide_index=True)
         else:
             st.warning("별지 제1호에서 시설을 입력하면 종류와 수량이 자동으로 채워집니다.")
         rows = f5.unit_chemical_rows(project)
         if rows:
-            st.dataframe(
+            frames.show(
                 pd.DataFrame([{"화학물질명": r["물질명"], "CAS 번호": r["CAS No."],
                                "최대 보유량(ton)": r["사업장 내 최대보유량(ton)"]} for r in rows]),
                 width="stretch", hide_index=True,

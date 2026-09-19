@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_chemical_workspace as chem_ws
 from engine.stage2.storage import save_project
 
@@ -27,7 +29,7 @@ def render(project, key_prefix: str) -> None:
             )
     found = chem_ws.candidates(project)
     if found:
-        st.dataframe(
+        frames.show(
             pd.DataFrame([{"CAS": c.cas, "물질": c.name, "항목": c.field, "KOSHA 값": c.value, "출처": c.source} for c in found]),
             width="stretch", hide_index=True,
         )

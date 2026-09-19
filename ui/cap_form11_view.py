@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form11_workspace as f11
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
@@ -46,7 +48,7 @@ def render(project) -> None:
     if step["id"] == "rows":
         proposed = f11.skeleton(project)
         if proposed:
-            st.dataframe(pd.DataFrame(proposed)[["감지기 번호", "검출대상 물질", "설치위치"]], width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(proposed)[["감지기 번호", "검출대상 물질", "설치위치"]], width="stretch", hide_index=True)
             if st.button(f"제안한 {len(proposed)}줄 추가", type="primary", key=f"cap_form11_add_{project.project_id}"):
                 f11.save(project, saved + proposed)
                 save_project(project)
@@ -78,7 +80,7 @@ def render(project) -> None:
     else:
         data = build_cap_form11_data(project)
         if data.rows:
-            st.dataframe(pd.DataFrame(data.rows), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(data.rows), width="stretch", hide_index=True)
         if data.blockers:
             st.warning("아직 필요한 정보")
             for item in data.blockers:

@@ -74,7 +74,7 @@ class CAPForm9WorkspaceTests(unittest.TestCase):
         self.assertEqual(f9.rows(project)[0]["설계온도"], "60")
 
     def test_page_is_wired(self):
-        self.assertIn('9: "별지 제9호"', (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(9, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

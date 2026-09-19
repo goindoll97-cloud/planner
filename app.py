@@ -66,30 +66,43 @@ def _stage2_progress() -> tuple[bool, bool]:
 
 intake_ready, authoring_ready = _stage2_progress()
 
-pages = [
-    st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅", default=True),
-    st.Page("ui/stage2_scope_page.py", title="2. 작성범위 선택", icon="🧭"),
-    st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥"),
-    st.Page("ui/cap_workspace_page.py", title="화사계 작성 (새 방식)", icon="📝"),
+
+def _psm_selected_somewhere() -> bool:
+    """공정안전보고서를 작성 대상으로 고른 프로젝트가 하나라도 있는지(기존 3~5단계 화면 노출 기준)."""
+    try:
+        for row in list_projects():
+            project_id = str(row.get("project_id") or "").strip()
+            if project_id and load_project(project_id).psm_in_scope:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+# 화학사고예방관리계획서는 별지 순서대로 한 화면에서 작성한다. 엑셀 통합 작성자료 가져오기도 그 화면 안에 들어 있어
+# 예전의 3~5단계 화면(엑셀 왕복 방식)은 화학사고예방관리계획서에는 더 이상 쓰이지 않는다. 공정안전보고서는 아직
+# 그 방식으로 작성하므로, 그 프로젝트가 있을 때만 "공정안전보고서 (기존 방식)" 묶음으로 보여 준다.
+sections: dict[str, list] = {
+    "시작": [
+        st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅", default=True),
+        st.Page("ui/stage2_scope_page.py", title="2. 작성범위 선택", icon="🧭"),
+    ],
+    "화학사고예방관리계획서": [
+        st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성", icon="📝"),
+    ],
+}
+
+if _psm_selected_somewhere():
+    psm_pages = [st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥")]
+    if intake_ready:
+        psm_pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
+    if authoring_ready:
+        psm_pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
+    sections["공정안전보고서 (기존 방식)"] = psm_pages
+
+sections["참고"] = [
+    st.Page("ui/regdb_page.py", title="규정 DB 관리", icon="🗂️"),
+    st.Page("ui/legal_evidence_page.py", title="법령·근거 라이브러리", icon="📚"),
 ]
 
-# Keep a novice user on the intended sequence. Stage 4/5 are registered only
-# when at least one stored project can legitimately enter them. The page itself
-# re-checks the currently selected project's gate, so switching projects cannot
-# bypass Stage 3 or the explicit Stage 4 draft-authoring acknowledgement.
-if intake_ready:
-    pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
-if authoring_ready:
-    pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
-
-# These are reference/administration tools rather than sequential workflow
-# stages. Keep them always available, but do not number them so hidden Stage 4
-# or Stage 5 does not make the navigation look broken to a new user.
-pages.extend(
-    [
-        st.Page("ui/regdb_page.py", title="규정 DB 관리", icon="🗂️"),
-        st.Page("ui/legal_evidence_page.py", title="법령·근거 라이브러리", icon="📚"),
-    ]
-)
-
-st.navigation(pages).run()
+st.navigation(sections).run()

@@ -95,7 +95,7 @@ class Form14WorkspaceTests(unittest.TestCase):
     def test_option_lists_and_page_are_wired(self):
         self.assertIn("방류벽", f14.PASSIVE_OPTIONS)
         self.assertIn("가스감지기와 자동차단밸브의 연동", f14.ACTIVE_OPTIONS)
-        self.assertIn('14: "별지 제14호"', (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(14, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form6_workspace as f6
 from engine.stage2 import cap_form7_workspace as f7
 from engine.stage2 import cap_workspace as ws
@@ -35,7 +37,7 @@ def render(project) -> None:
 
     if step["id"] == "select":
         if suggestions:
-            st.dataframe(
+            frames.show(
                 pd.DataFrame([{"물질": s.name, "CAS": s.cas, "구분": " · ".join(s.kinds), "제안 사유": s.reason}
                               for s in suggestions.values()]),
                 width="stretch", hide_index=True,

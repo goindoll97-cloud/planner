@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form16_workspace as f16
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
@@ -56,9 +58,9 @@ def render(project) -> None:
         st.subheader("자동으로 채워진 부분")
         st.write({k: v for k, v in data.business.items() if k not in ("작성일 기준",)})
         if data.chemical_rows:
-            st.dataframe(pd.DataFrame(data.chemical_rows), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(data.chemical_rows), width="stretch", hide_index=True)
         if data.scenario_rows:
-            st.dataframe(pd.DataFrame(data.scenario_rows).drop(columns=["KORA/GIS 근거"], errors="ignore"),
+            frames.show(pd.DataFrame(data.scenario_rows).drop(columns=["KORA/GIS 근거"], errors="ignore"),
                          width="stretch", hide_index=True)
         blockers = list(data.company_blockers) + list(data.dependency_blockers)
         if blockers:

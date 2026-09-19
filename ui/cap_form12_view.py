@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_basis_guides as basis
 from engine.stage2 import cap_impact_workspace as iw
 from engine.stage2 import cap_release_workspace as rw
@@ -24,7 +26,7 @@ def render(project) -> None:
     if not targets:
         st.warning("별지 제1호에서 시설을 입력하면 예비시나리오 대상 여부를 판정합니다.")
         return
-    st.dataframe(
+    frames.show(
         pd.DataFrame([{
             "설비": t.tag or t.name, "물질": t.material, "구분": t.kind, "운전 성상": t.state,
             "취급량(kg)": t.holding_kg, "규정수량(kg)": t.threshold_kg, "판정": t.verdict, "근거": t.reason,
@@ -140,23 +142,23 @@ def render(project) -> None:
                 "누출량(kg)": None if result.amount_kg is None else round(result.amount_kg, 1),
                 "근거·필요한 정보": "; ".join(result.problems) or f"{result.hole_reason} / {result.model}",
             })
-        st.dataframe(pd.DataFrame(rows_out), width="stretch", hide_index=True)
+        frames.show(pd.DataFrame(rows_out), width="stretch", hide_index=True)
         if effect_rows:
             st.subheader("독성 누출 피해반경 (제안값)")
             st.caption("끝점농도는 기술지침 붙임 1(ERPG-2 → AEGL-2 → PAC-2 → IDLH×0.1), 확산은 지표 연속 누출 가우시안 플룸(Briggs 계수)입니다. "
                        "중가스 효과가 반영되지 않아 KORA와 수치가 다를 수 있으니 확정 전에 대조하세요.")
-            st.dataframe(pd.DataFrame(effect_rows), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(effect_rows), width="stretch", hide_index=True)
         if fire_rows:
             st.subheader("화재·폭발 피해반경 (제안값)")
             st.caption("끝점은 폭발 1 psi 과압, 화재 40초 5 kW/m²(기술지침 2-3 ① 2))입니다. 증기운 폭발은 EPA RMP TNT 당량식, 화재는 점광원 복사열 "
                        "모델이라 TNO 멀티에너지·BLEVE 화구는 반영되지 않습니다. KORA와 대조 후 확정하세요.")
-            st.dataframe(pd.DataFrame(fire_rows), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(fire_rows), width="stretch", hide_index=True)
 
         st.subheader("영향범위 내 주민·보호대상 → 별지 제12·13호")
         st.caption("피해반경이 사업장 경계를 넘는 시나리오만 사고시나리오입니다(규정 제23조 ⑥). 별지 제8호 목록의 보호대상 중 경계 기준 거리가 "
                    "장외거리 이내인 것을 집계합니다. 풍향·지형은 반영하지 않는 보수적 원형 범위이고, 500m 밖은 별지 제8호에 없어 집계되지 않습니다.")
         impacts = iw.evaluate(project, worst_case=worst, detection=detection, isolation=isolation)
-        st.dataframe(pd.DataFrame([{
+        frames.show(pd.DataFrame([{
             "시나리오": i.name, "유형": i.kind,
             "장외거리(m)": None if i.off_site_m is None else round(i.off_site_m),
             "사고시나리오": "예" if i.is_off_site else ("아니오" if i.off_site_m is not None else ""),

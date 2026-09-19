@@ -95,7 +95,7 @@ class PreliminaryScenarioTests(unittest.TestCase):
         self.assertEqual(len(sc.saved_scenarios(project)), 2)
 
     def test_page_is_wired(self):
-        self.assertIn('12: "별지 제12호"', (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(12, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
         self.assertIn("사고시나리오", ws.load_form_schema(12)["title"])
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form6_workspace as f6
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
@@ -25,7 +27,7 @@ def render(project) -> None:
     if step["id"] == "identity":
         rows, _ = f6.legal_rows(project)
         if rows:
-            st.dataframe(
+            frames.show(
                 pd.DataFrame([{
                     "물질명": r.get("물질명") or r.get("유해화학물질명"),
                     "CAS 번호": r.get("CAS 번호") or r.get("CAS No."),

@@ -94,7 +94,7 @@ class CAPForm7WorkspaceTests(unittest.TestCase):
 
     def test_page_is_wired(self):
         root = Path(__file__).resolve().parents[1]
-        self.assertIn('7: "별지 제7호"', (root / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(7, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

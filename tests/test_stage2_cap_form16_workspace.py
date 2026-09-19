@@ -72,7 +72,7 @@ class Form16WorkspaceTests(unittest.TestCase):
         self.assertEqual(data.chemical_rows[0]["유해화학물질명"], "염소")
 
     def test_page_is_wired(self):
-        self.assertIn('16: "별지 제16호"', (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8"))
+        self.assertIn(16, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

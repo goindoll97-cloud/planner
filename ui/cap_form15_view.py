@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form15_workspace as f15
 from engine.stage2 import cap_workspace as ws
 
@@ -25,7 +27,7 @@ def render(project) -> None:
         return
     if step["id"] == "inputs":
         if result.scenario_rows:
-            st.dataframe(pd.DataFrame(result.scenario_rows).drop(columns=["KORA/GIS 근거"], errors="ignore"),
+            frames.show(pd.DataFrame(result.scenario_rows).drop(columns=["KORA/GIS 근거"], errors="ignore"),
                          width="stretch", hide_index=True)
         else:
             st.warning("별지 제12호에서 사고시나리오 영향범위를 반영하면 이 표가 채워집니다.")
@@ -33,9 +35,9 @@ def render(project) -> None:
             st.write(f"• {blocker}")
     elif step["id"] == "scores":
         if result.scores:
-            st.dataframe(pd.DataFrame([{"판단 요소": k, "값": v} for k, v in result.totals.items()]),
+            frames.show(pd.DataFrame([{"판단 요소": k, "값": v} for k, v in result.totals.items()]),
                          width="stretch", hide_index=True)
-            st.dataframe(pd.DataFrame([{"항목": k, "점수/결과": v} for k, v in result.scores.items()
+            frames.show(pd.DataFrame([{"항목": k, "점수/결과": v} for k, v in result.scores.items()
                                        if not k.startswith("최종")]), width="stretch", hide_index=True)
         else:
             st.warning("아직 점수를 계산할 수 없습니다. 1단계의 부족한 값을 채우세요.")

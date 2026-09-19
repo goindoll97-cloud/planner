@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_form9_workspace as f9
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
@@ -31,7 +33,7 @@ def render(project) -> None:
     if step["id"] == "auto":
         if rows:
             data = build_cap_form9_data(project).rows
-            st.dataframe(pd.DataFrame(data).drop(columns=["연번"], errors="ignore"), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(data).drop(columns=["연번"], errors="ignore"), width="stretch", hide_index=True)
     elif step["id"] == "specs":
         if rows:
             config = {name: st.column_config.TextColumn(name, disabled=True) for name in READ_ONLY}
