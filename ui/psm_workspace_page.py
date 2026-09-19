@@ -11,6 +11,7 @@ from engine.stage2 import psm_attachments as attachments
 from engine.stage2 import psm_form12_workspace as f12
 from engine.stage2 import psm_form19_2_workspace as f19
 from engine.stage2 import psm_narrative_workspace as narrative
+from engine.stage2 import psm_weather
 from engine.stage2 import psm_table_workspace as tables
 from engine.stage2 import statutory_report as report
 from engine.stage2.storage import list_projects, load_project, save_project
@@ -135,37 +136,52 @@ def _scenario_designations(project) -> dict[str, str]:
     return {k: v for k, v in chosen.items() if v != "사용 안 함"}
 
 
-WEATHER_BASIS_KEY = "psm.risk.weather_basis"
+def _use_saved_weather(project) -> None:
+    """저장된 산정 값을 입력칸의 초기값으로 쓴다(사용자가 이미 적은 칸은 건드리지 않는다)."""
+    basis = psm_weather.saved(project)
+    if basis.get("최고기온(℃)") is not None and not st.session_state.get("psm19_temp"):
+        st.session_state["psm19_temp"] = f"{basis['최고기온(℃)']:g}"
+    if basis.get("평균 상대습도(%)") is not None and not st.session_state.get("psm19_humidity"):
+        st.session_state["psm19_humidity"] = f"{basis['평균 상대습도(%)']:g}"
 
 
 def _fill_weather(project, station: str) -> None:
-    """버튼 콜백: 지난 3년 관측으로 대기온도·습도 칸을 채우고 근거를 기록한다."""
-    basis, result = kma_asos.three_year_basis(station)
-    if basis is None:
+    """버튼 콜백: 고른 관측소의 지난 3년 관측으로 다시 채운다."""
+    result = psm_weather.refresh(project, station)
+    if result.status != "FILLED":
         st.session_state["psm19_weather_msg"] = ("warning", result.message)
         return
-    if basis.max_temperature_c is not None:
-        st.session_state["psm19_temp"] = f"{basis.max_temperature_c:g}"
-    if basis.mean_humidity_pct is not None:
-        st.session_state["psm19_humidity"] = f"{basis.mean_humidity_pct:g}"
-    project.set_field(WEATHER_BASIS_KEY, "대기온도·습도 산정 근거(기상청 ASOS 일자료)", {
-        "관측소": f"{basis.station_name}({basis.station_id})", "기간": basis.period, "관측일수": basis.days,
-        "최고기온(℃)": basis.max_temperature_c, "최고기온 일자": basis.max_temperature_date,
-        "평균 상대습도(%)": basis.mean_humidity_pct, "평균 풍속(m/s)": basis.mean_wind_ms}, "CALCULATED",
-        note="지난 3년 일자료의 일 최고기온 중 최댓값, 일 평균 상대습도의 평균. 낮 동안만의 평균 습도는 아님")
+    basis = psm_weather.saved(project)
+    st.session_state["psm19_temp"] = f"{basis['최고기온(℃)']:g}"
+    st.session_state["psm19_humidity"] = f"{basis['평균 상대습도(%)']:g}"
     save_project(project)
     st.session_state["psm19_weather_msg"] = (
-        "success", f"{basis.station_name} 관측소 {basis.period}({basis.days}일)의 최고기온 {basis.max_temperature_c:g}℃"
-        f"({basis.max_temperature_date}), 평균 상대습도 {basis.mean_humidity_pct:g}%를 채웠습니다. "
-        f"참고로 평균 풍속은 {basis.mean_wind_ms:g} m/s입니다.")
+        "success", f"{basis['관측소']} 관측소 {basis['기간']}({basis['관측일수']}일)의 최고기온 {basis['최고기온(℃)']:g}℃"
+        f"({basis['최고기온 일자']}), 평균 상대습도 {basis['평균 상대습도(%)']:g}%를 채웠습니다. "
+        f"참고로 평균 풍속은 {basis['평균 풍속(m/s)']:g} m/s입니다.")
+
+
+def _auto_weather(project) -> None:
+    """화면을 처음 열 때 주소로 관측소를 골라 자동으로 채운다(이미 기록되어 있으면 그대로 사용)."""
+    if not psm_weather.saved(project) and not st.session_state.get("psm19_auto_tried"):
+        st.session_state["psm19_auto_tried"] = True
+        with st.spinner("사업장 주소로 가까운 기상 관측소의 지난 3년 자료를 불러오는 중입니다."):
+            result = psm_weather.auto_fill(project)
+        if result.status == "FILLED":
+            save_project(project)
+            st.session_state["psm19_weather_msg"] = ("success", result.message + " 아래에서 확인하세요.")
+        elif result.status != "SAVED":
+            st.session_state["psm19_weather_msg"] = ("info", result.message + " 직접 입력하거나 관측소를 골라 불러오세요.")
+    _use_saved_weather(project)
 
 
 def _weather_panel(project) -> None:
     stations = kma_asos.stations()
     record = project.get_field("business.address")
-    suggested = kma_asos.suggest_station(_clean(record.value) if record is not None else "")
+    suggested = _clean(psm_weather.saved(project).get("관측소코드")) or kma_asos.suggest_station(
+        _clean(record.value) if record is not None else "")
     codes = sorted(stations, key=lambda c: stations[c]["name"])
-    with st.expander("기상청 관측 자료로 대기온도·습도 채우기", expanded=False):
+    with st.expander("기상청 관측 자료로 대기온도·습도 채우기(관측소 바꾸기)", expanded=False):
         st.caption("서식은 '지난 3년간 낮 동안 최대 온도'와 '평균 습도'를 적으라고 합니다. 가까운 기상청 관측소의 지난 3년 일자료로 "
                    "채울 수 있습니다. 습도는 낮 동안만이 아니라 하루 평균이라, 서식과 다르게 적으려면 직접 고치세요.")
         station = st.selectbox("가까운 관측소", codes, index=codes.index(suggested) if suggested in codes else 0,
@@ -184,6 +200,7 @@ def _table_19_2(project) -> None:
         st.warning("사고 시나리오가 없습니다. 화학사고예방관리계획서 작성 화면의 별지 제10·11호에서 시나리오를 먼저 확정하세요.")
         return
     designations = _scenario_designations(project)
+    _auto_weather(project)
     _weather_panel(project)
     left, right = st.columns(2)
     temperature = left.text_input("대기온도(℃)", key="psm19_temp",

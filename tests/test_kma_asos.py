@@ -110,3 +110,61 @@ class ScreenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from engine.stage2 import psm_weather as pw  # noqa: E402
+
+
+class AutoFillTests(unittest.TestCase):
+    def _fake(self, calls):
+        def get(url, params):
+            calls.append(params["stnIds"])
+            return 200, _body([_day("2025-07-01", 36.0, 60), _day("2025-07-02", 33.0, 70)])
+        return get
+
+    def _with_address(self, project, text):
+        project.set_field("business.address", "사업장 주소", text, "VERIFIED")
+        return project
+
+    def test_address_alone_is_enough_and_the_result_is_reused(self):
+        project = self._with_address(_project(), "울산광역시 남구 산업로 1")
+        calls = []
+        with patch("engine.kma_asos._credential", return_value="KEY"):
+            first = pw.auto_fill(project, today=date(2026, 9, 19), get=self._fake(calls))
+            second = pw.auto_fill(project, today=date(2026, 9, 19), get=self._fake(calls))
+        self.assertEqual((first.status, second.status), ("FILLED", "SAVED"))
+        self.assertEqual(calls, ["152"])  # 두 번째는 조회하지 않는다
+        saved = pw.saved(project)
+        self.assertEqual((saved["관측소코드"], saved["최고기온(℃)"], saved["평균 상대습도(%)"]), ("152", 36.0, 65.0))
+
+    def test_unknown_address_or_missing_address_asks_the_user_instead_of_guessing(self):
+        blank = _project()
+        blank.fields.pop("business.address", None)
+        self.assertEqual(pw.auto_fill(blank).status, "NO_ADDRESS")
+        unknown = self._with_address(_project(), "알 수 없는 마을 1")
+        result = pw.auto_fill(unknown)
+        self.assertEqual(result.status, "NO_STATION")
+        self.assertEqual(pw.saved(unknown), {})
+
+    def test_lookup_failure_is_a_status_not_an_exception(self):
+        project = self._with_address(_project(), "울산광역시 남구")
+        with patch("engine.kma_asos._credential", return_value=""):
+            self.assertEqual(pw.auto_fill(project).status, "NOT_CONFIGURED")
+
+    def test_screen_fills_the_fields_on_first_open_without_a_click(self):
+        project = self._with_address(_project(), "울산광역시 남구 산업로 1")
+        basis = kma.WeatherBasis("152", "울산", "2023-09-19 ~ 2026-09-18", 1096, 38.1, 61.2, 2.4, "2024-07-20")
+        with patch("engine.kma_asos.three_year_basis", return_value=(basis, kma.DailyResult("OK", "", ()))), \
+             patch("engine.stage2.storage.save_project"):
+            at = _run(project, "19-2")
+        self.assertFalse(at.exception)
+        self.assertEqual(at.text_input(key="psm19_temp").value, "38.1")
+        self.assertEqual(at.text_input(key="psm19_humidity").value, "61.2")
+        self.assertTrue(any("채웠습니다" in s.value for s in at.success))
+
+    def test_screen_falls_back_to_manual_input_when_no_station_matches(self):
+        project = self._with_address(_project(), "알 수 없는 마을 1")
+        at = _run(project, "19-2")
+        self.assertFalse(at.exception)
+        self.assertEqual(at.text_input(key="psm19_temp").value, "")
+        self.assertTrue(any("관측소를 찾지 못했습니다" in i.value for i in at.info))

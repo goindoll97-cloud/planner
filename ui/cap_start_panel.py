@@ -79,6 +79,15 @@ def render(expanded: bool) -> None:
             st.write(outcome.cap_explanation)
             st.caption("작성·제출 대상이 아니면 별지 작성을 시작하지 않습니다.")
         else:
+            if outcome.project.psm_required is True:
+                # 공정안전보고서 대상이면 주소로 기상 기준값(대기온도·습도)을 미리 받아 둔다. 실패해도 시작에는 영향이 없다.
+                try:
+                    from engine.stage2 import psm_weather
+
+                    with st.spinner("사업장 주소로 기상 기준값을 미리 확인하는 중입니다."):
+                        psm_weather.auto_fill(outcome.project)
+                except Exception:
+                    pass
             save_project(outcome.project)
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
             st.success(f"판정 결과: {outcome.cap_status}. 별지 작성을 시작합니다.")
