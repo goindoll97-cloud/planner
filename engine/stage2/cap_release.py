@@ -3,10 +3,11 @@ from __future__ import annotations
 """누출공 크기와 누출률·누출량 계산(사고시나리오 분석의 입력).
 
 기준: 사고시나리오 선정 및 위험도 분석에 관한 기술지침(화학물질안전원지침 제2021-3호)
-3-1(누출량), 3-3(누출공·누출시간). 누출률 식은 지침이 특정 식을 정하지 않아
-공개된 표준 식(오리피스 유출: 액체는 베르누이식, 기체는 등엔트로피 초크/비초크 유동,
-CCPS/Crowl & Louvar)을 쓴다. 가정한 값(배출계수, 비열비, 누출시간표)은 상수로 두고
-결과에 근거로 함께 남긴다. 플래시 증발(2상 유출)은 반영하지 않는다.
+3-1(누출량), 3-3(누출공·누출시간). 지침 3-3 ① 2)가 인정하는 KOSHA GUIDE P-92-2023
+(누출원 모델링에 관한 기술지침)의 식을 쓴다: 기체 식(1)~(3)·표 1의 누출계수,
+액체 식(4), 평형 포화액체 2상 유출 식(6). 지침 붙임의 염소 계산 예(붙임 1·2·3)와 같은
+값이 나오는 것을 테스트로 확인했다. 비평형 포화액체(식 7), 과냉각 액체(식 9), 배관 누출
+(7장)은 아직 구현하지 않았다.
 """
 
 from dataclasses import dataclass, field
@@ -17,9 +18,14 @@ ATMOSPHERIC_PA = 101325.0
 GRAVITY = 9.80665
 KGF_CM2_MPA = 0.0980665
 
-CD_LIQUID = 0.61        # 날카로운 오리피스 배출계수(Crowl & Louvar)
-CD_GAS = 1.0            # 스크리닝용 보수 값
+CD_LIQUID = 0.61        # KOSHA GUIDE P-92 표 1: 오리피스/구멍, 음속 미만 0.61~0.67(붙임 2 예시는 0.61)
+CD_GAS_SONIC_FAR = 0.84   # 표 1: 음속 이상, P1 >> Pa
+CD_GAS_SONIC_NEAR = 0.75  # 표 1: 음속 이상, Pa/P1 ≃ PCF/P1
+CD_GAS_SUBSONIC = 0.61    # 표 1: 음속 미만
 DEFAULT_GAMMA = 1.4     # 비열비를 모를 때(이원자 기체 근사). 물질별 값이 있으면 그 값을 쓴다.
+KGF_CM2_PA = 98066.5
+K_MECHANICAL = 427.0    # m·kgf/kcal (P-92 식 6의 상수)
+GC = 9.8                # kg·m/(kgf·s2)
 
 # 지침 3-3 ① 3): 배관직경 전체를 누출공으로 보는 조건
 FULL_BORE_BELOW_MM = 50.0
@@ -74,12 +80,23 @@ def liquid_release_rate(diameter_mm: float, density_kg_m3: float, gauge_pa: floa
     return cd * _area_m2(diameter_mm) * math.sqrt(driving)
 
 
+def gas_discharge_coefficient(absolute_pa: float, ambient_pa: float, gamma: float) -> float:
+    """P-92 표 1: 음속 미만 0.61, 음속 이상은 P1 >> Pa이면 0.84, 임계압력비 근처이면 0.75."""
+    critical = (2.0 / (gamma + 1.0)) ** (gamma / (gamma - 1.0))   # PCF/P1
+    ratio = ambient_pa / absolute_pa                               # Pa/P1
+    if ratio > critical:
+        return CD_GAS_SUBSONIC
+    return CD_GAS_SONIC_FAR if ratio <= 0.5 * critical else CD_GAS_SONIC_NEAR
+
+
 def gas_release_rate(diameter_mm: float, absolute_pa: float, kelvin: float, molar_mass_g_mol: float,
-                     gamma: float = DEFAULT_GAMMA, cd: float = CD_GAS,
+                     gamma: float = DEFAULT_GAMMA, cd: float | None = None,
                      ambient_pa: float = ATMOSPHERIC_PA) -> float:
-    """기체 누출률(kg/s): 임계압력비 이상이면 초크 유동, 아니면 아임계 유동."""
+    """기체 누출률(kg/s): 임계압력비 이상이면 초크 유동, 아니면 아임계 유동(P-92 식 2·3)."""
     if absolute_pa <= ambient_pa:
         return 0.0
+    if cd is None:
+        cd = gas_discharge_coefficient(absolute_pa, ambient_pa, gamma)
     molar = molar_mass_g_mol / 1000.0
     area = _area_m2(diameter_mm)
     critical_ratio = ((gamma + 1.0) / 2.0) ** (gamma / (gamma - 1.0))
@@ -91,6 +108,22 @@ def gas_release_rate(diameter_mm: float, absolute_pa: float, kelvin: float, mola
         flux = math.sqrt(2.0 * absolute_pa * absolute_pa * molar / (GAS_CONSTANT * kelvin) * gamma / (gamma - 1.0)
                          * (ratio ** (2.0 / gamma) - ratio ** ((gamma + 1.0) / gamma)))
     return cd * area * flux
+
+
+def equilibrium_flashing_rate(diameter_mm: float, latent_heat_kcal_kg: float, vapor_density_kg_m3: float,
+                              liquid_density_kg_m3: float, liquid_cp_kcal_kg_k: float, kelvin: float) -> float:
+    """평형 포화액체(누출지점이 설비 외면에서 0.1 m 이상) 2상 유출 누출률(kg/s), P-92 식 (6).
+
+    Q = [A·ΔHv / (1/ρG − 1/ρL)] · [K·gc / (T1·CpL)]^½
+    """
+    specific_volume_change = 1.0 / vapor_density_kg_m3 - 1.0 / liquid_density_kg_m3
+    return (_area_m2(diameter_mm) * latent_heat_kcal_kg / specific_volume_change) * math.sqrt(
+        K_MECHANICAL * GC / (kelvin * liquid_cp_kcal_kg_k))
+
+
+def flash_fraction(liquid_cp: float, latent_heat: float, operating_k: float, boiling_k: float) -> float:
+    """P-92 식 (5): 대기압으로 방출될 때 증기로 바뀌는 비율."""
+    return 1.0 - math.exp(-liquid_cp / latent_heat * (operating_k - boiling_k))
 
 
 def leak_duration_min(detection: str = "C", isolation: str = "C") -> int:

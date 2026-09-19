@@ -38,7 +38,7 @@ def render(project) -> None:
         st.caption("판정이 '대상'인 설비가 없습니다.")
         return
     columns = ["사고시나리오명", "대상 설비번호", "유해화학물질명", "사고유형", "취급량(kg)", rw.HEAD_COLUMN,
-               rw.BOUNDARY_COLUMN, "선정 근거"]
+               rw.BOUNDARY_COLUMN, *rw.FLASH_COLUMNS, rw.LEAK_PIPE_COLUMN, "선정 근거"]
     frame = pd.DataFrame(saved or proposed, columns=columns)
     if not saved:
         st.caption("제안한 목록입니다. 실제와 다르면 고치거나 줄을 지운 뒤 저장하세요.")
@@ -48,6 +48,12 @@ def render(project) -> None:
             "사고유형": st.column_config.SelectboxColumn("사고유형", options=[sc.TOXIC, sc.FIRE]),
             rw.HEAD_COLUMN: st.column_config.TextColumn(
                 rw.HEAD_COLUMN, help="상압 액체 설비에서 누출공 위의 액체 높이(m)입니다. 압력이 있는 설비는 비워도 됩니다."),
+            rw.LATENT_HEAT_COLUMN: st.column_config.TextColumn(
+                rw.LATENT_HEAT_COLUMN, help="염소·암모니아 같은 액화가스만 필요합니다. 운전온도에서의 증발잠열입니다. 세 값(잠열·비열·증기밀도)을 모두 적으면 2상 유출식(KOSHA GUIDE P-92 식 6)으로 계산합니다."),
+            rw.LIQUID_CP_COLUMN: st.column_config.TextColumn(rw.LIQUID_CP_COLUMN, help="운전온도에서의 액체 비열입니다."),
+            rw.VAPOR_DENSITY_COLUMN: st.column_config.TextColumn(rw.VAPOR_DENSITY_COLUMN, help="운전압력에서의 증기 밀도입니다."),
+            rw.LEAK_PIPE_COLUMN: st.column_config.TextColumn(
+                rw.LEAK_PIPE_COLUMN, help="설비 외면에서 누출지점까지의 배관 길이입니다. 0.1m 미만이면 비평형 유출이라 이 식을 쓰지 않습니다."),
             rw.BOUNDARY_COLUMN: st.column_config.TextColumn(
                 rw.BOUNDARY_COLUMN, help="설비에서 사업장 경계선까지 가장 가까운 거리(m)입니다. 피해반경이 이 거리를 넘으면 장외로 영향이 나갑니다."),
         },

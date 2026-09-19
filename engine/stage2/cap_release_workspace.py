@@ -19,6 +19,12 @@ from .project import Stage2Project
 
 HEAD_COLUMN = "액위(m)"
 GAMMA_COLUMN = "비열비"
+# 액화가스 2상 유출(P-92 식 6)에 필요한 운전조건 물성. 모두 입력하면 2상 유출식을 쓴다.
+LATENT_HEAT_COLUMN = "증발잠열(kcal/kg)"
+LIQUID_CP_COLUMN = "액체비열(kcal/kg·℃)"
+VAPOR_DENSITY_COLUMN = "증기밀도(kg/m3)"
+LEAK_PIPE_COLUMN = "누출지점 배관길이(m)"
+FLASH_COLUMNS = (LATENT_HEAT_COLUMN, LIQUID_CP_COLUMN, VAPOR_DENSITY_COLUMN)
 
 
 def _number(value: object) -> float | None:
@@ -66,8 +72,10 @@ def release_for_scenario(project: Stage2Project, scenario: Mapping[str, Any], *,
         if molar is None:
             return rel.Release(hole.diameter_mm, hole.reason, None, None, None, "", ("분자량이 필요합니다(별지 제6호 물성).",))
         gamma = _number(scenario.get(GAMMA_COLUMN)) or rel.DEFAULT_GAMMA
-        rate = rel.gas_release_rate(hole.diameter_mm, rel.ATMOSPHERIC_PA + gauge_mpa * 1.0e6, celsius + 273.15, molar, gamma)
-        model = f"기체 오리피스 유출(초크/아임계, Cd {rel.CD_GAS:g}, 비열비 {gamma:g}" + (
+        absolute = rel.ATMOSPHERIC_PA + gauge_mpa * 1.0e6
+        rate = rel.gas_release_rate(hole.diameter_mm, absolute, celsius + 273.15, molar, gamma)
+        cd = rel.gas_discharge_coefficient(absolute, rel.ATMOSPHERIC_PA, gamma)
+        model = f"기체 오리피스 유출(KOSHA GUIDE P-92 식 2·3, Cd {cd:g}, 비열비 {gamma:g}" + (
             "" if _number(scenario.get(GAMMA_COLUMN)) else " 기본값") + ")"
     else:  # 액체, 액화가스의 액상 누출
         gravity = _number(facility.get("비중"))
@@ -77,8 +85,17 @@ def release_for_scenario(project: Stage2Project, scenario: Mapping[str, Any], *,
         if head is None and gauge_mpa <= 0:
             return rel.Release(hole.diameter_mm, hole.reason, None, None, None, "",
                                ("상압 액체는 누출 수두(액위, m)가 필요합니다.",))
-        rate = rel.liquid_release_rate(hole.diameter_mm, gravity * 1000.0, gauge_mpa * 1.0e6, head or 0.0)
-        model = f"액상 오리피스 유출(베르누이, Cd {rel.CD_LIQUID:g}, 플래시 증발 미반영)"
+        flash = [_number(scenario.get(column)) for column in FLASH_COLUMNS]
+        leak_pipe = _number(scenario.get(LEAK_PIPE_COLUMN))
+        if state == "기체(액화가스)" and all(value for value in flash) and (leak_pipe is None or leak_pipe >= 0.1):
+            latent, cp, rho_g = flash
+            rate = rel.equilibrium_flashing_rate(hole.diameter_mm, latent, rho_g, gravity * 1000.0, cp, celsius + 273.15)
+            model = "평형 포화액체 2상 유출(KOSHA GUIDE P-92 식 6)"
+        else:
+            rate = rel.liquid_release_rate(hole.diameter_mm, gravity * 1000.0, gauge_mpa * 1.0e6, head or 0.0)
+            model = f"액상 오리피스 유출(P-92 식 4, Cd {rel.CD_LIQUID:g})"
+            if state == "기체(액화가스)":
+                model += ". 2상 유출로 계산하려면 증발잠열·액체비열·증기밀도를 입력하세요(플래시 증발 미반영)"
     amount = rel.release_amount_kg(rate, duration, target.holding_kg)
     return rel.Release(hole.diameter_mm, hole.reason, rate, float(duration), amount, model)
 
