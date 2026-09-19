@@ -68,7 +68,14 @@ project_id = _project_selector()
 if not project_id:
     st.stop()
 project = load_project(project_id)
-if not project.cap_in_scope:
+from engine.stage2 import cap_judgement
+from ui import judgement_panel
+
+_notice = st.session_state.pop("cap_start_notice", None)
+if _notice:
+    st.info(_notice)
+judgement_panel.render(project)
+if not project.cap_in_scope and not cap_judgement.undecided(project):
     if project.psm_in_scope:
         st.info("이 사업장은 공정안전보고서 작성 대상입니다. 화학사고예방관리계획서 대상은 아닙니다.")
         st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성으로 이동", icon="🏭")
