@@ -15,14 +15,67 @@ from .project import CONFIRMED_STATUSES, Stage2Project
 
 WORKSPACE_FACILITY_KEY = "cap.workspace.facilities"
 EXCLUDED_FLAG = "제외시설여부"
+SPEC_KEY = "cap.workspace.equipment_specs"  # 별지 제9호에서 입력한 연결구·압력·온도 등
 
 
-def workspace_facility_rows(project: Stage2Project) -> list[dict[str, Any]]:
-    """Confirmed workspace facilities that count as the site's 취급시설."""
+UNIT_COLUMN = "단위공장·공정"
+
+
+def _norm(value: object) -> str:
+    return "".join(str(value or "").split()).lower()
+
+
+def unit_plant_names(project: Stage2Project) -> list[str]:
+    names: list[str] = []
+    for row in workspace_facility_rows(project):
+        name = str(row.get(UNIT_COLUMN) or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def workspace_facility_rows(project: Stage2Project, unit_plant: str | None = None) -> list[dict[str, Any]]:
+    """Confirmed workspace facilities that count as the site's 취급시설.
+
+    With `unit_plant`, rows of other named 단위공장 are dropped. Rows without a
+    단위공장 belong to every unit. If the name matches no row, nothing is filtered.
+    """
+    rows = _all_workspace_rows(project)
+    if unit_plant and any(_norm(r.get(UNIT_COLUMN)) == _norm(unit_plant) for r in rows):
+        rows = [r for r in rows if not _norm(r.get(UNIT_COLUMN)) or _norm(r.get(UNIT_COLUMN)) == _norm(unit_plant)]
+    return rows
+
+
+def _all_workspace_rows(project: Stage2Project) -> list[dict[str, Any]]:
     record = project.get_field(WORKSPACE_FACILITY_KEY)
     if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
         return []
-    return [
-        dict(row) for row in record.value
-        if isinstance(row, Mapping) and str(row.get(EXCLUDED_FLAG, "")).upper() != "Y"
-    ]
+    specs = equipment_specs(project)
+    rows = []
+    for row in record.value:
+        if not isinstance(row, Mapping) or str(row.get(EXCLUDED_FLAG, "")).upper() == "Y":
+            continue
+        merged = dict(row)
+        merged.update({k: v for k, v in specs.get(spec_key(row), {}).items() if str(v or "").strip()})
+        rows.append(merged)
+    return rows
+
+
+def spec_key(row: Mapping[str, Any]) -> str:
+    return _norm(row.get("설비번호")) or _norm(row.get("설비명"))
+
+
+def equipment_specs(project: Stage2Project) -> dict[str, dict[str, Any]]:
+    """별지 제9호 input keyed by 설비번호 (or 설비명), overlaid on the shared facility rows."""
+    record = project.get_field(SPEC_KEY)
+    if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
+        return {}
+    return {spec_key(r): dict(r) for r in record.value if isinstance(r, Mapping) and spec_key(r)}
+
+
+def workspace_rows_of_type(project: Stage2Project, facility_type: str) -> list[dict[str, Any]]:
+    """All confirmed workspace rows of one 시설유형, including ones excluded from holdings."""
+    record = project.get_field(WORKSPACE_FACILITY_KEY)
+    if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
+        return []
+    return [dict(row) for row in record.value if isinstance(row, Mapping) and row.get("시설유형") == facility_type]

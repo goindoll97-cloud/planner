@@ -82,7 +82,7 @@ class CAPForm2WorkspaceTests(unittest.TestCase):
         from pathlib import Path
 
         page = (Path(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("cap_form2_view", page)
+        self.assertIn("cap_form{form_no}_view", page)
 
 
 if __name__ == "__main__":

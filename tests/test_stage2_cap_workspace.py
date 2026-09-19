@@ -78,15 +78,55 @@ class CAPWorkspaceTests(unittest.TestCase):
             form = ws.resolve_form1(project)
         self.assertEqual(form.facility_rows, ())
 
-    def test_gas_is_not_estimated_and_asks_for_a_direct_value(self):
+    def test_gas_holding_is_computed_from_operating_conditions(self):
         project = _project()
-        rows = self._filled(project, 물질성상="기체·고압가스")
-        self.assertEqual(ws.extra_fields_for(rows[0]), ["직접확인 최대보유량", "질량단위", "직접확인 근거"])
+        rows = self._filled(project, 물질성상="기체·고압가스", 용량=10, 용량단위="m3")
+        self.assertEqual(ws.extra_fields_for(rows[0])[:3], ["운전압력(MPa)", "운전온도(℃)", "분자량"])
         [asked] = ws.compute_holdings(project, rows)
         self.assertIsNone(asked.ton)
-        rows[0].update({"직접확인 최대보유량": 800, "질량단위": "kg", "직접확인 근거": "운전압력 기준 산정"})
+        for label in ("운전압력", "운전온도", "분자량"):
+            self.assertIn(label, asked.problem)
+        rows[0].update({"운전압력(MPa)": 0.5, "운전온도(℃)": 25, "분자량": 70.9})
         [answered] = ws.compute_holdings(project, rows)
-        self.assertAlmostEqual(answered.ton, 0.8)
+        expected = (0.5 + 0.101325) * 1e6 * 10 * 0.0709 / (8.314462618 * 298.15)  # ≈ 172 kg
+        self.assertAlmostEqual(answered.ton * 1000, expected, places=3)
+        self.assertIn("이상기체식", answered.basis)
+
+    def test_direct_value_overrides_the_gas_calculation(self):
+        project = _project()
+        rows = self._filled(project, 물질성상="기체·고압가스", 용량=10, 용량단위="m3")
+        rows[0].update({"운전압력(MPa)": 0.5, "운전온도(℃)": 25, "분자량": 70.9,
+                        "직접확인 최대보유량": 800, "질량단위": "kg", "직접확인 근거": "산정서"})
+        [result] = ws.compute_holdings(project, rows)
+        self.assertAlmostEqual(result.ton, 0.8)
+
+    def test_molar_mass_is_taken_from_the_chemical_list_when_present(self):
+        project = _project()
+        chemicals = project.get_field("inventory.chemicals").value
+        chemicals[0]["분자량"] = "70.9"
+        project.set_field("inventory.chemicals", "화학물질 목록", chemicals, "VERIFIED")
+        rows = self._filled(project, 물질성상="기체·고압가스", 용량=10, 용량단위="m3")
+        rows[0].update({"운전압력(MPa)": 0.5, "운전온도(℃)": 25})
+        [result] = ws.compute_holdings(project, rows)
+        self.assertIsNotNone(result.ton)
+
+    def test_operating_conditions_are_shared_with_form9(self):
+        from engine.stage2 import cap_form9_workspace as f9
+
+        project = _project()
+        rows = self._filled(project, 물질성상="기체·고압가스", 용량=10, 용량단위="m3")
+        rows[0].update({"운전압력(MPa)": 0.5, "운전온도(℃)": 25, "분자량": 70.9})
+        ws.save_facility_rows(project, rows)
+        [spec_row] = f9.rows(project)
+        self.assertEqual((spec_row["운전압력"], spec_row["운전온도"]), ("0.5", "25"))
+
+    def test_level_hint_reports_exemption_candidate_and_mismatch(self):
+        below = [{"규정수량 비교": "하위 규정수량 미만"}]
+        self.assertEqual(ws.level_hint(below)[0], "면제 후보")
+        self.assertEqual(ws.level_hint([{"규정수량 비교": "하위 이상·상위 미만"}])[0], "2군")
+        self.assertEqual(ws.level_hint([{"규정수량 비교": "상위 규정수량 이상"}, {"규정수량 비교": "하위 규정수량 미만"}])[0], "1군 기준 충족")
+        self.assertEqual(ws.level_hint([{"규정수량 비교": ""}])[0], "판정 불가")
+        self.assertIn("다르면", ws.level_hint([{"규정수량 비교": "하위 이상·상위 미만"}], "1군")[1])
 
     def test_reaction_process_asks_for_reference_content(self):
         row = {"시설유형": "제조·사용시설", "물질성상": "액체", "공정유형": "반응"}

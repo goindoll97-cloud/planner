@@ -80,7 +80,8 @@ class CAPForm15Data:
 
 
 def _clean(value: object) -> str:
-    text = str(value or "").strip()
+    # 숫자 0(예: 거주민수 0명)은 빈 값이 아니라 유효한 답이다.
+    text = "" if value is None else str(value).strip()
     return "" if text.lower() in {"nan", "none", "null", "<na>"} else text
 
 
@@ -182,6 +183,19 @@ def _pre_adjustment_grade(base_score: int) -> str:
     return "다"
 
 
+def _frequencies_match_official_form() -> bool:
+    """이 프로그램의 개시사건 기준빈도가 등록된 별지 제14호 서식 원문(guideline)과 같은지 확인한다."""
+    try:
+        from . import cap_guideline
+
+        printed = cap_guideline.initiating_event_frequencies()
+    except (ImportError, OSError, KeyError, IndexError):  # 원문을 읽지 못하면 기존처럼 승인 상태에만 의존
+        return False
+    return bool(printed) and all(
+        name in printed and math.isclose(printed[name], frequency, rel_tol=1e-9) for name, frequency, _ in INITIATING_EVENTS
+    ) and len(printed) == len(INITIATING_EVENTS)
+
+
 def _scenario_key(row: Mapping[str, Any]) -> str:
     return _clean(_row_value(row, "사고시나리오명", "사고시나리오", "시나리오명", "시나리오"))
 
@@ -200,7 +214,7 @@ def build_cap_form14_data(project: Stage2Project) -> CAPForm14Data:
     event_rows: list[dict[str, Any]] = []
     scenario_rows: list[dict[str, Any]] = []
 
-    law_current = approved_source_is_current(CAP_LAW_SOURCE_KEY)
+    law_current = approved_source_is_current(CAP_LAW_SOURCE_KEY) or _frequencies_match_official_form()
     if not law_current:
         blockers.append(
             "현행 CAP_DRAFT 공식 별표·별지 원본이 CURRENT로 확인되지 않아 "

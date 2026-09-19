@@ -442,9 +442,9 @@ def _fill_form3(table, project: Stage2Project) -> None:
     _fill_label_rows_replace(table, mapping, start=1)
 
 
-def _rendered_facility_choices(project: Stage2Project) -> dict[str, str]:
+def _rendered_facility_choices(project: Stage2Project, unit_plant: str | None = None) -> dict[str, str]:
     rendered: dict[str, str] = {}
-    for line in render_facility_type_counts(project).splitlines():
+    for line in render_facility_type_counts(project, unit_plant).splitlines():
         match = re.match(r"^[☒☐]\s*(.+)\s+\(([^)]*)\)기$", line.strip())
         if match:
             rendered[base._norm(match.group(1))] = line.strip()
@@ -528,11 +528,11 @@ def _ensure_facility_chemical_row_capacity(table, required: int) -> list:
     return expanded
 
 
-def _fill_facility_chemical_rows(table, project: Stage2Project) -> None:
-    prepared = build_cap_form1_data(project)
+def _fill_facility_chemical_rows(table, project: Stage2Project, chemical_rows=None) -> None:
     unique: list[tuple[str, str, str]] = []
     seen: set[tuple[str, str]] = set()
-    for row in prepared.chemical_rows:
+    source_rows = chemical_rows if chemical_rows is not None else build_cap_form1_data(project).chemical_rows
+    for row in source_rows:
         name = _clean(row.get("물질명"))
         cas = _clean(row.get("CAS No."))
         holding = _clean(row.get("사업장 내 최대보유량(ton)"))
@@ -583,6 +583,13 @@ def _fill_facility_overview(
     detailed: bool,
 ) -> None:
     overview_key = "cap.basic.unit_facility_overview" if detailed else "cap.basic.total_facility_overview"
+    unit_plant = None
+    unit_chemicals = None
+    if detailed:
+        from .cap_form5_workspace import unit_chemical_rows
+
+        unit_plant = base._text(project, "cap.business.unit_plant_name", default=project.site_name or "")
+        unit_chemicals = unit_chemical_rows(project, unit_plant)
     _fill_label_rows_replace(
         table,
         {
@@ -596,7 +603,7 @@ def _fill_facility_overview(
         table,
         row_start=3,
         row_end=8,
-        rendered=_rendered_facility_choices(project),
+        rendered=_rendered_facility_choices(project, unit_plant),
     )
 
     loading_value = base._text(project, "cap.basic.loading_transport", default="")
@@ -607,7 +614,7 @@ def _fill_facility_overview(
         rendered=_rendered_loading_choices(loading_value),
     )
 
-    _fill_facility_chemical_rows(table, project)
+    _fill_facility_chemical_rows(table, project, unit_chemicals)
 
 
 def _fill_form6(table, project: Stage2Project) -> None:
@@ -635,11 +642,33 @@ def _fill_form6(table, project: Stage2Project) -> None:
     _fill_table_rows(table, _sanitize_rows(rows), header_rows=2)
 
 
+def _clone_table_after(table):
+    """Insert an unfilled copy of `table` right after it (with a paragraph between) and return it."""
+    from docx.oxml import OxmlElement
+    from docx.table import Table
+
+    spacer = OxmlElement("w:p")
+    table._tbl.addnext(spacer)
+    clone = deepcopy(table._tbl)
+    spacer.addnext(clone)
+    return Table(clone, table._parent)
+
+
 def _fill_form7(table, project: Stage2Project) -> None:
     prepared = build_cap_form7_data(project)
-    row = prepared.row
-    if not row:
+    if not prepared.row:
         return
+    # 별지 제7호: 대표물질 2종(시행규칙 별표 4) → one table per substance
+    targets = [(table, prepared.row)]
+    previous = table
+    for extra in prepared.extra_rows:
+        previous = _clone_table_after(previous)
+        targets.append((previous, extra))
+    for target_table, target_row in targets:
+        _fill_form7_table(target_table, target_row)
+
+
+def _fill_form7_table(table, row) -> None:
 
     max_holding = base._row_value(row, "최대보유량(ton)", "최대보유량")
     if max_holding not in (None, "") and "ton" not in str(max_holding).lower():
@@ -699,6 +728,21 @@ def _fill_form8(tables, project: Stage2Project) -> None:
         cells = _unique_cells(context_table.rows[1])
         if cells:
             _write_cell(cells[-1], summary)
+
+    if prepared.rows or prepared.no_protected_targets:
+        from .cap_form8_workspace import SUBTYPES, selected_options
+
+        chosen = selected_options(project)
+        printed = {
+            base._norm(option): f"{'☒' if option in chosen[category] else '☐'} {option}"
+            for category, options in SUBTYPES.items()
+            for option in options
+        }
+        for row in context_table.rows[2:]:
+            for cell in _unique_cells(row)[1:]:
+                text = base._norm(cell.text).replace("□", "").replace("☐", "").replace("☒", "")
+                if text in printed:
+                    _write_cell(cell, printed[text])
 
     rows = [
         [

@@ -31,6 +31,16 @@ class CAPGuidelineTests(unittest.TestCase):
         for label in ("단위공장", "유해화학물질", "CAS No.", "함량(%)", "구분기호", "취급시설", "설계용량(m3)", "취급량(ton)"):
             self.assertIn(label, form.table_header(0))
 
+    def test_law_outranks_manual_and_tools(self):
+        lock = json.loads((ROOT / "data/stage2/cap_authoritative_sources.json").read_text(encoding="utf-8"))
+        order = lock["source_priority"]
+        position = {name: i for i, name in enumerate(order)}
+        law = next(i for name, i in position.items() if "시행규칙" in name)
+        manual = next(i for name, i in position.items() if "매뉴얼" in name)
+        tool = next(i for name, i in position.items() if "KORA" in name)
+        self.assertLess(law, manual)
+        self.assertLess(manual, tool)
+
     def test_sources_are_registered(self):
         lock = json.loads((ROOT / "data/stage2/cap_authoritative_sources.json").read_text(encoding="utf-8"))
         for entry in lock["local_source_files"].values():

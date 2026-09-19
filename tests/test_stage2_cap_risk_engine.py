@@ -79,11 +79,18 @@ class CAPRiskEngineTests(unittest.TestCase):
         self.assertEqual(piping_leak["개수"], 2)
         self.assertAlmostEqual(float(piping_leak["사고빈도(/연)"]), 0.002)
 
+    @patch("engine.stage2.cap_risk_engine._frequencies_match_official_form", return_value=False)
     @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=False)
-    def test_form14_does_not_auto_apply_frequency_when_law_source_is_not_current(self, _current):
+    def test_form14_does_not_auto_apply_frequency_when_law_source_is_not_current(self, _current, _official):
         result = build_cap_form14_data(self._project())
         self.assertTrue(any("CURRENT" in blocker for blocker in result.blockers))
         self.assertEqual(result.scenario_rows[0]["시설빈도(/연)"], "")
+
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=False)
+    def test_form14_applies_frequency_when_it_matches_the_registered_official_form(self, _current):
+        result = build_cap_form14_data(self._project())
+        self.assertFalse(any("CURRENT" in blocker for blocker in result.blockers))
+        self.assertNotEqual(result.scenario_rows[0]["시설빈도(/연)"], "")
 
     @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
     def test_form15_calculates_a_b_c_d_and_pre_adjustment_score(self, _current):

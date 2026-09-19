@@ -100,3 +100,102 @@ def annex_rules() -> dict[int, tuple[str, ...]]:
         elif current and re.match(r"^\d+\. ", text):
             rules[current].append(text)
     return {no: tuple(items) for no, items in rules.items()}
+
+
+@lru_cache(maxsize=1)
+def protected_target_rules() -> dict[str, dict[str, str]]:
+    """별표 4: 구분(갑종·을종·환경수용체) -> {종류: 보호대상의 종류 설명(규모 조건 포함)}."""
+    doc = Document(str(ANNEX_RULES))
+    in_annex4 = False
+    tables: list[tuple[tuple[str, ...], ...]] = []
+    for block in _blocks(doc):
+        if isinstance(block, Paragraph):
+            text = block.text.strip()
+            if _ANNEX_HEAD.match(text):
+                in_annex4 = text == "[별표 4]"
+            elif text.startswith("■"):
+                in_annex4 = False
+        elif in_annex4 and len(tables) < 3:
+            tables.append(_cells(block))
+    result: dict[str, dict[str, str]] = {}
+    for label, table in zip(("갑종", "을종", "환경수용체"), tables):
+        entries: dict[str, str] = {}
+        for row in table[1:]:
+            cells = list(dict.fromkeys(c for c in row if c))
+            if len(cells) >= 2:
+                entries[" ".join(cells[-2].split())] = cells[-1]
+        result[label] = entries
+    return result
+
+
+@lru_cache(maxsize=1)
+def preliminary_scenario_quantities() -> dict[tuple[str, str], float]:
+    """별표 2: (성상, 유해성 분류) -> 예비시나리오 규정수량(kg)."""
+    doc = Document(str(ANNEX_RULES))
+    result: dict[tuple[str, str], float] = {}
+    for block in _blocks(doc):
+        if not isinstance(block, Table):
+            continue
+        rows = _cells(block)
+        if rows and "예비시나리오" in rows[0][0]:
+            for row in rows[2:]:
+                match = re.search(r"([\d,]+)\s*kg", row[2] if len(row) > 2 else "")
+                if match:
+                    result[(row[0].strip(), row[1].strip())] = float(match.group(1).replace(",", ""))
+            break
+    return result
+
+
+@lru_cache(maxsize=1)
+def initiating_event_frequencies() -> dict[str, float]:
+    """별지 제14호 서식 표에 인쇄된 개시사건 -> 기준빈도(/연)."""
+    result: dict[str, float] = {}
+    for row in form_guidelines()[14].tables[0]:
+        cells = [c.strip() for c in row]
+        if len(cells) >= 3 and cells[0].isdigit():
+            found = re.match(r"^(\d+(?:\.\d+)?)\s*[×x]\s*10\s*-\s*(\d+)$", cells[2])
+            if found:
+                result[cells[1]] = float(found.group(1)) * 10 ** -int(found.group(2))
+    return result
+
+
+@lru_cache(maxsize=1)
+def risk_score_thresholds() -> dict[str, tuple[float, float, float]]:
+    """별표 3 제1호 구간별 점수표: 0·1·2점 구간의 '미만' 경계값(3점은 마지막 경계 이상)."""
+    doc = Document(str(ANNEX_RULES))
+    keys = ("scenario_count", "facility_frequency", "offsite_distance_m", "population")
+    for block in _blocks(doc):
+        if not isinstance(block, Table):
+            continue
+        rows = _cells(block)
+        if rows and "구간" in rows[0][0] and "시설빈도" in " ".join(rows[0]):
+            columns: dict[str, list[float]] = {key: [] for key in keys}
+            for row in rows[1:4]:
+                for key, cell in zip(keys, row[1:5]):
+                    found = re.match(r"^\s*([\d.]+)\s*미만", cell)
+                    if found:
+                        columns[key].append(float(found.group(1)))
+            if all(len(values) == 3 for values in columns.values()):
+                return {key: tuple(values) for key, values in columns.items()}
+    return {}
+
+
+@lru_cache(maxsize=1)
+def risk_matrix_legible_cells() -> dict[tuple[int, int], str]:
+    """별표 3 제2호 위험도 판정표에서 글자로 남아 있는 칸: (사고영향점수, 사고빈도점수) -> 등급."""
+    doc = Document(str(ANNEX_RULES))
+    for block in _blocks(doc):
+        if not isinstance(block, Table):
+            continue
+        rows = _cells(block)
+        if rows and rows[0][0].startswith("위험도 판정표"):
+            found: dict[tuple[int, int], str] = {}
+            for row in rows[3:]:
+                impact = row[1].strip() if len(row) > 1 else ""
+                if not impact.isdigit():
+                    continue
+                for frequency, cell in enumerate(row[2:9]):
+                    if cell.strip() in ("가", "나", "다"):
+                        found[(int(impact), frequency)] = cell.strip()
+            return found
+    return {}

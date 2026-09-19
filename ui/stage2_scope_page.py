@@ -424,7 +424,7 @@ else:
             st.error(str(exc))
         else:
             save_project(project)
-            st.success("작성범위를 저장했습니다. 다음 단계에서 통합 작성자료와 첨부자료를 확인할 수 있습니다.")
+            st.success("작성범위를 저장했습니다. 아래 링크에서 작성을 시작하세요.")
             st.rerun()
 
 if project.scope_confirmed:
@@ -434,4 +434,7 @@ if project.scope_confirmed:
     if project.cap_in_scope:
         selected_labels.append(CAP_FULL)
     st.success("현재 작성범위: " + ", ".join(selected_labels))
-    st.page_link("ui/stage2_intake_page.py", label="3. 통합 작성자료로 이동", icon="📥")
+    if project.cap_in_scope:
+        st.page_link("ui/cap_workspace_page.py", label="화학사고예방관리계획서 작성으로 이동", icon="📝")
+    if project.psm_in_scope:
+        st.page_link("ui/stage2_intake_page.py", label="3. 통합 작성자료로 이동 (공정안전보고서)", icon="📥")

@@ -3,6 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from ui import cap_frames as frames
+
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_guideline import form_guidelines
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
@@ -19,9 +21,12 @@ DIM_LABELS = {
 
 
 def _project_selector() -> str | None:
+    from ui import cap_start_panel
+
     projects = list_projects()
     if not projects:
-        st.info("저장된 작성 프로젝트가 없습니다. 먼저 1. 판정진단부터 진행하세요.")
+        st.info("작성할 사업장이 아직 없습니다. 아래에서 사업장과 취급 물질을 적고 시작하세요.")
+        cap_start_panel.render(expanded=True)
         return None
     labels = {row["project_id"]: f"{row['company_name']} · {row['project_id']}" for row in projects}
     ids = list(labels)
@@ -31,6 +36,7 @@ def _project_selector() -> str | None:
         format_func=lambda pid: labels[pid],
     )
     st.session_state[ACTIVE_PROJECT_KEY] = selected
+    cap_start_panel.render(expanded=False)
     return selected
 
 
@@ -64,31 +70,47 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 if not project.cap_in_scope:
-    st.warning("이 프로젝트는 화학사고예방관리계획서를 작성 대상으로 선택하지 않았습니다. 2. 작성범위 선택에서 확인하세요.")
+    st.warning("이 사업장은 화학사고예방관리계획서 작성·제출 대상으로 확인되지 않았습니다. 위에서 다른 사업장을 고르거나 "
+               "'새 사업장으로 시작하기'에서 다시 판정하세요.")
     st.stop()
 
-form_labels = {1: "별지 제1호", 2: "별지 제2호"}
-form_no = st.radio(
-    "서식", list(form_labels), format_func=lambda n: f"{form_labels[n]} · {form_guidelines()[n].title}",
-    horizontal=True, key="cap_form_no",
-)
-if form_no == 2:
-    from ui import cap_form2_view
+from ui import cap_excel_panel
+from ui import cap_forms_registry as registry
 
-    cap_form2_view.render(project)
+cap_excel_panel.render(project)
+
+# 별지 제13호(총괄영향범위)는 별지 제12호 화면에서 함께 만든다.
+form_no = st.selectbox(
+    "작성할 서식(별지 순서대로)", list(registry.FORM_NUMBERS),
+    format_func=lambda n: f"{registry.label(n)} · {form_guidelines()[n].title}", key="cap_form_no",
+)
+if form_no != 1:
+    import importlib
+
+    extra_view = importlib.import_module(f"ui.cap_form{form_no}_view")
+
+    extra_view.render(project)
     st.stop()
 
 schema = ws.load_form_schema(1)
 steps = ws.steps(1)
-titles = [step["title"] for step in steps] + ["5. 서식 내보내기"]
-step_ids = [step["id"] for step in steps] + ["export"]
+titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
+step_ids = ["inputs", "result", "export"]
 
 st.header(schema["title"])
 step_title = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form01_step")
 step_id = step_ids[titles.index(step_title)]
-current = next((step for step in steps if step["id"] == step_id), None)
-if current:
-    _explain(current)
+if step_id == "inputs":
+    st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 시작하기에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
+    for part in steps:
+        if part["id"] in ("scope", "facilities", "chemicals"):
+            for item in part["explain"]:
+                with st.expander(item["term"]):
+                    st.write(item["text"])
+else:
+    current = next((step for step in steps if step["id"] == step_id), None)
+    if current:
+        _explain(current)
 
 fac = ws.section(1, "facility_table")
 columns = ws.facility_columns()
@@ -103,13 +125,11 @@ def _grid_frame() -> pd.DataFrame:
     return frame
 
 
-if step_id == "scope":
-    st.write("이 서식은 규정 별표 1의 산정 방법에 따라 시설별 자료로 계산합니다. 위 설명을 읽고 다음 단계로 넘어가세요.")
-
-elif step_id == "chemicals":
+if step_id == "inputs":
+    st.subheader("취급 물질")
     chemicals = ws.form1._chemical_identity_rows(project)
     if chemicals:
-        st.dataframe(
+        frames.show(
             pd.DataFrame([
                 {
                     "물질명": ws.form1._row_value(row, "물질명", "유해화학물질명", "제품명"),
@@ -122,17 +142,10 @@ elif step_id == "chemicals":
         )
     else:
         st.warning("확정된 화학물질 목록이 없습니다. 1. 판정진단에서 물질 목록을 먼저 입력하세요.")
-    with st.expander("KOSHA 물질 조회 (단일물질만)"):
-        st.caption("CAS 번호만 KOSHA로 전송합니다. 혼합물은 조회하지 않습니다. 결과는 후보이며 회사 SDS와 대조해 확인하세요.")
-        cas = st.text_input("CAS 번호", key="cap_form01_cas")
-        if st.button("조회", key="cap_form01_kosha") and cas.strip():
-            found = ws.kosha_name_candidate(cas.strip())
-            if found["chemical_name"]:
-                st.success(f"KOSHA 물질명 후보: {found['chemical_name']}  ·  {found['origin']}")
-            else:
-                st.warning(found["message"])
+    st.caption("물질 물성(상태·비중·폭발한계 등)은 별지 제6호에서 KOSHA 조회로 채웁니다.")
 
-elif step_id == "facilities":
+
+    st.subheader("시설 표")
     st.info("※ " + fac["form_note"])
     edited = st.data_editor(
         _grid_frame(),
@@ -177,7 +190,7 @@ elif step_id == "facilities":
     live = ws.compute_holdings(project, rows) if rows else []
     if live:
         st.subheader("계산 결과 미리보기")
-        st.dataframe(
+        frames.show(
             pd.DataFrame([
                 {
                     "취급시설": r.get("설비명") or r.get("설비번호"),
@@ -220,10 +233,12 @@ elif step_id == "result":
         st.error(blocker)
     for line in ws.result_sentences(list(form.chemical_rows)):
         st.write("• " + line)
+    hint_label, hint_reason = ws.level_hint(list(form.chemical_rows), form.writing_level)
     st.metric(
         "사업장 작성수준", form.writing_level or "미확정",
         help="판정진단에서 승계된 값입니다. 바꾸려면 판정진단을 다시 수행합니다.",
     )
+    st.info(f"이 서식의 물질별 최대보유량으로 본 결과: **{hint_label}** — {hint_reason}")
     st.caption("1군은 주요취급시설(규칙 제19조제8항)을 운영하는 경우에 해당합니다. 그 여부는 판정진단에서 확인한 값을 따릅니다.")
 
 else:
@@ -232,10 +247,10 @@ else:
     with st.expander("서식에 채워지는 내용 미리보기"):
         st.write("**1. 단위공장별 최대보유량 산출**")
         if form.facility_rows:
-            st.dataframe(pd.DataFrame(form.facility_rows).drop(columns=["산정근거"], errors="ignore"), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(form.facility_rows).drop(columns=["산정근거"], errors="ignore"), width="stretch", hide_index=True)
         st.write("**2. 유해화학물질별 사업장 내의 최대보유량 산출**")
         if form.chemical_rows:
-            st.dataframe(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
+            frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
         st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
     try:
         st.download_button(

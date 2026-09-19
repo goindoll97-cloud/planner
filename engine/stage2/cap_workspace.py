@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 from . import cap_form1_engine as form1
 from .cap_calc import internal_volume_m3
+from .cap_shared_facts import SPEC_KEY, equipment_specs, spec_key
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "data" / "stage2" / "cap_forms"
@@ -101,6 +102,7 @@ def save_facility_rows(project: Stage2Project, rows: list[Mapping[str, Any]]) ->
         item["제외시설여부"] = "Y" if result.excluded else "N"
         item["최대보유량(kg)"] = "" if result.ton is None or result.excluded else round(result.ton * 1000.0, 6)
         item["산정방법"] = result.basis or result.problem
+    _share_operating_conditions(project, cleaned)
     project.set_field(
         FACILITY_FIELD_KEY,
         "취급시설 목록(별지 제1호 작성대)",
@@ -109,6 +111,28 @@ def save_facility_rows(project: Stage2Project, rows: list[Mapping[str, Any]]) ->
         note="CAP 서식 작업대의 별지 제1호에서 직접 입력·수정",
     )
     return len(cleaned)
+
+
+def _share_operating_conditions(project: Stage2Project, rows: list[dict[str, Any]]) -> None:
+    """Operating pressure/temperature typed here are the same facts 별지 제9호 asks for."""
+    specs = equipment_specs(project)
+    changed = False
+    for row in rows:
+        pressure, celsius = _float(row.get("운전압력(MPa)")), _float(row.get("운전온도(℃)"))
+        key = spec_key(row)
+        if not key or (pressure is None and celsius is None):
+            continue
+        entry = dict(specs.get(key, {}))
+        entry["설비번호"], entry["설비명"] = str(row.get("설비번호") or "").strip(), str(row.get("설비명") or "").strip()
+        if pressure is not None:
+            entry["운전압력"] = f"{pressure:g}"
+        if celsius is not None:
+            entry["운전온도"] = f"{celsius:g}"
+        specs[key] = entry
+        changed = True
+    if changed:
+        project.set_field(SPEC_KEY, "장치·설비 명세(별지 제9호 작성대)", list(specs.values()), "USER_CONFIRMED",
+                          note="별지 제1호(기체 운전조건)와 별지 제9호에서 입력")
 
 
 def volume_from_dimensions(shape: str, **dims: float) -> float | None:
@@ -192,8 +216,14 @@ EXTRA_FIELDS: dict[str, dict[str, Any]] = {
     "별표4 기준함량(%)": {"label": "산정 기준 함량(%)", "kind": "number",
                         "help": "단순혼합은 투입이 끝난 뒤의 최종 함량, 반응은 반응이 일어나기 전의 최종 함량을 씁니다."},
     "함량근거": {"label": "함량 근거", "kind": "text", "help": "함량 수치의 근거 자료(공정배합표, SDS 등)를 적습니다."},
+    "운전압력(MPa)": {"label": "운전압력(MPa, 게이지)", "kind": "number",
+                    "help": "기체의 운전압력(게이지압)입니다. 설계용량·운전온도·분자량과 함께 최대보유량 계산에 쓰입니다. 별지 제9호의 운전압력과 같은 값으로 저장됩니다."},
+    "운전온도(℃)": {"label": "운전온도(℃)", "kind": "number",
+                  "help": "기체의 운전온도입니다. 별지 제9호의 운전온도와 같은 값으로 저장됩니다."},
+    "분자량": {"label": "분자량(g/mol)", "kind": "number",
+              "help": "물질의 분자량입니다. 화학물질 목록에 있으면 자동으로 쓰이고, 없으면 SDS 제9항이나 KOSHA 조회값을 적습니다."},
     "직접확인 최대보유량": {"label": "직접 확인한 최대보유량", "kind": "number",
-                        "help": "기체·고압가스나 성상이 둘 이상인 물질은 프로그램이 추정하지 않습니다. 운전조건(압력·온도)을 고려해 산정한 최대 체류량을 직접 입력합니다."},
+                        "help": "운전압력·온도로 계산하지 않고 이미 산정해 둔 값을 쓰고 싶을 때만 적습니다. 이 값이 있으면 계산보다 우선합니다. 성상이 둘 이상인 경우에도 여기에 적습니다."},
     "질량단위": {"label": "질량 단위", "kind": "choice", "options": ["kg", "ton"], "help": "직접 입력한 양의 단위입니다."},
     "직접확인 근거": {"label": "직접 확인 근거", "kind": "text", "help": "산정 방법과 근거 자료를 적습니다. 비워 두면 계산되지 않습니다."},
     "보관계획도 최대량": {"label": "보관계획도 최대량", "kind": "number", "help": "보관시설의 보관계획도에 표시된 최대 보관량입니다."},
@@ -207,7 +237,9 @@ def extra_fields_for(row: Mapping[str, Any]) -> list[str]:
     state = str(row.get("물질성상") or "").strip()
     if ftype in EXCLUDED_TYPES:
         return []
-    if state in {"기체·고압가스", "복수성상"}:
+    if state == "기체·고압가스":
+        return ["운전압력(MPa)", "운전온도(℃)", "분자량", "직접확인 최대보유량", "질량단위", "직접확인 근거"]
+    if state == "복수성상":
         return ["직접확인 최대보유량", "질량단위", "직접확인 근거"]
     if ftype == "보관시설":
         return ["보관계획도 최대량", "일일최대보관량", "질량단위"]
@@ -253,6 +285,58 @@ def _engine_row(row: Mapping[str, Any], list_row_no: int | None) -> dict[str, An
     }
 
 
+GAS_CONSTANT = 8.314462618  # J/(mol·K)
+ATMOSPHERIC_MPA = 0.101325
+
+
+def _float(value: object) -> float | None:
+    try:
+        text = str(value).strip().replace(",", "")
+        return float(text) if text else None
+    except ValueError:
+        return None
+
+
+def gas_mass_kg(volume_m3: float, gauge_mpa: float, celsius: float, molar_mass_g_mol: float) -> float:
+    """Ideal-gas mass held in `volume_m3` at operating conditions (별표 1 제2호)."""
+    pressure_pa = (gauge_mpa + ATMOSPHERIC_MPA) * 1.0e6
+    kelvin = celsius + 273.15
+    return pressure_pa * volume_m3 * (molar_mass_g_mol / 1000.0) / (GAS_CONSTANT * kelvin)
+
+
+def _with_gas_estimate(project: Stage2Project, row: Mapping[str, Any], chemical: Mapping[str, Any] | None) -> tuple[dict[str, Any], str]:
+    """For gas rows without a direct value, compute the holding and pass it on as a direct value.
+
+    Returns (row, missing) where `missing` names what is still needed.
+    """
+    item = dict(row)
+    if str(item.get("물질성상") or "").strip() != "기체·고압가스" or str(item.get("직접확인 최대보유량") or "").strip():
+        return item, ""
+    specs = equipment_specs(project).get(spec_key(item), {})
+    volume = form1.volume_to_m3(item.get("용량"), item.get("용량단위"))
+    pressure = _float(item.get("운전압력(MPa)"))
+    if pressure is None:
+        pressure = _float(specs.get("운전압력"))
+    celsius = _float(item.get("운전온도(℃)"))
+    if celsius is None:
+        celsius = _float(specs.get("운전온도"))
+    molar = _float(item.get("분자량"))
+    if molar is None and chemical:
+        molar = _float(chemical.get("분자량"))
+    missing = [label for label, value in (("설계용량", volume), ("운전압력(MPa)", pressure), ("운전온도(℃)", celsius),
+                                          ("분자량", molar)) if value is None]
+    if missing:
+        return item, "기체의 최대보유량은 운전조건으로 계산합니다. 필요한 값: " + ", ".join(missing) + " (또는 직접 확인한 값)"
+    if molar is not None and molar <= 0 or volume is not None and volume <= 0:
+        return item, "설계용량과 분자량은 0보다 커야 합니다."
+    kg = gas_mass_kg(volume, pressure, celsius, molar)
+    item["직접확인 최대보유량"] = round(kg, 6)
+    item["질량단위"] = "kg"
+    item["직접확인 근거"] = (f"이상기체식 m=P·V·M/(R·T): 설계용량 {volume:g} m3, 운전압력 {pressure:g} MPa(게이지), "
+                        f"운전온도 {celsius:g}℃, 분자량 {molar:g} (실제기체 보정 없음)")
+    return item, ""
+
+
 def compute_holdings(project: Stage2Project, rows: list[Mapping[str, Any]]) -> list[HoldingResult]:
     """Per-facility maximum holding via the same rules Stage 1 uses."""
     import pandas as pd
@@ -276,6 +360,11 @@ def compute_holdings(project: Stage2Project, rows: list[Mapping[str, Any]]) -> l
         if chem_no is None:
             results.append(HoldingResult(None, "", False, "취급하는 유해화학물질을 화학물질 목록에서 찾지 못했습니다."))
             continue
+        chemical_row = next((c for i, c in enumerate(chemicals, 1) if i == chem_no), None)
+        row, gas_missing = _with_gas_estimate(project, row, chemical_row)
+        if gas_missing:
+            results.append(HoldingResult(None, "", False, gas_missing))
+            continue
         frame = pd.DataFrame([_engine_row(row, chem_no)])
         calcs, blockers = calculate_facility_rows(intake, frame)
         if not calcs:
@@ -293,6 +382,28 @@ def compute_holdings(project: Stage2Project, rows: list[Mapping[str, Any]]) -> l
 
 def steps(form_no: int = 1) -> list[dict[str, Any]]:
     return list(load_form_schema(form_no).get("steps", []))
+
+
+def level_hint(chemical_rows: list[Mapping[str, Any]], recorded_level: str = "") -> tuple[str, str]:
+    """작성수준 hint from the per-substance quantity comparison: (label, explanation).
+
+    1군 additionally requires operating a 주요취급시설 (규정 제2조 제12호의1), which the
+    판정진단 value covers, so this only reports what the quantities alone show.
+    """
+    bands = [str(r.get("규정수량 비교") or "").strip() for r in chemical_rows]
+    known = [b for b in bands if b]
+    if not known or len(known) < len(bands):
+        return "판정 불가", "규정수량 비교가 끝나지 않은 물질이 있습니다."
+    if any("상위" in b and "미만" not in b for b in known):
+        label, why = "1군 기준 충족", "어느 물질이 상위 규정수량 이상입니다. 주요취급시설을 운영하면 1군입니다."
+    elif any("하위 이상" in b for b in known):
+        label, why = "2군", "어느 물질이 하위 규정수량 이상이지만 상위 규정수량 이상인 물질은 없습니다."
+    else:
+        label, why = "면제 후보", "모든 물질이 하위 규정수량 미만입니다. 다른 작성면제 사유와 함께 판정진단에서 확인하세요."
+    recorded = recorded_level.strip()
+    if recorded and recorded[:2] not in label and not (recorded.startswith("면제") and label.startswith("면제")):
+        why += f" 판정진단 값({recorded})과 다르면 판정진단을 다시 확인하세요."
+    return label, why
 
 
 def result_sentences(chemical_rows: list[Mapping[str, Any]]) -> list[str]:
