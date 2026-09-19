@@ -7,12 +7,22 @@ import json
 from pathlib import Path
 from typing import Any
 
-DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "stage2" / "narrative_examples.json"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "stage2"
+DATA_PATH = DATA_DIR / "narrative_examples.json"
+EXTRA_PATHS = (DATA_DIR / "narrative_examples_cap.json",)
 
 
 @lru_cache(maxsize=1)
 def _doc() -> dict[str, Any]:
-    return json.loads(DATA_PATH.read_text(encoding="utf-8"))
+    """공용 예시 파일에 문서별 예시 파일의 사실 항목을 합친다."""
+    doc = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+    for path in EXTRA_PATHS:
+        extra = json.loads(path.read_text(encoding="utf-8"))
+        overlap = set(doc["facts"]) & set(extra["facts"])
+        if overlap:
+            raise ValueError(f"예시 항목이 겹칩니다: {sorted(overlap)}")
+        doc["facts"].update(extra["facts"])
+    return doc
 
 
 def notice() -> str:

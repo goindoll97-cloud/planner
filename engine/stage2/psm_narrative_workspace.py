@@ -15,7 +15,7 @@ from . import ai_drafting as drafting
 from . import narrative_examples as examples
 from .local_ai_resilience import generate_system_ai_drafts_batched
 from .project import CONFIRMED_STATUSES, Stage2Project
-from .requirements import psm_requirement_specs
+from .intake import selected_requirement_specs
 
 SYSTEM = "PSM"
 PROCESS_KEY = "process.description"
@@ -27,6 +27,16 @@ AI_ITEMS = (
     RISK_ITEM, "psm.emergency.roles", "psm.operation.training", "psm.emergency.training",
     "psm.emergency.public_information",
 )
+
+
+@dataclass(frozen=True)
+class Profile:
+    """문서별 서술형 설정: 어떤 항목을 AI가 쓰고, 어떤 사실을 사람이 적는가."""
+    system: str
+    basic_facts: tuple
+    decision_facts: tuple
+    items: Any  # 항목 키 목록을 돌려주는 함수(project) -> tuple[str, ...]
+    gates: Any = None  # {항목 키: (필요한 사실 키, 안내 문구)}
 
 
 @dataclass(frozen=True)
@@ -66,6 +76,11 @@ DECISION_FACTS = (
 )
 
 
+PSM_PROFILE = Profile(
+    "PSM", BASIC_FACTS, DECISION_FACTS, lambda project: AI_ITEMS,
+    {RISK_ITEM: (RISK_REPORT_KEY, "공정위험성평가 보고서를 첨부 자료에 올려야 만들 수 있습니다(대책은 평가 결과에서 나옵니다).")})
+
+
 def _clean(value: object) -> str:
     return "" if value is None else str(value).strip()
 
@@ -98,22 +113,22 @@ def _as_is_note(names: list[str]) -> str:
     return ("예시 문구를 고치지 않고 그대로 선택함(" + ", ".join(names) + "). 회사 실제와 같은지 확인 필요.") if names else ""
 
 
-def chosen_as_is(project: Stage2Project) -> list[str]:
+def chosen_as_is(project: Stage2Project, profile: Profile = PSM_PROFILE) -> list[str]:
     """예시를 고치지 않고 그대로 저장한 사실들. 회사 실제와 같은지 한 번 더 확인하도록 화면에서 알린다."""
     out = []
-    for fact in (*BASIC_FACTS, *DECISION_FACTS):
+    for fact in (*profile.basic_facts, *profile.decision_facts):
         record = project.get_field(fact.key)
         if record is not None and "예시 문구를 고치지 않고" in (record.note or ""):
             out.append(fact.label)
     return out
 
 
-def missing_basics(project: Stage2Project) -> list[str]:
-    return [f.label for f in BASIC_FACTS if not facts_value(project, f)]
+def missing_basics(project: Stage2Project, profile: Profile = PSM_PROFILE) -> list[str]:
+    return [f.label for f in profile.basic_facts if not facts_value(project, f)]
 
 
-def _specs(project: Stage2Project) -> dict[str, Any]:
-    return {spec.key: spec for spec in psm_requirement_specs()}
+def _specs(project: Stage2Project, profile: Profile = PSM_PROFILE) -> dict[str, Any]:
+    return {spec.key: spec for spec in selected_requirement_specs(project) if spec.system == profile.system}
 
 
 def _confirmed(project: Stage2Project, key: str) -> bool:
@@ -121,24 +136,27 @@ def _confirmed(project: Stage2Project, key: str) -> bool:
     return record is not None and record.status in CONFIRMED_STATUSES and record.value not in (None, "", [], {})
 
 
-def item_status(project: Stage2Project) -> list[dict[str, Any]]:
+def item_status(project: Stage2Project, profile: Profile = PSM_PROFILE) -> list[dict[str, Any]]:
     """서술형 항목별 상태: 만들 수 없음(이유) / 초안 만들기 가능 / 초안 있음 / 확인 완료."""
-    specs = _specs(project)
+    specs = _specs(project, profile)
     try:
-        draftable = {spec.key for spec in drafting.ai_draftable_specs(project, SYSTEM)}
+        draftable = {spec.key for spec in drafting.ai_draftable_specs(project, profile.system)}
     except ValueError:
         draftable = set()
-    basics = missing_basics(project)
+    basics = missing_basics(project, profile)
+    gates = profile.gates or {}
     out = []
-    for key in AI_ITEMS:
-        spec = specs[key]
-        record = project.get_field(drafting.ai_draft_field_key(SYSTEM, key))
+    for key in profile.items(project):
+        spec = specs.get(key)
+        if spec is None:
+            continue  # 이 사업장(예: 2군)에는 해당하지 않는 항목
+        record = project.get_field(drafting.ai_draft_field_key(profile.system, key))
         draft = record.value.get("draft_text", "") if record is not None and isinstance(record.value, Mapping) else ""
         adopted = _confirmed(project, spec.field_keys[0]) and (
             record is not None and record.status == "USER_CONFIRMED")
         reason = ""
-        if key == RISK_ITEM and not _confirmed(project, RISK_REPORT_KEY):
-            reason = "공정위험성평가 보고서를 첨부 자료에 올려야 만들 수 있습니다(대책은 평가 결과에서 나옵니다)."
+        if key in gates and not _confirmed(project, gates[key][0]):
+            reason = gates[key][1]
         elif basics:
             reason = "먼저 적어야 할 사실: " + ", ".join(basics)
         elif key not in draftable and not draft:
@@ -156,29 +174,34 @@ def item_status(project: Stage2Project) -> list[dict[str, Any]]:
     return out
 
 
-def generatable_keys(project: Stage2Project) -> list[str]:
-    return [i["key"] for i in item_status(project) if i["state"] == "초안 만들기 가능"]
+def generatable_keys(project: Stage2Project, profile: Profile = PSM_PROFILE) -> list[str]:
+    return [i["key"] for i in item_status(project, profile) if i["state"] == "초안 만들기 가능"]
 
 
-def generate(project: Stage2Project, client, keys: list[str] | None = None):
+def generate(project: Stage2Project, client, keys: list[str] | None = None, profile: Profile = PSM_PROFILE):
     """확정된 사실만으로 초안을 만든다. 검증을 통과한 초안만 저장되고, 통과 못 한 것은 이유와 함께 돌려준다."""
-    wanted = [k for k in (keys or generatable_keys(project)) if k in generatable_keys(project)]
+    ready = generatable_keys(project, profile)
+    wanted = [k for k in (keys or ready) if k in ready]
     if not wanted:
         raise ValueError("지금 초안을 만들 수 있는 항목이 없습니다. 먼저 필요한 사실을 적어 주세요.")
-    return generate_system_ai_drafts_batched(project, SYSTEM, client, store_safe_drafts=True, requirement_keys=wanted)
+    return generate_system_ai_drafts_batched(project, profile.system, client, store_safe_drafts=True,
+                                             requirement_keys=wanted)
 
 
-def adopt(project: Stage2Project, key: str, text: str | None = None) -> None:
+def adopt(project: Stage2Project, key: str, text: str | None = None, profile: Profile = PSM_PROFILE) -> None:
     """담당자가 초안을 확인·승인한다. 승인한 글을 보고서 서식이 읽는 자리에 회사 진술로 기록한다."""
-    if key not in AI_ITEMS:
+    if key not in profile.items(project):
         raise ValueError(f"지원하지 않는 항목입니다: {key}")
-    drafting.approve_ai_draft(project, SYSTEM, key, text)
-    record = project.get_field(drafting.ai_draft_field_key(SYSTEM, key))
+    drafting.approve_ai_draft(project, profile.system, key, text)
+    record = project.get_field(drafting.ai_draft_field_key(profile.system, key))
     final_text = _clean(record.value.get("draft_text"))
-    spec = _specs(project)[key]
+    spec = _specs(project, profile)[key]
     primary, *others = spec.field_keys
     project.set_field(primary, spec.label, final_text, "USER_CONFIRMED",
                       note="AI 초안을 담당자가 확인·승인해 회사 진술로 채택함")
-    for other in others:  # 한 서술이 두 칸을 함께 다루는 항목(자체감사·사고조사)
+    for other in others:  # 한 서술이 여러 칸을 함께 다루는 항목(자체감사·사고조사 등)
+        record_other = project.get_field(other)
+        if record_other is not None and isinstance(record_other.value, list):
+            continue  # 표로 입력된 칸은 그대로 둔다(예: 방재 장비 표)
         project.set_field(other, spec.label, f"{spec.label} 본문에 함께 기술함", "USER_CONFIRMED",
                           note="같은 항목 본문에 포함")

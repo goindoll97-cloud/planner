@@ -17,6 +17,7 @@ from engine.stage2 import psm_table_workspace as tables
 from engine.stage2 import statutory_report as report
 from engine.stage2.storage import list_projects, load_project, save_project
 from ui import cap_frames as frames
+from ui import table_grid
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 EQUIPMENT_KEY = "psm.psi.equipment_specs"
@@ -267,163 +268,17 @@ def _table_12(project) -> None:
         st.rerun()
 
 
-def _grid(form_no: str):
-    def render(project) -> None:
-        spec = tables.SPECS[form_no]
-        st.caption(spec.summary)
-        if spec.conditional:
-            decision, basis = tables.applicability(project, form_no)
-            st.markdown("**이 서식을 작성해야 하나요?**")
-            options = ["선택하세요", tables.APPLICABLE, tables.NOT_APPLICABLE]
-            chosen = st.selectbox("적용 여부", options, index=options.index(decision) if decision in options else 0,
-                                  key=f"psm_apply_{form_no}",
-                                  help="이 서식은 해당하는 사업장만 작성합니다. 해당하지 않으면 '해당 없음'을 고르고 이유를 적으세요.")
-            reason = st.text_input("확인 근거", value=basis, key=f"psm_apply_basis_{form_no}",
-                                   help="왜 적용(또는 해당 없음)인지 한 줄로 적습니다. 예: 옥내 소화 설비 없음(옥외 시설만 있음)")
-            if st.button("적용 여부 저장", key=f"psm_apply_save_{form_no}"):
-                if chosen == "선택하세요" or not reason.strip():
-                    st.warning("적용 여부와 확인 근거를 모두 적어야 저장됩니다.")
-                else:
-                    tables.save_applicability(project, form_no, chosen, reason)
-                    save_project(project)
-                    st.rerun()
-            if decision == tables.NOT_APPLICABLE:
-                st.success("이 서식은 '해당 없음'으로 확인되어 작성하지 않습니다.")
-                return
-            if decision != tables.APPLICABLE:
-                st.info("적용 여부를 먼저 저장하면 표를 작성할 수 있습니다.")
-                return
-        st.caption("모르는 칸은 비워 두어도 저장됩니다. 비워 둔 칸은 아래에 안내됩니다.")
-        if spec.seed_key and project.get_field(spec.key) is None and tables.seeded(project, form_no):
-            _reuse_note("화학사고예방관리계획서에서 이미 입력한 내용을 미리 채웠습니다. 확인하고 저장하세요.")
-        frame = pd.DataFrame(tables.rows(project, form_no), columns=spec.column_ids())
-        config = {c.id: st.column_config.TextColumn(c.label, help=c.help) for c in spec.columns}
-        edited = st.data_editor(frames.safe(frame), num_rows="dynamic", hide_index=True, width="stretch",
-                                key=f"psm_grid_{form_no}", column_config=config)
-        if st.button("저장", type="primary", key=f"psm_grid_save_{form_no}"):
-            count = tables.save(project, form_no, edited.to_dict("records"))
-            save_project(project)
-            st.success(f"{count}행을 저장했습니다.")
-            st.rerun()
-        needs = tables.needs(project, form_no)
-        if needs:
-            st.info("저장된 표에서 더 필요한 것")
-            for item in needs:
-                st.write(f"• {item}")
-        else:
-            st.success("이 서식의 필수 칸이 모두 채워졌습니다.")
-    return render
-
-
 def _files(project) -> None:
     from ui import attachments_panel
 
     attachments_panel.render(project, attachments.SLOTS, "psm")
 
 
-def _local_config():
-    from engine.stage2.local_ai_resilience import build_local_llm_client, local_llm_config_from_sources
-    from engine.stage2.local_llm import DEFAULT_MODEL, LocalLLMConfig, probe_local_llm_runtime, validate_local_base_url
-
-    try:
-        base = local_llm_config_from_sources({})
-    except Exception:
-        base = LocalLLMConfig()
-    with st.expander("AI 설정 · 필요한 경우만"):
-        st.caption("회사 정보는 외부로 보내지 않습니다. 이 PC의 Ollama 같은 로컬 AI만 사용합니다.")
-        model = st.text_input("로컬 모델 이름", value=base.model or DEFAULT_MODEL, key="psm_llm_model")
-        url = st.text_input("로컬 AI 주소", value=base.base_url, key="psm_llm_url")
-    try:
-        config = LocalLLMConfig(provider=base.provider, model=model.strip() or DEFAULT_MODEL,
-                                base_url=validate_local_base_url(url), timeout_seconds=base.timeout_seconds,
-                                max_output_tokens=base.max_output_tokens)
-        return config, probe_local_llm_runtime(config), build_local_llm_client
-    except Exception as exc:
-        st.warning(str(exc))
-        return None, None, None
-
-
 def _facts(project) -> None:
-    st.caption("글로 쓰는 항목은 AI가 초안을 만듭니다. 사람은 프로그램이 알 수 없는 사실만 적고, 완성된 글을 한 번 확인합니다.")
-    st.markdown("### 1. 먼저 적을 사실")
-    defaults = {"business.employee_count": f12.current(project).get("근로자수", "")}
-    from ui.example_picker import text_with_examples
+    from ui import narrative_panel
 
-    values = {}
-    for fact in narrative.BASIC_FACTS:
-        current = narrative.facts_value(project, fact) or defaults.get(fact.key, "")
-        values[fact.key] = text_with_examples(
-            fact.label, f"psm_fact_{fact.key}", value=current, help_text=fact.help, long=fact.long,
-            choices=examples.choices(fact.key), template=examples.template(fact.key), checks=examples.checks(fact.key))
-    if st.button("사실 저장", type="primary", key="psm_fact_save"):
-        for fact in narrative.BASIC_FACTS:
-            narrative.save_fact(project, fact, values[fact.key])
-        save_project(project)
-        st.rerun()
-    missing = narrative.missing_basics(project)
-    if missing:
-        st.info("아직 적지 않은 사실: " + ", ".join(missing))
-    as_is = narrative.chosen_as_is(project)
-    if as_is:
-        st.warning("예시 문구를 고치지 않고 그대로 저장한 항목이 있습니다. 우리 회사 실제와 같은지 확인하세요: " + ", ".join(as_is))
-
-    st.markdown("### 2. 회사가 정한 사항")
-    for fact in narrative.DECISION_FACTS:
-        with st.expander(fact.label):
-            st.caption(fact.help)
-            current = narrative.facts_value(project, fact)
-            entered = {name: text_with_examples(label, f"psm_fact_{fact.key}_{name}", value=current.get(name, ""),
-                                                help_text=help_text, choices=examples.choices(fact.key, name))
-                       for name, label, help_text in fact.fields}
-            if st.button("저장", key=f"psm_fact_save_{fact.key}"):
-                narrative.save_fact(project, fact, entered)
-                save_project(project)
-                st.rerun()
-
-    st.markdown("### 3. 비상장비·연락체계와 세안·보호구")
-    for form_no in ("emergency-resources", "emergency-contacts", "wash-ppe"):
-        with st.expander(tables.SPECS[form_no].title):
-            _grid(form_no)(project)
-
-    st.markdown("### 4. AI가 만든 글 확인")
-    _drafts(project)
-
-
-def _drafts(project) -> None:
-    items = narrative.item_status(project)
-    ready = [i for i in items if i["state"] == "초안 만들기 가능"]
-    config, probe, build_client = _local_config()
-    if ready:
-        st.write(f"초안을 만들 수 있는 항목 {len(ready)}개: " + ", ".join(i["label"] for i in ready))
-        runtime_ok = probe is not None and probe.ready
-        if not runtime_ok and probe is not None:
-            from engine.stage2.local_llm import local_runtime_not_ready_message
-            st.warning(local_runtime_not_ready_message(config, probe))
-        if st.button("초안 만들기", type="primary", key="psm_generate", disabled=not runtime_ok):
-            with st.spinner("확정된 사실로 초안을 만드는 중입니다."):
-                try:
-                    result = narrative.generate(project, build_client(config))
-                    save_project(project)
-                    if result.rejected:
-                        st.warning(f"검증을 통과하지 못한 초안 {len(result.rejected)}개는 저장하지 않았습니다. 사실을 더 적고 다시 시도하세요.")
-                except Exception as exc:
-                    st.error(f"초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
-            st.rerun()
-    for item in items:
-        with st.expander(f"{item['label']} — {item['state']}", expanded=item["state"] == "초안 있음"):
-            if item["reason"]:
-                st.caption(item["reason"])
-            if item["text"]:
-                text = st.text_area("초안(고쳐 쓸 수 있습니다)", value=item["text"], height=220, key=f"psm_draft_{item['key']}")
-                st.caption("AI가 확정된 사실만으로 쓴 초안입니다. 회사 실제와 다르면 고치세요. 확인하면 회사 문서로 채택됩니다.")
-                st.caption("확인할 점: " + " / ".join(examples.draft_checks()))
-                if item["state"] != "확인 완료" and st.button("내용을 확인했습니다", key=f"psm_adopt_{item['key']}"):
-                    try:
-                        narrative.adopt(project, item["key"], text)
-                        save_project(project)
-                        st.rerun()
-                    except ValueError as exc:
-                        st.error(str(exc))
+    narrative_panel.render(project, narrative.PSM_PROFILE, ("emergency-resources", "emergency-contacts", "wash-ppe"), "psm",
+                           defaults={"business.employee_count": f12.current(project).get("근로자수", "")})
 
 
 def _export(project) -> None:
@@ -441,4 +296,4 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 form_key = st.selectbox("작성할 별지", list(FORMS), format_func=lambda key: FORMS[key], key="psm_form_no")
-{"12": _table_12, "13": _table_13, **{no: _grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "facts": _facts, "export": _export, "files": _files}[form_key](project)
+{"12": _table_12, "13": _table_13, **{no: table_grid.grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "facts": _facts, "export": _export, "files": _files}[form_key](project)

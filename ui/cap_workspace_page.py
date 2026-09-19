@@ -82,11 +82,36 @@ from ui import cap_forms_registry as registry
 
 cap_excel_panel.render(project)
 
+SPECIAL = {"narrative": "서술형 항목 · 사전관리방침과 비상대응계획", "export": "점검·내보내기 · 보고서 내려받기"}
+
+
+def _option_label(option) -> str:
+    if option in SPECIAL:
+        return SPECIAL[option]
+    return f"{registry.label(option)} · {form_guidelines()[option].title}"
+
+
 # 별지 제13호(총괄영향범위)는 별지 제12호 화면에서 함께 만든다.
-form_no = st.selectbox(
-    "작성할 서식(별지 순서대로)", list(registry.FORM_NUMBERS),
-    format_func=lambda n: f"{registry.label(n)} · {form_guidelines()[n].title}", key="cap_form_no",
-)
+form_no = st.selectbox("작성할 서식(별지 순서대로)", [*registry.FORM_NUMBERS, *SPECIAL], format_func=_option_label,
+                       key="cap_form_no")
+if form_no == "narrative":
+    from engine.stage2 import cap_narrative_workspace as cap_narrative
+    from ui import narrative_panel
+
+    narrative_panel.render(project, cap_narrative.CAP_PROFILE, ("cap-contacts", "cap-resources"), "cap",
+                           decision_facts=cap_narrative.visible_facts(project))
+    st.stop()
+if form_no == "export":
+    from ui import attachments_panel, cap_final_evidence_panel, report_export_panel
+    from engine.stage2 import psm_attachments
+
+    with st.expander("최종 제출 확인 · 타 제도 심사결과와 공동제출"):
+        cap_final_evidence_panel.render(project)
+    with st.expander("첨부 자료 · 도면과 분석 자료 올리기"):
+        attachments_panel.render(project, psm_attachments.CAP_SLOTS, "cap")
+    st.markdown("### 점검하고 내려받기")
+    report_export_panel.render(project, "CAP")
+    st.stop()
 if form_no != 1:
     import importlib
 
@@ -255,13 +280,4 @@ else:
         if form.chemical_rows:
             frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
         st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
-    from ui import attachments_panel, cap_final_evidence_panel, report_export_panel
-    from engine.stage2 import psm_attachments
-
-    with st.expander("최종 제출 확인 · 타 제도 심사결과와 공동제출"):
-        cap_final_evidence_panel.render(project)
-    with st.expander("첨부 자료 · 도면과 분석 자료 올리기"):
-        attachments_panel.render(project, psm_attachments.CAP_SLOTS, "cap")
-    st.markdown("### 점검하고 내려받기")
-
-    report_export_panel.render(project, "CAP")
+    st.info("점검하고 보고서를 내려받는 곳은 위 선택 목록의 '점검·내보내기'입니다.")
