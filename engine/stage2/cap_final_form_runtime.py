@@ -13,6 +13,7 @@ import re
 
 from . import statutory_report as report
 from .project import CONFIRMED_STATUSES, Stage2Project
+from .cap_shared_facts import workspace_facility_rows
 
 
 _INSTALL_MARKER = "_cap_final_form_runtime_installed"
@@ -145,10 +146,16 @@ def _row_value(row: Mapping[str, object], *aliases: str) -> object:
 
 
 def render_facility_type_counts(project: Stage2Project) -> str:
-    rows = _confirmed_rows(project, "inventory.facilities", "cap.facility.equipment_specs")
+    rows = workspace_facility_rows(project) or _confirmed_rows(
+        project, "inventory.facilities", "cap.facility.equipment_specs"
+    )
     counts: Counter[str] = Counter()
     for row in rows:
-        name = _row_value(row, "설비종류", "설비형태", "장치·설비 종류", "설비명")
+        name = _row_value(row, "설비종류", "설비형태", "장치·설비 종류")
+        if not name and row.get("시설유형") in ("저장탱크", "보관시설", "사외배관"):
+            name = row["시설유형"]
+        if not name:
+            name = _row_value(row, "설비명")
         if name:
             counts[_facility_choice_key(name)] += 1
     return "\n".join(

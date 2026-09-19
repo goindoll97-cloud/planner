@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from .cap_form9_engine import build_cap_form9_data
+from .cap_shared_facts import workspace_facility_rows
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -174,7 +175,9 @@ def build_cap_form10_data(project: Stage2Project) -> CAPForm10Data:
         )
 
     form9 = build_cap_form9_data(project)
-    raw_facilities = _confirmed_rows(project, "cap.facility.equipment_specs", "inventory.facilities")
+    raw_facilities = workspace_facility_rows(project) or _confirmed_rows(
+        project, "cap.facility.equipment_specs", "inventory.facilities"
+    )
     raw_facility_by_tag = {
         _clean(_row_value(row, "설비번호", "구분기호", "장치번호")): row
         for row in raw_facilities
