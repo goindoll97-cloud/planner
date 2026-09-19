@@ -3,7 +3,6 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from engine.stage2 import cap_chemical_workspace as chem_ws
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_guideline import form_guidelines
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
@@ -68,20 +67,15 @@ if not project.cap_in_scope:
     st.warning("이 프로젝트는 화학사고예방관리계획서를 작성 대상으로 선택하지 않았습니다. 2. 작성범위 선택에서 확인하세요.")
     st.stop()
 
-form_labels = {1: "별지 제1호", 2: "별지 제2호", 3: "별지 제3호", 4: "별지 제4호", 5: "별지 제5호"}
+form_labels = {1: "별지 제1호", 2: "별지 제2호", 3: "별지 제3호", 4: "별지 제4호", 5: "별지 제5호", 6: "별지 제6호"}
 form_no = st.radio(
     "서식", list(form_labels), format_func=lambda n: f"{form_labels[n]} · {form_guidelines()[n].title}",
     horizontal=True, key="cap_form_no",
 )
-if form_no in (2, 3, 4, 5):
-    if form_no == 2:
-        from ui import cap_form2_view as extra_view
-    elif form_no == 3:
-        from ui import cap_form3_view as extra_view
-    elif form_no == 4:
-        from ui import cap_form4_view as extra_view
-    else:
-        from ui import cap_form5_view as extra_view
+if form_no in (2, 3, 4, 5, 6):
+    import importlib
+
+    extra_view = importlib.import_module(f"ui.cap_form{form_no}_view")
 
     extra_view.render(project)
     st.stop()
@@ -130,30 +124,7 @@ elif step_id == "chemicals":
         )
     else:
         st.warning("확정된 화학물질 목록이 없습니다. 1. 판정진단에서 물질 목록을 먼저 입력하세요.")
-    st.subheader("물질 정보 자동 조회 (KOSHA)")
-    singles = chem_ws.single_substance_cas(project)
-    st.caption(
-        "단일물질만 조회합니다(혼합물 제외). KOSHA로는 CAS 번호만 전송하고, 물질상태·비중·폭발한계·독성구분 등 "
-        "KOSHA가 명시한 값만 후보로 보여 줍니다. 이미 입력한 값은 덮어쓰지 않습니다."
-    )
-    if not singles:
-        st.info("조회할 단일물질(CAS 번호 1개)이 없습니다.")
-    else:
-        if st.button(f"KOSHA에서 {len(singles)}개 물질 정보 조회", key=f"cap_form01_kosha_{project.project_id}"):
-            items = chem_ws.fetch_references(project)
-            save_project(project)
-            for item in items:
-                (st.success if item.status == "REFERENCE_READY" else st.warning)(f"{item.cas} {item.chemical_name}: {item.message}")
-        found = chem_ws.candidates(project)
-        if found:
-            st.dataframe(
-                pd.DataFrame([{"CAS": c.cas, "물질": c.name, "항목": c.field, "KOSHA 값": c.value, "출처": c.source} for c in found]),
-                width="stretch", hide_index=True,
-            )
-            if st.button("후보를 확인했습니다 — 별지 제6호 물성 칸에 반영", type="primary", key=f"cap_form01_apply_{project.project_id}"):
-                written = chem_ws.apply_candidates(project, sorted({c.cas for c in found}))
-                save_project(project)
-                st.success(f"{written}개 칸을 반영했습니다. 제품 SDS와 다르면 SDS 값으로 고쳐 주세요.")
+    st.caption("물질 물성(상태·비중·폭발한계 등)은 별지 제6호에서 KOSHA 조회로 채웁니다.")
 
 elif step_id == "facilities":
     st.info("※ " + fac["form_note"])

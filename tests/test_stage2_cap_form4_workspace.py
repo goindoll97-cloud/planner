@@ -72,7 +72,7 @@ class CAPForm4WorkspaceTests(unittest.TestCase):
 
     def test_page_offers_form4(self):
         page = (Path(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("cap_form4_view", page)
+        self.assertIn("4: \"별지 제4호\"", page)
 
 
 if __name__ == "__main__":
