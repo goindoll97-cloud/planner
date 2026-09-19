@@ -9,6 +9,7 @@ from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import psm_attachments as attachments
 from engine.stage2 import psm_form12_workspace as f12
 from engine.stage2 import psm_form19_2_workspace as f19
+from engine.stage2 import psm_table_workspace as tables
 from engine.stage2 import statutory_report as report
 from engine.stage2.storage import list_projects, load_project, save_project
 from ui import cap_frames as frames
@@ -21,11 +22,12 @@ PSM_ONLY_COLUMNS = ("본체재질", "부속품재질", "개스킷재질", "용�
 FORMS = {
     "12": "별지 제12호 · 사업개요",
     "13": "별지 제13호 · 유해·위험물질 목록",
+    "14": "별지 제14호 · 동력기계 목록",
     "15": "별지 제15호 · 장치 및 설비 명세",
     "19-2": "별지 제19호의2 · 시나리오 및 피해예측 결과",
     "files": "첨부 자료 · 도면·MSDS 올리기",
 }
-UNSUPPORTED = ("별지 제14호 동력기계 목록", "별지 제16호 배관 및 개스킷 명세",
+UNSUPPORTED = ("별지 제16호 배관 및 개스킷 명세",
                "별지 제17호 안전밸브 및 파열판 명세", "별지 제17호의2~5, 제18·19·20·21호")
 
 
@@ -189,6 +191,29 @@ def _table_12(project) -> None:
         st.rerun()
 
 
+def _grid(form_no: str):
+    def render(project) -> None:
+        spec = tables.SPECS[form_no]
+        st.caption(spec.summary + " 모르는 칸은 비워 두어도 저장됩니다. 비워 둔 칸은 아래에 안내됩니다.")
+        frame = pd.DataFrame(tables.rows(project, form_no), columns=spec.column_ids())
+        config = {c.id: st.column_config.TextColumn(c.label, help=c.help) for c in spec.columns}
+        edited = st.data_editor(frames.safe(frame), num_rows="dynamic", hide_index=True, width="stretch",
+                                key=f"psm_grid_{form_no}", column_config=config)
+        if st.button("저장", type="primary", key=f"psm_grid_save_{form_no}"):
+            count = tables.save(project, form_no, edited.to_dict("records"))
+            save_project(project)
+            st.success(f"{count}행을 저장했습니다.")
+            st.rerun()
+        needs = tables.needs(project, form_no)
+        if needs:
+            st.info("저장된 표에서 더 필요한 것")
+            for item in needs:
+                st.write(f"• {item}")
+        else:
+            st.success("이 서식의 필수 칸이 모두 채워졌습니다.")
+    return render
+
+
 def _files(project) -> None:
     st.caption("표로 적을 수 없고 파일 자체가 자료인 것만 올립니다. 올린 파일은 지문(SHA-256)과 함께 기록되고 보고서의 첨부 칸에 연결됩니다. "
                "올렸다고 내용을 확인한 것은 아니므로, 직접 확인한 뒤 '내용을 확인했습니다'를 눌러 주세요.")
@@ -222,7 +247,7 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 form_key = st.selectbox("작성할 별지", list(FORMS), format_func=lambda key: FORMS[key], key="psm_form_no")
-{"12": _table_12, "13": _table_13, "15": _table_15, "19-2": _table_19_2, "files": _files}[form_key](project)
+{"12": _table_12, "13": _table_13, "14": _grid("14"), "15": _table_15, "19-2": _table_19_2, "files": _files}[form_key](project)
 with st.expander("아직 이 화면에서 작성할 수 없는 별지"):
     for item in UNSUPPORTED:
         st.write(f"• {item}")
