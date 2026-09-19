@@ -23,6 +23,7 @@ from .cap_impact_engine import build_cap_form12_data, build_cap_form13_data
 from .cap_risk_engine import build_cap_form14_data, build_cap_form15_data
 from .cap_form16_engine import build_cap_form16_data
 from .intake import selected_requirement_specs
+from . import cap_shared_facts as shared_facts
 from .project import CONFIRMED_STATUSES, Stage2Project
 
 
@@ -541,7 +542,7 @@ def _chemical_rows(project: Stage2Project) -> list[Mapping[str, object]]:
 
 
 def _psm_chemical_rows(project: Stage2Project) -> list[Mapping[str, object]]:
-    return _rows(project, "psm.psi.chemical_details", "inventory.chemicals", "cap.chemical.details")
+    return _rows(project, "psm.psi.chemical_details", "cap.chemical.details", "inventory.chemicals")
 
 
 def _facility_rows(project: Stage2Project) -> list[Mapping[str, object]]:
@@ -549,7 +550,22 @@ def _facility_rows(project: Stage2Project) -> list[Mapping[str, object]]:
 
 
 def _psm_facility_rows(project: Stage2Project) -> list[Mapping[str, object]]:
-    return _rows(project, "psm.psi.equipment_specs", "inventory.facilities", "cap.facility.equipment_specs")
+    """PSM 장치·설비 목록. 화학사고예방관리계획서 작업에서 이미 입력한 시설은 다시 묻지 않고 가져온다.
+
+    공용 시설 행(별지 제1호·제9호 입력)이 있으면 그것을 바탕으로 하고, PSM 전용 입력(재질·용접효율 등)은
+    같은 설비번호(없으면 설비명) 행에 덧씌운다. 공용 행이 없으면 예전 경로를 그대로 쓴다.
+    """
+    own = _rows(project, "psm.psi.equipment_specs")
+    shared = shared_facts.shared_equipment_rows(project)
+    if not shared:
+        return own or _rows(project, "inventory.facilities", "cap.facility.equipment_specs")
+    by_key = {shared_facts.spec_key(row): row for row in own if shared_facts.spec_key(row)}
+    merged = []
+    for row in shared:
+        extra = by_key.pop(shared_facts.spec_key(row), {})
+        merged.append({**row, **{k: v for k, v in extra.items() if str(v or "").strip()}})
+    merged.extend(row for row in own if shared_facts.spec_key(row) in by_key or not shared_facts.spec_key(row))
+    return merged
 
 
 def _facility_counts(rows: Sequence[Mapping[str, object]]) -> str:

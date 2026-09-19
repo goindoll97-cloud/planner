@@ -79,3 +79,24 @@ def workspace_rows_of_type(project: Stage2Project, facility_type: str) -> list[d
     if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
         return []
     return [dict(row) for row in record.value if isinstance(row, Mapping) and row.get("시설유형") == facility_type]
+
+
+def shared_equipment_rows(project: Stage2Project) -> list[dict[str, Any]]:
+    """공용 시설 행을 다른 서식(PSM 장치·설비 명세 등)이 읽는 형태로 돌려준다. 용량은 m3로 환산한다."""
+    rows = []
+    for row in workspace_facility_rows(project):
+        item = dict(row)
+        capacity = _number(item.get("용량"))
+        if capacity is not None:
+            if str(item.get("용량단위") or "").strip().lower() == "l":
+                capacity /= 1000
+            item["용량"] = f"{capacity:g}"
+        rows.append(item)
+    return rows
+
+
+def _number(value: object) -> float | None:
+    try:
+        return float(str(value).replace(",", "")) if str(value or "").strip() else None
+    except ValueError:
+        return None
