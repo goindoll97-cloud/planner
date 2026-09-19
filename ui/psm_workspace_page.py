@@ -24,11 +24,20 @@ FORMS = {
     "13": "별지 제13호 · 유해·위험물질 목록",
     "14": "별지 제14호 · 동력기계 목록",
     "15": "별지 제15호 · 장치 및 설비 명세",
+    "16": "별지 제16호 · 배관 및 개스킷 명세",
+    "17": "별지 제17호 · 안전밸브 및 파열판 명세",
+    "17-2": "별지 제17호의2 · 인터록 작동조건 및 가동중지 범위",
+    "17-3": "별지 제17호의3 · 소화설비 설치계획",
+    "17-4": "별지 제17호의4 · 화재탐지경보설비 설치계획",
+    "17-5": "별지 제17호의5 · 가스누출감지경보기 설치계획",
+    "18": "별지 제18호 · 내화구조 명세",
+    "19": "별지 제19호 · 국소배기장치 개요",
     "19-2": "별지 제19호의2 · 시나리오 및 피해예측 결과",
+    "20": "별지 제20호 · 방폭전기/계장 기계·기구 선정기준",
+    "21": "별지 제21호 · 위험성평가 참여 전문가 명단",
     "files": "첨부 자료 · 도면·MSDS 올리기",
 }
-UNSUPPORTED = ("별지 제16호 배관 및 개스킷 명세",
-               "별지 제17호 안전밸브 및 파열판 명세", "별지 제17호의2~5, 제18·19·20·21호")
+UNSUPPORTED = ()
 
 
 def _clean(value: object) -> str:
@@ -194,7 +203,32 @@ def _table_12(project) -> None:
 def _grid(form_no: str):
     def render(project) -> None:
         spec = tables.SPECS[form_no]
-        st.caption(spec.summary + " 모르는 칸은 비워 두어도 저장됩니다. 비워 둔 칸은 아래에 안내됩니다.")
+        st.caption(spec.summary)
+        if spec.conditional:
+            decision, basis = tables.applicability(project, form_no)
+            st.markdown("**이 서식을 작성해야 하나요?**")
+            options = ["선택하세요", tables.APPLICABLE, tables.NOT_APPLICABLE]
+            chosen = st.selectbox("적용 여부", options, index=options.index(decision) if decision in options else 0,
+                                  key=f"psm_apply_{form_no}",
+                                  help="이 서식은 해당하는 사업장만 작성합니다. 해당하지 않으면 '해당 없음'을 고르고 이유를 적으세요.")
+            reason = st.text_input("확인 근거", value=basis, key=f"psm_apply_basis_{form_no}",
+                                   help="왜 적용(또는 해당 없음)인지 한 줄로 적습니다. 예: 옥내 소화 설비 없음(옥외 시설만 있음)")
+            if st.button("적용 여부 저장", key=f"psm_apply_save_{form_no}"):
+                if chosen == "선택하세요" or not reason.strip():
+                    st.warning("적용 여부와 확인 근거를 모두 적어야 저장됩니다.")
+                else:
+                    tables.save_applicability(project, form_no, chosen, reason)
+                    save_project(project)
+                    st.rerun()
+            if decision == tables.NOT_APPLICABLE:
+                st.success("이 서식은 '해당 없음'으로 확인되어 작성하지 않습니다.")
+                return
+            if decision != tables.APPLICABLE:
+                st.info("적용 여부를 먼저 저장하면 표를 작성할 수 있습니다.")
+                return
+        st.caption("모르는 칸은 비워 두어도 저장됩니다. 비워 둔 칸은 아래에 안내됩니다.")
+        if spec.seed_key and project.get_field(spec.key) is None and tables.seeded(project, form_no):
+            _reuse_note("화학사고예방관리계획서에서 이미 입력한 내용을 미리 채웠습니다. 확인하고 저장하세요.")
         frame = pd.DataFrame(tables.rows(project, form_no), columns=spec.column_ids())
         config = {c.id: st.column_config.TextColumn(c.label, help=c.help) for c in spec.columns}
         edited = st.data_editor(frames.safe(frame), num_rows="dynamic", hide_index=True, width="stretch",
@@ -247,8 +281,4 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 form_key = st.selectbox("작성할 별지", list(FORMS), format_func=lambda key: FORMS[key], key="psm_form_no")
-{"12": _table_12, "13": _table_13, "14": _grid("14"), "15": _table_15, "19-2": _table_19_2, "files": _files}[form_key](project)
-with st.expander("아직 이 화면에서 작성할 수 없는 별지"):
-    for item in UNSUPPORTED:
-        st.write(f"• {item}")
-    st.caption("이 별지들은 '공정안전보고서 (기존 방식)' 화면으로 작성합니다.")
+{"12": _table_12, "13": _table_13, **{no: _grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "files": _files}[form_key](project)
