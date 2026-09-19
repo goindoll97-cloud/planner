@@ -32,11 +32,14 @@ class CAPNavigationTests(unittest.TestCase):
         for page in ("stage2_intake_page.py", "stage2_validation_page.py", "stage2_review_page.py"):
             self.assertNotIn(page, app)
 
-    def test_excel_import_lives_inside_the_cap_page(self):
+    def test_big_excel_round_trip_is_gone_and_only_the_chemical_list_upload_remains(self):
         page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("cap_excel_panel.render(project)", page)
-        panel = (ROOT / "ui/cap_excel_panel.py").read_text(encoding="utf-8")
-        self.assertIn("apply_integrated_authoring_workbook", panel)
+        self.assertNotIn("cap_excel_panel", page)
+        self.assertFalse((ROOT / "ui/cap_excel_panel.py").exists())
+        form6 = (ROOT / "ui/cap_form6_view.py").read_text(encoding="utf-8")
+        self.assertIn("chemical_upload_panel.render", form6)  # 물질 목록만 엑셀·CSV로 올린다
+        start = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
+        self.assertIn("chemical_upload_panel.render", start)
 
     def test_scope_page_sends_cap_projects_to_the_cap_page(self):
         source = (ROOT / "ui/stage2_scope_page.py").read_text(encoding="utf-8")

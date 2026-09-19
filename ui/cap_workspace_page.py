@@ -77,10 +77,7 @@ if not project.cap_in_scope:
                "'새 사업장으로 시작하기'에서 다시 판정하세요.")
     st.stop()
 
-from ui import cap_excel_panel
 from ui import cap_forms_registry as registry
-
-cap_excel_panel.render(project)
 
 SPECIAL = {"narrative": "서술형 항목 · 사전관리방침과 비상대응계획", "export": "점검·내보내기 · 보고서 내려받기"}
 
