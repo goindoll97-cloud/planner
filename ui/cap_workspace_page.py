@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import cap_workspace as ws
+from engine.stage2.cap_guideline import form_guidelines
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.cap_calc import SHAPE_DIMENSIONS, SHAPES
 from engine.stage2.storage import list_projects, load_project, save_project
@@ -64,6 +65,17 @@ if not project_id:
 project = load_project(project_id)
 if not project.cap_in_scope:
     st.warning("이 프로젝트는 화학사고예방관리계획서를 작성 대상으로 선택하지 않았습니다. 2. 작성범위 선택에서 확인하세요.")
+    st.stop()
+
+form_labels = {1: "별지 제1호", 2: "별지 제2호"}
+form_no = st.radio(
+    "서식", list(form_labels), format_func=lambda n: f"{form_labels[n]} · {form_guidelines()[n].title}",
+    horizontal=True, key="cap_form_no",
+)
+if form_no == 2:
+    from ui import cap_form2_view
+
+    cap_form2_view.render(project)
     st.stop()
 
 schema = ws.load_form_schema(1)
