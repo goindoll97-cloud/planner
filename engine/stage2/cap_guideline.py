@@ -126,3 +126,21 @@ def protected_target_rules() -> dict[str, dict[str, str]]:
                 entries[" ".join(cells[-2].split())] = cells[-1]
         result[label] = entries
     return result
+
+
+@lru_cache(maxsize=1)
+def preliminary_scenario_quantities() -> dict[tuple[str, str], float]:
+    """별표 2: (성상, 유해성 분류) -> 예비시나리오 규정수량(kg)."""
+    doc = Document(str(ANNEX_RULES))
+    result: dict[tuple[str, str], float] = {}
+    for block in _blocks(doc):
+        if not isinstance(block, Table):
+            continue
+        rows = _cells(block)
+        if rows and "예비시나리오" in rows[0][0]:
+            for row in rows[2:]:
+                match = re.search(r"([\d,]+)\s*kg", row[2] if len(row) > 2 else "")
+                if match:
+                    result[(row[0].strip(), row[1].strip())] = float(match.group(1).replace(",", ""))
+            break
+    return result
