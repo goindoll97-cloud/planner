@@ -48,7 +48,8 @@ def _from_table(level: int, entry: dict[str, Any], molar_mass: float) -> ErpgLev
     if item["status"] != "TABLE":
         return None
     ppm, mg = item.get("ppm"), item.get("mg_m3")
-    mg = mg if mg is not None else (_mg(ppm, molar_mass) if ppm is not None else None)
+    # 규정 7(1): ppm을 mg/㎥로 바꾸는 식이 주어져 있으므로 ppm이 있으면 그것을 기준으로 환산한다(표의 mg/㎥는 반올림됨).
+    mg = _mg(ppm, molar_mass) if ppm is not None else mg
     return ErpgLevel(level, "TABLE", mg_m3=mg, ppm=ppm, basis=SOURCE)
 
 
