@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from engine import kma_asos
 from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import psm_attachments as attachments
 from engine.stage2 import psm_form12_workspace as f12
@@ -134,6 +135,48 @@ def _scenario_designations(project) -> dict[str, str]:
     return {k: v for k, v in chosen.items() if v != "사용 안 함"}
 
 
+WEATHER_BASIS_KEY = "psm.risk.weather_basis"
+
+
+def _fill_weather(project, station: str) -> None:
+    """버튼 콜백: 지난 3년 관측으로 대기온도·습도 칸을 채우고 근거를 기록한다."""
+    basis, result = kma_asos.three_year_basis(station)
+    if basis is None:
+        st.session_state["psm19_weather_msg"] = ("warning", result.message)
+        return
+    if basis.max_temperature_c is not None:
+        st.session_state["psm19_temp"] = f"{basis.max_temperature_c:g}"
+    if basis.mean_humidity_pct is not None:
+        st.session_state["psm19_humidity"] = f"{basis.mean_humidity_pct:g}"
+    project.set_field(WEATHER_BASIS_KEY, "대기온도·습도 산정 근거(기상청 ASOS 일자료)", {
+        "관측소": f"{basis.station_name}({basis.station_id})", "기간": basis.period, "관측일수": basis.days,
+        "최고기온(℃)": basis.max_temperature_c, "최고기온 일자": basis.max_temperature_date,
+        "평균 상대습도(%)": basis.mean_humidity_pct, "평균 풍속(m/s)": basis.mean_wind_ms}, "CALCULATED",
+        note="지난 3년 일자료의 일 최고기온 중 최댓값, 일 평균 상대습도의 평균. 낮 동안만의 평균 습도는 아님")
+    save_project(project)
+    st.session_state["psm19_weather_msg"] = (
+        "success", f"{basis.station_name} 관측소 {basis.period}({basis.days}일)의 최고기온 {basis.max_temperature_c:g}℃"
+        f"({basis.max_temperature_date}), 평균 상대습도 {basis.mean_humidity_pct:g}%를 채웠습니다. "
+        f"참고로 평균 풍속은 {basis.mean_wind_ms:g} m/s입니다.")
+
+
+def _weather_panel(project) -> None:
+    stations = kma_asos.stations()
+    record = project.get_field("business.address")
+    suggested = kma_asos.suggest_station(_clean(record.value) if record is not None else "")
+    codes = sorted(stations, key=lambda c: stations[c]["name"])
+    with st.expander("기상청 관측 자료로 대기온도·습도 채우기", expanded=False):
+        st.caption("서식은 '지난 3년간 낮 동안 최대 온도'와 '평균 습도'를 적으라고 합니다. 가까운 기상청 관측소의 지난 3년 일자료로 "
+                   "채울 수 있습니다. 습도는 낮 동안만이 아니라 하루 평균이라, 서식과 다르게 적으려면 직접 고치세요.")
+        station = st.selectbox("가까운 관측소", codes, index=codes.index(suggested) if suggested in codes else 0,
+                               format_func=lambda c: f"{stations[c]['name']} ({c})", key="psm19_station",
+                               help="사업장 주소에 지점 이름이 있으면 자동으로 골랐습니다. 다르면 가장 가까운 곳을 고르세요.")
+        st.button("지난 3년 관측 자료로 채우기", key="psm19_weather_fill", on_click=_fill_weather, args=(project, station))
+        message = st.session_state.get("psm19_weather_msg")
+        if message:
+            getattr(st, message[0])(message[1])
+
+
 def _table_19_2(project) -> None:
     st.caption("사고가 났을 때 화재·폭발·독성이 얼마나 멀리 미치는지 적는 서식입니다. 누출량과 확산 계산은 화학사고예방관리계획서와 "
                "같은 계산을 쓰고, 서식이 정한 기준(복사열 4·12.5·37.5, 독성 ERPG 1·2·3)으로 거리를 구합니다.")
@@ -141,6 +184,7 @@ def _table_19_2(project) -> None:
         st.warning("사고 시나리오가 없습니다. 화학사고예방관리계획서 작성 화면의 별지 제10·11호에서 시나리오를 먼저 확정하세요.")
         return
     designations = _scenario_designations(project)
+    _weather_panel(project)
     left, right = st.columns(2)
     temperature = left.text_input("대기온도(℃)", key="psm19_temp",
                                   help="지난 3년간 낮 동안의 최대 온도, 또는 통상 온도를 적습니다.")
