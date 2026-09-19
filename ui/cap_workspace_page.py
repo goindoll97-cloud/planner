@@ -67,12 +67,12 @@ if not project.cap_in_scope:
     st.warning("이 프로젝트는 화학사고예방관리계획서를 작성 대상으로 선택하지 않았습니다. 2. 작성범위 선택에서 확인하세요.")
     st.stop()
 
-form_labels = {1: "별지 제1호", 2: "별지 제2호", 3: "별지 제3호", 4: "별지 제4호", 5: "별지 제5호", 6: "별지 제6호"}
+form_labels = {1: "별지 제1호", 2: "별지 제2호", 3: "별지 제3호", 4: "별지 제4호", 5: "별지 제5호", 6: "별지 제6호", 7: "별지 제7호"}
 form_no = st.radio(
     "서식", list(form_labels), format_func=lambda n: f"{form_labels[n]} · {form_guidelines()[n].title}",
     horizontal=True, key="cap_form_no",
 )
-if form_no in (2, 3, 4, 5, 6):
+if form_no in (2, 3, 4, 5, 6, 7):
     import importlib
 
     extra_view = importlib.import_module(f"ui.cap_form{form_no}_view")
