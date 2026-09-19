@@ -124,20 +124,25 @@ class KOSHAFullMSDSResult:
 
 
 def _load_local_env() -> None:
-    """Minimal .env reader so the app needs no dotenv dependency."""
+    """Minimal .env reader so the app needs no dotenv dependency.
+
+    Windows 메모장이 붙이는 BOM, 'export KEY=값', 'KEY = 값' 형태를 견디고, 값이 비어 있는 환경변수는 .env 값으로 채운다.
+    """
     for path in (PROJECT_ROOT / ".env", Path.cwd() / ".env"):
         if not path.exists():
             continue
         try:
-            for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            for raw in path.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
                 line = raw.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
+                if line.startswith("export "):
+                    line = line[len("export "):].lstrip()
                 key, value = line.split("=", 1)
                 key = key.strip()
                 value = value.strip().strip('"').strip("'")
-                if key and value:
-                    os.environ.setdefault(key, value)
+                if key and value and not os.environ.get(key):
+                    os.environ[key] = value
         except OSError:
             continue
 

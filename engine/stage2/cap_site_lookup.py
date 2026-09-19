@@ -48,6 +48,10 @@ class Candidate:
 
 
 def api_key() -> str:
+    """환경변수 또는 프로젝트 루트 .env의 KAKAO_REST_API_KEY. 다른 조회(KOSHA)가 먼저 실행되지 않아도 .env를 읽는다."""
+    from ..kosha_msds import _load_local_env
+
+    _load_local_env()
     return os.environ.get(ENV_KEY, "").strip()
 
 
