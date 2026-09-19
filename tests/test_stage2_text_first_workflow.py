@@ -111,18 +111,11 @@ class Stage2TextFirstWorkflowTests(unittest.TestCase):
         self.assertFalse(intake_confirmed(project))
         self.assertFalse(validation_confirmed(project))
 
-    def test_navigation_and_intake_ui_are_progress_gated(self):
+    def test_navigation_has_no_numbered_legacy_stages(self):
         app = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
-        intake = (PROJECT_ROOT / "ui/stage2_intake_page.py").read_text(encoding="utf-8")
-        validation = (PROJECT_ROOT / "ui/stage2_validation_page.py").read_text(encoding="utf-8")
-        review = (PROJECT_ROOT / "ui/stage2_review_page.py").read_text(encoding="utf-8")
-        self.assertIn("if intake_ready:", app)
-        self.assertIn("if authoring_ready:", app)
-        self.assertIn('title="4. 작성자료 점검·보완"', app)
-        self.assertIn('title="5. 보고서 작성"', app)
-        self.assertIn("도면·이미지·첨부자료는 담당자가 별도 작성·취합", intake)
-        self.assertIn("작성자료 확인 완료 → 5. 보고서 작성", validation)
-        self.assertIn('st.title("📝 5. 보고서 작성")', review)
+        for legacy in ('title="3. 통합 작성자료"', 'title="4. 작성자료 점검·보완"', 'title="5. 보고서 작성"'):
+            self.assertNotIn(legacy, app)
+        self.assertIn('title="공정안전보고서 작성"', app)
 
     def test_reference_tools_are_not_numbered_workflow_stages(self):
         app = (PROJECT_ROOT / "app.py").read_text(encoding="utf-8")

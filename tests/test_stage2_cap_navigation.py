@@ -22,17 +22,15 @@ class CAPNavigationTests(unittest.TestCase):
         self.assertEqual(registry.label(3), "별지 제3호")
         self.assertNotIn(13, registry.FORM_NUMBERS)
 
-    def test_navigation_groups_cap_and_keeps_the_excel_flow_only_for_psm(self):
+    def test_navigation_groups_cap_psm_and_the_excel_judgement_shortcut(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
         self.assertIn('st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성"', app)
         self.assertIn("_psm_selected_somewhere()", app)
-        self.assertIn('"공정안전보고서 (기존 방식)"', app)
-        # the Excel round-trip pages are registered only inside the PSM branch
-        psm_branch = app[app.index("if _psm_selected_somewhere():"):app.index('sections["참고"]')]
+        self.assertIn('sections["엑셀로 판정하기 (고급)"]', app)
+        # the old Excel round-trip stages (3~5) are no longer in the menu
         for page in ("stage2_intake_page.py", "stage2_validation_page.py", "stage2_review_page.py"):
-            self.assertIn(page, psm_branch)
-            self.assertNotIn(page, app[:app.index("if _psm_selected_somewhere():")].split("sections: dict")[1])
+            self.assertNotIn(page, app)
 
     def test_excel_import_lives_inside_the_cap_page(self):
         page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""화학사고예방관리계획서 작성 시작하기: 사업장·물질 몇 가지만 받아 법정 대상 여부를 판정하고 작성 프로젝트를 만든다.
+"""작성 시작하기: 사업장·물질 몇 가지만 받아 법정 대상 여부를 판정하고 작성 프로젝트를 만든다.
 
 예전에는 판정진단(엑셀 업로드) → 작성범위 선택을 거쳐야 작성 화면에 들어올 수 있었다. 여기서는 같은 Stage 1
-판정 엔진(assess_stage1_from_workbook)을 그대로 쓰되 입력을 화면 표로 받는다. 판정이 '작성·제출 대상(1군·2군)'일
-때만 프로젝트를 만들고 화학사고예방관리계획서를 작성 범위로 확정한다(법적 판정을 우회하지 않는다).
+판정 엔진(assess_stage1_from_workbook)을 그대로 쓰되 입력을 화면 표로 받는다. 판정 결과 화학사고예방관리계획서 작성·제출 대상(1군·2군)이거나
+공정안전보고서 제출 대상일 때만 프로젝트를 만들고, 대상인 문서를 작성 범위로 확정한다(법적 판정을 우회하지 않는다).
 """
 
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -88,9 +88,6 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
         return StartOutcome("SYSTEM", tuple(decision.system_blockers), **base)
     if getattr(decision, "company_requests", None):
         return StartOutcome("REQUEST", tuple(decision.company_requests), **base)
-    if "1군" not in cap_status and "2군" not in cap_status:
-        return StartOutcome("NOT_REQUIRED", (), **base)
-
     records = intake.chemicals.astype(object).where(intake.chemicals.notna(), None).to_dict("records")
     for record in records:
         record["물질명"] = record.get("물질명(알면 입력)") or record.get("제품명")
@@ -100,5 +97,8 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
         "decision": asdict(decision) if is_dataclass(decision) else dict(vars(decision)),
     }
     project = create_project_from_stage1_snapshot(snapshot)
-    project.set_authoring_scope(psm_selected=False, cap_selected=True)
+    psm_target, cap_target = project.psm_required is True, project.cap_required is True
+    if not psm_target and not cap_target:
+        return StartOutcome("NOT_REQUIRED", (), **base)
+    project.set_authoring_scope(psm_selected=psm_target, cap_selected=cap_target)
     return StartOutcome("STARTED", (), project, **base)

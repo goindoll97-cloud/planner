@@ -12,8 +12,8 @@ class Stage2NavigationSyncTests(unittest.TestCase):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn("from engine.stage2.storage import list_projects, load_project", source)
         self.assertIn("for row in list_projects():", source)
-        self.assertIn('st.Page("ui/stage2_validation_page.py"', source)
-        self.assertIn('st.Page("ui/stage2_review_page.py"', source)
+        self.assertNotIn("stage2_validation_page.py", source)
+        self.assertNotIn("stage2_review_page.py", source)
 
     def test_stage3_next_link_targets_registered_stage4_page(self) -> None:
         source = (ROOT / "ui" / "stage2_intake_page.py").read_text(encoding="utf-8")

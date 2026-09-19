@@ -4,7 +4,6 @@ import streamlit as st
 
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 from engine.stage2.storage import list_projects, load_project
-from engine.stage2.workflow import draft_authoring_allowed, intake_confirmed
 
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
@@ -13,59 +12,6 @@ ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 # for checkbox/choice rendering; HWPX template loading/conversion is not
 # installed during ordinary app startup.
 install_cap_final_form_runtime()
-
-# ui/stage2_review_page.py imports build_local_llm_client/
-# local_llm_config_from_sources/generate_system_ai_drafts directly from
-# engine.stage2.local_ai_resilience (small-batch generation with
-# checkpointing, longer local read timeouts, bounded output, and tolerant
-# JSON-shape parsing for local Ollama models) instead of the plain
-# local_llm/ai_drafting versions, so no install step is needed here.
-# _run_automatic_ai's own progress_callback (called both before and after
-# each batch) surfaces progress directly, with no separate runtime needed.
-
-
-def _stage2_progress() -> tuple[bool, bool]:
-    """Return whether Stage 4/5 should be registered in this app run.
-
-    Streamlit builds the navigation before the selected page executes. If page
-    registration depends only on the session's previously active project, a user
-    can switch projects inside Stage 3/4 and immediately render a page_link to a
-    page that was not registered at app start. Register a gated page whenever
-    at least one stored project is legitimately ready for it; each destination
-    page still enforces the selected project's own gate before showing content.
-
-    Stage 5 is registered for both fully validated projects and projects whose
-    user explicitly acknowledged unresolved HOLD/REVIEW items for draft-only
-    authoring. Final-submission readiness remains controlled by validation.
-    """
-    project_ids: list[str] = []
-    active_id = str(st.session_state.get(ACTIVE_PROJECT_KEY) or "").strip()
-    if active_id:
-        project_ids.append(active_id)
-    try:
-        for row in list_projects():
-            project_id = str(row.get("project_id") or "").strip()
-            if project_id and project_id not in project_ids:
-                project_ids.append(project_id)
-    except Exception:
-        pass
-
-    intake_ready = False
-    authoring_ready = False
-    for project_id in project_ids:
-        try:
-            project = load_project(project_id)
-        except Exception:
-            continue
-        intake_ready = intake_ready or intake_confirmed(project)
-        authoring_ready = authoring_ready or draft_authoring_allowed(project)
-        if intake_ready and authoring_ready:
-            break
-    return intake_ready, authoring_ready
-
-
-intake_ready, authoring_ready = _stage2_progress()
-
 
 def _psm_selected_somewhere() -> bool:
     """공정안전보고서를 작성 대상으로 고른 프로젝트가 하나라도 있는지(기존 3~5단계 화면 노출 기준)."""
@@ -88,22 +34,16 @@ sections: dict[str, list] = {
     ],
 }
 
-# 화학사고예방관리계획서는 작성 화면의 "새 사업장으로 시작하기"에서 법정 대상 판정까지 끝낸다. 판정진단·작성범위 선택은
-# 공정안전보고서를 기존 방식으로 시작할 때만 필요하므로 그 묶음 안에 둔다.
-psm_pages = [
-    st.Page("ui/diagnosis_entry.py", title="1. 판정진단", icon="✅"),
-    st.Page("ui/stage2_scope_page.py", title="2. 작성범위 선택", icon="🧭"),
-]
+# 두 문서 모두 작성 화면의 "새 사업장으로 시작하기"에서 법정 대상 판정까지 끝낸다. 공정안전보고서는 화학사고예방관리계획서에서
+# 이미 입력한 사실을 재사용하는 새 화면에서 작성한다. 예전 3~5단계(엑셀 왕복 방식)는 메뉴에서 뺐다.
 if _psm_selected_somewhere():
-    psm_pages.append(st.Page("ui/stage2_intake_page.py", title="3. 통합 작성자료", icon="📥"))
-    if intake_ready:
-        psm_pages.append(st.Page("ui/stage2_validation_page.py", title="4. 작성자료 점검·보완", icon="🔎"))
-    if authoring_ready:
-        psm_pages.append(st.Page("ui/stage2_review_page.py", title="5. 보고서 작성", icon="📝"))
-if _psm_selected_somewhere():
-    # 공정안전보고서를 새 방식(화학사고예방관리계획서에서 입력한 사실 재사용)으로 작성하는 화면
     sections["공정안전보고서"] = [st.Page("ui/psm_workspace_page.py", title="공정안전보고서 작성", icon="🏭")]
-sections["공정안전보고서 (기존 방식)"] = psm_pages
+
+# 물질이 많아 엑셀로 한꺼번에 판정하고 싶을 때만 쓰는 고급 통로(Stage 1 판정엔진은 시작하기와 같다)
+sections["엑셀로 판정하기 (고급)"] = [
+    st.Page("ui/diagnosis_entry.py", title="판정진단", icon="✅"),
+    st.Page("ui/stage2_scope_page.py", title="작성범위 선택", icon="🧭"),
+]
 
 sections["참고"] = [
     st.Page("ui/regdb_page.py", title="규정 DB 관리", icon="🗂️"),
