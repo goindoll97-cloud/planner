@@ -59,6 +59,15 @@ class PsmWorkspacePageTests(unittest.TestCase):
         frame = at.dataframe[0].value
         self.assertIn("독성-ERPG 2", list(frame["항목"]))
 
+    def test_form12_and_files_render_without_errors(self):
+        project = _project()
+        for key in ("12", "files"):
+            at = _run(project, key)
+            self.assertFalse(at.exception, key)
+        at = _run(project, "12")
+        self.assertTrue(any("가져왔습니다" in s.value for s in at.success))
+        self.assertTrue(any("비어 있는 칸" in i.value for i in at.info))
+
     def test_navigation_offers_the_page_only_when_psm_is_selected(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('sections["공정안전보고서"] = [st.Page("ui/psm_workspace_page.py"', app)

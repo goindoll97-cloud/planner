@@ -6,6 +6,8 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import cap_scenario_workspace as sc
+from engine.stage2 import psm_attachments as attachments
+from engine.stage2 import psm_form12_workspace as f12
 from engine.stage2 import psm_form19_2_workspace as f19
 from engine.stage2 import statutory_report as report
 from engine.stage2.storage import list_projects, load_project, save_project
@@ -17,11 +19,13 @@ EQUIPMENT_KEY = "psm.psi.equipment_specs"
 PSM_ONLY_COLUMNS = ("본체재질", "부속품재질", "개스킷재질", "용접효율", "계산두께", "부식여유", "사용두께",
                     "후열처리 여부", "비파괴검사율")
 FORMS = {
+    "12": "별지 제12호 · 사업개요",
     "13": "별지 제13호 · 유해·위험물질 목록",
     "15": "별지 제15호 · 장치 및 설비 명세",
     "19-2": "별지 제19호의2 · 시나리오 및 피해예측 결과",
+    "files": "첨부 자료 · 도면·MSDS 올리기",
 }
-UNSUPPORTED = ("별지 제12호 사업개요", "별지 제14호 동력기계 목록", "별지 제16호 배관 및 개스킷 명세",
+UNSUPPORTED = ("별지 제14호 동력기계 목록", "별지 제16호 배관 및 개스킷 명세",
                "별지 제17호 안전밸브 및 파열판 명세", "별지 제17호의2~5, 제18·19·20·21호")
 
 
@@ -154,6 +158,61 @@ def _table_19_2(project) -> None:
         st.success("반영했습니다.")
 
 
+def _table_12(project) -> None:
+    st.caption("사업의 개요를 적는 서식입니다. 이미 입력한 사업장 정보는 자동으로 채워져 있으니, 비어 있는 칸만 적으세요. "
+               + f12.NOT_APPLICABLE_HINT)
+    have = f12.current(project)
+    known = {k: v for k, v in f12.prefilled(project).items() if k not in f12.saved(project)}
+    if known:
+        _reuse_note("이미 입력한 정보 " + ", ".join(known) + "을(를) 가져왔습니다.")
+    values: dict[str, str] = {}
+    for header, kind, help_text in f12.QUESTIONS:
+        if kind == "choice":
+            options = ["선택하세요", *f12.PROJECT_TYPES]
+            current = have.get(header, "")
+            values[header] = st.selectbox(header, options, index=options.index(current) if current in options else 0,
+                                          help=help_text, key=f"psm12_{header}")
+            if values[header] == "선택하세요":
+                values[header] = ""
+        else:
+            values[header] = st.text_input(header, value=have.get(header, ""), help=help_text, key=f"psm12_{header}")
+    for header in f12.PREFILL:
+        values[header] = st.text_input(header, value=have.get(header, ""), key=f"psm12_{header}",
+                                       help="이미 입력한 사업장 정보에서 가져왔습니다. 다르면 고쳐 쓰세요.")
+    needs = f12.needs(project)
+    if needs:
+        st.info("아직 비어 있는 칸: " + ", ".join(needs))
+    if st.button("저장", type="primary", key="psm12_save"):
+        f12.save(project, values)
+        save_project(project)
+        st.success("저장했습니다.")
+        st.rerun()
+
+
+def _files(project) -> None:
+    st.caption("표로 적을 수 없고 파일 자체가 자료인 것만 올립니다. 올린 파일은 지문(SHA-256)과 함께 기록되고 보고서의 첨부 칸에 연결됩니다. "
+               "올렸다고 내용을 확인한 것은 아니므로, 직접 확인한 뒤 '내용을 확인했습니다'를 눌러 주세요.")
+    for index, item in enumerate(attachments.status(project)):
+        slot = item["slot"]
+        with st.expander(f"{slot.label} — {item['state']}", expanded=item["state"] == "올리지 않음" and index < 3):
+            st.caption(slot.help)
+            if item["file_name"]:
+                st.write(f"현재 파일: {item['file_name']} {item['reference_no']} {item['revision']}".strip())
+            upload = st.file_uploader("파일 선택", key=f"psm_file_{slot.key}")
+            left, right = st.columns(2)
+            reference = left.text_input("도면번호(있으면)", key=f"psm_ref_{slot.key}")
+            revision = right.text_input("개정번호(있으면)", key=f"psm_rev_{slot.key}")
+            if upload is not None and st.button("이 파일 올리기", key=f"psm_up_{slot.key}"):
+                attachments.attach(project, slot.key, upload.name, upload.getvalue(), reference_no=reference,
+                                   revision=revision)
+                save_project(project)
+                st.rerun()
+            if item["state"] == "내용 확인 필요" and st.button("내용을 확인했습니다", key=f"psm_ok_{slot.key}"):
+                attachments.confirm(project, slot.key)
+                save_project(project)
+                st.rerun()
+
+
 st.set_page_config(page_title="공정안전보고서 작성", page_icon="🏭", layout="wide")
 st.title("🏭 공정안전보고서 작성")
 st.caption("화학사고예방관리계획서에서 이미 입력한 사업장·물질·시설·시나리오는 다시 묻지 않고 그대로 가져옵니다.")
@@ -163,7 +222,7 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 form_key = st.selectbox("작성할 별지", list(FORMS), format_func=lambda key: FORMS[key], key="psm_form_no")
-{"13": _table_13, "15": _table_15, "19-2": _table_19_2}[form_key](project)
+{"12": _table_12, "13": _table_13, "15": _table_15, "19-2": _table_19_2, "files": _files}[form_key](project)
 with st.expander("아직 이 화면에서 작성할 수 없는 별지"):
     for item in UNSUPPORTED:
         st.write(f"• {item}")
