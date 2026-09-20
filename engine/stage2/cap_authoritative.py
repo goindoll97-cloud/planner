@@ -123,6 +123,16 @@ def _company_form6_values(project: Stage2Project) -> dict[str, dict[str, str]]:
     return result
 
 
+# KOSHA가 항목 머리글로 보내는 행(예: "1 | H02 | 화학물질의 노출기준 … | 1142 | H")은 값이 아니다.
+_KOSHA_HEADER_ROW = re.compile(r"^\d+\s*\|\s*[A-Z]\d{2}\s*\|")
+_KOSHA_SOURCE_TAIL = re.compile(r"\s*\|?\s*※\s*출처\s*:.*$", re.S)
+
+
+def _without_source_tail(value: str) -> str:
+    """'액체   |   ※출처 : HSDB' → '액체'. 출처는 후보의 source_text에 항목·항 번호로 남는다."""
+    return _KOSHA_SOURCE_TAIL.sub("", value).strip()
+
+
 def _section_items(payload: Mapping[str, Any], section: int) -> list[tuple[str, str]]:
     raw_sections = payload.get("sections")
     if not isinstance(raw_sections, Mapping):
@@ -136,7 +146,7 @@ def _section_items(payload: Mapping[str, Any], section: int) -> list[tuple[str, 
         for item in items:
             if isinstance(item, (list, tuple)) and len(item) >= 2:
                 label, detail = _clean(item[0]), _clean(item[1])
-                if detail:
+                if detail and not _KOSHA_HEADER_ROW.match(detail):
                     out.append((label, detail))
     if not out:
         text = _clean(sec.get("text"))
@@ -223,6 +233,23 @@ def _physical_state(payload: Mapping[str, Any]) -> tuple[str, int, str] | None:
     return (match.group(1), section, label) if match else None
 
 
+def _explosion_limits(payload: Mapping[str, Any]) -> tuple[str, str, int, str] | None:
+    """'인화 또는 폭발 범위의 상한/하한: 7.8 / 1.0 %' → (하한, 상한). 항목 이름의 순서가 분명할 때만 나눈다."""
+    for label, detail in _section_items(payload, 9):
+        if "폭발" not in label or not ("범위" in label or "한계" in label):
+            continue
+        upper_at, lower_at = label.find("상한"), label.find("하한")
+        if upper_at < 0 or lower_at < 0:
+            continue
+        match = re.search(r"(\d+(?:\.\d+)?)\s*(?:/|~|-)\s*(\d+(?:\.\d+)?)", _without_source_tail(detail))
+        if not match:
+            continue
+        first, second = match.group(1), match.group(2)
+        upper, lower = (first, second) if upper_at < lower_at else (second, first)
+        return lower, upper, 9, label
+    return None
+
+
 def cap_form6_msds_candidates(project: Stage2Project) -> list[CAPReferenceCandidate]:
     """Return source-explicit missing-value candidates for official Form 6.
 
@@ -242,15 +269,20 @@ def cap_form6_msds_candidates(project: Stage2Project) -> list[CAPReferenceCandid
             if field in already or not hit:
                 return
             value, section, label = hit
-            value = _clean(value)
-            if value:
+            value = _without_source_tail(_clean(value))
+            if value and value != "자료없음":
                 out.append(CAPReferenceCandidate(chemical.cas, name, field, value, section, label))
 
         add("물질상태", _physical_state(payload))
         add("분자량", _first_explicit(payload, (9, 3), ("분자량",)))
         add("비중", _first_explicit(payload, (9,), ("비중", "상대밀도")))
-        add("폭발한계 하한(%)", _first_explicit(payload, (9,), ("폭발한계 하한", "폭발하한", "인화하한", "하한 폭발")))
-        add("폭발한계 상한(%)", _first_explicit(payload, (9,), ("폭발한계 상한", "폭발상한", "인화상한", "상한 폭발")))
+        limits = _explosion_limits(payload)
+        if limits:
+            add("폭발한계 하한(%)", (limits[0], limits[2], limits[3]))
+            add("폭발한계 상한(%)", (limits[1], limits[2], limits[3]))
+        else:
+            add("폭발한계 하한(%)", _first_explicit(payload, (9,), ("폭발한계 하한", "폭발하한", "인화하한", "하한 폭발")))
+            add("폭발한계 상한(%)", _first_explicit(payload, (9,), ("폭발한계 상한", "폭발상한", "인화상한", "상한 폭발")))
         add("증기압(20℃, mmHg)", _first_explicit(payload, (9,), ("증기압",)))
 
         tox = _toxicity_category(payload)
@@ -266,7 +298,7 @@ def cap_form6_msds_candidates(project: Stage2Project) -> list[CAPReferenceCandid
                 add("위험노출수준", hit)
                 break
 
-        add("허용농도값", _first_explicit(payload, (8,), ("TWA", "시간가중평균", "노출기준")))
+        add("허용농도값", _first_explicit(payload, (8,), ("TWA", "시간가중평균")))
         add("부식성(유, 무)", _positive_metal_corrosivity(payload))
 
     unique: dict[tuple[str, str], CAPReferenceCandidate] = {}
