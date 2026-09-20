@@ -661,13 +661,35 @@ def _psm_form13_rows(project: Stage2Project) -> list[list[str]]:
     return rows
 
 
+def _psm_machinery_spec(row: Mapping[str, object]) -> str:
+    direct = _row_value(row, "명세")
+    if direct != MISSING:
+        return direct
+    parts: list[str] = []
+    kind = _row_value(row, "기계종류", "형식")
+    if kind != MISSING:
+        parts.append(kind)
+    for label, aliases in (
+        ("처리량", ("처리량", "시간당 처리량", "용량")),
+        ("토출압력", ("토출압력", "토출측 압력")),
+        ("회전수", ("회전수", "분당 회전수", "rpm")),
+        ("임펠러반경", ("임펠러반경", "임펠러 반경")),
+        ("양중하중", ("양중하중", "양중 가능 무게", "정격하중")),
+        ("양중높이", ("양중높이", "양중 높이")),
+    ):
+        value = _row_value(row, *aliases)
+        if value != MISSING:
+            parts.append(f"{label} {value}")
+    return " / ".join(parts) if parts else MISSING
+
+
 def _psm_form14_rows(project: Stage2Project) -> list[list[str]]:
     out = []
     for row in _rows(project, "psm.psi.machinery_list"):
         out.append([
             _row_value(row, "기계번호", "동력기계 번호", "설비번호"),
             _row_value(row, "기계명", "동력기계명", "설비명"),
-            _row_value(row, "명세", "형식", "용량"),
+            _psm_machinery_spec(row),
             _row_value(row, "주요재질", "재질"),
             _row_value(row, "전동기용량", "동력", "전동기용량(kW)"),
             _row_value(row, "방호·보호장치 종류", "방호장치의 종류", "보호장치"),
