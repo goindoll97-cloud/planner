@@ -39,9 +39,13 @@ def render(expanded: bool) -> None:
             "물질의 최대보유량을 정확히 모르면 비워 두세요. 별지 제1호에서 시설별로 계산합니다."
         )
         left, middle, right = st.columns(3)
-        name = left.text_input("사업장명", key="cap_start_name")
-        address = middle.text_input("사업장 주소", key="cap_start_address")
-        industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry")
+        name = left.text_input("사업장명", key="cap_start_name", help="사업자등록증에 적힌 사업장(회사) 이름입니다.",
+                                placeholder="(예시) 한국화학 울산공장")
+        address = middle.text_input("사업장 주소", key="cap_start_address", help="사업장이 실제로 있는 도로명 주소입니다. 기상 정보와 주변 보호대상 조회에 쓰입니다.",
+                                  placeholder="(예시) 울산광역시 남구 산업로 1")
+        industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry",
+                                  help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 판정 계산에는 쓰이지 않고, 공정안전보고서 별지 제12호의 주요 생산품 칸에 다시 쓰입니다.",
+                                  placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산")
         blank = {"제품명": "", "CAS No.": "", "함량(%)": 100.0, "최대 동시보유량(ton)": None}
         generation = st.session_state.get("cap_start_gen", 0)  # 엑셀로 행을 추가하면 새 표로 다시 그린다
         frame = pd.DataFrame(st.session_state.get("cap_start_seed") or [blank], columns=list(cap_start.CHEMICAL_INPUT_COLUMNS))
