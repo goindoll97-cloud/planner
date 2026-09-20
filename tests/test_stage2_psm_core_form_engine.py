@@ -66,6 +66,8 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
                 "설비명": "톨루엔 저장탱크",
                 "취급물질": "톨루엔",
                 "용량": "20 m3",
+                "직경": "2.5 m",
+                "높이": "4.5 m",
                 "운전압력": "0.15 MPa",
                 "설계압력": "0.49 MPa",
                 "운전온도": "30 ℃",
@@ -237,6 +239,17 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
 
         self.assertFalse(result.ready)
         self.assertTrue(any("토출측 압력" in blocker and "분당 회전수" in blocker for blocker in result.blockers))
+
+    def test_form15_storage_tank_requires_diameter_and_height(self):
+        p = self._project()
+        row = dict(p.get_field("psm.psi.equipment_specs").value[0])
+        row.pop("직경")
+        p.set_field("psm.psi.equipment_specs", "장치 및 설비명세", [row], "USER_CONFIRMED")
+
+        result = build_psm_core_form_readiness(p, "15")
+
+        self.assertFalse(result.ready)
+        self.assertTrue(any("직경" in blocker for blocker in result.blockers))
 
     def test_form15_requires_explicit_regulatory_inspection_note(self):
         p = self._project()
