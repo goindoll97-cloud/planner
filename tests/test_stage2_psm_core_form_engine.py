@@ -31,7 +31,7 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
                 "폭발한계 하한": "1.2 vol%",
                 "폭발한계 상한": "7.1 vol%",
                 "노출기준": "TWA 50 ppm",
-                "독성치": "회사 SDS 확인값",
+                "독성치": "경구: 회사 SDS 확인 / 경피: 회사 SDS 확인 / 흡입: 회사 SDS 확인",
                 "인화점": "4 ℃",
                 "발화점": "480 ℃",
                 "증기압": "28.4 mmHg (25℃)",
@@ -48,7 +48,10 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
             [{
                 "기계번호": "P-101",
                 "기계명": "원료 이송펌프",
-                "형식": "원심펌프",
+                "기계종류": "원심펌프",
+                "처리량": "10 m3/h",
+                "토출압력": "0.5 MPa",
+                "회전수": "1750 rpm",
                 "재질": "SUS304",
                 "동력": "7.5 kW",
                 "방호·보호장치 종류": "커플링 가드·모터 과부하 보호",
@@ -76,6 +79,7 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
                 "사용두께": "8 mm",
                 "후열처리 여부": "해당 없음",
                 "비파괴검사율": "10%",
+                "비고": "해당 없음",
             }],
             "USER_CONFIRMED",
         )
@@ -205,6 +209,45 @@ class PSMCoreFormReadinessTests(unittest.TestCase):
 
         self.assertTrue(form13_holds)
         self.assertTrue(any("독성치" in issue.message for issue in form13_holds))
+
+    def test_form13_generic_sds_note_does_not_satisfy_toxicity_routes(self):
+        p = self._project()
+        row = dict(p.get_field("psm.psi.chemical_details").value[0])
+        row["독성치"] = "회사 SDS 확인값"
+        p.set_field(
+            "psm.psi.chemical_details",
+            "공정안전보고서 유해·위험물질 상세명세",
+            [row],
+            "USER_CONFIRMED",
+        )
+
+        result = build_psm_core_form_readiness(p, "13")
+
+        self.assertFalse(result.ready)
+        self.assertTrue(any("경구·경피·흡입" in blocker for blocker in result.blockers))
+
+    def test_form14_pump_requires_discharge_pressure_and_rpm(self):
+        p = self._project()
+        row = dict(p.get_field("psm.psi.machinery_list").value[0])
+        row.pop("토출압력")
+        row.pop("회전수")
+        p.set_field("psm.psi.machinery_list", "동력기계 목록", [row], "USER_CONFIRMED")
+
+        result = build_psm_core_form_readiness(p, "14")
+
+        self.assertFalse(result.ready)
+        self.assertTrue(any("토출측 압력" in blocker and "분당 회전수" in blocker for blocker in result.blockers))
+
+    def test_form15_requires_explicit_regulatory_inspection_note(self):
+        p = self._project()
+        row = dict(p.get_field("psm.psi.equipment_specs").value[0])
+        row.pop("비고")
+        p.set_field("psm.psi.equipment_specs", "장치 및 설비명세", [row], "USER_CONFIRMED")
+
+        result = build_psm_core_form_readiness(p, "15")
+
+        self.assertFalse(result.ready)
+        self.assertTrue(any("비고" in blocker for blocker in result.blockers))
 
     def test_missing_structured_table_is_hold(self):
         p = self._project()
