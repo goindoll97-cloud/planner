@@ -332,6 +332,26 @@ def ai_draft_is_current(project: Stage2Project, system: str, requirement_key: st
     return bool(stored and current and stored == current)
 
 
+# 담당자가 직접 적은 사실(*.facts.*)은 짝이 되는 항목에만 쓸 수 있다. 예: 지역사회 소통 사실을 주민 고지 항목에 옮겨 쓰면 없던 내용이 생긴다.
+_TYPED_FACT_OWNER = {
+    "psm.operation.training": "psm.facts.training",
+    "psm.emergency.training": "psm.facts.emergency_training",
+    "psm.emergency.public_information": "psm.facts.public_information",
+    "psm.emergency.roles": "psm.facts.emergency_org",
+    "cap.external.communication": "cap.facts.community",
+}
+
+
+def typed_fact_owner(requirement_key: str) -> str:
+    """이 항목에 쓸 수 있는 직접 입력 사실 키(없으면 빈 문자열)."""
+    if requirement_key in _TYPED_FACT_OWNER:
+        return _TYPED_FACT_OWNER[requirement_key]
+    parts = requirement_key.split(".")
+    if len(parts) == 3 and parts[0] == "cap":
+        return f"cap.facts.{parts[2]}"
+    return ""
+
+
 # 입력된 적 없는 사고 이력이나 "수립되어 있지 않다" 같은 부정 사실은 법정 문서에 들어가면 위험하므로 그 문장을 지운다.
 _FABRICATED_CLAIM = re.compile(
     r"화학사고가\s*(?:한\s*번도\s*)?(?:발생하지\s*않|없었)|사고\s*이력이\s*없|사고가\s*발생한\s*적이\s*없|무사고"
@@ -358,6 +378,7 @@ def _system_prompt(system: str) -> str:
         "특정 작성항목 자체의 회사 확인사실이 없고 공통 사업장 사실만 제공된 경우, 해당 설비·절차·계획이 실제 존재한다고 단정하지 않는다. "
         "그 경우 확인된 사업장 특성과 작성목적만 연결하고, 필요한 사업장 고유내용은 '[확인 필요: …]'로 명확히 표시하거나 suggested_additions에 남긴다. "
         "입력된 사실에 없는 대응 순서·평가 방식·점검 방법·보고 체계는 그럴듯해 보여도 덧붙이지 않는다. 입력된 대상·주기·방법·조직만 그대로 옮기고, 부족한 부분은 '[확인 필요: …]'로 남긴다. "
+        "각 항목은 자기 own_typed_fact_key의 사실만 항목 고유 사실로 쓴다. 다른 항목의 사실(예: 지역사회 소통 사실을 주민 고지에, 정기 교육 사실을 비상 훈련에)을 옮겨 쓰지 않는다. "
         "사고 이력·무사고 여부·법 위반 여부·'수립되어 있지 않다'는 식의 부정 사실은 입력되지 않았으면 절대 쓰지 않는다. "
         "회사가 이미 갖고 있거나 시행 중이라고 입력되지 않은 지침서·계획·기록을 '수립하여 관리한다'처럼 단정하지 않는다. "
         "도면·이미지·계산서가 담당자 별도 작성 범위인 혼합항목에서는 보고서 본문의 설명문만 작성하고, 실제 도면번호·계산결과·설치상태를 추정하지 않는다. "
@@ -393,6 +414,7 @@ def _build_pack_prompt(project: Stage2Project, system: str, specs: list[Requirem
                 and input_kind_has_attachment(spec.input_kind)
             ),
             "confirmed_fact_keys": keys,
+            "own_typed_fact_key": typed_fact_owner(spec.key),
         })
 
     global_keys = _global_fact_keys(facts)
@@ -549,6 +571,11 @@ def build_pack_result_from_rows(
             if "[확인 필요:" not in draft_text and not any(".facts." in key for key in used_keys):
                 # 담당자가 직접 적은 사실(psm.facts.*, cap.facts.*)을 쓰지 않은 항목은 모델이 표시를 빼먹어도 화면과 문서에 반드시 남도록 붙인다.
                 draft_text = draft_text.rstrip() + " " + NO_FACT_NOTICE
+
+        owner = typed_fact_owner(spec.key)
+        borrowed = sorted(key for key in used_keys if ".facts." in key and key != owner)
+        if borrowed:
+            warnings.append("다른 항목의 사실을 가져다 썼습니다: " + ", ".join(borrowed[:4]))
 
         source = _source_corpus(project, spec, global_facts)
         warnings.extend(_unsupported_tokens(draft_text, source))
