@@ -336,9 +336,12 @@ def _process_one_batch(
     client,
     *,
     store_safe_drafts: bool,
+    extra_instruction: str = "",
 ) -> tuple[str, list[core.AIDraftItem], list[core.AIDraftItem]]:
     specs = list(specs)
     prompt, global_facts = core._build_pack_prompt(project, system, specs)
+    if extra_instruction:
+        prompt += chr(10) * 2 + extra_instruction
     raw = client.generate_json(instructions=core._system_prompt(system), prompt=prompt)
     raw_profile, draft_rows = normalize_draft_response(raw, specs)
 
@@ -346,6 +349,24 @@ def _process_one_batch(
         project, system, specs, global_facts, raw_profile, draft_rows, client,
         store_safe_drafts=store_safe_drafts,
     )
+
+
+def retry_instruction(item) -> str:
+    """탈락한 초안을 한 번 더 만들 때 붙이는 지시. 고칠 수 있는 이유(다른 항목 사실 혼용·없는 숫자·내부 이름)만 재시도한다."""
+    text = " / ".join(item.validation_warnings)
+    parts = []
+    if "다른 항목의 사실" in text:
+        owner = core.typed_fact_owner(item.requirement_key)
+        own = f"이 항목의 직접 입력 사실은 {owner}뿐이다. " if owner else "이 항목에는 직접 입력 사실이 없다. "
+        parts.append("직전 결과에서 다른 항목의 사실을 가져다 써서 저장하지 못했다. " + own +
+                     "다른 항목의 사실은 이 항목의 draft_text와 used_fact_keys에 쓰지 말고 [확인 필요: …]로 남겨라.")
+    if "수치" in text or "설비 Tag" in text or "CAS" in text:
+        parts.append("직전 결과에 입력 JSON에 없는 숫자가 있었다. 조·장·절 번호와 환산한 값을 쓰지 말고 입력에 있는 값만 그대로 써라.")
+    if "내부 사실키" in text:
+        parts.append("used_fact_keys에는 confirmed_fact_keys와 global_fact_keys에 있는 키만, 그대로 적어라. 내부 변수 이름을 쓰지 마라.")
+    if not parts:
+        return ""
+    return "[재시도 지시] " + " ".join(parts) + f" 대상 항목: {item.requirement_key} 하나만 작성하라."
 
 
 def _checkpoint_project(project) -> None:
@@ -363,6 +384,7 @@ def generate_system_ai_drafts_batched(
     batch_size: int | None = None,
     requirement_keys: Sequence[str] | None = None,
     progress: Any = None,
+    retry_rejected: bool = True,
 ) -> BatchedAIDraftPackResult:
     system = core._normalize_system(system)
     draftable = core.ai_draftable_specs(project, system)
@@ -444,6 +466,26 @@ def generate_system_ai_drafts_batched(
         if store_safe_drafts and good:
             _checkpoint_project(project)
         report("done", batch)
+
+    if retry_rejected and rejected:
+        spec_by_key = {spec.key: spec for spec in specs}
+        for item in list(rejected):
+            hint = retry_instruction(item)
+            spec = spec_by_key.get(item.requirement_key)
+            if not hint or spec is None:
+                continue
+            report("retry", [spec])
+            try:
+                _, good, bad = _process_one_batch(project, system, [spec], client, store_safe_drafts=store_safe_drafts,
+                                                  extra_instruction=hint)
+            except Exception:
+                continue  # 재시도가 실패해도 첫 결과(탈락 사유)를 그대로 보여 준다
+            if good:
+                rejected.remove(item)
+                generated.extend(good)
+                if store_safe_drafts:
+                    _checkpoint_project(project)
+        report("done", [])
 
     return BatchedAIDraftPackResult(
         system=system,

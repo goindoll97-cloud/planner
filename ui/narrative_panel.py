@@ -44,6 +44,8 @@ def progress_lines(info: dict) -> tuple[float, str]:
     if info["event"] == "start":
         names = ", ".join(info["labels"][:3]) + (" 외" if len(info["labels"]) > 3 else "")
         return done / total, f"{done + 1}/{total}번째 묶음을 만드는 중 ({names}) · 경과 {elapsed}초 · 한 묶음에 수십 초가 걸릴 수 있습니다"
+    if info["event"] == "retry":
+        return 1.0, f"저장하지 못한 초안을 다시 만드는 중 ({', '.join(info['labels'])}) · 경과 {elapsed}초"
     return done / total, f"{done}/{total}번째 묶음 완료 · 초안 {info['generated']}개 · 저장 안 함 {info['rejected']}개 · 경과 {elapsed}초"
 
 
