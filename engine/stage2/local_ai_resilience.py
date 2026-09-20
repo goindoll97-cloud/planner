@@ -43,7 +43,7 @@ OLLAMA_KEEP_ALIVE = "15m"
 # more accurate: it correctly keeps a heavy model on a large GPU instead of
 # needlessly downgrading it, and correctly downgrades a "fits the B-range"
 # model that still does not fit this specific GPU's VRAM.
-GPU_VRAM_SAFETY_MARGIN = 0.85  # headroom for KV-cache/context beyond model weights
+GPU_VRAM_SAFETY_MARGIN = 0.7  # KV-cache/context 여유. 실측: 6GB GPU에서 5.2GB 모델(qwen3:8b)이 6.6GB를 써 CPU로 넘침(192초 vs 4B 33초)
 _GPU_VRAM_CACHE: dict[str, int | None] = {}
 
 
