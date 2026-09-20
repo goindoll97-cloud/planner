@@ -163,30 +163,50 @@ def build_psm_form19_2_readiness(project: Stage2Project) -> PSMFormReadiness:
             ),
         )
 
+    raw_rows = [
+        row for row in report._rows(project, "psm.risk.consequence_table")
+        if isinstance(row, Mapping)
+    ]
     rows = _rows(project, "psm.risk.consequence_table", FORM19_2_HEADERS)
+
     if applicability == "적용":
         if not rows:
             blockers.append("별지 제19호의2서식 사고피해예측 수치표가 없습니다.")
         else:
-            by_scenario: dict[str, tuple[str, ...]] = {}
-            for index, row in enumerate(rows, start=1):
+            groups: dict[tuple[str, str], dict[str, list[int]]] = {}
+            seen_names: set[str] = set()
+            for index, (row, raw) in enumerate(zip(rows, raw_rows), start=1):
                 scenario = _norm(row[0])
+                unit_plant = _clean(report._row_value(raw, "단위공장", "단위공장·공정"))
+                accident_type = _clean(report._row_value(raw, "사고유형"))
+                scenario_name = _clean(report._row_value(raw, "시나리오명", "사고시나리오명"))
+
+                if not unit_plant:
+                    blockers.append(f"별지 제19호의2서식 {index}행의 단위공장이 확인되지 않았습니다.")
+                if not accident_type:
+                    blockers.append(f"별지 제19호의2서식 {index}행의 사고유형이 확인되지 않았습니다.")
+                if not scenario_name:
+                    blockers.append(f"별지 제19호의2서식 {index}행의 시나리오명이 확인되지 않았습니다.")
+                elif _norm(scenario_name) in seen_names:
+                    blockers.append(f"별지 제19호의2서식의 시나리오명 '{scenario_name}'이 중복 입력되었습니다.")
+                else:
+                    seen_names.add(_norm(scenario_name))
+
                 if scenario not in VALID_SCENARIOS:
                     blockers.append(
                         f"별지 제19호의2서식 {index}행의 시나리오 구분은 "
                         "'최악의 사고 시나리오' 또는 '대안의 사고 시나리오'여야 합니다."
                     )
-                elif scenario in by_scenario:
-                    blockers.append(
-                        f"별지 제19호의2서식에 동일한 시나리오 구분 '{row[0]}'이 중복 입력되었습니다."
-                    )
-                else:
-                    by_scenario[scenario] = row
 
-                missing = [
-                    header for header, value in zip(FORM19_2_HEADERS, row)
-                    if not value
-                ]
+                key = (_norm(unit_plant), _norm(accident_type))
+                if all(key):
+                    bucket = groups.setdefault(key, {"worst": [], "alternative": []})
+                    if scenario == "최악의사고시나리오":
+                        bucket["worst"].append(index)
+                    elif scenario == "대안의사고시나리오":
+                        bucket["alternative"].append(index)
+
+                missing = [header for header, value in zip(FORM19_2_HEADERS, row) if not value]
                 if missing:
                     blockers.append(
                         f"별지 제19호의2서식 {index}행에서 "
@@ -203,19 +223,19 @@ def build_psm_form19_2_readiness(project: Stage2Project) -> PSMFormReadiness:
                         f"별지 제19호의2서식 {index}행 물질상태는 '기체', '액체', '2상(액체+기체)' 중 하나여야 합니다."
                     )
 
-            missing_scenarios = [
-                label for norm, label in (
-                    ("최악의사고시나리오", "최악의 사고 시나리오"),
-                    ("대안의사고시나리오", "대안의 사고 시나리오"),
-                )
-                if norm not in by_scenario
-            ]
-            if missing_scenarios:
-                blockers.append(
-                    "별지 제19호의2서식에 "
-                    + ", ".join(missing_scenarios)
-                    + " 행이 필요합니다."
-                )
+            for (unit_norm, accident_norm), bucket in groups.items():
+                label_row = raw_rows[bucket["worst"][0] - 1] if bucket["worst"] else raw_rows[bucket["alternative"][0] - 1]
+                unit_label = _clean(report._row_value(label_row, "단위공장", "단위공장·공정")) or unit_norm
+                accident_label = _clean(report._row_value(label_row, "사고유형")) or accident_norm
+                if len(bucket["worst"]) != 1:
+                    blockers.append(
+                        f"{unit_label} / {accident_label}은 최악의 사고 시나리오가 정확히 1건이어야 합니다 "
+                        f"(현재 {len(bucket['worst'])}건)."
+                    )
+                if len(bucket["alternative"]) < 1:
+                    blockers.append(
+                        f"{unit_label} / {accident_label}은 대안의 사고 시나리오가 1건 이상 필요합니다."
+                    )
 
     return PSMFormReadiness(
         form_no="19-2",
@@ -223,7 +243,7 @@ def build_psm_form19_2_readiness(project: Stage2Project) -> PSMFormReadiness:
         rows=rows,
         blockers=tuple(blockers),
         messages=(
-            "별지 제19호의2서식의 적용여부, 최악·대안 시나리오 및 피해예측 수치표를 확인했습니다. "
+            "별지 제19호의2서식의 적용여부와 단위공장·사고유형별 최악 1건/대안 1건 이상을 확인했습니다. "
             f"확인근거: {basis}",
         ) if not blockers else (),
     )
