@@ -59,9 +59,9 @@ class PsmWorkspacePageTests(unittest.TestCase):
         frame = at.dataframe[0].value
         self.assertIn("독성-ERPG 2", list(frame["항목"]))
 
-    def test_form12_and_files_render_without_errors(self):
+    def test_form12_admin_and_files_render_without_errors(self):
         project = _project()
-        for key in ("12", "files"):
+        for key in ("12", "admin", "files"):
             at = _run(project, key)
             self.assertFalse(at.exception, key)
         at = _run(project, "12")
