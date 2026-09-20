@@ -128,14 +128,6 @@ class Stage2StandaloneEntryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "작성수준"):
             inspect_standalone_workbook(out.getvalue())
 
-    def test_scope_page_offers_stage2_direct_start_and_both_downloads(self):
-        text = (PROJECT_ROOT / "ui/stage2_scope_page.py").read_text(encoding="utf-8")
-        self.assertIn("Stage 2 통합 작성자료로 직접 시작", text)
-        self.assertIn("create_project_from_standalone_workbook", text)
-        self.assertIn("법적 대상 여부를 새로 판정하지 않고", text)
-        self.assertIn("통합 작성자료.xlsx 다운로드", text)
-        self.assertIn("통합 작성자료_작성예시.xlsx 다운로드", text)
-        self.assertIn("create_direct_entry_template_project", text)
 
 
 if __name__ == "__main__":

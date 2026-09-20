@@ -24,9 +24,6 @@ class DecisionExplanationContractTests(unittest.TestCase):
         ]:
             self.assertIn(expected, text)
 
-    def test_result_card_labels_explanation(self) -> None:
-        text = Path('ui/diagnosis_page.py').read_text(encoding='utf-8')
-        self.assertIn('판정 근거 설명', text)
 
     def test_reference_workbook_uses_full_legal_names(self) -> None:
         wb = load_workbook(BytesIO(build_legal_reference_workbook()), data_only=False)

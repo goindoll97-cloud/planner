@@ -45,7 +45,7 @@ def _ask(project, outcome) -> None:
     if unmatched:
         st.markdown("**그 밖에 확인해야 할 것**")
         for message in unmatched:
-            st.write(f"• {message}")
+            st.write(f"• {judgement.display_request(message)}")
     if st.button("답을 저장하고 다시 판정", type="primary", key=f"judge_answer_{project.project_id}"):
         if not any(given.values()):
             st.warning("한 가지 이상 답해 주세요.")
@@ -110,7 +110,7 @@ def render(project) -> None:
         if outcome.status == "INVALID":
             st.warning("입력을 확인해 주세요.")
             for message in outcome.messages:
-                st.write(f"• {message}")
+                st.write(f"• {judgement.display_request(message)}")
         elif outcome.status == "PENDING":
             st.warning("최대보유량을 알 수 없는 물질이 있어 판정할 수 없습니다.")
             for name in outcome.missing_quantity:
@@ -119,7 +119,7 @@ def render(project) -> None:
         elif outcome.status == "SYSTEM":
             st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
             for message in outcome.messages:
-                st.write(f"• {message}")
+                st.write(f"• {judgement.display_request(message)}")
         elif outcome.status == "REQUEST":
             _ask(project, outcome)
         else:

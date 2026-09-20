@@ -171,7 +171,7 @@ if isinstance(report, dict):
 rows = _observed_rows()
 gate = decision_readiness_gate(rows) if rows else gate
 if gate.get("decision") == "ALLOW":
-    st.page_link("ui/diagnosis_entry.py", label="1. 판정진단으로 이동", icon="✅")
+    st.page_link("ui/judgement_page.py", label="사업장 판정하기로 이동", icon="✅")
 else:
     with st.expander("업데이트가 완료되지 않은 이유 보기", expanded=False):
         st.write(str(gate.get("message") or "법령 또는 규정 DB 준비상태를 확인하세요."))

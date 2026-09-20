@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, is_dataclass
 import hashlib
 import json
+import re
 from typing import Any, Callable, Mapping
 
 import pandas as pd
@@ -83,6 +84,11 @@ class Outcome:
 
 def _clean(value: object) -> str:
     return "" if value is None else str(value).strip()
+
+
+def display_request(value: object) -> str:
+    """판정 엔진 요청 문구 앞의 엑셀 시트 이름('05_최종판정조건: ' 등)은 사용자에게 보이지 않게 뗀다."""
+    return re.sub(r"^(?:\d{2}_[^:]+|회사 입력파일):\s*", "", _clean(value))
 
 
 def _field_text(project: Stage2Project, key: str) -> str:

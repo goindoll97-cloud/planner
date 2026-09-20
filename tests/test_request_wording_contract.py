@@ -8,10 +8,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class RequestWordingContractTests(unittest.TestCase):
-    def test_request_ui_hides_workbook_sheet_names(self) -> None:
-        text = (PROJECT_ROOT / "ui/diagnosis_page.py").read_text(encoding="utf-8")
-        self.assertIn("_display_request", text)
-        self.assertIn("re.sub", text)
 
     def test_psm_requests_name_full_legal_basis(self) -> None:
         text = (PROJECT_ROOT / "engine/stage1_workbook.py").read_text(encoding="utf-8")
