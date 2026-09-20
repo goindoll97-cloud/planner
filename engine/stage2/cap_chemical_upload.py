@@ -243,8 +243,8 @@ def blank_template() -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "물질 목록"
-    sheet.append(["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", "비고"])
-    for column, width in zip("ABCDE", (28, 16, 12, 22, 24)):
+    sheet.append(["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)"])
+    for column, width in zip("ABCD", (28, 16, 12, 22)):
         sheet.column_dimensions[column].width = width
     guide = workbook.create_sheet("작성 안내")
     for line in (
