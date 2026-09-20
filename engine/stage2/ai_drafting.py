@@ -332,6 +332,18 @@ def ai_draft_is_current(project: Stage2Project, system: str, requirement_key: st
     return bool(stored and current and stored == current)
 
 
+# 입력된 적 없는 사고 이력이나 "수립되어 있지 않다" 같은 부정 사실은 법정 문서에 들어가면 위험하므로 그 문장을 지운다.
+_FABRICATED_CLAIM = re.compile(
+    r"화학사고가\s*(?:한\s*번도\s*)?(?:발생하지\s*않|없었)|사고\s*이력이\s*없|사고가\s*발생한\s*적이\s*없|무사고"
+    r"|(?:수립|마련|구비|운영)되어\s*있지\s*않|(?:수립|마련|구비)하지\s*않았")
+_SENTENCE_END = re.compile(r"(?<=[다요]\.)\s+")
+
+
+def drop_fabricated_claims(text: str) -> str:
+    kept = [sentence for sentence in _SENTENCE_END.split(text) if not _FABRICATED_CLAIM.search(sentence)]
+    return " ".join(kept).strip()
+
+
 NO_FACT_NOTICE = ("[확인 필요: 이 항목에 대해 입력된 회사 사실이 없어 일반적인 작성 요건만 서술했습니다. "
                   "회사가 실제로 운영하는 절차·주기·담당은 담당자가 확인해 고쳐 쓰세요.]")
 
@@ -346,6 +358,7 @@ def _system_prompt(system: str) -> str:
         "특정 작성항목 자체의 회사 확인사실이 없고 공통 사업장 사실만 제공된 경우, 해당 설비·절차·계획이 실제 존재한다고 단정하지 않는다. "
         "그 경우 확인된 사업장 특성과 작성목적만 연결하고, 필요한 사업장 고유내용은 '[확인 필요: …]'로 명확히 표시하거나 suggested_additions에 남긴다. "
         "입력된 사실에 없는 대응 순서·평가 방식·점검 방법·보고 체계는 그럴듯해 보여도 덧붙이지 않는다. 입력된 대상·주기·방법·조직만 그대로 옮기고, 부족한 부분은 '[확인 필요: …]'로 남긴다. "
+        "사고 이력·무사고 여부·법 위반 여부·'수립되어 있지 않다'는 식의 부정 사실은 입력되지 않았으면 절대 쓰지 않는다. "
         "회사가 이미 갖고 있거나 시행 중이라고 입력되지 않은 지침서·계획·기록을 '수립하여 관리한다'처럼 단정하지 않는다. "
         "도면·이미지·계산서가 담당자 별도 작성 범위인 혼합항목에서는 보고서 본문의 설명문만 작성하고, 실제 도면번호·계산결과·설치상태를 추정하지 않는다. "
         "화학사고예방관리계획서 2군 사업장에서는 제공된 작성항목 밖의 외부 비상대응계획을 생성하지 않는다. "
@@ -512,6 +525,9 @@ def build_pack_result_from_rows(
         seen.add(requirement_key)
 
         draft_text = normalize_public_prose(str(row.get("draft_text") or "").strip(), system)
+        cleaned = drop_fabricated_claims(draft_text)
+        if cleaned != draft_text:
+            draft_text = cleaned or NO_FACT_NOTICE
         suggestions = _normalize_suggestions(row.get("suggested_additions"), system)
         used_fact_keys = _normalize_fact_keys(row.get("used_fact_keys"))
         warnings: list[str] = []
