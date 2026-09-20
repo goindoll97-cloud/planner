@@ -100,6 +100,10 @@ def _value(project: Stage2Project, *keys: str) -> str:
             value = _clean(record.value)
             if value:
                 return value
+        if key == "business.company_name" and _clean(project.company_name):
+            return _clean(project.company_name)
+        if key == "business.site_name" and _clean(project.site_name):
+            return _clean(project.site_name)
     return ""
 
 
