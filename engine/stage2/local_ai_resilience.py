@@ -16,6 +16,7 @@ from dataclasses import dataclass, replace
 import re
 import shutil
 import subprocess
+import time
 from typing import Any, Mapping, Sequence
 
 import requests
@@ -361,6 +362,7 @@ def generate_system_ai_drafts_batched(
     store_safe_drafts: bool = True,
     batch_size: int | None = None,
     requirement_keys: Sequence[str] | None = None,
+    progress: Any = None,
 ) -> BatchedAIDraftPackResult:
     system = core._normalize_system(system)
     draftable = core.ai_draftable_specs(project, system)
@@ -377,8 +379,21 @@ def generate_system_ai_drafts_batched(
     rejected: list[core.AIDraftItem] = []
     profile_summary = ""
     completed = 0
+    started = time.monotonic()
+
+    def report(event: str, batch_specs) -> None:
+        """화면에 진행 상황을 알린다. 화면 표시가 실패해도 생성은 계속한다."""
+        if progress is None:
+            return
+        try:
+            progress({"event": event, "done": completed, "total": len(batches), "items": len(specs),
+                      "labels": [spec.label for spec in batch_specs], "elapsed": time.monotonic() - started,
+                      "generated": len(generated), "rejected": len(rejected), "model": getattr(client, "model", "")})
+        except Exception:
+            pass
 
     for batch in batches:
+        report("start", batch)
         try:
             summary, good, bad = _process_one_batch(
                 project,
@@ -428,6 +443,7 @@ def generate_system_ai_drafts_batched(
         completed += 1
         if store_safe_drafts and good:
             _checkpoint_project(project)
+        report("done", batch)
 
     return BatchedAIDraftPackResult(
         system=system,

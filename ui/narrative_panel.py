@@ -37,6 +37,39 @@ def _local_config(prefix: str):
         return None, None, None
 
 
+def progress_lines(info: dict) -> tuple[float, str]:
+    """진행 정보를 (진행률, 안내 문장)으로 바꾼다. 한 묶음이 끝날 때마다 갱신된다."""
+    done, total = info["done"], max(info["total"], 1)
+    elapsed = int(info["elapsed"])
+    if info["event"] == "start":
+        names = ", ".join(info["labels"][:3]) + (" 외" if len(info["labels"]) > 3 else "")
+        return done / total, f"{done + 1}/{total}번째 묶음을 만드는 중 ({names}) · 경과 {elapsed}초 · 한 묶음에 수십 초가 걸릴 수 있습니다"
+    return done / total, f"{done}/{total}번째 묶음 완료 · 초안 {info['generated']}개 · 저장 안 함 {info['rejected']}개 · 경과 {elapsed}초"
+
+
+def _generate_with_progress(project, profile, prefix: str, client, model: str) -> None:
+    import time
+
+    box = st.status(f"확정된 사실로 초안을 만드는 중입니다 ({model})", expanded=True)
+    bar = box.progress(0.0, text="준비 중입니다.")
+    started = time.monotonic()
+
+    def show(info: dict) -> None:
+        ratio, text = progress_lines(info)
+        bar.progress(min(max(ratio, 0.0), 1.0), text=text)
+
+    try:
+        result = narrative.generate(project, client, profile=profile, progress=show)
+        save_project(project)
+        st.session_state[f"{prefix}_rejected"] = narrative.rejected_rows(result)
+        note = ("success", f"초안 만들기 완료 · {int(time.monotonic() - started)}초 · 초안 {len(result.generated)}개 ({model})")
+        box.update(label=note[1], state="complete")
+    except Exception as exc:
+        note = ("error", f"초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+        box.update(label="초안을 만들지 못했습니다", state="error")
+    st.session_state[f"{prefix}_run_note"] = note  # 화면을 다시 그려도 결과가 남도록 세션에 둔다
+
+
 def _drafts(project, profile, prefix: str) -> None:
     items = narrative.item_status(project, profile)
     ready = [i for i in items if i["state"] == "초안 만들기 가능"]
@@ -57,14 +90,11 @@ def _drafts(project, profile, prefix: str) -> None:
                 run_config = select_fast_auto_config(config, probe.models, available_model_sizes=probe.model_sizes)
             st.caption(f"사용할 모델: {run_config.model}")
         if st.button("초안 만들기", type="primary", key=f"{prefix}_generate", disabled=not runtime_ok):
-            with st.spinner("확정된 사실로 초안을 만드는 중입니다."):
-                try:
-                    result = narrative.generate(project, build_client(run_config), profile=profile)
-                    save_project(project)
-                    st.session_state[f"{prefix}_rejected"] = narrative.rejected_rows(result)
-                except Exception as exc:
-                    st.error(f"초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+            _generate_with_progress(project, profile, prefix, build_client(run_config), run_config.model)
             st.rerun()
+    note = st.session_state.get(f"{prefix}_run_note")
+    if note:
+        (st.success if note[0] == "success" else st.error)(note[1])
     rejected = st.session_state.get(f"{prefix}_rejected") or []
     if rejected:  # 다시 그려도 사라지지 않도록 세션에 두고, 다음 생성 때 새로 바꾼다
         with st.expander(f"저장하지 않은 초안 {len(rejected)}개 — 이유 보기", expanded=True):
