@@ -21,7 +21,7 @@ class PsmSharedFactsTests(unittest.TestCase):
         rows = report._psm_form15_rows(_project())
         self.assertEqual(len(rows), 1)
         self.assertEqual((rows[0][0], rows[0][1], rows[0][2]), ("TK-1", "염소 저장탱크", "염소"))
-        self.assertEqual(rows[0][3], "2.5")  # 2500 L -> m3
+        self.assertEqual(rows[0][3], "저장량 2.5")  # 2500 L -> m3, PSM 제15호 용량명세로 출력
 
     def test_psm_only_columns_overlay_the_shared_row(self):
         project = _project()
