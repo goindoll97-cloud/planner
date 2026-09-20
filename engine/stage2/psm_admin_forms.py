@@ -32,8 +32,8 @@ FORM1_SOURCE = "별지 제1호서식 공정안전보고서 심사신청서 <개�
 FORM9_SOURCE = "별지 제9호서식 공정안전보고서확인요청서 <개정 2020.1.16>"
 
 FORM1_KEYS = {
-    "사업장명": ("business.site_name", "business.company_name"),
-    "사업장관리번호": ("psm.admin.workplace_management_no",),
+    "사업자명": ("business.company_name", "business.site_name"),
+    "사업장관리번호": ("business.workplace_management_no", "psm.admin.workplace_management_no"),
     "사업자등록번호": ("business.registration_no",),
     "전화번호": ("business.phone",),
     "소재지": ("business.address",),
@@ -44,7 +44,7 @@ FORM1_KEYS = {
 FORM9_KEYS = {
     "사업장명": ("business.site_name", "business.company_name"),
     "사업자등록번호": ("business.registration_no",),
-    "사업장관리번호": ("psm.admin.workplace_management_no",),
+    "사업장관리번호": ("business.workplace_management_no", "psm.admin.workplace_management_no"),
     "전화번호": ("business.phone",),
     "소재지": ("business.address",),
     "대표자 성명": ("business.representative",),
@@ -240,7 +240,7 @@ def build_form1_docx(project: Stage2Project) -> bytes:
 
     table = doc.add_table(rows=4, cols=4)
     data = (
-        ("신청인", "사업장명", v["사업장명"], f"사업장관리번호\n{v['사업장관리번호']}"),
+        ("신청인", "사업자명", v["사업자명"], f"사업장관리번호\n{v['사업장관리번호']}"),
         ("신청인", "사업자등록번호", v["사업자등록번호"], f"전화번호\n{v['전화번호']}"),
         ("신청인", "소재지", v["소재지"], ""),
         ("신청인", "대표자 성명", v["대표자 성명"], ""),
