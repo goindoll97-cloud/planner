@@ -8,6 +8,7 @@ import streamlit as st
 from engine import kma_asos
 from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import psm_attachments as attachments
+from engine.stage2 import psm_admin_forms as admin_forms
 from engine.stage2 import psm_form12_workspace as f12
 from engine.stage2 import psm_form19_2_workspace as f19
 from engine.stage2 import narrative_examples as examples
@@ -43,6 +44,7 @@ FORMS = {
     "19-2": "별지 제19호의2 · 시나리오 및 피해예측 결과",
     "20": "별지 제20호 · 방폭전기/계장 기계·기구 선정기준",
     "21": "별지 제21호 · 위험성평가 참여 전문가 명단",
+    "admin": "제출·확인 행정서식 · 별지 제1호·제9호",
     "facts": "서술형 항목 · 사실 입력과 AI 초안 확인",
     "export": "점검·내보내기 · 보고서 내려받기",
     "files": "첨부 자료 · 도면·MSDS 올리기",
@@ -276,6 +278,115 @@ def _table_12(project) -> None:
         st.rerun()
 
 
+def _admin_forms(project) -> None:
+    st.caption(
+        "공정안전보고서 본문 별지 제12~21호와 별도로 제출·확인 단계에서 사용하는 행정서식입니다. "
+        "별지 제1호는 심사신청 단계, 별지 제9호는 심사 후 확인요청 단계에서 사용합니다."
+    )
+
+    shared_form1 = admin_forms.form1_values(project)
+    shared_form9 = admin_forms.form9_values(project)
+    st.success("사업자명·사업자등록번호·주소·대표자·전화번호 등 기존 회사 정보를 다시 묻지 않고 가져옵니다.")
+
+    st.markdown("### 별지 제1호 · 공정안전보고서 심사신청서")
+    st.caption("신규 심사 제출 단계입니다. 사업장관리번호와 실제 신청일을 확인해 주세요.")
+    form1_management = st.text_input(
+        "사업장관리번호",
+        value=shared_form1.get("사업장관리번호", ""),
+        key="psm_admin_workplace_no",
+        help="회사에서 확인한 사업장관리번호를 입력합니다. 모르면 임의 생성하지 않습니다.",
+    )
+    form1_date = st.text_input(
+        "심사신청일",
+        value=shared_form1.get("신청일", ""),
+        key="psm_admin_form1_date",
+        help="실제 제출하는 날짜를 YYYY-MM-DD 형식으로 입력합니다. 현재 날짜를 자동 확정하지 않습니다.",
+    )
+    if st.button("심사신청서 정보 저장", key="psm_admin_form1_save"):
+        admin_forms.save_admin_values(project, {
+            "psm.admin.workplace_management_no": form1_management,
+            "psm.admin.form1.application_date": form1_date,
+        })
+        save_project(project)
+        st.success("심사신청서 정보를 저장했습니다.")
+        st.rerun()
+
+    r1 = admin_forms.form1_readiness(project)
+    if r1.ready:
+        st.success("별지 제1호 작성에 필요한 값이 확인되었습니다.")
+        st.download_button(
+            "별지 제1호 심사신청서 DOCX 내려받기",
+            data=admin_forms.build_form1_docx(project),
+            file_name=admin_forms.form1_filename(project),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="psm_admin_form1_download",
+            width="stretch",
+        )
+    else:
+        st.warning("별지 제1호 보완 필요")
+        for blocker in r1.blockers:
+            st.write(f"• {blocker}")
+    with st.expander("별지 제1호 제출 전 확인"):
+        for item in r1.manual_items:
+            st.write(f"• {item}")
+
+    st.divider()
+    st.markdown("### 별지 제9호 · 공정안전보고서확인요청서")
+    st.caption(
+        "이 서식은 심사 완료 후 현장 확인을 요청하는 단계에서 사용합니다. "
+        "초기 공정안전보고서 제출 준비 여부와는 별도로 관리합니다."
+    )
+
+    c1, c2 = st.columns(2)
+    contact_name = c1.text_input("담당자 성명", value=shared_form9.get("담당자 성명", ""), key="psm_admin_contact_name")
+    contact_mobile = c2.text_input("담당자 휴대전화번호", value=shared_form9.get("담당자 휴대전화번호", ""), key="psm_admin_contact_mobile")
+    contact_email = st.text_input("담당자 전자우편 주소", value=shared_form9.get("담당자 전자우편 주소", ""), key="psm_admin_contact_email")
+    target = st.text_input("확인대상 사업 또는 설비명", value=shared_form9.get("확인대상 사업 또는 설비명", ""), key="psm_admin_confirm_target")
+    review_date = st.text_input("공정안전보고서 심사완료일", value=shared_form9.get("공정안전보고서 심사완료일", ""), key="psm_admin_review_date")
+    construction_period = st.text_input("공사기간", value=shared_form9.get("공사기간", ""), key="psm_admin_construction_period")
+    request_date = st.text_input("확인요청일", value=shared_form9.get("확인요청일", ""), key="psm_admin_request_date")
+    p1, p2 = st.columns(2)
+    period_start = p1.text_input("확인요청 기간 시작", value=shared_form9.get("확인요청 기간 시작", ""), key="psm_admin_period_start")
+    period_end = p2.text_input("확인요청 기간 종료", value=shared_form9.get("확인요청 기간 종료", ""), key="psm_admin_period_end")
+    form9_date = st.text_input("확인요청서 신청일", value=shared_form9.get("신청일", ""), key="psm_admin_form9_date")
+
+    if st.button("확인요청서 정보 저장", key="psm_admin_form9_save"):
+        admin_forms.save_admin_values(project, {
+            "psm.admin.contact_name": contact_name,
+            "psm.admin.contact_mobile": contact_mobile,
+            "psm.admin.contact_email": contact_email,
+            "psm.admin.confirmation_target": target,
+            "psm.admin.review_completion_date": review_date,
+            "psm.admin.construction_period": construction_period,
+            "psm.admin.confirmation_request_date": request_date,
+            "psm.admin.confirmation_period_start": period_start,
+            "psm.admin.confirmation_period_end": period_end,
+            "psm.admin.form9.application_date": form9_date,
+        })
+        save_project(project)
+        st.success("확인요청서 정보를 저장했습니다.")
+        st.rerun()
+
+    r9 = admin_forms.form9_readiness(project)
+    if r9.ready:
+        st.success("별지 제9호 작성에 필요한 값이 확인되었습니다.")
+        st.download_button(
+            "별지 제9호 확인요청서 DOCX 내려받기",
+            data=admin_forms.build_form9_docx(project),
+            file_name=admin_forms.form9_filename(project),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="psm_admin_form9_download",
+            width="stretch",
+        )
+    else:
+        st.info("별지 제9호는 확인요청 단계에서 아래 값이 모두 확인되면 출력할 수 있습니다.")
+        for blocker in r9.blockers:
+            st.write(f"• {blocker}")
+    with st.expander("별지 제9호 사용 시점"):
+        for item in r9.manual_items:
+            st.write(f"• {item}")
+
+
 def _files(project) -> None:
     from ui import attachments_panel
 
@@ -307,6 +418,6 @@ from ui import unsaved_guard
 
 form_key = unsaved_guard.selector("작성할 별지", list(FORMS), key="psm_form_no", format_func=lambda key: FORMS[key])
 try:
-    {"12": _table_12, "13": _table_13, **{no: table_grid.grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "facts": _facts, "export": _export, "files": _files}[form_key](project)
+    {"12": _table_12, "13": _table_13, **{no: table_grid.grid(no) for no in ("14", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "20", "21")}, "15": _table_15, "19-2": _table_19_2, "admin": _admin_forms, "facts": _facts, "export": _export, "files": _files}[form_key](project)
 finally:
     unsaved_guard.finish()

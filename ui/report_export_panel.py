@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import report_export as export
+from engine.stage2 import psm_admin_forms
 from engine.stage2.storage import save_project
 from engine.stage2.workflow import validation_confirmed
 from ui import cap_frames as frames
@@ -88,6 +89,27 @@ def render(project, system: str) -> None:
                        type="primary" if state.final_ready else "secondary")
     st.download_button("내부 검토용 DOCX(서술형 항목 포함) 내려받기", data=outputs.review_docx, file_name=outputs.review_name,
                        mime=export.DOCX_MIME, key=f"{prefix}_dl_review", width="stretch")
+
+    if system == "PSM":
+        st.markdown("### 심사 제출 행정서식")
+        form1 = psm_admin_forms.form1_readiness(project)
+        if form1.ready:
+            st.download_button(
+                "별지 제1호 심사신청서 DOCX 내려받기",
+                data=psm_admin_forms.build_form1_docx(project),
+                file_name=psm_admin_forms.form1_filename(project),
+                mime=export.DOCX_MIME,
+                key=f"{prefix}_dl_admin_form1",
+                width="stretch",
+            )
+        else:
+            st.info(
+                "별지 제1호 심사신청서는 '제출·확인 행정서식' 화면에서 "
+                "사업장관리번호와 실제 신청일을 확인하면 내려받을 수 있습니다."
+            )
+        st.caption(
+            "별지 제9호 확인요청서는 심사 후 확인 단계의 서식이므로 초기 공정안전보고서 제출 READY 판정에는 포함하지 않습니다."
+        )
     with st.expander("출력물 검증정보"):
         st.caption("파일이 나중에 바뀌지 않았는지 확인하는 지문(SHA-256)과 생성 기록입니다.")
         st.download_button("검증정보 JSON", data=outputs.provenance_json, file_name=outputs.provenance_name,
