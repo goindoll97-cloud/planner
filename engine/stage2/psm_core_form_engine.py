@@ -132,14 +132,12 @@ def _validate_form15_semantics(row_index: int, row: tuple[str, ...]) -> list[str
     blockers: list[str] = []
     note = row[17] if len(row) > 17 else ""
     normalized = _norm(note)
-    if note and not any(
-        marker in normalized
-        for marker in ("법", "안전검사", "안전인증", "검사대상", "인증대상", "해당없음", "대상아님")
-    ):
-        blockers.append(
-            f"별지 제15호서식 {row_index}행 비고에는 안전인증·안전검사 등 적용 법령/검사 여부를 확인해 적어 주세요. "
-            "관련 대상이 아니면 '해당 없음'으로 확인해 주세요."
-        )
+    if note and not _explicit_na(note):
+        if not any(marker in normalized for marker in ("법", "시행령", "시행규칙", "규칙", "고시")):
+            blockers.append(
+                f"별지 제15호서식 {row_index}행 비고에는 안전인증·안전검사 등 적용받는 법령명을 적어 주세요. "
+                "관련 대상이 아니면 '해당 없음'으로 확인해 주세요."
+            )
     return blockers
 
 
