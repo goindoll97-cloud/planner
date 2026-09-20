@@ -108,11 +108,18 @@ def language_policy_for_prompt(system: str) -> dict[str, Any]:
     }
 
 
+# 모델이 쓰는 영문 약어는 사용자 문서에 그대로 나가지 않게 정식 명칭으로 바꾼다.
+_ABBREVIATIONS = ((re.compile(r"(?<![A-Za-z])PSM(?![A-Za-z])"), "공정안전관리"),
+                  (re.compile(r"(?<![A-Za-z])CAP(?![A-Za-z])"), "화학사고예방관리계획서"))
+
+
 def normalize_public_prose(text: str, system: str) -> str:
     _normalize_system(system)
     result = str(text or "").strip()
     for old, new in legacy_replacements().items():
         result = result.replace(old, new)
+    for pattern, new in _ABBREVIATIONS:
+        result = pattern.sub(new, result)
     return result
 
 
