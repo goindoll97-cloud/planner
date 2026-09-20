@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import report_export as export
+from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
 from engine.stage2.storage import save_project
 from engine.stage2.workflow import validation_confirmed
@@ -110,6 +111,17 @@ def render(project, system: str) -> None:
         st.caption(
             "별지 제9호 확인요청서는 심사 후 확인 단계의 서식이므로 초기 공정안전보고서 제출 READY 판정에는 포함하지 않습니다."
         )
+    ai_rows = ai_written_items(project, system)
+    if ai_rows:
+        with st.expander(f"AI가 쓴 항목 {len(ai_rows)}개 — 제출 전 다시 점검", expanded=True):
+            st.warning("아래 항목의 문장은 AI가 초안을 쓴 것입니다. 규정서식 본문에는 AI 표시가 들어가지 않으니, 제출 전에 사실·숫자·설비·직책을 한 번 더 대조하세요.")
+            frame = pd.DataFrame([{"항목": f"{r['section']} {r['label']}".strip(), "상태": r["state"],
+                                   "담당자 수정": "수정함" if r["edited_by_reviewer"] else "수정 없음",
+                                   "[확인 필요] 표시": "있음" if r["has_check_mark"] else "없음"} for r in ai_rows])
+            frames.show(frame, width="stretch", hide_index=True)
+            st.download_button("AI 작성 항목 점검표 DOCX 내려받기", data=export.build_ai_review_sheet(project, system),
+                               file_name=export.ai_review_sheet_name(project, system), mime=export.DOCX_MIME,
+                               key=f"{prefix}_dl_ai_sheet", width="stretch")
     with st.expander("출력물 검증정보"):
         st.caption("파일이 나중에 바뀌지 않았는지 확인하는 지문(SHA-256)과 생성 기록입니다.")
         st.download_button("검증정보 JSON", data=outputs.provenance_json, file_name=outputs.provenance_name,

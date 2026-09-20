@@ -691,6 +691,7 @@ def approve_ai_draft(project: Stage2Project, system: str, requirement_key: str, 
     if warnings:
         raise ValueError("승인 문장이 검증기준을 충족하지 못했습니다: " + "; ".join(warnings))
 
+    value["edited_by_reviewer"] = text != normalize_public_prose(str(value.get("draft_text") or "").strip(), system)
     value["draft_text"] = text
     value["input_facts_sha256"] = ai_input_fingerprint(project, system, requirement_key)
     value["approved_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -702,6 +703,32 @@ def approve_ai_draft(project: Stage2Project, system: str, requirement_key: str, 
         evidence=list(record.evidence),
         note="AI 보강문장을 회사 담당자가 검토·승인함. 원본 회사 사실은 별도 필드에 보존됨.",
     )
+
+
+def ai_written_items(project: Stage2Project, system: str) -> list[dict[str, Any]]:
+    """AI가 쓴 글이 들어 있는 항목 목록. 제출 전에 사람이 한 번 더 점검하도록 화면·검증정보·점검표에 쓴다."""
+    system = _normalize_system(system)
+    labels = {spec.key: spec for spec in selected_requirement_specs(project) if spec.system == system}
+    rows: list[dict[str, Any]] = []
+    for requirement_key, spec in labels.items():
+        record = project.get_field(ai_draft_field_key(system, requirement_key))
+        if record is None or not isinstance(record.value, Mapping) or not str(record.value.get("draft_text") or "").strip():
+            continue
+        value = record.value
+        approved = record.status == "USER_CONFIRMED"
+        rows.append({
+            "requirement_key": requirement_key,
+            "label": spec.label,
+            "section": spec.section,
+            "state": "담당자 확인 완료" if approved else "확인 전 초안(문서에 반영되지 않음)",
+            "approved": approved,
+            "model": str(value.get("model") or ""),
+            "generated_at": str(value.get("generated_at") or ""),
+            "approved_at": str(value.get("approved_at") or ""),
+            "edited_by_reviewer": bool(value.get("edited_by_reviewer")),
+            "has_check_mark": "[확인 필요" in str(value.get("draft_text") or ""),
+        })
+    return rows
 
 
 def remove_ai_draft(project: Stage2Project, system: str, requirement_key: str) -> bool:

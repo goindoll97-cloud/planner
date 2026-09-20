@@ -53,6 +53,7 @@ class OutputProvenance:
     mime_type: str
     sha256: str
     size_bytes: int
+    ai_written_items: tuple = ()
 
     @property
     def state(self) -> str:
@@ -122,7 +123,15 @@ def build_output_provenance(
         mime_type=str(mime_type),
         sha256=sha256(bytes(data)).hexdigest(),
         size_bytes=len(data),
+        ai_written_items=tuple(_ai_items(project, system)),
     )
+
+
+def _ai_items(project: Stage2Project, system: str) -> list[dict[str, object]]:
+    from .ai_drafting import ai_written_items
+
+    keep = ("requirement_key", "label", "state", "model", "generated_at", "approved_at", "edited_by_reviewer", "has_check_mark")
+    return [{k: row[k] for k in keep} for row in ai_written_items(project, system)]
 
 
 def output_provenance_json_bytes(provenance: OutputProvenance) -> bytes:
