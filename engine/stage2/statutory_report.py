@@ -661,19 +661,77 @@ def _psm_form13_rows(project: Stage2Project) -> list[list[str]]:
     return rows
 
 
+def _psm_machinery_spec(row: Mapping[str, object]) -> str:
+    direct = _row_value(row, "명세")
+    if direct != MISSING:
+        return direct
+    parts: list[str] = []
+    kind = _row_value(row, "기계종류", "형식")
+    if kind != MISSING:
+        parts.append(kind)
+    for label, aliases in (
+        ("처리량", ("처리량", "시간당 처리량", "용량")),
+        ("토출압력", ("토출압력", "토출측 압력")),
+        ("회전수", ("회전수", "분당 회전수", "rpm")),
+        ("임펠러반경", ("임펠러반경", "임펠러 반경")),
+        ("양중하중", ("양중하중", "양중 가능 무게", "정격하중")),
+        ("양중높이", ("양중높이", "양중 높이")),
+    ):
+        value = _row_value(row, *aliases)
+        if value != MISSING:
+            parts.append(f"{label} {value}")
+    return " / ".join(parts) if parts else MISSING
+
+
 def _psm_form14_rows(project: Stage2Project) -> list[list[str]]:
     out = []
     for row in _rows(project, "psm.psi.machinery_list"):
         out.append([
             _row_value(row, "기계번호", "동력기계 번호", "설비번호"),
             _row_value(row, "기계명", "동력기계명", "설비명"),
-            _row_value(row, "명세", "형식", "용량"),
+            _psm_machinery_spec(row),
             _row_value(row, "주요재질", "재질"),
             _row_value(row, "전동기용량", "동력", "전동기용량(kW)"),
             _row_value(row, "방호·보호장치 종류", "방호장치의 종류", "보호장치"),
             _row_value(row, "비고"),
         ])
     return out
+
+
+def _psm_equipment_capacity(row: Mapping[str, object]) -> str:
+    direct = _row_value(row, "용량명세", "PSM 용량명세")
+    if direct != MISSING:
+        return direct
+
+    kind = _norm(_row_value(row, "설비종류", "장치종류", "설비형태", "설비명"))
+    parts: list[str] = []
+
+    def add(label: str, *aliases: str) -> None:
+        value = _row_value(row, *aliases)
+        if value != MISSING:
+            parts.append(f"{label} {value}")
+
+    if any(token in kind for token in ("탑", "column", "tower")):
+        add("직경", "직경")
+        add("전체길이", "전체길이", "길이")
+        add("처리단수", "처리단수", "단수")
+        add("높이", "높이")
+    elif any(token in kind for token in ("반응기", "드럼", "reactor", "drum")):
+        add("직경", "직경")
+        add("길이", "길이", "전체길이")
+        add("처리량", "처리량")
+    elif any(token in kind for token in ("열교환기", "heat exchanger", "heatexchanger")):
+        add("시간당열량", "시간당열량", "열량")
+        add("직경", "직경")
+        add("높이", "높이")
+    elif any(token in kind for token in ("탱크", "tank")):
+        add("저장량", "저장량", "용량", "설계용량", "설계용량(m3)")
+        add("직경", "직경")
+        add("높이", "높이")
+
+    if parts:
+        return " / ".join(parts)
+    return _row_value(row, "용량", "설계용량", "설계용량(m3)")
 
 
 def _psm_form15_rows(project: Stage2Project) -> list[list[str]]:
@@ -685,7 +743,7 @@ def _psm_form15_rows(project: Stage2Project) -> list[list[str]]:
             _row_value(row, "설비번호", "장치번호", "구분기호"),
             _row_value(row, "설비명", "장치명", "장치·설비명"),
             material,
-            _row_value(row, "용량", "설계용량", "설계용량(m3)"),
+            _psm_equipment_capacity(row),
             _row_value(row, "운전압력", "압력-운전"),
             _row_value(row, "설계압력", "압력-설계"),
             _row_value(row, "운전온도", "온도-운전"),

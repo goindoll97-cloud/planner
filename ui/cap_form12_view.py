@@ -40,7 +40,7 @@ def render(project) -> None:
     if not proposed and not saved:
         st.caption("판정이 '대상'인 설비가 없습니다.")
         return
-    columns = ["사고시나리오명", "대상 설비번호", "유해화학물질명", "사고유형", "취급량(kg)", rw.HEAD_COLUMN,
+    columns = ["단위공장", "사고시나리오명", "대상 설비번호", "유해화학물질명", "사고유형", "취급량(kg)", rw.HEAD_COLUMN,
                rw.BOUNDARY_COLUMN, *rw.FLASH_COLUMNS, rw.LEAK_PIPE_COLUMN,
                rw.HEAT_COLUMN, rw.BOILING_COLUMN, rw.LIQUID_CP_KJ_COLUMN, rw.VAPORIZATION_COLUMN, "선정 근거"]
     frame = pd.DataFrame(saved or proposed, columns=columns)

@@ -19,6 +19,10 @@ class PSMFullStatutoryE2ETests(unittest.TestCase):
     @staticmethod
     def _scenario(kind: str, wind: str, erpg1: str, erpg2: str, erpg3: str):
         return {
+            "단위공장": "염소공정",
+            "사고유형": "독성 누출",
+            "시나리오명": "염소-" + ("최악" if "최악" in kind else "대안") + "-" + wind,
+            "대상 설비번호": "V-201",
             "시나리오 구분": kind,
             "풍속(m/s)": wind,
             "대기안정도(A~F)": "F" if "최악" in kind else "D",
@@ -111,12 +115,12 @@ class PSMFullStatutoryE2ETests(unittest.TestCase):
             "폭발한계 하한": "해당 없음",
             "폭발한계 상한": "해당 없음",
             "노출기준": "TWA 0.5 ppm",
-            "독성치": "LC50 293 ppm (rat, 1h)",
+            "독성치": "경구: 해당 없음 / 경피: 해당 없음 / 흡입: LC50 회사 SDS 확인",
             "인화점": "해당 없음",
             "발화점": "해당 없음",
-            "증기압": "기체",
+            "증기압": "20℃ 회사 SDS 압력값 확인",
             "부식성": "예",
-            "이상반응 유무": "예",
+            "이상반응 유무": "예: 반응 상대물질 및 조건은 회사 SDS 제10항 확인",
             "일일사용량": "0.4 ton/day",
             "저장량": "2.5 ton",
             "비고": "회사 SDS 확인",
@@ -125,8 +129,10 @@ class PSMFullStatutoryE2ETests(unittest.TestCase):
         setf("psm.psi.machinery_list", [{
             "기계번호": "P-101",
             "기계명": "염소 이송펌프",
-            "형식": "원심펌프",
-            "용량": "20 m3/h",
+            "기계종류": "원심펌프",
+            "처리량": "20 m3/h",
+            "토출압력": "0.8 MPa",
+            "회전수": "1750 rpm",
             "재질": "SUS316",
             "동력": "7.5 kW",
             "방호·보호장치 종류": "커플링 가드·모터 과부하 보호",
@@ -151,7 +157,7 @@ class PSMFullStatutoryE2ETests(unittest.TestCase):
             "사용두께": "10 mm",
             "후열처리 여부": "해당 없음",
             "비파괴검사율": "20%",
-            "비고": "PID-201",
+            "비고": "산업안전보건법 안전검사 적용여부 회사 확인 / PID-201",
         }])
 
         setf("psm.psi.piping_gasket_specs", [{
@@ -374,6 +380,30 @@ class PSMFullStatutoryE2ETests(unittest.TestCase):
         )
         self.assertNotIn("[확인 필요]", full_text)
 
+
+    def test_multiple_alternatives_repeat_form19_2_table(self):
+        project = self._project()
+        rows = list(project.get_field("psm.risk.consequence_table").value)
+        second = self._scenario("대안의 사고 시나리오", "4.0", "280", "130", "80")
+        rows.append(second)
+        project.set_field(
+            "psm.risk.consequence_table",
+            "시나리오 및 피해예측 결과(별지 제19호의2 작성대)",
+            rows,
+            "USER_CONFIRMED",
+        )
+
+        readiness = validate_selected_scope(project)
+        self.assertTrue(any(issue.code == "PSM-FORM19-2-READY" for issue in readiness.issues))
+
+        doc = Document(BytesIO(build_psm_baseline_draft(project)))
+        self.assertEqual(len(doc.tables), 16)
+        consequence_tables = doc.tables[12:14]
+        combined = "\n".join(
+            cell.text for table in consequence_tables for row in table.rows for cell in row.cells
+        )
+        self.assertIn("3.0", combined)
+        self.assertIn("4.0", combined)
 
     def test_psm_statutory_writer_is_byte_deterministic(self):
         project = self._project()

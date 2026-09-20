@@ -19,6 +19,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from docx import Document
+from docx.table import Table
 
 from . import statutory_report as base
 from .project import Stage2Project
@@ -454,75 +455,101 @@ def _threshold_values(case: Mapping[str, object], group: str, thresholds: Sequen
     return output
 
 
-def _consequence_source(project: Stage2Project) -> Mapping[str, object]:
-    rows = base._rows(project, "psm.risk.consequence_table")
-    if rows:
-        output: dict[str, object] = {}
-        for row in rows:
-            if not isinstance(row, Mapping):
-                continue
-            scenario = _clean(base._row_value(row, "시나리오 구분", "시나리오구분"))
-            normalized = base._norm(scenario)
-            if "최악" in normalized:
-                target = "최악의 사고 시나리오"
-            elif "대안" in normalized:
-                target = "대안의 사고 시나리오"
-            else:
-                continue
-            output[target] = {
-                "풍속(m/s)": base._row_value(row, "풍속(m/s)"),
-                "대기안정도(A~F)": base._row_value(row, "대기안정도(A~F)"),
-                "대기온도(℃)": base._row_value(row, "대기온도(℃)"),
-                "습도(%)": base._row_value(row, "습도(%)"),
-                "표면거칠기(m)": base._row_value(row, "표면거칠기"),
-                "물질명": base._row_value(row, "물질명"),
-                "물질의 상태": base._row_value(row, "물질의 상태"),
-                "설비명(또는 배관부위)": base._row_value(row, "설비명(또는 배관부위)"),
-                "운전압력(MPa)": base._row_value(row, "운전압력(MPa)"),
-                "운전온도(℃)": base._row_value(row, "운전온도(℃)"),
-                "누출구의 크기(mm2)": base._row_value(row, "누출구의 크기(mm2)"),
-                "웅덩이 크기(m2)": base._row_value(row, "웅덩이 크기(m2)"),
-                "누출결과": base._row_value(row, "누출결과"),
-                "직접계산(kg/s or kg)": base._row_value(row, "직접계산(kg/s or kg)"),
-                "웅덩이(kg/s)": base._row_value(row, "웅덩이(kg/s)"),
-                "설비/배관(kg/s)": base._row_value(row, "설비/배관(kg/s)"),
-                "화재-복사열이 미치는 거리": {
-                    "4 kW/m2": base._row_value(row, "화재-4 kW/m2"),
-                    "12.5 kW/m2": base._row_value(row, "화재-12.5 kW/m2"),
-                    "37.5 kW/m2": base._row_value(row, "화재-37.5 kW/m2"),
-                },
-                "폭발-과압이 미치는 거리": {
-                    "7 kPa": base._row_value(row, "폭발-7 kPa"),
-                    "21 kPa": base._row_value(row, "폭발-21 kPa"),
-                    "70 kPa": base._row_value(row, "폭발-70 kPa"),
-                },
-                "확산결과-인화성": {
-                    "25% LEL": base._row_value(row, "인화성-25% LEL"),
-                    "LEL": base._row_value(row, "인화성-LEL"),
-                    "UEL": base._row_value(row, "인화성-UEL"),
-                },
-                "확산결과-독성": {
-                    "ERPG 1": base._row_value(row, "독성-ERPG 1"),
-                    "ERPG 2": base._row_value(row, "독성-ERPG 2"),
-                    "ERPG 3": base._row_value(row, "독성-ERPG 3"),
-                },
-            }
-        if output:
-            return output
-
-    legacy = base._value(project, "psm.risk.consequence", default={})
-    return legacy if isinstance(legacy, Mapping) else {}
+def _case_from_consequence_row(row: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "풍속(m/s)": base._row_value(row, "풍속(m/s)"),
+        "대기안정도(A~F)": base._row_value(row, "대기안정도(A~F)"),
+        "대기온도(℃)": base._row_value(row, "대기온도(℃)"),
+        "습도(%)": base._row_value(row, "습도(%)"),
+        "표면거칠기(m)": base._row_value(row, "표면거칠기"),
+        "물질명": base._row_value(row, "물질명"),
+        "물질의 상태": base._row_value(row, "물질의 상태"),
+        "설비명(또는 배관부위)": base._row_value(row, "설비명(또는 배관부위)"),
+        "운전압력(MPa)": base._row_value(row, "운전압력(MPa)"),
+        "운전온도(℃)": base._row_value(row, "운전온도(℃)"),
+        "누출구의 크기(mm2)": base._row_value(row, "누출구의 크기(mm2)"),
+        "웅덩이 크기(m2)": base._row_value(row, "웅덩이 크기(m2)"),
+        "누출결과": base._row_value(row, "누출결과"),
+        "직접계산(kg/s or kg)": base._row_value(row, "직접계산(kg/s or kg)"),
+        "웅덩이(kg/s)": base._row_value(row, "웅덩이(kg/s)"),
+        "설비/배관(kg/s)": base._row_value(row, "설비/배관(kg/s)"),
+        "화재-복사열이 미치는 거리": {
+            "4 kW/m2": base._row_value(row, "화재-4 kW/m2"),
+            "12.5 kW/m2": base._row_value(row, "화재-12.5 kW/m2"),
+            "37.5 kW/m2": base._row_value(row, "화재-37.5 kW/m2"),
+        },
+        "폭발-과압이 미치는 거리": {
+            "7 kPa": base._row_value(row, "폭발-7 kPa"),
+            "21 kPa": base._row_value(row, "폭발-21 kPa"),
+            "70 kPa": base._row_value(row, "폭발-70 kPa"),
+        },
+        "확산결과-인화성": {
+            "25% LEL": base._row_value(row, "인화성-25% LEL"),
+            "LEL": base._row_value(row, "인화성-LEL"),
+            "UEL": base._row_value(row, "인화성-UEL"),
+        },
+        "확산결과-독성": {
+            "ERPG 1": base._row_value(row, "독성-ERPG 1"),
+            "ERPG 2": base._row_value(row, "독성-ERPG 2"),
+            "ERPG 3": base._row_value(row, "독성-ERPG 3"),
+        },
+    }
 
 
-def _fill_form19_2(table, project: Stage2Project) -> None:
-    source = _consequence_source(project)
-    worst = _mapping_lookup(source, "최악의 사고 시나리오", "worst_case", "worst")
-    alternative = _mapping_lookup(source, "대안의 사고 시나리오", "alternative_case", "alternative")
+def _consequence_pairs(project: Stage2Project) -> list[tuple[Mapping[str, object], Mapping[str, object]]]:
+    rows = [row for row in base._rows(project, "psm.risk.consequence_table") if isinstance(row, Mapping)]
+    groups: dict[tuple[str, str], dict[str, list[Mapping[str, object]]]] = {}
+    metadata_present = False
+    for row in rows:
+        unit = _clean(base._row_value(row, "단위공장", "단위공장·공정"))
+        accident = _clean(base._row_value(row, "사고유형"))
+        scenario = base._norm(base._row_value(row, "시나리오 구분", "시나리오구분"))
+        if unit and unit != MISSING and accident and accident != MISSING:
+            metadata_present = True
+            bucket = groups.setdefault((base._norm(unit), base._norm(accident)), {"worst": [], "alternative": []})
+            if "최악" in scenario:
+                bucket["worst"].append(row)
+            elif "대안" in scenario:
+                bucket["alternative"].append(row)
+
+    if metadata_present and groups:
+        pairs: list[tuple[Mapping[str, object], Mapping[str, object]]] = []
+        for bucket in groups.values():
+            worst = bucket["worst"][0] if bucket["worst"] else {}
+            alternatives = bucket["alternative"] or [{}]
+            for alternative in alternatives:
+                pairs.append((
+                    _case_from_consequence_row(worst) if worst else {},
+                    _case_from_consequence_row(alternative) if alternative else {},
+                ))
+        if pairs:
+            return pairs
+
+    # Backward-compatible single worst/alternative source.
+    output: dict[str, object] = {}
+    for row in rows:
+        scenario = _clean(base._row_value(row, "시나리오 구분", "시나리오구분"))
+        normalized = base._norm(scenario)
+        if "최악" in normalized:
+            output["최악의 사고 시나리오"] = _case_from_consequence_row(row)
+        elif "대안" in normalized and "대안의 사고 시나리오" not in output:
+            output["대안의 사고 시나리오"] = _case_from_consequence_row(row)
+    if not output:
+        legacy = base._value(project, "psm.risk.consequence", default={})
+        output = legacy if isinstance(legacy, Mapping) else {}
+
+    worst = _mapping_lookup(output, "최악의 사고 시나리오", "worst_case", "worst")
+    alternative = _mapping_lookup(output, "대안의 사고 시나리오", "alternative_case", "alternative")
     worst = worst if isinstance(worst, Mapping) else {}
     alternative = alternative if isinstance(alternative, Mapping) else {}
-    if not worst and not alternative:
-        return
+    return [(worst, alternative)] if worst or alternative else []
 
+
+def _fill_form19_2_cases(
+    table,
+    worst: Mapping[str, object],
+    alternative: Mapping[str, object],
+) -> None:
     direct_rows = {
         4: "풍속(m/s)", 5: "대기안정도(A~F)", 6: "대기온도(℃)", 7: "습도(%)",
         10: "물질명", 12: "설비명(또는 배관부위)", 13: "운전압력(MPa)", 14: "운전온도(℃)",
@@ -559,6 +586,20 @@ def _fill_form19_2(table, project: Stage2Project) -> None:
             _write_cell(cells[index], value)
 
 
+def _fill_and_repeat_form19_2(doc, project: Stage2Project) -> None:
+    pairs = _consequence_pairs(project)
+    if not pairs:
+        return
+    template = doc.tables[FORM_TABLE_INDEX["19-2"]]
+    _fill_form19_2_cases(template, *pairs[0])
+    anchor = template._tbl
+    for worst, alternative in pairs[1:]:
+        cloned_xml = deepcopy(template._tbl)
+        anchor.addnext(cloned_xml)
+        cloned = Table(cloned_xml, template._parent)
+        _fill_form19_2_cases(cloned, worst, alternative)
+        anchor = cloned_xml
+
 def build_psm_baseline_draft(project: Stage2Project) -> bytes:
     if not project.psm_in_scope:
         raise ValueError("공정안전보고서는 현재 작성범위에 포함되어 있지 않습니다.")
@@ -576,7 +617,7 @@ def build_psm_baseline_draft(project: Stage2Project) -> bytes:
     for form_key, field_keys in LATER_FORM_FIELDS.items():
         _fill_table_rows(doc.tables[FORM_TABLE_INDEX[form_key]], _structured_rows(project, form_key, field_keys))
 
-    _fill_form19_2(doc.tables[FORM_TABLE_INDEX["19-2"]], project)
+    _fill_and_repeat_form19_2(doc, project)
     out = BytesIO()
     doc.save(out)
     return canonicalize_docx_zip(out.getvalue())

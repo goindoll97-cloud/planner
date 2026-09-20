@@ -51,10 +51,17 @@ def scenario_row(project: Stage2Project, scenario: Mapping[str, Any], kind: str,
     release = crw.release_for_scenario(project, scenario)
     result = Result({header: "" for header in _HEADERS})
     row = result.row
-    row.update({"시나리오 구분": kind, "풍속(m/s)": f"{weather.wind_ms:g}", "대기안정도(A~F)": weather.stability,
-                "대기온도(℃)": str(weather_inputs.get("대기온도(℃)", "") or ""),
-                "습도(%)": str(weather_inputs.get("습도(%)", "") or ""),
-                "표면거칠기": "도시" if weather.terrain == disp.URBAN else "시골"})
+    row.update({
+        "단위공장": str(scenario.get("단위공장") or project.company_name or "").strip(),
+        "사고유형": str(scenario.get("사고유형") or "").strip(),
+        "시나리오명": str(scenario.get("사고시나리오명") or "").strip(),
+        "대상 설비번호": str(scenario.get("대상 설비번호") or "").strip(),
+        "시나리오 구분": kind,
+        "풍속(m/s)": f"{weather.wind_ms:g}", "대기안정도(A~F)": weather.stability,
+        "대기온도(℃)": str(weather_inputs.get("대기온도(℃)", "") or ""),
+        "습도(%)": str(weather_inputs.get("습도(%)", "") or ""),
+        "표면거칠기": "도시" if weather.terrain == disp.URBAN else "시골",
+    })
     for missing in WEATHER_INPUTS:
         if not row[missing]:
             result.problems.append(f"{missing}가 필요합니다(서식 주석: 지난 3년 낮 동안 값 또는 통상 값).")
@@ -141,7 +148,7 @@ def scenario_row(project: Stage2Project, scenario: Mapping[str, Any], kind: str,
 
 def build(project: Stage2Project, designations: Mapping[str, str], weather_inputs: Mapping[str, Any],
           endpoints: ep.Endpoints = ep.Endpoints()) -> list[Result]:
-    """designations: 사고시나리오명 -> 최악/대안. 지정되지 않은 시나리오는 넣지 않는다."""
+    """designations: 사고시나리오명 -> 최악/대안. 단위공장·사고유형별로 여러 대안 지정이 가능하다."""
     out = []
     for scenario in sc.saved_scenarios(project):
         kind = designations.get(str(scenario.get("사고시나리오명") or ""))

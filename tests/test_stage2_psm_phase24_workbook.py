@@ -54,6 +54,10 @@ class PSMPhase24WorkbookTests(unittest.TestCase):
     @staticmethod
     def _scenario(kind: str, wind: str, erpg1: str, erpg2: str, erpg3: str):
         return {
+            "단위공장": "제1공장",
+            "사고유형": "독성 누출",
+            "시나리오명": "염소-" + ("최악" if "최악" in kind else "대안") + "-" + wind,
+            "대상 설비번호": "V-201",
             "시나리오 구분": kind,
             "풍속(m/s)": wind,
             "대기안정도(A~F)": "F" if "최악" in kind else "D",
@@ -107,6 +111,9 @@ class PSMPhase24WorkbookTests(unittest.TestCase):
 
         consequence = wb["19_PSM_사고피해예측"]
         h19 = self._headers(consequence)
+        self.assertIn("단위공장", h19)
+        self.assertIn("사고유형", h19)
+        self.assertIn("시나리오명", h19)
         self.assertIn("시나리오 구분", h19)
         self.assertIn("독성-ERPG 3", h19)
         self.assertTrue(any(
