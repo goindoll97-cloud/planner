@@ -76,6 +76,10 @@ class PSMForm12AndConsequenceReadinessTests(unittest.TestCase):
     @staticmethod
     def _scenario(kind: str, wind: str, erpg1: str, erpg2: str, erpg3: str):
         return {
+            "단위공장": "제1공장",
+            "사고유형": "독성 누출",
+            "시나리오명": "염소-" + ("최악" if "최악" in kind else "대안") + "-" + wind,
+            "대상 설비번호": "V-201",
             "시나리오 구분": kind,
             "풍속(m/s)": wind,
             "대기안정도(A~F)": "F" if "최악" in kind else "D",
@@ -163,6 +167,43 @@ class PSMForm12AndConsequenceReadinessTests(unittest.TestCase):
 
         self.assertFalse(result.ready)
         self.assertTrue(any("대안의 사고 시나리오" in blocker for blocker in result.blockers))
+
+    def test_form19_2_allows_multiple_alternatives_in_same_group(self):
+        p = self._project()
+        p.set_field(
+            "psm.risk.consequence_table",
+            "별지 제19호의2서식 사고피해예측 수치표",
+            [
+                self._scenario("최악의 사고 시나리오", "1.5", "650", "300", "180"),
+                self._scenario("대안의 사고 시나리오", "3.0", "320", "150", "90"),
+                self._scenario("대안의 사고 시나리오", "4.0", "280", "130", "80"),
+            ],
+            "USER_CONFIRMED",
+        )
+
+        result = build_psm_form19_2_readiness(p)
+
+        self.assertTrue(result.ready)
+        self.assertEqual(len(result.rows), 3)
+
+    def test_form19_2_requires_one_worst_per_unit_plant_and_accident_type(self):
+        p = self._project()
+        second_worst = self._scenario("최악의 사고 시나리오", "1.6", "640", "295", "175")
+        p.set_field(
+            "psm.risk.consequence_table",
+            "별지 제19호의2서식 사고피해예측 수치표",
+            [
+                self._scenario("최악의 사고 시나리오", "1.5", "650", "300", "180"),
+                second_worst,
+                self._scenario("대안의 사고 시나리오", "3.0", "320", "150", "90"),
+            ],
+            "USER_CONFIRMED",
+        )
+
+        result = build_psm_form19_2_readiness(p)
+
+        self.assertFalse(result.ready)
+        self.assertTrue(any("정확히 1건" in blocker for blocker in result.blockers))
 
     def test_form19_2_not_applicable_requires_basis_but_not_rows(self):
         p = self._project()
