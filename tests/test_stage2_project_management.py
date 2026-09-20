@@ -82,12 +82,6 @@ class Stage2ProjectManagementTests(unittest.TestCase):
             self.assertIn("통합_작성자료_가상회사_완성본", stored.name)
             self.assertEqual(ref.source_name, "통합_작성자료_가상회사_완성본.xlsx")
 
-    def test_scope_page_exposes_project_delete_and_timestamp_controls(self):
-        text = (PROJECT_ROOT / "ui/stage2_scope_page.py").read_text(encoding="utf-8")
-        self.assertIn("생성일시", text)
-        self.assertIn("최근 수정일시", text)
-        self.assertIn("선택한 작성 프로젝트 삭제", text)
-        self.assertIn("프로젝트와 저장된 첨부자료를 삭제합니다", text)
 
 
 if __name__ == "__main__":

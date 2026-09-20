@@ -39,11 +39,8 @@ sections: dict[str, list] = {
 if _psm_selected_somewhere():
     sections["공정안전보고서"] = [st.Page("ui/psm_workspace_page.py", title="공정안전보고서 작성", icon="🏭")]
 
-# 물질이 많아 엑셀로 한꺼번에 판정하고 싶을 때만 쓰는 고급 통로(Stage 1 판정엔진은 시작하기와 같다)
-sections["엑셀로 판정하기 (고급)"] = [
-    st.Page("ui/diagnosis_entry.py", title="판정진단", icon="✅"),
-    st.Page("ui/stage2_scope_page.py", title="작성범위 선택", icon="🧭"),
-]
+# 사업장 판정: 물질 목록(엑셀·CSV 가능)을 넣고 질문에 답하면 판정하고 작성으로 이어진다(예전 판정진단·작성범위 선택을 합친 화면).
+sections["사업장 판정"] = [st.Page("ui/judgement_page.py", title="사업장 판정하기", icon="✅")]
 
 sections["참고"] = [
     st.Page("ui/regdb_page.py", title="규정 DB 관리", icon="🗂️"),

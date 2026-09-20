@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from engine.stage2 import cap_start
+from engine.stage2 import cap_judgement, cap_start
 from ui import chemical_upload_panel
 from engine.stage2.storage import save_project
 
@@ -26,6 +26,7 @@ def _gate_hold() -> bool:
         return False
     st.error("법령 개정 또는 최신 규정자료 미반영이 감지되어 판정을 잠시 보류합니다.")
     st.write(str(gate.get("message") or "공식 최신본과 승인 DB의 출처 확인이 필요합니다."))
+    st.info("이 상태는 회사가 입력한 내용의 오류가 아니라 관리자 법령자료 준비상태입니다. 규정 DB 관리에서 최신본 업데이트를 한 번 실행하면 다시 판정할 수 있습니다.")
     st.page_link("ui/regdb_page.py", label="규정 DB 관리에서 최신본 업데이트", icon="🗂️")
     return True
 
@@ -89,15 +90,15 @@ def render(expanded: bool) -> None:
         if outcome.status == "INVALID":
             st.warning("입력을 확인해 주세요.")
             for message in outcome.messages:
-                st.write(f"• {message}")
+                st.write(f"• {cap_judgement.display_request(message)}")
         elif outcome.status == "SYSTEM":
             st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
             for message in outcome.messages:
-                st.write(f"• {message}")
+                st.write(f"• {cap_judgement.display_request(message)}")
         elif outcome.status == "PENDING":
             save_project(outcome.project)
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
-            st.session_state["cap_start_notice"] = " ".join(outcome.messages[:1]) + " (사업장을 만들었습니다. 판정은 위 '법정 대상 판정'에서 이어서 합니다.)"
+            st.session_state["cap_start_notice"] = " ".join(cap_judgement.display_request(m) for m in outcome.messages[:1]) + " (사업장을 만들었습니다. 판정은 위 '법정 대상 판정'에서 이어서 합니다.)"
             st.rerun()
         elif outcome.status == "NOT_REQUIRED":
             st.info(f"판정 결과: 화학사고예방관리계획서 — {outcome.cap_status} / 공정안전보고서 — {outcome.psm_status}")

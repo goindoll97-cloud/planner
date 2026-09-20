@@ -22,12 +22,14 @@ class CAPNavigationTests(unittest.TestCase):
         self.assertEqual(registry.label(3), "별지 제3호")
         self.assertNotIn(13, registry.FORM_NUMBERS)
 
-    def test_navigation_groups_cap_psm_and_the_excel_judgement_shortcut(self):
+    def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
         self.assertIn('st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성"', app)
         self.assertIn("_psm_selected_somewhere()", app)
-        self.assertIn('sections["엑셀로 판정하기 (고급)"]', app)
+        self.assertIn('st.Page("ui/judgement_page.py"', app)
+        for gone in ("diagnosis_entry.py", "stage2_scope_page.py", "엑셀로 판정하기"):
+            self.assertNotIn(gone, app)
         # the old Excel round-trip stages (3~5) are no longer in the menu
         for page in ("stage2_intake_page.py", "stage2_validation_page.py", "stage2_review_page.py"):
             self.assertNotIn(page, app)
@@ -41,10 +43,6 @@ class CAPNavigationTests(unittest.TestCase):
         start = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
         self.assertIn("chemical_upload_panel.render", start)
 
-    def test_scope_page_sends_cap_projects_to_the_cap_page(self):
-        source = (ROOT / "ui/stage2_scope_page.py").read_text(encoding="utf-8")
-        self.assertIn('st.page_link("ui/cap_workspace_page.py"', source)
-        self.assertIn("if project.psm_in_scope:", source)
 
 
 class ArrowSafetyTests(unittest.TestCase):

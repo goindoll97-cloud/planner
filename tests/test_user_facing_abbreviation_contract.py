@@ -27,10 +27,6 @@ class UserFacingAbbreviationContractTests(unittest.TestCase):
             self.assertNotIn('화사계', text)
             self.assertNotIn('화관법', text)
 
-    def test_main_diagnosis_page_uses_full_report_name(self) -> None:
-        text = Path('ui/diagnosis_page.py').read_text(encoding='utf-8')
-        self.assertIn('PSM_FULL = "공정안전보고서"', text)
-        self.assertNotIn('공정안전보고서(PSM)', text)
 
 
 if __name__ == '__main__':
