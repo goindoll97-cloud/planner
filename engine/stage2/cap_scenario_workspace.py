@@ -158,14 +158,20 @@ def accident_types(project: Stage2Project, material: str) -> list[str]:
 
 
 def proposed_scenarios(project: Stage2Project) -> list[dict[str, Any]]:
-    """One row per (target equipment, accident type)."""
+    """One row per (unit plant, target equipment, accident type)."""
     out = []
+    facilities = {_clean(row.get("설비번호")): row for row in _facility_rows(project) if _clean(row.get("설비번호"))}
     for target in evaluate(project):
         if target.verdict != TARGET:
             continue
+        source = facilities.get(target.tag, {})
+        unit_plant = _clean(source.get("단위공장·공정") or source.get("단위공장") or source.get("공정"))
+        if not unit_plant:
+            unit_plant = project.company_name
         for kind in accident_types(project, target.material) or [""]:
             label = target.tag or target.name
             out.append({
+                "단위공장": unit_plant,
                 "사고시나리오명": f"{label} {target.material} {kind}".strip(),
                 "대상 설비번호": target.tag, "유해화학물질명": target.material, "사고유형": kind,
                 "취급량(kg)": f"{target.holding_kg:g}" if target.holding_kg is not None else "",
