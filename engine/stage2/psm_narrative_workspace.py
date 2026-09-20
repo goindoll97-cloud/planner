@@ -189,14 +189,14 @@ def generatable_keys(project: Stage2Project, profile: Profile = PSM_PROFILE) -> 
     return [i["key"] for i in item_status(project, profile) if i["state"] == "초안 만들기 가능"]
 
 
-def generate(project: Stage2Project, client, keys: list[str] | None = None, profile: Profile = PSM_PROFILE):
+def generate(project: Stage2Project, client, keys: list[str] | None = None, profile: Profile = PSM_PROFILE, progress=None):
     """확정된 사실만으로 초안을 만든다. 검증을 통과한 초안만 저장되고, 통과 못 한 것은 이유와 함께 돌려준다."""
     ready = generatable_keys(project, profile)
     wanted = [k for k in (keys or ready) if k in ready]
     if not wanted:
         raise ValueError("지금 초안을 만들 수 있는 항목이 없습니다. 먼저 필요한 사실을 적어 주세요.")
     return generate_system_ai_drafts_batched(project, profile.system, client, store_safe_drafts=True,
-                                             requirement_keys=wanted)
+                                             requirement_keys=wanted, progress=progress)
 
 
 def rejection_reason(warnings) -> str:
