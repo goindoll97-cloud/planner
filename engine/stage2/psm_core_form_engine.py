@@ -128,7 +128,11 @@ def _validate_form14_semantics(
     return blockers
 
 
-def _validate_form15_semantics(row_index: int, row: tuple[str, ...]) -> list[str]:
+def _validate_form15_semantics(
+    project: Stage2Project,
+    row_index: int,
+    row: tuple[str, ...],
+) -> list[str]:
     blockers: list[str] = []
     note = row[17] if len(row) > 17 else ""
     normalized = _norm(note)
@@ -138,6 +142,32 @@ def _validate_form15_semantics(row_index: int, row: tuple[str, ...]) -> list[str
                 f"별지 제15호서식 {row_index}행 비고에는 안전인증·안전검사 등 적용받는 법령명을 적어 주세요. "
                 "관련 대상이 아니면 '해당 없음'으로 확인해 주세요."
             )
+
+    source_rows = report._psm_facility_rows(project)
+    source = source_rows[row_index - 1] if row_index - 1 < len(source_rows) else {}
+    kind = _norm(report._row_value(source, "설비종류", "장치종류", "설비형태", "설비명"))
+    capacity = _norm(row[3] if len(row) > 3 else "")
+
+    def require_capacity(markers: tuple[tuple[str, str], ...], *, one_of: tuple[str, ...] = ()) -> None:
+        missing = [label for marker, label in markers if _norm(marker) not in capacity]
+        if missing:
+            blockers.append(
+                f"별지 제15호서식 {row_index}행 용량명세에서 {', '.join(missing)}을(를) 확인할 수 없습니다."
+            )
+        if one_of and not any(_norm(marker) in capacity for marker in one_of):
+            blockers.append(
+                f"별지 제15호서식 {row_index}행 용량명세에서 처리단수 또는 높이를 확인할 수 없습니다."
+            )
+
+    if any(token in kind for token in ("탑", "column", "tower")):
+        require_capacity((("직경", "직경"), ("전체길이", "전체길이")), one_of=("처리단수", "높이"))
+    elif any(token in kind for token in ("반응기", "드럼", "reactor", "drum")):
+        require_capacity((("직경", "직경"), ("길이", "길이"), ("처리량", "처리량")))
+    elif any(token in kind for token in ("열교환기", "heatexchanger")):
+        require_capacity((("시간당열량", "시간당 열량"), ("직경", "직경"), ("높이", "높이")))
+    elif any(token in kind for token in ("탱크", "tank")):
+        require_capacity((("저장량", "저장량"), ("직경", "직경"), ("높이", "높이")))
+
     return blockers
 
 
@@ -181,7 +211,7 @@ def build_psm_core_form_readiness(
             elif form_no == "14":
                 blockers.extend(_validate_form14_semantics(project, row_index, row))
             elif form_no == "15":
-                blockers.extend(_validate_form15_semantics(row_index, row))
+                blockers.extend(_validate_form15_semantics(project, row_index, row))
 
     return PSMCoreFormReadiness(
         form_no=form_no,
