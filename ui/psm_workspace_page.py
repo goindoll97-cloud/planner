@@ -22,8 +22,11 @@ from ui import table_grid
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 EQUIPMENT_KEY = "psm.psi.equipment_specs"
 # 별지 제15호에서 CAP 작업에는 없는 PSM 전용 칸(같은 설비번호 행에 덧씌운다)
-PSM_ONLY_COLUMNS = ("본체재질", "부속품재질", "개스킷재질", "용접효율", "계산두께", "부식여유", "사용두께",
-                    "후열처리 여부", "비파괴검사율", "비고")
+PSM_ONLY_COLUMNS = (
+    "용량명세", "직경", "전체길이", "처리단수", "높이", "처리량", "시간당열량", "저장량",
+    "본체재질", "부속품재질", "개스킷재질", "용접효율", "계산두께", "부식여유", "사용두께",
+    "후열처리 여부", "비파괴검사율", "비고",
+)
 FORMS = {
     "12": "별지 제12호 · 사업개요",
     "13": "별지 제13호 · 유해·위험물질 목록",
@@ -106,7 +109,9 @@ def _table_15(project) -> None:
 
     st.markdown("**공정안전보고서에서만 적는 칸**")
     st.caption("모르는 칸은 비워 두세요. 비워 둔 칸이 이미 적힌 값을 지우지는 않습니다. "
-               "비고에는 안전인증·안전검사 등 적용 법령/검사 여부를 적고, 대상이 아니면 '해당 없음'으로 확인합니다.")
+               "탑·반응기·드럼·열교환기·탱크는 직경·높이·처리량 등 해당 설비에 필요한 용량 세부값을 적으면 "
+               "규정서식의 용량 칸으로 자동 조합합니다. 비고에는 안전인증·안전검사 등 적용받는 법령명을 적고, "
+               "대상이 아니면 '해당 없음'으로 확인합니다.")
     frame = pd.DataFrame([{"설비번호": _clean(r.get("설비번호")), "설비명": _clean(r.get("설비명")),
                            **{column: _clean(r.get(column)) for column in PSM_ONLY_COLUMNS}} for r in rows])
     edited = st.data_editor(frames.safe(frame), hide_index=True, width="stretch", key="psm_form15_extra",
