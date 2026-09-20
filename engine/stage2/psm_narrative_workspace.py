@@ -199,6 +199,25 @@ def generate(project: Stage2Project, client, keys: list[str] | None = None, prof
                                              requirement_keys=wanted)
 
 
+def rejection_reason(warnings) -> str:
+    """검증 경고를 담당자가 이해할 수 있는 이유와 해결 방법으로 바꾼다."""
+    text = " / ".join(str(w) for w in warnings)
+    if "다른 항목의 사실" in text:
+        return "다른 항목에 적은 사실을 섞어 써서 저장하지 않았습니다. 다시 만들면 달라질 수 있습니다."
+    if "수치" in text or "설비 Tag" in text or "CAS" in text:
+        detail = text.split(":", 1)[-1].strip() if ":" in text else ""
+        return f"입력하지 않은 숫자·설비번호({detail})가 들어가 저장하지 않았습니다. 다시 만들면 달라질 수 있습니다."
+    if "초안을 반환하지" in text:
+        return "AI가 본문을 돌려주지 않았습니다. 다시 만들어 보세요."
+    if "내부" in text or "개발자" in text or "정식 용어" in text:
+        return "사용할 수 없는 표현이 들어가 저장하지 않았습니다. 다시 만들면 달라질 수 있습니다."
+    return "검증을 통과하지 못했습니다: " + text + " 다시 만들거나, 이 항목의 사실을 더 적어 보세요."
+
+
+def rejected_rows(result) -> list[dict[str, str]]:
+    return [{"label": item.label, "reason": rejection_reason(item.validation_warnings)} for item in result.rejected]
+
+
 def adopt(project: Stage2Project, key: str, text: str | None = None, profile: Profile = PSM_PROFILE) -> None:
     """담당자가 초안을 확인·승인한다. 승인한 글을 보고서 서식이 읽는 자리에 회사 진술로 기록한다."""
     if key not in profile.items(project):

@@ -61,11 +61,15 @@ def _drafts(project, profile, prefix: str) -> None:
                 try:
                     result = narrative.generate(project, build_client(run_config), profile=profile)
                     save_project(project)
-                    if result.rejected:
-                        st.warning(f"검증을 통과하지 못한 초안 {len(result.rejected)}개는 저장하지 않았습니다. 사실을 더 적고 다시 시도하세요.")
+                    st.session_state[f"{prefix}_rejected"] = narrative.rejected_rows(result)
                 except Exception as exc:
                     st.error(f"초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
             st.rerun()
+    rejected = st.session_state.get(f"{prefix}_rejected") or []
+    if rejected:  # 다시 그려도 사라지지 않도록 세션에 두고, 다음 생성 때 새로 바꾼다
+        with st.expander(f"저장하지 않은 초안 {len(rejected)}개 — 이유 보기", expanded=True):
+            for row in rejected:
+                st.write(f"• **{row['label']}**: {row['reason']}")
     for item in items:
         with st.expander(f"{item['label']} — {item['state']}", expanded=item["state"] == "초안 있음"):
             if item["reason"]:
