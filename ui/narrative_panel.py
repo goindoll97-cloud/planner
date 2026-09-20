@@ -47,10 +47,19 @@ def _drafts(project, profile, prefix: str) -> None:
         if not runtime_ok and probe is not None:
             from engine.stage2.local_llm import local_runtime_not_ready_message
             st.warning(local_runtime_not_ready_message(config, probe))
+        run_config = config
+        if runtime_ok:
+            auto = st.checkbox("이 PC에서 빠르게 돌아가는 모델 자동 선택", value=True, key=f"{prefix}_auto_model",
+                               help="큰 모델은 그래픽카드 메모리(VRAM)에 다 올라가지 않으면 몇 배 느려집니다. 설치된 모델 중 VRAM에 들어가는 가장 큰 모델을 고릅니다.")
+            if auto:
+                from engine.stage2.local_ai_resilience import select_fast_auto_config
+
+                run_config = select_fast_auto_config(config, probe.models, available_model_sizes=probe.model_sizes)
+            st.caption(f"사용할 모델: {run_config.model}")
         if st.button("초안 만들기", type="primary", key=f"{prefix}_generate", disabled=not runtime_ok):
             with st.spinner("확정된 사실로 초안을 만드는 중입니다."):
                 try:
-                    result = narrative.generate(project, build_client(config), profile=profile)
+                    result = narrative.generate(project, build_client(run_config), profile=profile)
                     save_project(project)
                     if result.rejected:
                         st.warning(f"검증을 통과하지 못한 초안 {len(result.rejected)}개는 저장하지 않았습니다. 사실을 더 적고 다시 시도하세요.")
