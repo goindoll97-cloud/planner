@@ -37,6 +37,14 @@ def _local_config(prefix: str):
         return None, None, None
 
 
+BADGES = {"초안 있음": "AI 초안 · 확인 전", "확인 완료": "AI 작성 · 담당자 확인 완료"}
+
+
+def state_label(item: dict) -> str:
+    """AI가 쓴 글이 들어 있는 항목은 상태 옆에 AI 작성 표시를 붙인다(사람이 나중에 다시 점검하도록)."""
+    return BADGES.get(item["state"], item["state"]) if item.get("text") else item["state"]
+
+
 def progress_lines(info: dict) -> tuple[float, str]:
     """진행 정보를 (진행률, 안내 문장)으로 바꾼다. 한 묶음이 끝날 때마다 갱신된다."""
     done, total = info["done"], max(info["total"], 1)
@@ -103,7 +111,7 @@ def _drafts(project, profile, prefix: str) -> None:
             for row in rejected:
                 st.write(f"• **{row['label']}**: {row['reason']}")
     for item in items:
-        with st.expander(f"{item['label']} — {item['state']}", expanded=item["state"] == "초안 있음"):
+        with st.expander(f"{item['label']} — {state_label(item)}", expanded=item["state"] == "초안 있음"):
             if item["reason"]:
                 st.caption(item["reason"])
             if item["text"]:

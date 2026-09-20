@@ -128,6 +128,43 @@ class Outputs:
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 
+def ai_review_sheet_name(project: Stage2Project, system: str) -> str:
+    return f"{project.project_id}_{SYSTEMS[system]}_AI작성항목_점검표.docx"
+
+
+def build_ai_review_sheet(project: Stage2Project, system: str) -> bytes:
+    """AI가 쓴 항목을 제출 전에 사람이 한 번 더 점검하도록 만든 점검표(규정서식 본문에는 AI 표시를 넣지 않는다)."""
+    from io import BytesIO
+
+    from docx import Document
+
+    from .ai_drafting import ai_written_items
+
+    rows = ai_written_items(project, system)
+    doc = Document()
+    doc.add_heading(f"{SYSTEMS[system]} AI 작성 항목 점검표", level=1)
+    doc.add_paragraph(f"프로젝트: {project.company_name} ({project.project_id})")
+    doc.add_paragraph("아래 항목의 문장은 로컬 AI가 초안을 쓰고 담당자가 확인·승인한 것입니다. 제출 전에 사실·숫자·설비·직책을 한 번 더 대조하고 점검란에 표시하세요.")
+    if not rows:
+        doc.add_paragraph("AI가 작성한 항목이 없습니다.")
+    else:
+        table = doc.add_table(rows=1, cols=6)
+        table.style = "Table Grid"
+        for cell, text in zip(table.rows[0].cells, ("항목", "상태", "AI 모델", "담당자 수정", "[확인 필요] 표시", "재점검(☐)")):
+            cell.text = text
+        for row in rows:
+            cells = table.add_row().cells
+            cells[0].text = f"{row['section']} {row['label']}".strip()
+            cells[1].text = row["state"]
+            cells[2].text = row["model"] or "-"
+            cells[3].text = "수정함" if row["edited_by_reviewer"] else "수정 없음"
+            cells[4].text = "있음(채워야 함)" if row["has_check_mark"] else "없음"
+            cells[5].text = "☐"
+    out = BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
 def build_outputs(project: Stage2Project, *, final_ready: bool, system: str = "PSM") -> Outputs:
     """작성본 표시는 final_ready일 때만. 아니면 파일명·검증정보 모두 '검토용'."""
     if system == "CAP":
