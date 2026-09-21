@@ -67,8 +67,8 @@ class FetchAllTests(unittest.TestCase):
         button.click().run()
         self.assertFalse(at.exception)
         self.assertEqual(len(seen), 1)
-        self.assertEqual(sorted(seen[0]), sorted(singles))            # 단일물질 전체를 한 번에
-        self.assertNotIn("", seen[0])                                  # 혼합제품(CAS 없음)은 보내지 않는다
+        self.assertEqual(sorted(seen[0]), sorted([*singles, "64-17-5"]))  # 단일물질 전체 + 혼합제품의 성분 CAS를 한 번에
+        self.assertNotIn("", seen[0])                                  # 혼합제품 자체(CAS 없음)는 보내지 않는다
         stored = at.session_state[f"judge_kosha_{project.project_id}"]
         self.assertTrue(stored["67-64-1"].usable)
 
@@ -89,7 +89,30 @@ class FetchAllTests(unittest.TestCase):
     def test_mixture_products_are_mentioned_but_not_sent(self):
         project = _project()
         at = self._run(project, [])
-        self.assertTrue(any("혼합제품 1건은 CAS가 없어 조회하지 않습니다" in c.value for c in at.caption))
+        self.assertTrue(any("혼합제품 1건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다" in c.value for c in at.caption))
+
+    def test_component_classifications_are_shown_only_as_a_reference_with_a_warning(self):
+        project = _project()
+        seen: list = []
+        at = self._run(project, seen)
+        at.button(key=f"judge_kosha_all_{project.project_id}").click().run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any("혼합제품 성분별 참고 분류" in m.value for m in at.markdown))
+        warning = " ".join(w.value for w in at.warning)
+        self.assertIn("제품 SDS에 적힌 것을 그대로 옮겨 적어야 합니다", warning)
+        self.assertIn("판정에 자동으로 반영되지 않습니다", warning)
+        # 성분 결과는 혼합제품 줄의 SDS 분류 후보가 되지 않는다(제품 줄에는 CAS가 없다)
+        stored = at.session_state[f"judge_kosha_{project.project_id}"]
+        self.assertIn("64-17-5", stored)
+        rows = chem._rows(project)[1]
+        mixture_row = next(r for r in rows if str(r.get("제품명")) == "세척제A")
+        self.assertEqual(str(mixture_row.get("CAS No.") or ""), "")
+
+    def test_component_rows_carry_the_product_name_and_content(self):
+        from ui.judgement_project_panel import mixture_component_rows
+
+        rows = mixture_component_rows(_project())
+        self.assertEqual([(r["제품명"], r["CAS No."], r["함량(%)"]) for r in rows], [("세척제A", "67-64-1", "60"), ("세척제A", "64-17-5", "30")])
 
 
 if __name__ == "__main__":

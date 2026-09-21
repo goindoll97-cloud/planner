@@ -81,19 +81,43 @@ def _chemicals(project) -> None:
             _kosha_all(project)
 
 
+def mixture_component_rows(project) -> list[dict]:
+    """혼합제품의 성분 목록(제품명, 성분 CAS, 함량). 제품목록행번호로 물질 목록의 제품 이름을 찾는다."""
+    rows = _rows(project)
+    out = []
+    for component in judgement.mixture_components(project):
+        try:
+            parent = int(float(component.get("제품목록행번호")))
+        except (TypeError, ValueError):
+            continue
+        row = rows[parent - 1] if 1 <= parent <= len(rows) else {}
+        cas = str(component.get("CAS No.") or "").strip()
+        if cas:
+            out.append({"제품명": str(row.get("제품명") or row.get("물질명") or f"{parent}행"), "CAS No.": cas,
+                        "함량(%)": str(component.get("함량(%)") or "").strip(), "행": parent})
+    return out
+
+
 def _kosha_all(project) -> None:
-    """물질 목록 전체(단일물질)의 SDS 제2항 분류 후보를 KOSHA에서 한 번에 조회한다. 결과는 판정 표가 그대로 쓴다."""
+    """물질 목록 전체의 SDS 제2항 분류 후보를 KOSHA에서 한 번에 조회한다.
+
+    단일물질은 판정 표가 그대로 쓰는 후보가 된다. 혼합제품은 제품 분류를 성분 분류로 대신할 수 없으므로, 성분 CAS는 조회해서
+    '참고'로 보여 주기만 하고 판정 입력에는 넣지 않는다.
+    """
     pid = project.project_id
     cand_key, gen_key = f"judge_kosha_{pid}", f"judge_chem_gen_{pid}"
     candidates: dict = st.session_state.get(cand_key, {})
     singles = chem.single_substance_cas(project)
+    parts = mixture_component_rows(project)
+    part_cas = [c for c in dict.fromkeys(p["CAS No."] for p in parts) if c not in singles]
+    targets = [*singles, *part_cas]
     mixtures = len(_rows(project)) - len(singles)
     st.markdown("**SDS 제2항 분류 한 번에 조회 (KOSHA)**")
     st.caption("물질 목록의 단일물질 전체를 CAS 번호만 KOSHA로 보내 조회합니다. 조회 결과는 참고자료이며, 판정 규칙이 요청한 물질의 "
                "표에 후보로 미리 채워집니다(제품 SDS와 대조해 확인해야 판정에 쓰입니다)."
-               + (f" 혼합제품 {mixtures}건은 CAS가 없어 조회하지 않습니다." if mixtures > 0 else ""))
-    todo = kosha_candidates.pending_cas(singles, candidates)
-    label = ("조회 완료" if not todo else "KOSHA에서 전체 물질 SDS 분류 조회" if len(todo) == len(singles)
+               + (f" 혼합제품 {mixtures}건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다." if mixtures > 0 else ""))
+    todo = kosha_candidates.pending_cas(targets, candidates)
+    label = ("조회 완료" if not todo else "KOSHA에서 전체 물질 SDS 분류 조회" if len(todo) == len(targets)
              else "조회하지 못한 물질만 다시 조회")
     if st.button(label, key=f"judge_kosha_all_{pid}", disabled=not todo,
                  help="CAS 번호만 전송합니다. 회사·수량 정보는 보내지 않습니다."):
@@ -110,6 +134,16 @@ def _kosha_all(project) -> None:
             st.caption("후보를 얻지 못한 물질: " + ", ".join(
                 f"{cas}({candidates[cas].message or candidates[cas].status})" for cas in missing[:6]) + (" 외" if len(missing) > 6 else "")
                 + " — 이 물질은 제품 SDS를 보고 직접 적어 주세요.")
+    reference = [p for p in parts if candidates.get(p["CAS No."]) is not None]
+    if reference:
+        st.markdown("**혼합제품 성분별 참고 분류**")
+        st.warning("성분 하나하나의 분류를 참고로 보여 드립니다. **혼합제품의 SDS 제2항 분류는 제품 SDS에 적힌 것을 그대로 옮겨 적어야 합니다.** "
+                   "혼합물의 분류는 성분의 함량과 제품 자체의 물성으로 정해지므로 아래 값과 다를 수 있고, 이 값은 판정에 자동으로 반영되지 않습니다.")
+        frames.show(pd.DataFrame([{
+            "혼합제품": p["제품명"], "성분 CAS No.": p["CAS No."], "함량(%)": p["함량(%)"],
+            "성분명(KOSHA)": candidates[p["CAS No."]].chemical_name,
+            "성분 기준 분류(참고)": candidates[p["CAS No."]].text or f"({candidates[p['CAS No.']].message or candidates[p['CAS No.']].status})",
+        } for p in reference]), width="stretch", hide_index=True)
 
 
 def render(project) -> None:
