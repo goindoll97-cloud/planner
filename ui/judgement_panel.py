@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import cap_judgement as judgement
+from engine.stage2 import kosha_candidates
 from engine.stage2 import storage
 
 CAP = "화학사고예방관리계획서"
@@ -49,8 +50,13 @@ def _ask(project, outcome) -> None:
         st.markdown("**그 밖에 확인해야 할 것**")
         for message in unmatched:
             st.write(f"• {judgement.display_request(message)}")
-    edited = _chemical_table(project, outcome, table_messages)
-    if st.button("답을 저장하고 다시 판정", type="primary", key=f"judge_answer_{project.project_id}"):
+    edited, used = _chemical_table(project, outcome, table_messages)
+    confirmed = True
+    if used:
+        confirmed = st.checkbox(
+            f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
+            key=f"judge_kosha_ok_{project.project_id}")
+    if st.button("답을 저장하고 다시 판정", type="primary", key=f"judge_answer_{project.project_id}", disabled=not confirmed):
         table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
         if not any(given.values()) and not table_changed:
             st.warning("한 가지 이상 답해 주세요.")
@@ -59,6 +65,7 @@ def _ask(project, outcome) -> None:
                 judgement.save_answers(project, given)
             if table_changed:
                 judgement.save_chemical_inputs(project, edited)
+                kosha_candidates.record_use(project, used)
             storage.save_project(project)
             st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
             st.rerun()
@@ -79,12 +86,12 @@ YES_NO_UNKNOWN = ["", "Y", "N", "모름"]
 def _chemical_table(project, outcome, table_messages):
     """물질별로 판정 엔진이 요구한 값을 입력받는 표. 입력한 전체 행 목록(저장 형식)을 돌려주고, 표가 필요 없으면 None."""
     if not table_messages:
-        return None
+        return None, {}
     from engine.stage2 import cap_chemical_workspace as chem
 
     _, rows = chem._rows(project)
     if not rows:
-        return None
+        return None, {}
     st.markdown("**물질별로 확인할 값**")
     st.caption("아래 표에서 비어 있는 칸을 채워 주세요. 모르는 칸은 비워 두면 됩니다. 판정 규칙이 요청한 물질만 보여 줍니다.")
     for message in table_messages:
@@ -92,9 +99,15 @@ def _chemical_table(project, outcome, table_messages):
     wanted = judgement.request_rows(table_messages, len(rows))
     stored = judgement.chemical_inputs(project)
     stored = stored + [{}] * (len(rows) - len(stored))
+    pid = project.project_id
+    cand_key, gen_key, sds_col = f"judge_kosha_{pid}", f"judge_chem_gen_{pid}", "SDS 제2항 유해성·위험성 분류(선택 입력)"
+    candidates: dict = st.session_state.get(cand_key, {})
     records = []
     for number in wanted:
         row, extra = rows[number - 1], stored[number - 1]
+        cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
+        if not extra.get(sds_col) and candidates.get(cas) is not None and candidates[cas].usable:
+            extra = {**extra, sds_col: candidates[cas].text}  # 비어 있는 칸에만 후보를 넣는다
         records.append({
             "행": number,
             "제품명": str(row.get("제품명") or row.get("물질명") or ""),
@@ -102,6 +115,7 @@ def _chemical_table(project, outcome, table_messages):
             **{column: extra.get(column, "") for column in judgement.CHEM_INPUT_COLUMNS},
         })
     frame = pd.DataFrame(records)
+    _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates)
     text = lambda label, help_text=None: st.column_config.TextColumn(label, help=help_text)
     config = {
         "행": st.column_config.NumberColumn("행", disabled=True, width="small"),
@@ -119,13 +133,44 @@ def _chemical_table(project, outcome, table_messages):
             "SDS 제2항 분류", "제품 SDS 제2항의 유해성·위험성 분류를 그대로 적습니다. 해당 분류가 없으면 '별표1 해당없음'."),
     }
     editor = st.data_editor(frame, column_config=config, hide_index=True, width="stretch", num_rows="fixed",
-                            key=f"judge_chem_{project.project_id}")
+                            key=f"judge_chem_{pid}_{st.session_state.get(gen_key, 0)}")
     result = [dict(row) for row in stored[:len(rows)]]
+    used: dict = {}
     for position, number in enumerate(wanted):
         values = editor.iloc[position]
         result[number - 1] = {column: ("" if pd.isna(values[column]) else str(values[column]).strip())
                               for column in judgement.CHEM_INPUT_COLUMNS}
-    return result
+        cas = str(values["CAS No."]).strip()
+        cand = candidates.get(cas)
+        # 후보 문구를 그대로 둔 칸만 'KOSHA 후보 사용'으로 본다(고쳐 쓴 칸은 사용자가 직접 적은 값이다).
+        if (cand is not None and cand.usable and result[number - 1].get(sds_col) == cand.text
+                and not stored[number - 1].get(sds_col)):
+            used[cas] = cand
+    return result, used
+
+
+def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates) -> None:
+    empty = []
+    for number in wanted:
+        cas = str(rows[number - 1].get("CAS No.") or rows[number - 1].get("CAS 번호") or "").strip()
+        if cas and not stored[number - 1].get(sds_col) and cas not in candidates:
+            empty.append(cas)
+    help_text = ("CAS 번호만 KOSHA 물질안전보건자료 조회 서비스로 보내고, 제2항의 분류를 후보로 채웁니다. "
+                 "참고자료이므로 제품 SDS와 대조해 확인해야 합니다.")
+    if st.button("KOSHA에서 SDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
+                 help=help_text):
+        with st.spinner(f"KOSHA에서 {len(set(empty))}개 CAS를 조회하는 중입니다."):
+            found = kosha_candidates.fetch(empty)
+        st.session_state[cand_key] = {**candidates, **found}
+        st.session_state[gen_key] = st.session_state.get(gen_key, 0) + 1
+        st.rerun()
+    if candidates:
+        misses = [c for c in candidates.values() if not c.usable]
+        got = len(candidates) - len(misses)
+        detail = " (" + ", ".join(f"{c.cas}: {c.message or c.status}" for c in misses[:3]) + ")" if misses else ""
+        st.caption(f"KOSHA 후보 {got}건을 채웠습니다. 채우지 못한 {len(misses)}건은 직접 적어 주세요.{detail}")
+
+
 
 
 def _decided(project, outcome) -> None:
