@@ -173,41 +173,70 @@ def _composition_form(project, outcome) -> None:
         st.rerun()
 
 
+PLACEHOLDER = "선택하세요"
+SYSTEM_ORDER = ("화학사고예방관리계획서", "공정안전보고서", "공통")
+
+
+def _question(project, question, existing: dict) -> str:
+    """질문 하나를 그리고 답을 돌려준다. 설명은 ? 안에 넣어 화면에는 질문 한 줄만 보이게 한다."""
+    key = f"judge_q_{project.project_id}_{question.item}"
+    current = existing.get(question.item, "")
+    if question.choices:
+        options = [PLACEHOLDER, *question.choices]
+        picked = st.selectbox(question.text, options, index=options.index(current) if current in options else 0,
+                              key=key, help=question.help)
+        return "" if picked == PLACEHOLDER else picked
+    if question.options:
+        options = [PLACEHOLDER, *question.options]
+        picked = st.radio(question.text, options, index=options.index(current) if current in options else 0,
+                          horizontal=True, key=key, help=question.help, format_func=lambda v: ANSWER_LABELS.get(v, v))
+        return "" if picked == PLACEHOLDER else picked
+    if question.item.endswith("(kg)"):
+        value_col, unit_col = st.columns([3, 1])
+        typed = value_col.text_input(question.text, value=current, key=key, help=question.help, placeholder="숫자만")
+        unit = unit_col.selectbox("단위", ["kg", "ton"], key=key + "_unit")
+        return judgement.convert_quantity(typed, unit, "kg")  # 판정에는 kg로 저장한다
+    return st.text_input(question.text, value=current, key=key, help=question.help,
+                         placeholder="숫자만" if question.numeric else "")
+
+
+def _note8_table(project):
+    """'가스 전문 저장·판매시설'이라고 답했을 때, 규정량 계산에서 뺄 가스의 양을 받는 표. 바뀐 표(저장 형식)를 돌려준다."""
+    st.markdown("**규정량 계산에서 뺄 가스의 양**")
+    st.caption("별표 13 호수(예: 1은 인화성 가스)별로 뺄 하루 최대 제조·취급량과 최대 저장량을 kg으로 적으세요. 행은 아래 +로 추가합니다.")
+    frame = pd.DataFrame(judgement.note8_rows(project) or [{c: "" for c in judgement.NOTE8_COLUMNS}], columns=list(judgement.NOTE8_COLUMNS))
+    edited = st.data_editor(frame, num_rows="dynamic", hide_index=True, width="stretch", key=f"judge_note8_{project.project_id}",
+                            column_config={
+                                "별표13 호수": st.column_config.TextColumn("별표 13 호수", help="빼려는 가스가 별표 13의 몇 호인지입니다. 인화성 가스는 1입니다."),
+                                "제조·취급 제외량(kg)": st.column_config.TextColumn("하루 제조·취급 제외량(kg)"),
+                                "저장 제외량(kg)": st.column_config.TextColumn("저장 제외량(kg)"),
+                            })
+    return [{k: ("" if pd.isna(v) else str(v).strip()) for k, v in row.items()} for row in edited.to_dict("records")]
+
+
 def _ask(project, outcome) -> None:
     st.markdown("#### 판정에 필요한 확인 사항")
-    st.caption("판정 규칙이 사업장에 대해 답을 요청한 항목만 물어봅니다. 답에 따라 작성해야 하는 문서가 달라질 수 있으니, "
-               "확실하지 않으면 추측하지 말고 '모름'을 고르세요. 그러면 판정이 보류되고 무엇을 확인해야 하는지 안내됩니다.")
+    st.caption("사업장 전체에 대한 질문입니다. 각 질문 옆 ? 에 뜻과 확인 방법이 있습니다. 확실하지 않으면 추측하지 말고 '모름'을 고르세요.")
     existing = judgement.answers(project)
     given: dict[str, str] = {}
-    for question in outcome.questions:
-        key = f"judge_q_{project.project_id}_{question.item}"
-        st.markdown(f"**{question.text}**")
-        st.caption(f"이 답은 {question.system} 대상 여부를 정하는 데 쓰입니다." if question.system != "공통"
-                   else "이 답은 두 문서의 대상 여부에 모두 영향을 줄 수 있습니다.")
-        if question.options:
-            options = ["선택하세요", *question.options]
-            current = existing.get(question.item, "")
-            picked = st.radio(question.text, options, index=options.index(current) if current in options else 0,
-                              horizontal=True, key=key, help=question.help, label_visibility="collapsed",
-                              format_func=lambda v: ANSWER_LABELS.get(v, v))
-            given[question.item] = "" if picked == "선택하세요" else picked
-        elif question.item.endswith("(kg)"):
-            value_col, unit_col = st.columns([3, 1])
-            typed = value_col.text_input(question.text, value=existing.get(question.item, ""), key=key,
-                                         help=question.help, label_visibility="collapsed")
-            unit = unit_col.selectbox("단위", ["kg", "ton"], key=key + "_unit", label_visibility="collapsed")
-            given[question.item] = judgement.convert_quantity(typed, unit, "kg")  # 판정에는 kg로 저장한다
-        else:
-            given[question.item] = st.text_input(question.text, value=existing.get(question.item, ""), key=key,
-                                                 help=question.help, label_visibility="collapsed")
-        st.caption(question.help)
+    groups = {name: [q for q in outcome.questions if q.system == name] for name in SYSTEM_ORDER}
+    for name, questions in groups.items():
+        if not questions:
+            continue
+        if len([g for g in groups.values() if g]) > 1:
+            st.markdown(f"**{name}**")
+        for question in questions:
+            given[question.item] = _question(project, question, existing)
     table_messages = [m for m in outcome.messages if _for_table(m)]
-    unmatched = [m for m in outcome.messages
-                 if m not in table_messages and not any(q.trigger and q.trigger in m for q in outcome.questions)]
-    if unmatched:
-        st.markdown("**그 밖에 확인해야 할 것**")
-        for message in unmatched:
-            st.write(f"• {judgement.display_request(message)}")
+    note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
+    covered = [m for m in outcome.messages
+               if m in table_messages or any(q.trigger and q.trigger in m for q in outcome.questions)
+               or judgement.NOTE8_TABLE_MARKER in m]
+    others = [m for m in outcome.messages if m not in covered]
+    if others:
+        st.info("판정 규칙이 함께 요청한 내용입니다. 답을 적는 질문이 아니라, 물질 목록이나 시설 정보를 보완하면 해결됩니다.\n\n"
+                + "\n".join(f"• {judgement.display_request(m)}" for m in others))
+    note8_rows = _note8_table(project) if note8_needed else None
     edited, used = _chemical_table(project, outcome, table_messages)
     confirmed = True
     if used:
@@ -216,7 +245,8 @@ def _ask(project, outcome) -> None:
             key=f"judge_kosha_ok_{project.project_id}")
     if st.button("답을 저장하고 다시 판정", type="primary", key=f"judge_answer_{project.project_id}", disabled=not confirmed):
         table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
-        if not any(given.values()) and not table_changed:
+        note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
+        if not any(given.values()) and not table_changed and not note8_changed:
             st.warning("한 가지 이상 답해 주세요.")
         else:
             if given:
@@ -224,6 +254,8 @@ def _ask(project, outcome) -> None:
             if table_changed:
                 judgement.save_chemical_inputs(project, edited)
                 kosha_candidates.record_use(project, used)
+            if note8_changed:
+                judgement.save_note8_rows(project, note8_rows)
             storage.save_project(project)
             st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
             st.rerun()

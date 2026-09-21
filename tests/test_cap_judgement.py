@@ -90,7 +90,8 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual([q.item for q in first.questions], ["법 제23조제1항 단서 해당 여부"])
         jd.save_answers(project, {"법 제23조제1항 단서 해당 여부": "Y"})
         again = jd.judge(project, assess=lambda intake: _decision(requests=[REQUEST_EXEMPT]))
-        self.assertEqual([q.item for q in again.questions], ["법 제23조제1항 단서 해당 여부", "법적 예외 적용 유형"])
+        self.assertEqual([q.item for q in again.questions],
+                         ["법 제23조제1항 단서 해당 여부", "법적 예외 적용 유형", "법적 예외가 관련 취급시설 전체에 적용되는지"])
 
     def test_requests_without_a_matching_question_are_still_reported(self):
         project = self._known()
@@ -210,7 +211,7 @@ class ScreenTests(unittest.TestCase):
         at = self._page(project, decision)
         at.button(key=f"judge_run_{project.project_id}").click().run()
         self.assertFalse(at.exception)
-        self.assertTrue(any("주요취급시설" in m.value for m in at.markdown))
+        self.assertTrue(any("주요취급시설" in r.label for r in at.radio))  # 질문은 라디오의 이름(라벨)로 보인다
         item = "상위 규정수량 이상을 취급하는 개별 주요취급시설 존재 여부"
         at.radio(key=f"judge_q_{project.project_id}_{item}").set_value("Y")
         at.button(key=f"judge_answer_{project.project_id}").click().run()
