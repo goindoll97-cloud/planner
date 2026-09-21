@@ -14,7 +14,7 @@ from typing import Any, Callable, Mapping
 
 import pandas as pd
 
-from ..inventory import IntakeData, validate_intake
+from ..inventory import IntakeData, MIXTURE_FLAG_COLUMN, validate_intake
 from ..stage1_workbook import assess_stage1_from_workbook
 from . import cap_judgement
 from .project import Stage2Project, create_project_from_stage1_snapshot
@@ -22,7 +22,9 @@ from .project import Stage2Project, create_project_from_stage1_snapshot
 BUSINESS_FIELDS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
 # 신입사원이 처음 입력하는 최소 물질정보. 수량 단위는 kg/ton 중 하나를 고르고,
 # 내부 판정 엔진에는 ton으로 정규화해 전달한다.
-CHEMICAL_INPUT_COLUMNS = ("제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위")
+CHEMICAL_INPUT_COLUMNS = ("제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위")
+LEGACY_CONTENT_COLUMN = "함량(%)"
+LEGACY_MIXTURE_COLUMN = MIXTURE_FLAG_COLUMN
 LEGACY_MAX_HOLDING_COLUMN = "최대 동시보유량(ton)"
 # 전문적인 판정 보조값은 초기 표에서 받지 않고, 실제 판정에 필요할 때만 후속 질문으로 받는다.
 EXTRA_INPUT_COLUMNS = (
@@ -87,7 +89,9 @@ def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
             "제품명": name or cas,
             "CAS No.": cas,
             "물질명(알면 입력)": name,
-            "함량(%)": _number(row.get("함량(%)")),
+            # 신규 최소입력에서는 함량을 받지 않는다. 기존 파일에 있던 값만 보존한다.
+            "함량(%)": _number(row.get(LEGACY_CONTENT_COLUMN)),
+            MIXTURE_FLAG_COLUMN: _clean(row.get(LEGACY_MIXTURE_COLUMN)),
             "취급형태": HANDLING_DEFAULT,
             # 판정 엔진은 공통적으로 ton 값을 받는다.
             "수량 단위": UNIT,
@@ -99,7 +103,7 @@ def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
         for column in EXTRA_INPUT_COLUMNS:
             records[-1][column] = _clean(row.get(column))
     base = [
-        "제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태",
+        "제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", MIXTURE_FLAG_COLUMN, "취급형태",
         "최대 제조·사용량", "최대 저장량", "수량 단위", "최대 동시보유량(알면 입력)",
     ]
     used = [c for c in EXTRA_INPUT_COLUMNS if any(r.get(c) for r in records)]
@@ -142,6 +146,19 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
     other_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE not in i]
     if other_issues:
         return StartOutcome("INVALID", tuple(other_issues))
+    # 신규 5열 입력은 성분 함량을 일부러 받지 않는다. 판정 화면에서 단일물질/혼합물을
+    # 먼저 확인한 뒤 단일물질은 100%, 혼합물은 SDS 제3항의 구성성분 CAS+함량으로 확정한다.
+    composition_missing = []
+    for idx, row in intake.chemicals.iterrows():
+        content = _clean(row.get("함량(%)"))
+        mixture = _clean(row.get(MIXTURE_FLAG_COLUMN))
+        if not content and not mixture:
+            composition_missing.append(str(idx + 1))
+    if composition_missing:
+        return _pending(
+            intake,
+            ("물질 성분 확인이 필요합니다. 법정 대상 판정에서 각 제품이 단일물질인지 혼합물인지 확인해 주세요.",),
+        )
     if quantity_issues:
         return _pending(intake, ("최대보유량을 모르는 물질이 있어 법정 대상 판정을 뒤로 미뤘습니다. 별지 제1호에서 시설을 입력하면 "
                                  "최대보유량이 계산됩니다. 그 뒤 '법정 대상 판정하기'를 눌러 주세요.",))

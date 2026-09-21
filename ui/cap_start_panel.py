@@ -36,7 +36,7 @@ def render(expanded: bool) -> None:
         st.caption(
             "사업장 정보와 취급하는 유해화학물질만 적으면 법정 작성 대상(화학사고예방관리계획서, 공정안전보고서)인지 먼저 판정합니다. "
             "대상인 문서는 바로 별지 작성으로 이어집니다. "
-            "처음에는 물질명·CAS·함량과 하루 최대 제조·사용량·최대 저장량만 입력하면 됩니다. 수량은 kg 또는 ton 중 편한 단위를 선택하세요."
+            "처음에는 제품명·CAS No.·하루 최대 제조·사용량·최대 저장량만 입력하면 됩니다. 함량은 나중에 단일물질/혼합물 확인 단계에서 필요한 경우만 묻습니다. 수량은 kg 또는 ton 중 편한 단위를 선택하세요."
         )
         left, middle, right = st.columns(3)
         name = left.text_input("사업장명", key="cap_start_name", help="사업자등록증에 적힌 사업장(회사) 이름입니다.",
@@ -46,9 +46,11 @@ def render(expanded: bool) -> None:
         industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry",
                                   help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 판정 계산에는 쓰이지 않고, 공정안전보고서 별지 제12호의 주요 생산품 칸에 다시 쓰입니다.",
                                   placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산")
-        hidden_columns = [cap_start.LEGACY_MAX_HOLDING_COLUMN, *cap_start.EXTRA_INPUT_COLUMNS]
-        blank = {"제품명": "", "CAS No.": "", "함량(%)": 100.0,
-                 "최대 제조·사용량": None, "최대 저장량": None, "단위": "kg",
+        hidden_columns = [
+            cap_start.LEGACY_CONTENT_COLUMN, cap_start.LEGACY_MIXTURE_COLUMN,
+            cap_start.LEGACY_MAX_HOLDING_COLUMN, *cap_start.EXTRA_INPUT_COLUMNS,
+        ]
+        blank = {"제품명": "", "CAS No.": "", "최대 제조·사용량": None, "최대 저장량": None, "단위": "kg",
                  **{col: "" for col in hidden_columns}}
         generation = st.session_state.get("cap_start_gen", 0)  # 엑셀로 행을 추가하면 새 표로 다시 그린다
         frame = pd.DataFrame(
@@ -62,11 +64,8 @@ def render(expanded: bool) -> None:
                     "제품명(물질명)", help="취급하는 제품 또는 물질 이름입니다. CAS 번호만 알아도 됩니다."
                 ),
                 "CAS No.": st.column_config.TextColumn(
-                    "CAS No.", help="SDS 제3항에서 확인할 수 있는 화학물질 고유번호입니다. 예: 108-88-3"
-                ),
-                "함량(%)": st.column_config.NumberColumn(
-                    "함량(%)", min_value=0.0, max_value=100.0,
-                    help="제품 안 해당 물질의 함량입니다. 순수물질은 100입니다."
+                    "CAS No.",
+                    help="단일물질이면 CAS 번호를 적습니다. 혼합제품 자체에 CAS가 없으면 비워 두고, 다음 단계에서 SDS 제3항 구성성분의 CAS 번호를 각각 입력합니다.",
                 ),
                 "최대 제조·사용량": st.column_config.NumberColumn(
                     "하루 최대 제조·사용량", min_value=0.0,
@@ -80,7 +79,9 @@ def render(expanded: bool) -> None:
                     "단위", options=["kg", "ton"], required=True,
                     help="두 수량에 공통으로 적용할 단위입니다. kg 또는 ton을 고르세요."
                 ),
-                # 기존 9열 파일의 전문값은 보존하되 초기 화면에서는 숨긴다.
+                # 기존 파일에 이미 있던 함량·혼합물·전문값은 보존하되 초기 화면에서는 숨긴다.
+                cap_start.LEGACY_CONTENT_COLUMN: None,
+                cap_start.LEGACY_MIXTURE_COLUMN: None,
                 cap_start.LEGACY_MAX_HOLDING_COLUMN: None,
                 **{col: None for col in cap_start.EXTRA_INPUT_COLUMNS},
             },
@@ -101,10 +102,12 @@ def render(expanded: bool) -> None:
                 if row["CAS No."] and row["CAS No."] in have:
                     continue
                 added.append({
-                    "제품명": row["제품명"], "CAS No.": row["CAS No."], "함량(%)": number(row["함량(%)"]),
+                    "제품명": row["제품명"], "CAS No.": row["CAS No."],
                     "최대 제조·사용량": number(row.get("최대 제조·사용량", "")),
                     "최대 저장량": number(row.get("최대 저장량", "")),
                     "단위": row.get("단위") or "ton",
+                    cap_start.LEGACY_CONTENT_COLUMN: number(row.get(cap_start.LEGACY_CONTENT_COLUMN, "")),
+                    cap_start.LEGACY_MIXTURE_COLUMN: row.get(cap_start.LEGACY_MIXTURE_COLUMN, ""),
                     cap_start.LEGACY_MAX_HOLDING_COLUMN: number(row.get(cap_start.LEGACY_MAX_HOLDING_COLUMN, "")),
                     **{col: row.get(col, "") for col in cap_start.EXTRA_INPUT_COLUMNS},
                 })

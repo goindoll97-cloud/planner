@@ -5,6 +5,7 @@ import unittest
 from engine.psm_engine import (
     PSMRatioLine,
     _aggregate_ratio_lines,
+    _assessment_rows,
     _legal_condition,
     calculate_r_value,
 )
@@ -97,6 +98,30 @@ class PSMConcentrationTests(unittest.TestCase):
         self.assertIsNone(applicable)
         self.assertIsNone(factor)
         self.assertIn("삼산화황", question)
+
+
+class PSMMixtureCASTests(unittest.TestCase):
+    def test_mixture_is_expanded_to_component_cas_rows(self) -> None:
+        import pandas as pd
+        from engine.inventory import IntakeData
+
+        intake = IntakeData(
+            business={},
+            chemicals=pd.DataFrame([{
+                "제품명": "세척제 A", "CAS No.": "", "함량(%)": "", "혼합물 여부": "Y",
+                "최대 제조·사용량": 2.0, "최대 저장량": 5.0, "수량 단위": "ton",
+            }]),
+            documents={},
+            mixture_components=pd.DataFrame([
+                {"제품목록행번호": 1, "CAS No.": "108-88-3", "함량(%)": 30, "구성성분명": "오타여도 판정키 아님"},
+                {"제품목록행번호": 1, "CAS No.": "67-64-1", "함량(%)": 10, "구성성분명": ""},
+            ]),
+        )
+        expanded = _assessment_rows(intake)
+        self.assertEqual([row_no for row_no, _ in expanded], [1, 1])
+        self.assertEqual({row["CAS No."] for _, row in expanded}, {"108-88-3", "67-64-1"})
+        self.assertEqual({float(row["함량(%)"]) for _, row in expanded}, {30.0, 10.0})
+        self.assertTrue(all(float(row["최대 저장량"]) == 5.0 for _, row in expanded))
 
 
 if __name__ == "__main__":

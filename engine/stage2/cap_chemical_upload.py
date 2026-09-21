@@ -17,11 +17,11 @@ import pandas as pd
 
 from .project import EvidenceRef, Stage2Project
 
-OUT_COLUMNS = ("제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위")
-# 기존 회사 파일과 이미 저장된 9열 양식은 계속 읽되, 신규 빈 양식에는 노출하지 않는 전문/후속 입력 열.
+OUT_COLUMNS = ("제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위")
+# 기존 회사 파일의 함량·혼합물 표시와 과거 전문열은 계속 읽되 신규 빈 양식에는 노출하지 않는다.
 EXTRA_COLUMNS = (
-    "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)", "최대보유량 법정 산정 여부",
-    "SDS 제2항 유해성·위험성 분류(선택 입력)",
+    "함량(%)", "혼합물 여부", "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)",
+    "최대보유량 법정 산정 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)",
 )
 ALL_COLUMNS = OUT_COLUMNS + EXTRA_COLUMNS
 TON_EXTRAS = ("최대 제조·사용량", "최대 저장량")
@@ -34,6 +34,7 @@ FIELD_ALIASES = {
     "제품명": ("제품명", "물질명", "화학물질명", "유해화학물질명", "품명", "제품", "화학명", "물질", "productname", "name"),
     "CAS No.": ("casno", "cas번호", "cas", "화학물질식별번호", "casnumber", "cas no."),
     "함량(%)": ("함량", "농도", "순도", "성분함량", "함유량", "content", "함량%"),
+    "혼합물 여부": ("혼합물여부", "혼합여부", "mixture", "mixtureyn"),
     "최대 동시보유량(ton)": ("최대동시보유량", "최대보유량", "보유량", "재고량"),
     "성상": ("성상", "상온상압성상", "물질상태", "상태"),
     "상온·상압 액체 여부(해당 시)": ("상온상압액체여부", "액체여부", "상온상압액체"),
@@ -274,7 +275,9 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
         else:
             liquid = ""
         for column in EXTRA_COLUMNS:
-            if column == "최대 동시보유량(ton)":
+            if column == "함량(%)":
+                extras[column] = content
+            elif column == "최대 동시보유량(ton)":
                 extras[column] = amount
             elif column == LIQUID_COLUMN and liquid:
                 extras[column] = liquid  # 성상 선택에서 액체 여부를 프로그램이 정한다(액체 Y, 기체·고체 N)
@@ -302,9 +305,9 @@ def blank_template() -> bytes:
     sheet = workbook.active
     sheet.title = "물질 목록"
 
-    headers = ["제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위"]
+    headers = ["제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"]
     sheet.append(headers)
-    for column, width in zip("ABCDEF", (28, 16, 12, 22, 20, 12)):
+    for column, width in zip("ABCDE", (28, 16, 22, 20, 12)):
         sheet.column_dimensions[column].width = width
 
     unit_validation = DataValidation(
@@ -315,19 +318,20 @@ def blank_template() -> bytes:
         prompt="최대 제조·사용량과 최대 저장량에 공통으로 적용할 단위를 고르세요.",
     )
     sheet.add_data_validation(unit_validation)
-    unit_validation.add("F2:F1000")
+    unit_validation.add("E2:E1000")
 
     guide = workbook.create_sheet("작성 안내")
     for line in (
-        ["취급하는 물질을 한 줄에 하나씩 적습니다. 처음에는 아래 6개 항목만 작성하면 됩니다."],
-        ["제품명: 제품 또는 물질 이름 / CAS No.: SDS 제3항에서 확인하는 화학물질 고유번호"],
-        ["함량(%): 제품 안 해당 물질의 함량. 순수물질은 100, 혼합물은 SDS 제3항의 성분 함량을 확인합니다."],
+        ["취급하는 제품 또는 물질을 한 줄에 하나씩 적습니다. 처음에는 아래 5개 항목만 작성하면 됩니다."],
+        ["제품명: 사내에서 사용하는 제품 또는 물질 이름입니다."],
+        ["CAS No.: 단일물질이면 반드시 CAS 번호를 적습니다. 혼합제품 자체에 CAS가 없으면 비워 두고, 판정 단계에서 SDS 제3항의 구성성분 CAS를 각각 입력합니다."],
+        ["함량(%)은 처음에 적지 않습니다. 단일물질이면 판정 단계에서 100%로 확인하고, 혼합물이면 구성성분별 CAS No.와 함량(%)을 받습니다."],
         ["최대 제조·사용량: 하루에 가장 많이 제조·취급·사용하는 양. 해당 없으면 0을 입력합니다."],
         ["최대 저장량: 한 시점에 가장 많이 저장하는 양. 해당 없으면 0을 입력합니다."],
         ["단위: kg 또는 ton 중 실제 사내 자료와 같은 단위를 선택합니다. 프로그램이 내부에서 ton으로 자동 환산합니다."],
         ["상온·상압 성상, 법정 최대보유량, SDS 제2항 분류 등 전문항목은 판정에 필요한 물질에 한해서 화면에서 추가로 질문합니다."],
         ["기존 9열 양식이나 회사 자체 엑셀·CSV도 계속 업로드할 수 있습니다."],
-        ["(예시) 톨루엔 / 108-88-3 / 99.5 / 3000 / 12500 / kg"],
+        ["(예시) 톨루엔 / 108-88-3 / 3000 / 12500 / kg"],
     ):
         guide.append(line)
     guide.column_dimensions["A"].width = 110

@@ -20,7 +20,8 @@ REQUESTS = [
 
 
 def _project(count=3, quantity="0.5"):
-    rows = [{"제품명": f"물질{i}", "CAS No.": f"67-6{i}-0", "함량(%)": "99", "최대 동시보유량(ton)": quantity}
+    valid_cas = ["108-88-3", "67-64-1", "7782-50-5", "64-17-5", "50-00-0"]
+    rows = [{"제품명": f"물질{i}", "CAS No.": valid_cas[i - 1], "함량(%)": "99", "최대 동시보유량(ton)": quantity}
             for i in range(1, count + 1)]
     intake = cap_start.build_intake(
         {"회사명": "t", "사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"}, rows)
@@ -55,9 +56,10 @@ class JudgementInputTests(unittest.TestCase):
         self.assertEqual(str(intake.chemicals.loc[0, "최대 제조·사용량"]), "2")
         self.assertEqual(len(missing), 2)  # 값을 준 물질만 수량이 확인된 것으로 본다
 
-    def test_untouched_projects_keep_the_original_seven_columns(self):
+    def test_untouched_projects_keep_the_composition_flag_column(self):
         intake, _ = j.build_intake(_project())
-        self.assertEqual(len(intake.chemicals.columns), 7)
+        self.assertEqual(len(intake.chemicals.columns), 8)
+        self.assertIn("혼합물 여부", intake.chemicals.columns)
 
 
 def _app():
@@ -117,7 +119,7 @@ class TemplateColumnTests(unittest.TestCase):
         parsed = up.parse(data, "물질목록_양식.xlsx")
         self.assertEqual(
             set(parsed.mapping),
-            {"제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위"},
+            {"제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"},
         )
         self.assertEqual(parsed.mapping["최대 제조·사용량"], "최대 제조·사용량")
         self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량")
@@ -130,8 +132,8 @@ class TemplateColumnTests(unittest.TestCase):
         from engine.stage2 import cap_chemical_upload as up
 
         frame = pd.DataFrame(
-            [["톨루엔", "108-88-3", "99.5", "3000", "12500", "kg"]],
-            columns=["제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위"],
+            [["톨루엔", "108-88-3", "3000", "12500", "kg"]],
+            columns=["제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"],
         )
         buffer = BytesIO()
         frame.to_excel(buffer, index=False)
@@ -149,6 +151,54 @@ class TemplateColumnTests(unittest.TestCase):
         self.assertEqual(chem["최대 제조·사용량"], 3.0)
         self.assertEqual(chem["최대 저장량"], 12.5)
         self.assertEqual(chem["수량 단위"], "ton")
+
+    def test_new_minimal_row_requires_composition_confirmation_before_judgement(self):
+        rows = [{"제품명": "톨루엔", "CAS No.": "108-88-3", "최대 제조·사용량": "1", "최대 저장량": "2", "단위": "ton"}]
+        intake = cap_start.build_intake(
+            {"사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"}, rows)
+        project = cap_start._pending(intake, ()).project
+        outcome = j.judge(project, assess=lambda intake: (_ for _ in ()).throw(AssertionError("판정 엔진이 먼저 호출되면 안 됨")))
+        self.assertEqual(outcome.status, "COMPOSITION")
+        self.assertEqual(outcome.composition_rows, (1,))
+
+    def test_single_substance_confirmation_requires_valid_cas_and_sets_100_percent(self):
+        rows = [{"제품명": "톨루엔", "CAS No.": "", "최대 제조·사용량": "1", "최대 저장량": "2", "단위": "ton"}]
+        intake = cap_start.build_intake(
+            {"사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"}, rows)
+        project = cap_start._pending(intake, ()).project
+        with self.assertRaises(ValueError):
+            j.save_composition(project, [{"행": 1, "구분": "단일물질", "CAS No.": "톨루엔"}], [], sds_confirmed=True)
+        j.save_composition(project, [{"행": 1, "구분": "단일물질", "CAS No.": "108-88-3"}], [], sds_confirmed=True)
+        built, _ = j.build_intake(project)
+        self.assertEqual(built.chemicals.loc[0, "CAS No."], "108-88-3")
+        self.assertEqual(str(built.chemicals.loc[0, "함량(%)"]), "100.0")
+        self.assertEqual(built.chemicals.loc[0, "혼합물 여부"], "N")
+
+    def test_mixture_requires_component_cas_and_saves_sds_section3_rows(self):
+        rows = [{"제품명": "세척제 A", "CAS No.": "", "최대 제조·사용량": "1", "최대 저장량": "2", "단위": "ton"}]
+        intake = cap_start.build_intake(
+            {"사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"}, rows)
+        project = cap_start._pending(intake, ()).project
+        with self.assertRaises(ValueError):
+            j.save_composition(
+                project,
+                [{"행": 1, "구분": "혼합물", "CAS No.": ""}],
+                [{"제품목록행번호": 1, "CAS No.": "", "함량(%)": "30", "성분명(선택)": "톨루엔"}],
+                sds_confirmed=True,
+            )
+        j.save_composition(
+            project,
+            [{"행": 1, "구분": "혼합물", "CAS No.": ""}],
+            [
+                {"제품목록행번호": 1, "CAS No.": "108-88-3", "함량(%)": "30", "성분명(선택)": "이름은 표시용"},
+                {"제품목록행번호": 1, "CAS No.": "67-64-1", "함량(%)": "10", "성분명(선택)": ""},
+            ],
+            sds_confirmed=True,
+        )
+        built, _ = j.build_intake(project)
+        self.assertEqual(built.chemicals.loc[0, "혼합물 여부"], "Y")
+        self.assertEqual(set(built.mixture_components["CAS No."].tolist()), {"108-88-3", "67-64-1"})
+        self.assertTrue(all(built.mixture_components["SDS 제3항 근거"].astype(str).str.contains("SDS 제3항")))
 
     def test_a_filled_template_row_carries_every_column_through_to_the_engine_input(self):
         import pandas as pd
@@ -194,7 +244,7 @@ class TemplateColumnTests(unittest.TestCase):
 
         sheet = load_workbook(BytesIO(up.blank_template()))["물질 목록"]
         lists = {tuple(v.sqref.ranges)[0].coord: v.formula1 for v in sheet.data_validations.dataValidation if v.type == "list"}
-        self.assertEqual(lists["F2:F1000"], '"kg,ton"')
+        self.assertEqual(lists["E2:E1000"], '"kg,ton"')
 
     def test_state_choice_decides_the_liquid_answer_and_unknown_words_are_flagged(self):
         import pandas as pd
