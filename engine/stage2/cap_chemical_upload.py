@@ -395,6 +395,9 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
         else:
             liquid = ""
         for column in EXTRA_COLUMNS:
+            # 아래 세 열은 rows.append에서 정규화된 값을 직접 넣으므로 여기서 덮어쓰지 않는다.
+            if column in {"함량(%)", "성상", SDS_CLASS_COLUMN}:
+                continue
             if column == "최대 동시보유량(ton)":
                 extras[column] = amount
             elif column == LIQUID_COLUMN and liquid:
