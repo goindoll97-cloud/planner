@@ -405,6 +405,41 @@ def _facility_quantities(project: Stage2Project) -> dict[str, float]:
     return out
 
 
+BUSINESS_KEYS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
+
+
+def business_info(project: Stage2Project) -> dict[str, str]:
+    """선택한 사업장의 사업장명·주소·업종. 판정 입력과 같은 곳에서 읽는다."""
+    raw = dict(project.stage1_snapshot.get("business") or {})
+    address = project.get_field("business.address")
+    return {
+        "사업장명": _clean(raw.get("사업장명")) or project.company_name,
+        "사업장 주소": _clean(raw.get("사업장 주소")) or (_clean(address.value) if address is not None else ""),
+        "업종 또는 주요 생산품": _clean(raw.get("업종 또는 주요 생산품")) or _field_text(project, "business.main_products"),
+    }
+
+
+def save_business(project: Stage2Project, name: str, address: str, industry: str) -> None:
+    """사업장 정보를 고친다. 판정 입력, 프로젝트 이름, 별지 제12호가 읽는 칸(주소·주요 생산품)에 함께 반영한다.
+    비워서 저장하면 기존 값을 지우지 않는다."""
+    new = {"사업장명": _clean(name), "사업장 주소": _clean(address), "업종 또는 주요 생산품": _clean(industry)}
+    current = business_info(project)
+    merged = {key: new[key] or current[key] for key in BUSINESS_KEYS}
+    snapshot_business = dict(project.stage1_snapshot.get("business") or {})
+    snapshot_business.update({key: value for key, value in merged.items() if value})
+    project.stage1_snapshot["business"] = snapshot_business
+    if merged["사업장명"]:
+        project.company_name = merged["사업장명"]
+        project.site_name = merged["사업장명"]
+        project.set_field("business.company_name", "회사명", merged["사업장명"], "USER_CONFIRMED")
+        project.set_field("business.site_name", "사업장명", merged["사업장명"], "USER_CONFIRMED")
+    if merged["사업장 주소"]:
+        project.set_field("business.address", "사업장 소재지", merged["사업장 주소"], "USER_CONFIRMED")
+    if merged["업종 또는 주요 생산품"]:
+        project.set_field("business.main_products", "주요 생산품", merged["업종 또는 주요 생산품"], "USER_CONFIRMED")
+    project.touch()
+
+
 def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
     """프로젝트의 사업장·물질·시설·답변으로 판정 입력을 만든다. (입력, 최대보유량을 알 수 없는 물질 이름)"""
     business_raw = dict(project.stage1_snapshot.get("business") or {})

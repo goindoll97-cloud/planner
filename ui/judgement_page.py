@@ -9,7 +9,7 @@ import streamlit as st
 
 from engine.stage2 import cap_judgement as judgement
 from engine.stage2.storage import delete_project, list_projects, load_project
-from ui import cap_start_panel, judgement_panel
+from ui import cap_start_panel, judgement_panel, judgement_project_panel
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 FLASH_KEY = "_judgement_flash"
@@ -36,15 +36,15 @@ current = st.session_state.get(ACTIVE_PROJECT_KEY)
 selected = st.selectbox("사업장", ids, index=ids.index(current) if current in ids else 0, format_func=lambda pid: labels[pid],
                         key="judgement_project")
 st.session_state[ACTIVE_PROJECT_KEY] = selected
-st.caption("새 사업장을 추가하려면 아래 '새 사업장으로 시작하기'를 여세요.")
-cap_start_panel.render(expanded=False)
-
 try:
     project = load_project(selected)
 except Exception as exc:
     st.error(f"사업장을 읽지 못했습니다: {type(exc).__name__}: {exc}")
     st.stop()
 
+st.caption("선택한 사업장의 정보와 물질 목록은 바로 아래에서 고치고 엑셀·CSV로 올립니다. 새 사업장을 추가하려면 그 아래 '새 사업장으로 시작하기'를 여세요.")
+judgement_project_panel.render(project)
+cap_start_panel.render(expanded=False)
 judgement_panel.render(project)
 
 st.markdown("### 다음 단계")
