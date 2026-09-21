@@ -203,6 +203,19 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
     other_issues = [i for i in issues if i not in quantity_issues and i not in mixture_issues]
     if other_issues:
         return StartOutcome("INVALID", tuple(other_issues))
+
+    single_cas_issues = []
+    for idx, row in intake.chemicals.iterrows():
+        if _clean(row.get(MIXTURE_FLAG_COLUMN)).upper() == "N":
+            cas = _clean(row.get("CAS No."))
+            if not cap_judgement.cas_valid(cas):
+                product = _clean(row.get("제품명")) or f"{idx + 1}행"
+                single_cas_issues.append(
+                    f"{idx + 1}행({product}): 단일물질은 유효한 CAS No.가 반드시 필요합니다. 제품 SDS 제3항에서 확인해 주세요."
+                )
+    if single_cas_issues:
+        return StartOutcome("INVALID", tuple(single_cas_issues))
+
     if mixture_issues:
         return _pending(
             intake,
