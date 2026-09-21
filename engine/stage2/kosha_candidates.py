@@ -43,11 +43,22 @@ def _lookup_default(cas: str):
     return kosha_msds.lookup_by_cas(cas)
 
 
-def fetch(cas_numbers: Iterable[str], lookup: Callable = _lookup_default) -> dict[str, Candidate]:
-    """CAS별 후보. 같은 CAS는 한 번만 조회하고, 조회 실패도 상태로 돌려준다(예외를 밖으로 내지 않는다)."""
+def pending_cas(cas_numbers: Iterable[str], have: dict[str, Candidate]) -> list[str]:
+    """아직 후보를 얻지 못한 CAS. 처음 조회하는 것과, 네트워크 오류로 실패한 것(다시 시도해 볼 만한 것)."""
+    out = []
+    for cas in dict.fromkeys(str(c).strip() for c in cas_numbers if str(c).strip()):
+        cand = have.get(cas)
+        if cand is None or (not cand.usable and cand.status == "API_ERROR"):
+            out.append(cas)
+    return out
+
+
+def fetch(cas_numbers: Iterable[str], lookup: Callable = _lookup_default, retries: int = 1) -> dict[str, Candidate]:
+    """CAS별 후보. 같은 CAS는 한 번만 조회하고, 조회 실패도 상태로 돌려준다(예외를 밖으로 내지 않는다).
+    일시적인 네트워크 오류(연결 시간 초과 등)는 retries만큼 다시 시도한다."""
     unique = list(dict.fromkeys(str(c).strip() for c in cas_numbers if str(c).strip()))
 
-    def one(cas: str) -> Candidate:
+    def once(cas: str) -> Candidate:
         try:
             result = lookup(cas)
         except Exception as exc:  # 네트워크·키 문제도 한 행의 상태로만 남긴다
@@ -57,6 +68,14 @@ def fetch(cas_numbers: Iterable[str], lookup: Callable = _lookup_default) -> dic
             chemical_name=str(result.chemical_name or ""), message=str(result.message or ""),
             checked_at_utc=str(result.checked_at_utc or ""),
         )
+
+    def one(cas: str) -> Candidate:
+        candidate = once(cas)
+        for _ in range(max(retries, 0)):
+            if candidate.status != "API_ERROR":
+                break
+            candidate = once(cas)
+        return candidate
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         return dict(zip(unique, pool.map(one, unique)))

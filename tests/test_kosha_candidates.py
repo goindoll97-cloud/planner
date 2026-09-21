@@ -28,10 +28,33 @@ class KoshaCandidateTests(unittest.TestCase):
                                    message="ok", checked_at_utc="t")
 
         out = kc.fetch(["67-64-1", "67-64-1", "1-1-1", ""], lookup=fake)
-        self.assertEqual(sorted(calls), ["1-1-1", "67-64-1"])
+        self.assertEqual(sorted(calls), ["1-1-1", "1-1-1", "67-64-1"])  # 실패한 CAS는 한 번 더 시도한다
         self.assertTrue(out["67-64-1"].usable)
         self.assertEqual(out["1-1-1"].status, "API_ERROR")
         self.assertFalse(out["1-1-1"].usable)
+
+    def test_a_transient_network_error_is_retried_once_and_can_succeed(self):
+        attempts = {"n": 0}
+
+        def flaky(cas):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise TimeoutError("connect timeout")
+            return SimpleNamespace(status="MATCHED", ghs_classifications=["인화성 액체 : 구분 3"], chemical_name="에피클로로히드린",
+                                   message="ok", checked_at_utc="t")
+
+        out = kc.fetch(["106-89-8"], lookup=flaky)
+        self.assertEqual(attempts["n"], 2)
+        self.assertTrue(out["106-89-8"].usable)
+        self.assertEqual(kc.fetch(["106-89-8"], lookup=lambda c: (_ for _ in ()).throw(TimeoutError()), retries=0)["106-89-8"].status,
+                         "API_ERROR")
+
+    def test_pending_cas_is_the_new_ones_and_the_ones_that_failed_on_the_network(self):
+        ok = kc.Candidate("67-64-1", "MATCHED", text="인화성 액체 : 구분 2")
+        no_data = kc.Candidate("111-11-1", "NO_MATCH")          # 자료가 없어서 후보가 없는 것은 다시 조회해도 같다
+        failed = kc.Candidate("106-89-8", "API_ERROR", message="TimeoutError")
+        have = {"67-64-1": ok, "111-11-1": no_data, "106-89-8": failed}
+        self.assertEqual(kc.pending_cas(["67-64-1", "111-11-1", "106-89-8", "108-88-3", "67-64-1", ""], have), ["106-89-8", "108-88-3"])
 
     def test_candidate_text_is_in_the_format_the_engine_sds_parser_reads(self):
         from engine.cap_sds_app1 import SDSApp1Option

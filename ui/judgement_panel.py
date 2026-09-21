@@ -372,11 +372,12 @@ def _chemical_table(project, outcome, table_messages):
 
 
 def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates) -> None:
-    empty = []
+    asked = []
     for number in wanted:
         cas = str(rows[number - 1].get("CAS No.") or rows[number - 1].get("CAS 번호") or "").strip()
-        if cas and not stored[number - 1].get(sds_col) and cas not in candidates:
-            empty.append(cas)
+        if cas and not stored[number - 1].get(sds_col):
+            asked.append(cas)
+    empty = kosha_candidates.pending_cas(asked, candidates)  # 처음이거나 네트워크 오류로 실패한 것만
     help_text = ("CAS 번호만 KOSHA 물질안전보건자료 조회 서비스로 보내고, 제2항의 분류를 후보로 채웁니다. "
                  "참고자료이므로 제품 SDS와 대조해 확인해야 합니다.")
     if st.button("KOSHA에서 SDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,

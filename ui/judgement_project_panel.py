@@ -12,6 +12,7 @@ import streamlit as st
 from engine.stage2 import cap_chemical_upload as chem_upload
 from engine.stage2 import cap_chemical_workspace as chem
 from engine.stage2 import cap_judgement as judgement
+from engine.stage2 import kosha_candidates
 from engine.stage2 import storage
 from ui import cap_frames as frames
 from ui import chemical_upload_panel
@@ -76,6 +77,39 @@ def _chemicals(project) -> None:
                     "물질이 바뀌었으니 아래 '법정 대상 판정하기'(또는 '다시 판정하기')로 결과를 확인하세요.")
 
         chemical_upload_panel.render(f"judge_upload_{pid}", existing=chem_upload.existing_keys(project), add_rows=add_uploaded)
+        if rows:
+            _kosha_all(project)
+
+
+def _kosha_all(project) -> None:
+    """물질 목록 전체(단일물질)의 SDS 제2항 분류 후보를 KOSHA에서 한 번에 조회한다. 결과는 판정 표가 그대로 쓴다."""
+    pid = project.project_id
+    cand_key, gen_key = f"judge_kosha_{pid}", f"judge_chem_gen_{pid}"
+    candidates: dict = st.session_state.get(cand_key, {})
+    singles = chem.single_substance_cas(project)
+    mixtures = len(_rows(project)) - len(singles)
+    st.markdown("**SDS 제2항 분류 한 번에 조회 (KOSHA)**")
+    st.caption("물질 목록의 단일물질 전체를 CAS 번호만 KOSHA로 보내 조회합니다. 조회 결과는 참고자료이며, 판정 규칙이 요청한 물질의 "
+               "표에 후보로 미리 채워집니다(제품 SDS와 대조해 확인해야 판정에 쓰입니다)."
+               + (f" 혼합제품 {mixtures}건은 CAS가 없어 조회하지 않습니다." if mixtures > 0 else ""))
+    todo = kosha_candidates.pending_cas(singles, candidates)
+    label = ("조회 완료" if not todo else "KOSHA에서 전체 물질 SDS 분류 조회" if len(todo) == len(singles)
+             else "조회하지 못한 물질만 다시 조회")
+    if st.button(label, key=f"judge_kosha_all_{pid}", disabled=not todo,
+                 help="CAS 번호만 전송합니다. 회사·수량 정보는 보내지 않습니다."):
+        with st.spinner(f"KOSHA에서 {len(todo)}개 물질을 조회하는 중입니다. 물질이 많으면 1분 넘게 걸릴 수 있습니다."):
+            found = kosha_candidates.fetch(todo)
+        st.session_state[cand_key] = {**candidates, **found}
+        st.session_state[gen_key] = st.session_state.get(gen_key, 0) + 1
+        st.rerun()
+    if singles and candidates:
+        have = [c for c in singles if candidates.get(c) is not None and candidates[c].usable]
+        missing = [c for c in singles if c not in have and c in candidates]
+        st.caption(f"조회 결과: 분류 후보 {len(have)}건 / 후보 없음·실패 {len(missing)}건 / 아직 조회 안 함 {len(singles) - len(have) - len(missing)}건")
+        if missing:
+            st.caption("후보를 얻지 못한 물질: " + ", ".join(
+                f"{cas}({candidates[cas].message or candidates[cas].status})" for cas in missing[:6]) + (" 외" if len(missing) > 6 else "")
+                + " — 이 물질은 제품 SDS를 보고 직접 적어 주세요.")
 
 
 def render(project) -> None:
