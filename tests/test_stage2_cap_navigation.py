@@ -21,6 +21,9 @@ class CAPNavigationTests(unittest.TestCase):
         self.assertEqual(registry.label(12), "별지 제12·13호")
         self.assertEqual(registry.label(3), "별지 제3호")
         self.assertNotIn(13, registry.FORM_NUMBERS)
+        page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        self.assertIn('"implementation": "이행점검 · 자체점검 별지 제1호~제3호"', page)
+        self.assertTrue((ROOT / "ui/cap_implementation_self_check_view.py").exists())
 
     def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
