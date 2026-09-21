@@ -32,7 +32,8 @@ def _changed(pid: str, message: str) -> None:
 def _business(project) -> None:
     pid = project.project_id
     info = judgement.business_info(project)
-    with st.expander("사업장 정보", expanded=not all(info.values())):
+    core_ready = all(info.get(key) for key in ("사업장명", "사업장 주소", "업종 또는 주요 생산품"))
+    with st.expander("사업장 정보", expanded=not core_ready):
         left, middle, right = st.columns(3)
         name = left.text_input(
             "사업장명", value=info["사업장명"], key=f"judge_biz_name_{pid}",
