@@ -1,0 +1,25 @@
+{
+  "schema_version": "cap-submission-form-source-v1",
+  "authority": "화학물질관리법 시행규칙",
+  "revision": "2025-08-07",
+  "role": "OFFICIAL_FORM_REFERENCE",
+  "forms": {
+    "31": {
+      "title": "화학사고예방관리계획서 검토신청서",
+      "hwp_file": "[별지 제31호서식] 화학사고예방관리계획서 검토신청서(화학물질관리법 시행규칙).hwp",
+      "hwp_sha256": "c0fa7950c622516aeece5ad6af98f84fed1bfb8eae1085e39641669a8065a421",
+      "pdf_file": "[별지 제31호서식] 화학사고예방관리계획서 검토신청서(화학물질관리법 시행규칙).pdf",
+      "pdf_sha256": "fbfcc1598f4eeaa1f95a2287674e49c07b1836ac877c45bc372ab070f446368e",
+      "pages": 1
+    },
+    "32": {
+      "title": "화학사고예방관리계획서 변경 검토신청서",
+      "hwp_file": "[별지 제32호서식] 화학사고예방관리계획서 변경 검토신청서(화학물질관리법 시행규칙).hwp",
+      "hwp_sha256": "79a43e4f445ca5e8b2eb10648cce9795ca24105acea74f0bcceb27b0933bbb7d",
+      "pdf_file": "[별지 제32호서식] 화학사고예방관리계획서 변경 검토신청서(화학물질관리법 시행규칙).pdf",
+      "pdf_sha256": "d8cf7af1d9868385b61bf30084acc99851cf02500f022cb646f05928646d9947",
+      "pages": 2
+    }
+  },
+  "implementation_note": "원본 HWP는 출처 근거, PDF는 시각적 레이아웃 QA 기준으로 사용한다. 프로그램 DOCX는 확인된 법정 항목과 페이지 구성을 재현하는 작성지원본이며 원본 HWP 바이너리와 동일하다고 간주하지 않는다."
+}
