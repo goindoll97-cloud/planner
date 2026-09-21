@@ -598,7 +598,7 @@ def content_display(row: Mapping[str, Any], row_number: int, parts: Mapping[int,
     return _clean(row.get("함량(%)"))
 
 
-BUSINESS_KEYS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
+BUSINESS_KEYS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품", "한국표준산업분류(KSIC) 코드")
 
 
 def business_info(project: Stage2Project) -> dict[str, str]:
@@ -609,13 +609,18 @@ def business_info(project: Stage2Project) -> dict[str, str]:
         "사업장명": _clean(raw.get("사업장명")) or project.company_name,
         "사업장 주소": _clean(raw.get("사업장 주소")) or (_clean(address.value) if address is not None else ""),
         "업종 또는 주요 생산품": _clean(raw.get("업종 또는 주요 생산품")) or _field_text(project, "business.main_products"),
+        "한국표준산업분류(KSIC) 코드": _clean(raw.get("한국표준산업분류(KSIC) 코드")) or _field_text(project, "business.ksic"),
     }
 
 
-def save_business(project: Stage2Project, name: str, address: str, industry: str) -> None:
+def save_business(project: Stage2Project, name: str, address: str, industry: str, ksic: str = "") -> None:
     """사업장 정보를 고친다. 판정 입력, 프로젝트 이름, 별지 제12호가 읽는 칸(주소·주요 생산품)에 함께 반영한다.
     비워서 저장하면 기존 값을 지우지 않는다."""
-    new = {"사업장명": _clean(name), "사업장 주소": _clean(address), "업종 또는 주요 생산품": _clean(industry)}
+    new = {
+        "사업장명": _clean(name), "사업장 주소": _clean(address),
+        "업종 또는 주요 생산품": _clean(industry),
+        "한국표준산업분류(KSIC) 코드": re.sub(r"\D", "", _clean(ksic))[:5],
+    }
     current = business_info(project)
     merged = {key: new[key] or current[key] for key in BUSINESS_KEYS}
     snapshot_business = dict(project.stage1_snapshot.get("business") or {})
@@ -630,6 +635,8 @@ def save_business(project: Stage2Project, name: str, address: str, industry: str
         project.set_field("business.address", "사업장 소재지", merged["사업장 주소"], "USER_CONFIRMED")
     if merged["업종 또는 주요 생산품"]:
         project.set_field("business.main_products", "주요 생산품", merged["업종 또는 주요 생산품"], "USER_CONFIRMED")
+    if merged["한국표준산업분류(KSIC) 코드"]:
+        project.set_field("business.ksic", "업종 분류 코드(KSIC)", merged["한국표준산업분류(KSIC) 코드"], "USER_CONFIRMED")
     project.touch()
 
 
@@ -641,6 +648,7 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
         "사업장명": _clean(business_raw.get("사업장명")) or project.company_name,
         "사업장 주소": _clean(business_raw.get("사업장 주소")) or (_clean(address.value) if address is not None else ""),
         "업종 또는 주요 생산품": _clean(business_raw.get("업종 또는 주요 생산품")) or _field_text(project, "business.main_products"),
+        "한국표준산업분류(KSIC) 코드": _clean(business_raw.get("한국표준산업분류(KSIC) 코드")) or _field_text(project, "business.ksic"),
     }
     _, rows = chem._rows(project)
     computed = _facility_quantities(project)
