@@ -1,0 +1,24 @@
+{
+  "schema_version": "cap-implementation-forms-source-v1",
+  "regulation": "화학사고예방관리계획서 이행 등에 관한 규정",
+  "authority": "화학물질안전원",
+  "notice": "화학물질안전원고시 제2026-10호",
+  "effective_date": "2026-06-01",
+  "verified_date": "2026-09-21",
+  "forms": {
+    "1": {
+      "title": "화학사고예방관리계획서 자체점검 결과서",
+      "official_pdf": "https://www.law.go.kr/LSW/flDownload.do?bylClsCd=200203&flNm=%5B%EB%B3%84%EC%A7%80+1%5D+%ED%99%94%ED%95%99%EC%82%AC%EA%B3%A0%EC%98%88%EB%B0%A9%EA%B4%80%EB%A6%AC%EA%B3%84%ED%9A%8D%EC%84%9C+%EC%9E%90%EC%B2%B4%EC%A0%90%EA%B2%80+%EA%B2%B0%EA%B3%BC%EC%84%9C&flSeq=148216911"
+    },
+    "2": {
+      "title": "화학사고예방관리계획서 자체점검표",
+      "official_pdf": "https://www.law.go.kr/LSW/flDownload.do?bylClsCd=200203&flNm=%5B%EB%B3%84%EC%A7%80+2%5D+%ED%99%94%ED%95%99%EC%82%AC%EA%B3%A0%EC%98%88%EB%B0%A9%EA%B4%80%EB%A6%AC%EA%B3%84%ED%9A%8D%EC%84%9C+%EC%9E%90%EC%B2%B4%EC%A0%90%EA%B2%80%ED%91%9C&flSeq=148216923"
+    },
+    "3": {
+      "title": "화학사고예방관리계획서 자체점검 결과 개선사항 조치 내역서",
+      "official_pdf": "https://www.law.go.kr/flDownload.do?bylClsCd=200203&flNm=%5B%EB%B3%84%EC%A7%80+3%5D+%ED%99%94%ED%95%99%EC%82%AC%EA%B3%A0%EC%98%88%EB%B0%A9%EA%B4%80%EB%A6%AC%EA%B3%84%ED%9A%8D%EC%84%9C+%EC%9E%90%EC%B2%B4%EC%A0%90%EA%B2%80+%EA%B2%B0%EA%B3%BC+%EA%B0%9C%EC%84%A0%EC%82%AC%ED%95%AD+%EC%A1%B0%EC%B9%98+%EB%82%B4%EC%97%AD%EC%84%9C&flSeq=148216929"
+    }
+  },
+  "article4_note": "제4조제1항의 자체점검 결과 및 개선사항 조치내역은 이 규정 별지 1~3호를 사용한다. 주요취급시설은 제4조제2항에 따라 작성 규정 별지 제2호 변경내역 관리대장도 함께 제출한다.",
+  "implementation_note": "법정서식 항목을 작성지원용 DOCX로 재현한다. 확인되지 않은 값은 자동 추정하지 않으며, 자체점검 결과의 '개선필요'는 별지 제3호 조치내역과 연결한다."
+}
