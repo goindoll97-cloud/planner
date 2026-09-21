@@ -436,8 +436,9 @@ def form_filename(project: Stage2Project, no: int) -> str:
 def build_change_log_docx(project: Stage2Project) -> bytes:
     """주요취급시설 연간 제출용: 작성 규정 별지 제2호 변경내역 관리대장."""
     rec = project.get_field("cap.prevention.change_log")
-    rows = rec.value if rec is not None and rec.status in CONFIRMED_STATUSES and isinstance(rec.value, list) else []
-    if is_major_facility(project) and not rows:
+    confirmed = rec is not None and rec.status in CONFIRMED_STATUSES and isinstance(rec.value, list)
+    rows = rec.value if confirmed else []
+    if is_major_facility(project) and not confirmed:
         raise ValueError("작성 규정 별지 제2호 변경내역 관리대장이 확인되지 않았습니다.")
 
     doc = _doc_landscape()
