@@ -16,6 +16,7 @@ from engine.stage2 import versioning as ver
 from engine.stage2 import storage
 
 KINDS = ("신규", "변경", "재제출")
+CAP_KINDS = ("신규제출", "변경제출", "재제출", "5년 재제출", "부적합 후 재제출", "이행점검 부적정 재제출")
 CHANGE_TYPES = ("설비 변경", "취급물질 변경", "공정 변경", "조직·연락처 변경", "기타")
 CHANGE_LABEL = {"ADDED": "추가", "REMOVED": "삭제", "CHANGED": "변경"}
 DOC_NAME = {"CAP": "화학사고예방관리계획서", "PSM": "공정안전보고서"}
@@ -66,21 +67,25 @@ def render(project, doc: str) -> None:
             )
 
         st.markdown("**현재 값을 버전으로 저장**")
-        kind_options = KINDS if metas else ("신규",)
+        if doc == "CAP":
+            kind_options = CAP_KINDS if metas else ("신규제출",)
+        else:
+            kind_options = KINDS if metas else ("신규",)
         c1, c2 = st.columns(2)
         kind = c1.selectbox("제출유형", kind_options, key=f"ver_kind_{doc}_{pid}",
-                            help="변경은 v1.0 → v1.1처럼 부 버전이, 신규·재제출은 v2.0처럼 새 주 버전이 열립니다.")
+                            help="변경제출은 v1.0 → v1.1처럼 부 버전이, 신규·재제출 계열은 v2.0처럼 새 주 버전이 열립니다.")
+        is_change = kind in {"변경", "변경제출"}
         label = c2.selectbox("변경 유형", ("",) + CHANGE_TYPES, key=f"ver_type_{doc}_{pid}",
-                             disabled=kind != "변경")
+                             disabled=not is_change)
         note = st.text_input("변경 사유·메모", key=f"ver_note_{doc}_{pid}",
                              help="왜 바뀌었는지 적어 두면 변경내역을 정리할 때 그대로 쓸 수 있습니다.")
         if st.button("버전으로 저장", key=f"ver_save_{doc}_{pid}", type="primary"):
-            if kind == "변경" and not (label or note.strip()):
+            if is_change and not (label or note.strip()):
                 st.error("변경 버전은 변경 유형이나 사유를 하나 이상 적어 주세요.")
             elif latest is not None and not pending:
                 st.error("이전 버전과 달라진 값이 없어 새 버전을 만들지 않았습니다.")
             else:
-                meta = ver.freeze_version(project, doc, kind, label=label if kind == "변경" else "", note=note.strip())
+                meta = ver.freeze_version(project, doc, kind, label=label if is_change else "", note=note.strip())
                 st.success(f"{meta.version_id}로 저장했습니다.")
                 st.rerun()
 
@@ -96,15 +101,15 @@ def render(project, doc: str) -> None:
                 st.write(f"{base} 대비 현재 값의 변경 {len(changes)}건")
                 st.dataframe(changes_frame(changes).drop(columns=["키"]), hide_index=True, width="stretch")
 
-            st.markdown("**이전 버전 값으로 되돌리기**")
-            target = st.selectbox("되돌릴 버전", choices, index=choices.index(latest.version_id),
+            st.markdown("**이전 제출본에서 새 작업 시작하기**")
+            target = st.selectbox("기준으로 삼을 버전", choices, index=choices.index(latest.version_id),
                                   key=f"ver_restore_{doc}_{pid}")
             confirm = True
             if pending:
                 st.warning(f"저장하지 않은 변경 {len(pending)}건이 있습니다. 되돌리면 이 변경은 사라집니다.")
                 confirm = st.checkbox("사라져도 됩니다", key=f"ver_force_{doc}_{pid}")
-            if st.button("이 버전 값으로 되돌리기", key=f"ver_do_restore_{doc}_{pid}", disabled=not confirm):
+            if st.button("이 버전에서 새 작업 시작", key=f"ver_do_restore_{doc}_{pid}", disabled=not confirm):
                 ver.start_from_version(project, target, doc=doc, force=True)
                 storage.save_project(project)
-                st.success(f"{target} 값으로 되돌렸습니다.")
+                st.success(f"{target}의 값을 현재 작업본으로 복제했습니다. 여기서 변경된 부분만 수정하세요.")
                 st.rerun()
