@@ -72,7 +72,7 @@ COMPOSITION_OPTIONS = ["선택하세요", "단일물질", "혼합물"]
 
 
 def _composition_form(project, outcome) -> None:
-    """Confirm composition before statutory screening; CAS is the legal identifier."""
+    """입력파일에서 확정되지 않은 성분정보만 보완한다. CAS가 법적 식별키다."""
     from engine.stage2 import cap_chemical_workspace as chem
 
     _, rows = chem._rows(project)
@@ -81,10 +81,13 @@ def _composition_form(project, outcome) -> None:
         st.info("확인할 물질 성분 정보가 없습니다.")
         return
 
-    st.markdown("#### 물질 성분 확인")
-    st.caption(
-        "물질명은 표시용으로만 사용합니다. 법적 판정은 CAS No.를 기준으로 합니다. "
-        "단일물질은 CAS No.를 확인하면 100%로 처리하고, 혼합물은 제품 SDS 제3항의 구성성분 CAS No.와 함량(%)을 각각 입력합니다."
+    st.markdown(
+        "#### 물질 성분 확인",
+        help=(
+            "**단일물질**은 CAS No. 하나로 확인합니다.\n\n"
+            "**혼합제품**은 제품 자체 이름이나 CAS를 추정하지 않고, 제품 SDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
+            "두 번째 '혼합물 구성성분' 파일을 쓰지 않은 경우에만 여기서 직접 적으면 됩니다."
+        ),
     )
 
     stored_components = judgement.mixture_components(project)
@@ -99,15 +102,23 @@ def _composition_form(project, outcome) -> None:
         row = rows[number - 1]
         product = str(row.get("제품명") or row.get("물질명") or f"{number}행").strip()
         current_cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
-        st.markdown(f"**{number}행 · {product}**")
-        choice = st.radio(
-            f"{product}의 구분",
-            COMPOSITION_OPTIONS,
-            horizontal=True,
-            key=f"judge_comp_kind_{pid}_{number}",
-            help="단일물질이면 하나의 CAS No.로 판정합니다. 혼합제품이면 제품 자체 이름이 아니라 SDS 제3항 구성성분의 CAS No.로 판정합니다.",
-            label_visibility="collapsed",
-        )
+        st.markdown(f"**{product}**")
+
+        if judgement._mixture_yes(row.get("혼합물 여부")):
+            choice = "혼합물"
+            st.caption("기본 물질목록에서 '혼합물'로 확인한 제품입니다.")
+        elif judgement._mixture_no(row.get("혼합물 여부")):
+            choice = "단일물질"
+            st.caption("기본 물질목록에서 '단일물질'로 확인한 제품입니다.")
+        else:
+            choice = st.radio(
+                f"{product}의 구분",
+                COMPOSITION_OPTIONS,
+                horizontal=True,
+                key=f"judge_comp_kind_{pid}_{number}",
+                help="제품 SDS 제3항을 확인해 단일물질인지 혼합물인지 선택하세요.",
+                label_visibility="collapsed",
+            )
 
         if choice == "단일물질":
             cas = st.text_input(
@@ -122,17 +133,13 @@ def _composition_form(project, outcome) -> None:
             any_mixture = True
             classifications.append({"행": number, "구분": choice, "CAS No.": ""})
             existing = [
-                {
-                    "CAS No.": str(comp.get("CAS No.") or ""),
-                    "함량(%)": comp.get("함량(%)"),
-                    "성분명(선택)": str(comp.get("구성성분명") or ""),
-                }
+                {"CAS No.": str(comp.get("CAS No.") or ""), "함량(%)": comp.get("함량(%)")}
                 for comp in stored_components
                 if str(comp.get("제품목록행번호") or "").strip() == str(number)
             ]
-            seed = existing or [{"CAS No.": "", "함량(%)": None, "성분명(선택)": ""}]
+            seed = existing or [{"CAS No.": "", "함량(%)": None}]
             editor = st.data_editor(
-                pd.DataFrame(seed, columns=["CAS No.", "함량(%)", "성분명(선택)"]),
+                pd.DataFrame(seed, columns=["CAS No.", "함량(%)"]),
                 num_rows="dynamic",
                 hide_index=True,
                 width="stretch",
@@ -140,28 +147,24 @@ def _composition_form(project, outcome) -> None:
                 column_config={
                     "CAS No.": st.column_config.TextColumn(
                         "구성성분 CAS No.",
-                        help="제품 SDS 제3항에 적힌 구성성분의 CAS No.를 그대로 입력합니다. 모든 구성성분 행에서 필수입니다.",
+                        help="제품 SDS 제3항에 적힌 구성성분 CAS No.를 그대로 입력합니다. 모든 성분 행에 필수입니다.",
                     ),
                     "함량(%)": st.column_config.NumberColumn(
                         "함량(%)", min_value=0.0, max_value=100.0,
-                        help="제품 SDS 제3항의 해당 구성성분 함량을 입력합니다.",
-                    ),
-                    "성분명(선택)": st.column_config.TextColumn(
-                        "성분명(선택)", help="표시용입니다. 법적 판정에는 사용하지 않습니다."
+                        help="제품 SDS 제3항에 적힌 해당 구성성분 함량을 입력합니다.",
                     ),
                 },
             )
             for item in editor.to_dict("records"):
                 cas = "" if pd.isna(item.get("CAS No.")) else str(item.get("CAS No.") or "").strip()
                 pct = "" if pd.isna(item.get("함량(%)")) else str(item.get("함량(%)") or "").strip()
-                name = "" if pd.isna(item.get("성분명(선택)")) else str(item.get("성분명(선택)") or "").strip()
-                if not cas and not pct and not name:
+                if not cas and not pct:
                     continue
                 components.append({
                     "제품목록행번호": number,
                     "CAS No.": cas,
                     "함량(%)": pct,
-                    "성분명(선택)": name,
+                    "성분명(선택)": "",
                 })
         st.divider()
 
@@ -179,12 +182,7 @@ def _composition_form(project, outcome) -> None:
         disabled=any_mixture and not confirmed,
     ):
         try:
-            judgement.save_composition(
-                project,
-                classifications,
-                components,
-                sds_confirmed=confirmed,
-            )
+            judgement.save_composition(project, classifications, components, sds_confirmed=confirmed)
         except ValueError as exc:
             st.warning(str(exc))
             return
