@@ -275,7 +275,9 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
         else:
             liquid = ""
         for column in EXTRA_COLUMNS:
-            if column == "최대 동시보유량(ton)":
+            if column == "함량(%)":
+                extras[column] = content
+            elif column == "최대 동시보유량(ton)":
                 extras[column] = amount
             elif column == LIQUID_COLUMN and liquid:
                 extras[column] = liquid  # 성상 선택에서 액체 여부를 프로그램이 정한다(액체 Y, 기체·고체 N)
