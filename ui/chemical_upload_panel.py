@@ -87,7 +87,10 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         edited = st.data_editor(frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
                                 key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}")
         memo = {i: rows[i].get("메모", "") for i in range(len(rows))}
-        edited_rows = [{**rec, "메모": memo.get(i, "")} for i, rec in enumerate(edited.to_dict("records"))]
+        edited_rows = []
+        for i, rec in enumerate(edited.to_dict("records")):
+            hidden = {k: checked.rows[i].get(k, "") for k in up.EXTRA_COLUMNS}
+            edited_rows.append({**hidden, **rec, "메모": memo.get(i, "")})
         final = up.check_rows(edited_rows, *existing)
         good = [r for r in final.rows if r["_ok"]]
         c1, c2, c3 = st.columns(3)
