@@ -235,7 +235,7 @@ def _ask(project, outcome) -> None:
     others = [m for m in outcome.messages if m not in covered]
     if others:
         st.info("판정 규칙이 함께 요청한 내용입니다. 답을 적는 질문이 아니라, 물질 목록이나 시설 정보를 보완하면 해결됩니다.\n\n"
-                + "\n".join(f"• {judgement.display_request(m)}" for m in others))
+                + "\n".join(f"• {judgement.plain_request(m)}" for m in others))
     note8_rows = _note8_table(project) if note8_needed else None
     edited, used = _chemical_table(project, outcome, table_messages)
     confirmed = True
@@ -274,8 +274,20 @@ YES_NO_UNKNOWN = ["", "Y", "N", "모름"]
 ANSWER_LABELS = {"Y": "예", "N": "아니오"}
 
 
+def _holding_help() -> None:
+    """'사업장 최대보유량'이 무엇이고 어떻게 채우는지. 표에 그 열이 있을 때만 보여 준다."""
+    st.info("**사업장 최대보유량**은 같은 물질이 사업장 안의 여러 시설(저장탱크·반응기·보관창고 등)에 동시에 있을 수 있는 양을 "
+            "법에서 정한 방식으로 계산해 합한 값입니다. 규정수량과 비교해 작성 대상인지 정하는 기준이 됩니다.\n\n"
+            "• **시설 정보를 입력하면 프로그램이 계산해 줍니다.** 아래 링크의 별지 제1호에서 시설(용량·비중 등)을 입력하세요.\n\n"
+            "• 이미 법에서 정한 방식으로 계산한 값이 있으면 아래 표에 직접 적어도 됩니다.")
+    try:
+        st.page_link("ui/cap_workspace_page.py", label="별지 제1호에서 시설 입력하기", icon="📝")
+    except Exception:
+        pass  # 페이지 이동 정보가 없는 환경(테스트 등)에서는 링크만 생략한다
+
+
 def _chemical_table(project, outcome, table_messages):
-    """물질별로 판정 엔진이 요구한 값을 입력받는 표. 입력한 전체 행 목록(저장 형식)을 돌려주고, 표가 필요 없으면 None."""
+    """물질별로 판정 엔진이 요구한 값만 입력받는 표. 입력한 전체 행 목록(저장 형식)을 돌려주고, 표가 필요 없으면 None."""
     if not table_messages:
         return None, {}
     from engine.stage2 import cap_chemical_workspace as chem
@@ -283,12 +295,15 @@ def _chemical_table(project, outcome, table_messages):
     _, rows = chem._rows(project)
     if not rows:
         return None, {}
+    needs = judgement.request_needs(table_messages, len(rows))
+    wanted = sorted(needs)
+    shown = judgement.columns_for(needs) or list(judgement.CHEM_INPUT_COLUMNS)
+    has_quantity = any(column in shown for column in judgement.QUANTITY_COLUMNS)
     st.markdown("**물질별로 확인할 값**")
-    st.caption("아래 표에서 비어 있는 칸을 채워 주세요. 판정 규칙이 요청한 물질만 보여 줍니다. "
-               "빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다. " + unit_help())
-    for message in table_messages:
-        st.write(f"• {judgement.display_request(message)}")
-    wanted = judgement.request_rows(table_messages, len(rows))
+    st.caption("아래 표의 '필요한 값' 칸에 적힌 내용을 같은 줄에서 채워 주세요. 모르는 칸은 비워 두면 됩니다. "
+               "빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다." + (" " + unit_help() if has_quantity else ""))
+    if "사업장 최대보유량" in {label for labels in needs.values() for label in labels}:
+        _holding_help()
     stored = judgement.chemical_inputs(project)
     stored = stored + [{}] * (len(rows) - len(stored))
     pid = project.project_id
@@ -300,20 +315,25 @@ def _chemical_table(project, outcome, table_messages):
         cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
         if not extra.get(sds_col) and candidates.get(cas) is not None and candidates[cas].usable:
             extra = {**extra, sds_col: candidates[cas].text}  # 비어 있는 칸에만 후보를 넣는다
-        records.append({
+        record = {
             "행": number,
             "제품명": str(row.get("제품명") or row.get("물질명") or ""),
-            "CAS No.": str(row.get("CAS No.") or row.get("CAS 번호") or ""),
-            "단위": "ton",  # 저장된 값은 항상 ton이다
-            **{column: extra.get(column, "") for column in judgement.CHEM_INPUT_COLUMNS},
-        })
+            "CAS No.": cas,
+            "필요한 값": ", ".join(needs[number]),
+        }
+        if has_quantity:
+            record["단위"] = "ton"  # 저장된 값은 항상 ton이다
+        record.update({column: extra.get(column, "") for column in shown})
+        records.append(record)
     frame = pd.DataFrame(records)
-    _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates)
+    if sds_col in shown:
+        _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates)
     text = lambda label, help_text=None: st.column_config.TextColumn(label, help=help_text)
     config = {
         "행": st.column_config.NumberColumn("행", disabled=True, width="small"),
         "제품명": st.column_config.TextColumn("제품명", disabled=True),
         "CAS No.": st.column_config.TextColumn("CAS No.", disabled=True),
+        "필요한 값": st.column_config.TextColumn("필요한 값", disabled=True, help="이 물질에 대해 판정 규칙이 요청한 값입니다."),
         "함량(%)": text("함량(%)", "제품 중 이 물질의 함량입니다."),
         "상온·상압 액체 여부(해당 시)": st.column_config.SelectboxColumn("상온·상압 액체 여부", options=YES_NO_UNKNOWN),
         "단위": st.column_config.SelectboxColumn("단위", options=list(judgement.UNIT_OPTIONS), required=True, width="small",
@@ -322,14 +342,14 @@ def _chemical_table(project, outcome, table_messages):
         "최대 저장량": text("최대 저장량", "한꺼번에 가장 많이 저장하는 양입니다. 모르면 비워 두고, 저장하지 않으면 0을 적으세요."),
         "최대 동시보유량(알면 입력)": text(
             "사업장 최대보유량",
-            "법에서 정한 방법(설비 용량 × 비중 등)으로 계산한 사업장 전체의 최대 보유량입니다. 계산하지 않았다면 비워 두세요. 별지 제1호에서 시설을 입력하면 자동 계산됩니다."),
+            "법에서 정한 방법(시설별 용량·비중 등)으로 계산한 사업장 전체의 최대 보유량입니다. 계산하지 않았다면 비워 두세요. 별지 제1호에서 시설을 입력하면 자동 계산됩니다."),
         "최대보유량 법정 산정 여부": st.column_config.SelectboxColumn(
             "위 값은 법정 방식으로 계산했나요?",
             help="바로 왼쪽 '사업장 최대보유량'을 법에서 정한 방법으로 계산했으면 Y(예), 창고 재고 등 단순 추정이면 N(아니오)입니다. 잘 모르면 '모름'을 고르세요.",
             options=YES_NO_UNKNOWN),
-        "SDS 제2항 유해성·위험성 분류(선택 입력)": text(
+        sds_col: text(
             "SDS 제2항 분류",
-            "제품 SDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 판정 규칙이 요청한 물질만 채우면 되고, 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
+            "제품 SDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
     }
     editor = st.data_editor(frame, column_config=config, hide_index=True, width="stretch", num_rows="fixed",
                             key=f"judge_chem_{pid}_{st.session_state.get(gen_key, 0)}")
@@ -337,14 +357,15 @@ def _chemical_table(project, outcome, table_messages):
     used: dict = {}
     for position, number in enumerate(wanted):
         values = editor.iloc[position]
-        typed = {column: ("" if pd.isna(values[column]) else str(values[column]).strip())
-                 for column in judgement.CHEM_INPUT_COLUMNS}
-        typed["단위"] = "ton" if pd.isna(values["단위"]) else str(values["단위"])
-        result[number - 1] = judgement.rows_to_ton([typed])[0]  # 고른 단위를 ton으로 통일해 저장한다
+        typed = {column: ("" if pd.isna(values[column]) else str(values[column]).strip()) for column in shown}
+        if has_quantity:
+            typed["단위"] = "ton" if pd.isna(values["단위"]) else str(values["단위"])
+        # 표에 보이지 않는 열의 예전 값은 그대로 두고, 보이는 열만 바꾼다. 고른 단위는 ton으로 통일해 저장한다.
+        result[number - 1] = {**result[number - 1], **judgement.rows_to_ton([typed])[0]}
         cas = str(values["CAS No."]).strip()
         cand = candidates.get(cas)
         # 후보 문구를 그대로 둔 칸만 'KOSHA 후보 사용'으로 본다(고쳐 쓴 칸은 사용자가 직접 적은 값이다).
-        if (cand is not None and cand.usable and result[number - 1].get(sds_col) == cand.text
+        if (sds_col in shown and cand is not None and cand.usable and result[number - 1].get(sds_col) == cand.text
                 and not stored[number - 1].get(sds_col)):
             used[cas] = cand
     return result, used
