@@ -84,6 +84,10 @@ if not project.cap_in_scope and not cap_judgement.undecided(project):
                "'새 사업장으로 시작하기'에서 다시 판정하세요.")
     st.stop()
 
+from ui import version_panel
+
+version_panel.render(project, "CAP")
+
 from ui import cap_forms_registry as registry
 
 SPECIAL = {"narrative": "서술형 항목 · 사전관리방침과 비상대응계획", "export": "점검·내보내기 · 보고서 내려받기"}
