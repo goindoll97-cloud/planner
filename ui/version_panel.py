@@ -85,6 +85,15 @@ def render(project, doc: str) -> None:
             elif latest is not None and not pending:
                 st.error("이전 버전과 달라진 값이 없어 새 버전을 만들지 않았습니다.")
             else:
+                if doc == "CAP":
+                    project.set_field(
+                        "cap.business.submission_type",
+                        "화학사고예방관리계획서 제출구분",
+                        kind,
+                        "USER_CONFIRMED",
+                        note="CAP 버전 저장 시 선택한 제출유형과 동기화",
+                    )
+                    storage.save_project(project)
                 meta = ver.freeze_version(project, doc, kind, label=label if is_change else "", note=note.strip())
                 st.success(f"{meta.version_id}로 저장했습니다.")
                 st.rerun()
@@ -104,12 +113,33 @@ def render(project, doc: str) -> None:
             st.markdown("**이전 제출본에서 새 작업 시작하기**")
             target = st.selectbox("기준으로 삼을 버전", choices, index=choices.index(latest.version_id),
                                   key=f"ver_restore_{doc}_{pid}")
+            next_kind = None
+            if doc == "CAP":
+                next_kind = st.selectbox(
+                    "새 작업의 제출유형",
+                    CAP_KINDS,
+                    index=1 if "변경제출" in CAP_KINDS else 0,
+                    key=f"ver_next_kind_{doc}_{pid}",
+                    help="기준 제출본을 복제한 직후 현재 작업본의 제출구분으로 저장됩니다.",
+                )
             confirm = True
             if pending:
                 st.warning(f"저장하지 않은 변경 {len(pending)}건이 있습니다. 되돌리면 이 변경은 사라집니다.")
                 confirm = st.checkbox("사라져도 됩니다", key=f"ver_force_{doc}_{pid}")
             if st.button("이 버전에서 새 작업 시작", key=f"ver_do_restore_{doc}_{pid}", disabled=not confirm):
                 ver.start_from_version(project, target, doc=doc, force=True)
+                if doc == "CAP" and next_kind:
+                    project.set_field(
+                        "cap.business.submission_type",
+                        "화학사고예방관리계획서 제출구분",
+                        next_kind,
+                        "USER_CONFIRMED",
+                        note=f"{target}에서 새 작업 시작",
+                    )
                 storage.save_project(project)
-                st.success(f"{target}의 값을 현재 작업본으로 복제했습니다. 여기서 변경된 부분만 수정하세요.")
+                st.success(
+                    f"{target}의 값을 현재 작업본으로 복제했습니다."
+                    + (f" 제출구분은 '{next_kind}'로 설정했습니다." if next_kind else "")
+                    + " 여기서 변경된 부분만 수정하세요."
+                )
                 st.rerun()
