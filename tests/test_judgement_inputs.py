@@ -119,7 +119,8 @@ class TemplateColumnTests(unittest.TestCase):
         parsed = up.parse(data, "물질목록_양식.xlsx")
         self.assertEqual(
             set(parsed.mapping),
-            {"제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"},
+            {"제품명", "혼합물 여부", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상",
+             "SDS 제2항 유해성·위험성 분류(선택 입력)"},
         )
         self.assertEqual(parsed.mapping["최대 제조·사용량"], "최대 제조·사용량")
         self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량")
@@ -244,7 +245,9 @@ class TemplateColumnTests(unittest.TestCase):
 
         sheet = load_workbook(BytesIO(up.blank_template()))["물질 목록"]
         lists = {tuple(v.sqref.ranges)[0].coord: v.formula1 for v in sheet.data_validations.dataValidation if v.type == "list"}
-        self.assertEqual(lists["E2:E1000"], '"kg,ton"')
+        self.assertEqual(lists["G2:G1000"], '"kg,ton"')
+        self.assertEqual(lists["B2:B1000"], '"단일물질,혼합물"')
+        self.assertEqual(lists["H2:H1000"], '"기체,액체,고체"')
 
     def test_state_choice_decides_the_liquid_answer_and_unknown_words_are_flagged(self):
         import pandas as pd
