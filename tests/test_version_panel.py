@@ -23,6 +23,12 @@ def _app():
 def _project(volume=5) -> Stage2Project:
     project = Stage2Project(project_id="p1", company_name="한빛화학")
     project.set_field("facility.reactor.volume", "반응기 용량", volume, "USER_CONFIRMED")
+    project.set_field(
+        "cap.business.submission_type",
+        "화학사고예방관리계획서 제출구분",
+        "신규제출",
+        "USER_CONFIRMED",
+    )
     return project
 
 
