@@ -345,6 +345,9 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
         if not cas and not is_mixture:
             errors += 1
             notes.append("단일물질은 CAS No.가 반드시 필요합니다. 물질명으로 추정하지 않습니다.")
+        if is_mixture and cas and not row.get("_components"):
+            warnings += 1
+            notes.append("혼합제품 자체 CAS는 판정에 사용하지 않습니다. 구성성분 CAS는 두 번째 '혼합물 구성성분' 파일에 적어 주세요.")
         key = cas or _norm(name)
         if key in seen:
             errors += 1
