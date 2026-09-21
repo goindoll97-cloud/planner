@@ -115,9 +115,40 @@ class TemplateColumnTests(unittest.TestCase):
 
         data = up.blank_template()
         parsed = up.parse(data, "물질목록_양식.xlsx")
-        self.assertEqual(set(parsed.mapping), (set(up.ALL_COLUMNS) | {"성상"}) - {"상온·상압 액체 여부(해당 시)"})
-        self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량(ton)")
-        self.assertEqual(parsed.mapping["최대 동시보유량(ton)"], "최대 동시보유량(ton)")
+        self.assertEqual(
+            set(parsed.mapping),
+            {"제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위"},
+        )
+        self.assertEqual(parsed.mapping["최대 제조·사용량"], "최대 제조·사용량")
+        self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량")
+        self.assertEqual(parsed.mapping["단위"], "단위")
+
+    def test_minimal_template_converts_kg_quantities_to_ton_for_engine(self):
+        import pandas as pd
+        from io import BytesIO
+
+        from engine.stage2 import cap_chemical_upload as up
+
+        frame = pd.DataFrame(
+            [["톨루엔", "108-88-3", "99.5", "3000", "12500", "kg"]],
+            columns=["제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위"],
+        )
+        buffer = BytesIO()
+        frame.to_excel(buffer, index=False)
+        parsed = up.parse(buffer.getvalue(), "minimal.xlsx")
+        row = up.normalize(parsed, parsed.mapping)[0]
+        self.assertEqual(row["최대 제조·사용량"], "3")
+        self.assertEqual(row["최대 저장량"], "12.5")
+        self.assertEqual(row["단위"], "ton")
+        checked = up.check_rows([row])
+        intake = cap_start.build_intake(
+            {"사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"},
+            checked.rows,
+        )
+        chem = intake.chemicals.iloc[0]
+        self.assertEqual(chem["최대 제조·사용량"], 3.0)
+        self.assertEqual(chem["최대 저장량"], 12.5)
+        self.assertEqual(chem["수량 단위"], "ton")
 
     def test_a_filled_template_row_carries_every_column_through_to_the_engine_input(self):
         import pandas as pd
@@ -140,7 +171,7 @@ class TemplateColumnTests(unittest.TestCase):
         intake = cap_start.build_intake({"사업장명": "t"}, checked.rows)
         chem = intake.chemicals.iloc[0]
         self.assertEqual(chem["상온·상압 액체 여부(해당 시)"], "Y")
-        self.assertEqual(chem["최대 저장량"], "2")
+        self.assertEqual(chem["최대 저장량"], 2.0)
         self.assertEqual(chem["SDS 제2항 유해성·위험성 분류(선택 입력)"], "별표1 해당없음")
 
     def test_a_stored_project_row_feeds_the_judgement_input_without_asking_again(self):
@@ -154,7 +185,7 @@ class TemplateColumnTests(unittest.TestCase):
         self.assertEqual(built.chemicals.loc[0, "상온·상압 액체 여부(해당 시)"], "Y")
 
 
-    def test_template_state_and_yes_no_columns_are_dropdown_lists(self):
+    def test_template_unit_column_is_a_kg_ton_dropdown(self):
         from io import BytesIO
 
         from openpyxl import load_workbook
@@ -163,8 +194,7 @@ class TemplateColumnTests(unittest.TestCase):
 
         sheet = load_workbook(BytesIO(up.blank_template()))["물질 목록"]
         lists = {tuple(v.sqref.ranges)[0].coord: v.formula1 for v in sheet.data_validations.dataValidation if v.type == "list"}
-        self.assertEqual(lists["E2:E1000"], '"기체,액체,고체"')
-        self.assertEqual(lists["H2:H1000"], '"Y,N"')
+        self.assertEqual(lists["F2:F1000"], '"kg,ton"')
 
     def test_state_choice_decides_the_liquid_answer_and_unknown_words_are_flagged(self):
         import pandas as pd

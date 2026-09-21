@@ -116,12 +116,14 @@ class TemplateTests(unittest.TestCase):
         book = load_workbook(BytesIO(up.blank_template()))
         first = book["물질 목록"]
         self.assertEqual([c.value for c in first[1]], [
-            "제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", "성상(상온·상압)", "최대 제조·사용량(ton)",
-            "최대 저장량(ton)", "최대보유량 법정 산정 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)"])
+            "제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위"])
         self.assertEqual(first.max_row, 1)  # 빈 양식: 예시 행이 실수로 올라가지 않는다
         self.assertTrue(any("(예시)" in str(c.value) for row in book["작성 안내"].iter_rows() for c in row))
         parsed = up.parse(up.blank_template(), "template.xlsx")
         self.assertEqual(parsed.mapping["제품명"], "제품명")
+        self.assertEqual(parsed.mapping["최대 제조·사용량"], "최대 제조·사용량")
+        self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량")
+        self.assertEqual(parsed.mapping["단위"], "단위")
 
 
 class MergeTests(unittest.TestCase):
