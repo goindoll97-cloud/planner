@@ -87,12 +87,14 @@ def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
             continue
         input_unit = _clean(row.get("단위") or row.get("수량 단위")) or UNIT
         kind = _clean(row.get(MATERIAL_TYPE_COLUMN))
-        mixture = _clean(row.get(LEGACY_MIXTURE_COLUMN))
-        if not mixture:
-            if kind == "혼합물":
-                mixture = "Y"
-            elif kind == "단일물질":
-                mixture = "N"
+        legacy_mixture = _clean(row.get(LEGACY_MIXTURE_COLUMN))
+        # 화면에서 사용자가 단일/혼합물을 명시적으로 골랐다면 과거 파일의 숨은 값보다 우선한다.
+        if kind == "혼합물":
+            mixture = "Y"
+        elif kind == "단일물질":
+            mixture = "N"
+        else:
+            mixture = legacy_mixture
         content = _number(row.get(LEGACY_CONTENT_COLUMN))
         if mixture == "N" and content is None:
             content = 100.0
