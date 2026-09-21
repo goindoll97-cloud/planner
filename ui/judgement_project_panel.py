@@ -15,7 +15,7 @@ from engine.stage2 import cap_judgement as judgement
 from engine.stage2 import kosha_candidates
 from engine.stage2 import storage
 from ui import cap_frames as frames
-from ui import chemical_upload_panel, judgement_panel
+from ui import chemical_upload_panel, judgement_panel, mixture_component_upload_panel
 
 
 def _flash_key(pid: str) -> str:
@@ -32,20 +32,41 @@ def _changed(pid: str, message: str) -> None:
 def _business(project) -> None:
     pid = project.project_id
     info = judgement.business_info(project)
-    with st.expander("사업장 정보", expanded=not all(info.values())):
+    core_ready = all(info.get(key) for key in ("사업장명", "사업장 주소", "업종 또는 주요 생산품"))
+    with st.expander("사업장 정보", expanded=not core_ready):
         left, middle, right = st.columns(3)
-        name = left.text_input("사업장명", value=info["사업장명"], key=f"judge_biz_name_{pid}",
-                               help="사업자등록증에 적힌 사업장(회사) 이름입니다.", placeholder="(예시) 한국화학 울산공장")
-        address = middle.text_input("사업장 주소", value=info["사업장 주소"], key=f"judge_biz_address_{pid}",
-                                    help="사업장이 실제로 있는 도로명 주소입니다. 기상 정보와 주변 보호대상 조회에 쓰입니다.",
-                                    placeholder="(예시) 울산광역시 남구 산업로 1")
-        industry = right.text_input("업종 또는 주요 생산품", value=info["업종 또는 주요 생산품"], key=f"judge_biz_industry_{pid}",
-                                    help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 판정 계산에는 쓰이지 않고, "
-                                         "공정안전보고서 별지 제12호의 주요 생산품 칸에 다시 쓰입니다.",
-                                    placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산")
+        name = left.text_input(
+            "사업장명", value=info["사업장명"], key=f"judge_biz_name_{pid}",
+            help="사업자등록증에 적힌 사업장(회사) 이름입니다.", placeholder="(예시) 한국화학 울산공장",
+        )
+        address = middle.text_input(
+            "사업장 주소", value=info["사업장 주소"], key=f"judge_biz_address_{pid}",
+            help="사업장이 실제로 있는 도로명 주소입니다. 기상 정보와 주변 보호대상 조회에 쓰입니다.",
+            placeholder="(예시) 울산광역시 남구 산업로 1",
+        )
+        industry = right.text_input(
+            "업종 또는 주요 생산품", value=info["업종 또는 주요 생산품"], key=f"judge_biz_industry_{pid}",
+            help="사업장에서 주로 하는 일이나 만드는 제품을 짧게 적습니다. 예: 합성수지 제조 / 접착제 생산.",
+            placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산",
+        )
+        ksic = st.text_input(
+            "업종 분류 코드(KSIC, 알면 입력)",
+            value=info.get("한국표준산업분류(KSIC) 코드", ""),
+            key=f"judge_biz_ksic_{pid}",
+            placeholder="예: 20111",
+            help=(
+                "KSIC는 '한국표준산업분류'의 약자입니다. 사업장의 주된 일을 숫자로 구분한 코드이며, "
+                "공정안전보고서(PSM)는 일부 업종 자체가 대상 기준이 될 수 있어 사용합니다. "
+                "회사에서 쓰는 5자리 코드를 알고 있으면 적으세요. 모르면 비워 두어도 되고, 판정에 꼭 필요할 때 다시 안내합니다."
+            ),
+        )
         st.caption("여기서 고친 내용은 이 사업장의 판정과 별지 작성에 바로 반영됩니다. 비워서 저장하면 기존 값은 지워지지 않습니다.")
         if st.button("사업장 정보 저장", key=f"judge_biz_save_{pid}"):
-            judgement.save_business(project, name, address, industry)
+            digits = "".join(ch for ch in str(ksic or "") if ch.isdigit())
+            if ksic and len(digits) != 5:
+                st.warning("업종 분류 코드(KSIC)는 숫자 5자리입니다. 모르면 비워 두어도 됩니다.")
+                return
+            judgement.save_business(project, name, address, industry, ksic)
             storage.save_project(project)
             _changed(pid, "사업장 정보를 저장했습니다. 별지 작성 화면에도 같은 내용이 보입니다.")
 
@@ -58,7 +79,12 @@ def _rows(project) -> list[dict]:
 def _chemicals(project) -> None:
     pid = project.project_id
     rows = _rows(project)
-    with st.expander(f"물질 목록 — {len(rows)}건", expanded=not rows):
+    unresolved = set(judgement.composition_rows(project))
+    mixture_file_needed = any(
+        number in unresolved and judgement._mixture_yes(row.get("혼합물 여부"))
+        for number, row in enumerate(rows, start=1)
+    )
+    with st.expander(f"물질 목록 — {len(rows)}건", expanded=(not rows or mixture_file_needed)):
         if rows:
             parts = judgement.components_by_row(project)
             frames.show(pd.DataFrame([{
@@ -83,6 +109,8 @@ def _chemicals(project) -> None:
                     "물질이 바뀌었으니 아래 '법정 대상 판정하기'(또는 '다시 판정하기')로 결과를 확인하세요.")
 
         chemical_upload_panel.render(f"judge_upload_{pid}", existing=chem_upload.existing_keys(project), add_rows=add_uploaded)
+        # 기본 물질목록에서 혼합제품이 발견됐고 아직 성분이 없을 때만 두 번째 파일을 보여 준다.
+        mixture_component_upload_panel.render(project, f"judge_mix_{pid}")
         if rows:
             _kosha_all(project)
 

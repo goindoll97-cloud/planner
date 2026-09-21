@@ -98,6 +98,30 @@ class CheckTests(unittest.TestCase):
         self.assertIn("중복", rows[5]["확인"])
         self.assertEqual(checked.errors, 2)
 
+    def test_explicit_single_substance_requires_cas(self):
+        checked = up.check_rows([{
+            "제품명": "CAS 없는 단일물질", "혼합물 여부": "N", "CAS No.": "",
+            "최대 제조·사용량": "1", "최대 저장량": "2", "단위": "ton",
+        }])
+        self.assertFalse(checked.rows[0]["_ok"])
+        self.assertIn("CAS No.", checked.rows[0]["확인"])
+
+    def test_explicit_mixture_can_be_added_without_product_cas(self):
+        checked = up.check_rows([{
+            "제품명": "세척제 A", "혼합물 여부": "Y", "CAS No.": "",
+            "최대 제조·사용량": "1", "최대 저장량": "2", "단위": "ton",
+        }])
+        self.assertTrue(checked.rows[0]["_ok"])
+
+    def test_blank_name_after_single_is_not_silently_attached_as_a_mixture_component(self):
+        products = up.group_products([
+            {"제품명": "톨루엔", "혼합물 여부": "N", "CAS No.": "108-88-3", "함량(%)": ""},
+            {"제품명": "", "혼합물 여부": "", "CAS No.": "67-64-1", "함량(%)": "100"},
+        ])
+        self.assertEqual(len(products), 2)
+        self.assertEqual(products[0]["혼합물 여부"], "N")
+        self.assertTrue(products[1]["_component_problems"])
+
     def test_rows_already_in_the_list_are_skipped_not_overwritten(self):
         checked = up.check_rows([{"제품명": "톨루엔", "CAS No.": "108-88-3", "함량(%)": "99", "최대 동시보유량(ton)": ""}],
                                 existing_cas={"108-88-3"})
@@ -116,8 +140,7 @@ class TemplateTests(unittest.TestCase):
         book = load_workbook(BytesIO(up.blank_template()))
         first = book["물질 목록"]
         self.assertEqual([c.value for c in first[1]], [
-            "제품명", "단일물질/혼합물", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상(상온·상압)",
-            "SDS 제2항 분류(선택)"])
+            "제품명", "단일물질/혼합물", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"])
         self.assertEqual(first.max_row, 1)  # 빈 양식: 예시 행이 실수로 올라가지 않는다
         self.assertTrue(any("(예시)" in str(c.value) for row in book["작성 안내"].iter_rows() for c in row))
         parsed = up.parse(up.blank_template(), "template.xlsx")

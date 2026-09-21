@@ -41,6 +41,13 @@ class BusinessTests(unittest.TestCase):
         self.assertEqual(project.get_field("business.address").value, "울산광역시 북구 1")
         self.assertEqual(project.get_field("business.main_products").value, "정밀화학 제조")  # 별지 제12호 주요 생산품
 
+    def test_ksic_is_saved_and_reaches_the_psm_judgement_input(self):
+        project = _pending()
+        jd.save_business(project, "가상공장", "울산", "기초화학 제조", "20111")
+        intake, _ = jd.build_intake(project)
+        self.assertEqual(intake.business["한국표준산업분류(KSIC) 코드"], "20111")
+        self.assertEqual(project.get_field("business.ksic").value, "20111")
+
     def test_a_blank_field_never_erases_an_existing_value(self):
         project = _pending()
         before = jd.business_info(project)
