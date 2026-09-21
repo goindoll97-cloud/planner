@@ -26,7 +26,7 @@ class CAPNavigationTests(unittest.TestCase):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
         self.assertIn('st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성"', app)
-        self.assertIn("_psm_selected_somewhere()", app)
+        self.assertIn('sections["공정안전보고서"]', app)
         self.assertIn('st.Page("ui/judgement_page.py"', app)
         for gone in ("diagnosis_entry.py", "stage2_scope_page.py", "엑셀로 판정하기"):
             self.assertNotIn(gone, app)
