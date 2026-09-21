@@ -105,3 +105,50 @@ class JudgementPanelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TemplateColumnTests(unittest.TestCase):
+    def test_blank_template_has_the_judgement_columns_and_maps_back_to_them(self):
+        from io import BytesIO
+
+        from engine.stage2 import cap_chemical_upload as up
+
+        data = up.blank_template()
+        parsed = up.parse(data, "물질목록_양식.xlsx")
+        self.assertEqual(set(parsed.mapping), set(up.ALL_COLUMNS))
+        self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량(ton)")
+        self.assertEqual(parsed.mapping["최대 동시보유량(ton)"], "최대 동시보유량(ton)")
+
+    def test_a_filled_template_row_carries_every_column_through_to_the_engine_input(self):
+        import pandas as pd
+
+        from engine.stage2 import cap_chemical_upload as up
+
+        headers = ["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)",
+                   "최대 제조·사용량(kg)", "최대 저장량(ton)", "최대보유량 법정 산정 여부",
+                   "SDS 제2항 유해성·위험성 분류(선택 입력)"]
+        frame = pd.DataFrame([["아세톤", "67-64-1", "99", "3", "Y", "500", "2", "Y", "별표1 해당없음"]], columns=headers)
+        from io import BytesIO
+        buffer = BytesIO()
+        frame.to_excel(buffer, index=False)
+        parsed = up.parse(buffer.getvalue(), "x.xlsx")
+        row = up.normalize(parsed, parsed.mapping)[0]
+        self.assertEqual(row["최대 제조·사용량"], "0.5")  # kg를 ton으로 바꿈
+        self.assertEqual(row["최대 저장량"], "2")
+        checked = up.check_rows([row])
+        self.assertTrue(checked.rows[0]["_ok"])
+        intake = cap_start.build_intake({"사업장명": "t"}, checked.rows)
+        chem = intake.chemicals.iloc[0]
+        self.assertEqual(chem["상온·상압 액체 여부(해당 시)"], "Y")
+        self.assertEqual(chem["최대 저장량"], "2")
+        self.assertEqual(chem["SDS 제2항 유해성·위험성 분류(선택 입력)"], "별표1 해당없음")
+
+    def test_a_stored_project_row_feeds_the_judgement_input_without_asking_again(self):
+        rows = [{"제품명": "물질1", "CAS No.": "67-61-0", "함량(%)": "99", "최대 동시보유량(ton)": "",
+                 "최대 제조·사용량": "1", "상온·상압 액체 여부(해당 시)": "Y"}]
+        intake = cap_start.build_intake(
+            {"사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"}, rows)
+        project = cap_start._pending(intake, ()).project
+        built, missing = j.build_intake(project)
+        self.assertEqual(missing, [])
+        self.assertEqual(built.chemicals.loc[0, "상온·상압 액체 여부(해당 시)"], "Y")

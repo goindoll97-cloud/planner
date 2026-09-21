@@ -217,7 +217,8 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
         extra = entered[index] if index < len(entered) else {}
         name = _clean(row.get("물질명") or row.get("제품명") or row.get("유해화학물질명"))
         cas = _clean(row.get("CAS No.") or row.get("CAS 번호") or row.get("CAS"))
-        quantity = _clean(extra.get("최대 동시보유량(알면 입력)")) or row.get("최대 동시보유량(알면 입력)")
+        extra = {c: _clean(extra.get(c)) or _clean(row.get(c)) for c in CHEM_INPUT_COLUMNS}
+        quantity = extra.get("최대 동시보유량(알면 입력)") or row.get("최대 동시보유량(알면 입력)")
         if quantity in (None, "") or (isinstance(quantity, float) and quantity != quantity):
             quantity = computed.get(cas) if cas in computed else computed.get(name)
         also_given = _clean(extra.get("최대 제조·사용량")) or _clean(extra.get("최대 저장량"))

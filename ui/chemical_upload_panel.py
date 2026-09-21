@@ -17,6 +17,9 @@ from ui import cap_frames as frames
 
 NONE = "(사용 안 함)"
 LABELS = {"제품명": "제품명(물질명)", "CAS No.": "CAS 번호", "함량(%)": "함량(%)", "최대 동시보유량(ton)": "최대 보유량",
+          "상온·상압 액체 여부(해당 시)": "상온·상압 액체 여부", "최대 제조·사용량": "최대 제조·사용량",
+          "최대 저장량": "최대 저장량", "최대보유량 법정 산정 여부": "최대보유량 법정 산정 여부",
+          "SDS 제2항 유해성·위험성 분류(선택 입력)": "SDS 제2항 분류",
           "단위": "단위(별도 열이 있을 때)", "비고": "비고"}
 
 
@@ -58,7 +61,7 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         sig = hashlib.sha1(repr(sorted(mapping.items())).encode("utf-8")).hexdigest()[:8]  # 열 맞춤이 바뀌면 미리보기를 새로 그린다
         rows = [r for r in up.normalize(parsed, mapping) if r["제품명"] or r["CAS No."]]  # 빈 줄은 뺀다(표와 메모의 줄 번호를 맞춘다)
         checked = up.check_rows(rows, *existing)
-        base = pd.DataFrame([{k: r[k] for k in up.OUT_COLUMNS} for r in checked.rows], columns=list(up.OUT_COLUMNS))
+        base = pd.DataFrame([{k: r[k] for k in up.ALL_COLUMNS} for r in checked.rows], columns=list(up.ALL_COLUMNS))
         st.caption("미리보기입니다. 잘못된 칸은 여기서 고쳐도 됩니다(고치면 아래 확인 결과가 바로 바뀝니다).")
         edited = st.data_editor(frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
                                 key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}")

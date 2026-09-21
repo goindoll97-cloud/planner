@@ -21,6 +21,11 @@ from .project import Stage2Project, create_project_from_stage1_snapshot
 
 BUSINESS_FIELDS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
 CHEMICAL_INPUT_COLUMNS = ("제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)")
+# 양식에서 함께 받는 판정용 선택 열(cap_chemical_upload.EXTRA_COLUMNS와 같다). 값이 하나라도 있을 때만 판정 입력에 넣는다.
+EXTRA_INPUT_COLUMNS = (
+    "상온·상압 액체 여부(해당 시)", "최대 제조·사용량", "최대 저장량", "최대보유량 법정 산정 여부",
+    "SDS 제2항 유해성·위험성 분류(선택 입력)",
+)
 HANDLING_DEFAULT = "저장·사용"
 UNIT = "ton"
 
@@ -61,8 +66,11 @@ def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
             "함량(%)": _number(row.get("함량(%)")), "취급형태": HANDLING_DEFAULT, "수량 단위": UNIT,
             "최대 동시보유량(알면 입력)": _number(row.get("최대 동시보유량(ton)")),
         })
-    return pd.DataFrame(records, columns=[
-        "제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"])
+        for column in EXTRA_INPUT_COLUMNS:
+            records[-1][column] = _clean(row.get(column))
+    base = ["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"]
+    used = [c for c in EXTRA_INPUT_COLUMNS if any(r.get(c) for r in records)]
+    return pd.DataFrame(records, columns=base + used)
 
 
 def build_intake(business: Mapping[str, Any], rows: list[Mapping[str, Any]]) -> IntakeData:
