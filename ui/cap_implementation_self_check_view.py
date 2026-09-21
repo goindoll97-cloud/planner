@@ -204,6 +204,17 @@ def render(project) -> None:
     else:
         st.caption("현재 CAP 작성수준에서는 주요취급시설 연간 제출용 변경내역 관리대장을 추가 필수로 적용하지 않습니다.")
 
+    if state.ready:
+        st.download_button(
+            "자체점검 제출패키지 ZIP 내려받기",
+            data=impl.build_submission_package(project),
+            file_name=impl.submission_package_filename(project),
+            mime="application/zip",
+            key=f"cap_impl_package_{project.project_id}",
+            width="stretch",
+            type="primary",
+        )
+
     try:
         st.download_button(
             "이행규정 별지 제1호 자체점검 결과서",
