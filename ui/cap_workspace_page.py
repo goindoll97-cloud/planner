@@ -92,6 +92,7 @@ from ui import cap_forms_registry as registry
 
 SPECIAL = {
     "submission": "제출·변경 행정서식 · 별지 제31호·제32호",
+    "implementation": "이행점검 · 자체점검 별지 제1호~제3호",
     "narrative": "서술형 항목 · 사전관리방침과 비상대응계획",
     "export": "점검·내보내기 · 보고서 내려받기",
 }
@@ -277,6 +278,10 @@ try:
         from ui import cap_submission_forms_view
 
         cap_submission_forms_view.render(project)
+    elif form_no == "implementation":
+        from ui import cap_implementation_self_check_view
+
+        cap_implementation_self_check_view.render(project)
     elif form_no == "narrative":
         from engine.stage2 import cap_narrative_workspace as cap_narrative
         from ui import narrative_panel
