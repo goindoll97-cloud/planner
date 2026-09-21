@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from io import BytesIO
 import json
+import zipfile
 from pathlib import Path
 import re
 from typing import Any, Mapping
@@ -430,3 +431,56 @@ def form_filename(project: Stage2Project, no: int) -> str:
         3: "자체점검_개선사항_조치내역서",
     }
     return f"{company}_이행점검_별지제{no}호_{titles[no]}.docx"
+
+
+def build_change_log_docx(project: Stage2Project) -> bytes:
+    """주요취급시설 연간 제출용: 작성 규정 별지 제2호 변경내역 관리대장."""
+    rec = project.get_field("cap.prevention.change_log")
+    rows = rec.value if rec is not None and rec.status in CONFIRMED_STATUSES and isinstance(rec.value, list) else []
+    if is_major_facility(project) and not rows:
+        raise ValueError("작성 규정 별지 제2호 변경내역 관리대장이 확인되지 않았습니다.")
+
+    doc = _doc_landscape()
+    _heading(doc, "화학사고예방관리계획서 변경내역 관리대장")
+    header = doc.add_table(rows=1, cols=4)
+    _borders(header)
+    values = (
+        ("사업장명", project.company_name),
+        ("단위공장명", _value(project, "cap.business.unit_plant_name") or project.site_name),
+    )
+    for idx, (label, value) in enumerate(values):
+        _set_cell(header.cell(0, idx * 2), label, bold=True, center=True)
+        _set_cell(header.cell(0, idx * 2 + 1), value)
+
+    columns = ("일자", "변경항목", "변경의 종류", "변경 내용(변경전 → 변경후)", "후속조치", "담당자")
+    table = doc.add_table(rows=1, cols=len(columns))
+    _borders(table)
+    for i, label in enumerate(columns):
+        _set_cell(table.cell(0, i), label, bold=True, center=True)
+    for row in rows or [{}]:
+        cells = table.add_row().cells
+        for i, label in enumerate(columns):
+            _set_cell(cells[i], row.get(label, ""), size=7)
+    out = BytesIO()
+    doc.save(out)
+    return canonicalize_docx_zip(out.getvalue())
+
+
+def build_submission_package(project: Stage2Project) -> bytes:
+    state = readiness(project)
+    if not state.ready:
+        raise ValueError("자체점검 제출 패키지를 만들기 전에 보완할 항목이 있습니다: " + " / ".join(state.blockers))
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(form_filename(project, 1), build_form1_docx(project))
+        zf.writestr(form_filename(project, 2), build_form2_docx(project))
+        zf.writestr(form_filename(project, 3), build_form3_docx(project))
+        if is_major_facility(project):
+            company = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", project.company_name or project.project_id).strip("._") or "사업장"
+            zf.writestr(f"{company}_작성규정_별지제2호_변경내역_관리대장.docx", build_change_log_docx(project))
+    return output.getvalue()
+
+
+def submission_package_filename(project: Stage2Project) -> str:
+    company = re.sub(r"[^0-9A-Za-z가-힣._-]+", "_", project.company_name or project.project_id).strip("._") or "사업장"
+    return f"{company}_화학사고예방관리계획서_자체점검_제출패키지.zip"
