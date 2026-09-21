@@ -46,10 +46,15 @@ def render(expanded: bool) -> None:
         industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry",
                                   help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 판정 계산에는 쓰이지 않고, 공정안전보고서 별지 제12호의 주요 생산품 칸에 다시 쓰입니다.",
                                   placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산")
+        hidden_columns = [cap_start.LEGACY_MAX_HOLDING_COLUMN, *cap_start.EXTRA_INPUT_COLUMNS]
         blank = {"제품명": "", "CAS No.": "", "함량(%)": 100.0,
-                 "최대 제조·사용량": None, "최대 저장량": None, "단위": "kg"}
+                 "최대 제조·사용량": None, "최대 저장량": None, "단위": "kg",
+                 **{col: "" for col in hidden_columns}}
         generation = st.session_state.get("cap_start_gen", 0)  # 엑셀로 행을 추가하면 새 표로 다시 그린다
-        frame = pd.DataFrame(st.session_state.get("cap_start_seed") or [blank], columns=list(cap_start.CHEMICAL_INPUT_COLUMNS))
+        frame = pd.DataFrame(
+            st.session_state.get("cap_start_seed") or [blank],
+            columns=[*cap_start.CHEMICAL_INPUT_COLUMNS, *hidden_columns],
+        )
         edited = st.data_editor(
             frame, num_rows="dynamic", width="stretch", hide_index=True, key=f"cap_start_chemicals_{generation}",
             column_config={
@@ -75,7 +80,11 @@ def render(expanded: bool) -> None:
                     "단위", options=["kg", "ton"], required=True,
                     help="두 수량에 공통으로 적용할 단위입니다. kg 또는 ton을 고르세요."
                 ),
-            }        )
+                # 기존 9열 파일의 전문값은 보존하되 초기 화면에서는 숨긴다.
+                cap_start.LEGACY_MAX_HOLDING_COLUMN: None,
+                **{col: None for col in cap_start.EXTRA_INPUT_COLUMNS},
+            },
+        )
 
         def add_uploaded(rows, file_name, sha256):
             """올린 파일의 정상 행을 이 입력 표에 합친다(이미 적은 행은 그대로, 같은 물질은 건너뜀)."""
@@ -96,6 +105,8 @@ def render(expanded: bool) -> None:
                     "최대 제조·사용량": number(row.get("최대 제조·사용량", "")),
                     "최대 저장량": number(row.get("최대 저장량", "")),
                     "단위": row.get("단위") or "ton",
+                    cap_start.LEGACY_MAX_HOLDING_COLUMN: number(row.get(cap_start.LEGACY_MAX_HOLDING_COLUMN, "")),
+                    **{col: row.get(col, "") for col in cap_start.EXTRA_INPUT_COLUMNS},
                 })
             st.session_state["cap_start_seed"] = [*current, *added]
             st.session_state["cap_start_gen"] = generation + 1
