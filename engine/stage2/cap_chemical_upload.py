@@ -252,6 +252,8 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
             problems.append("혼합물의 성분 CAS를 한 줄에 하나씩 적어 주세요")
         if total > 100.5:
             problems.append(f"성분 함량의 합이 {total:g}%로 100%를 넘습니다")
+        elif components and total < 99.5:
+            notes.append(f"적은 성분의 함량 합이 {total:g}%입니다. 나머지 {100 - total:g}%에 규제 대상 물질이 없는지 제품 SDS 제3항으로 확인하세요")
         first.update({"제품명": name, "혼합물 여부": "Y", "CAS No.": "", "함량(%)": "", "_components": components,
                       "_component_problems": problems})
         first["메모"] = " / ".join([*notes, f"혼합물(성분 {len(components)}개)"])

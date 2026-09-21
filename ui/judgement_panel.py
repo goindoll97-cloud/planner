@@ -306,6 +306,7 @@ def _chemical_table(project, outcome, table_messages):
         _holding_help()
     stored = judgement.chemical_inputs(project)
     stored = stored + [{}] * (len(rows) - len(stored))
+    parts = judgement.components_by_row(project)
     pid = project.project_id
     cand_key, gen_key, sds_col = f"judge_kosha_{pid}", f"judge_chem_gen_{pid}", "SDS 제2항 유해성·위험성 분류(선택 입력)"
     candidates: dict = st.session_state.get(cand_key, {})
@@ -318,7 +319,7 @@ def _chemical_table(project, outcome, table_messages):
         record = {
             "행": number,
             "제품명": str(row.get("제품명") or row.get("물질명") or ""),
-            "CAS No.": cas,
+            "CAS No.": judgement.cas_display(row, number, parts),  # 혼합제품은 성분 CAS를 보여 준다(빈칸이면 값이 빠진 것처럼 보인다)
             "필요한 값": ", ".join(needs[number]),
         }
         if has_quantity:
