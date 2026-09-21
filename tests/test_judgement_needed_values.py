@@ -16,6 +16,7 @@ REAL_REQUESTS = [
     "02_화학물질목록: 6행 (반응기 세정용 혼합용제 A)의 'SDS 제2항 유해성·위험성 분류'를 제품 SDS 그대로 작성해 주세요. 해당 분류가 없으면 '별표1 해당없음'으로 작성합니다.",
     "04_시설별최대보유량: 사업장 최대보유량을 산정할 수 있도록 시설별 최대보유량 정보를 작성해 주세요. 이미 법정 산정값을 알고 있다면 02 시트의 '최대 동시보유량'과 '최대보유량 법정 산정 여부=Y'를 작성해 주세요.",
 ]
+ROW1_REQUEST = "02_화학물질목록: 1행 (염소 / 7782-50-5)의 법정 사업장 최대보유량을 확인하여 '최대 동시보유량'과 '최대보유량 법정 산정 여부=Y'를 작성해 주세요."
 
 
 class NeedsTests(unittest.TestCase):
@@ -43,8 +44,8 @@ class NeedsTests(unittest.TestCase):
         text = jd.plain_request(REAL_REQUESTS[4])
         self.assertNotIn("02 시트", text)
         self.assertNotIn("=Y", text)
-        self.assertIn("별지 제1호", text)
-        self.assertIn("시설", text)
+        self.assertIn("시설 입력", text)  # 다른 화면으로 가라는 말이 아니라 이 화면 안의 시설 입력을 안내한다
+        self.assertNotIn("별지 제1호", text)
 
 
 class TableScreenTests(unittest.TestCase):
@@ -74,10 +75,12 @@ class TableScreenTests(unittest.TestCase):
         self.assertFalse(at.exception)
         shown = [m.value for m in at.markdown]
         self.assertFalse(any("'최대 동시보유량'과 '최대보유량 법정 산정 여부=Y'" in v for v in shown))
-        infos = " ".join(i.value for i in at.info)
-        self.assertIn("사업장 최대보유량", infos)
-        self.assertIn("별지 제1호", infos)
-        self.assertFalse("02 시트" in infos)
+        helps = " ".join(str(m.help or "") for m in at.markdown)          # 설명은 ? 안에 들어 있다
+        self.assertIn("사업장 최대보유량이란?", helps)
+        self.assertIn("시설 입력", helps)
+        self.assertNotIn("별지 제1호", " ".join(i.value for i in at.info) + helps.replace("별지 제1호와 같은 표", ""))
+        self.assertFalse(any("02 시트" in m.value for m in at.markdown))
+        self.assertEqual(len(at.info), 0)                                   # 긴 안내 상자는 없다
 
     def test_the_table_has_a_needed_values_column_and_an_editable_holding_column(self):
         at = self._run()
@@ -94,6 +97,81 @@ class SaveKeepsOtherValuesTests(unittest.TestCase):
         self.assertEqual(result["함량(%)"], "99")
         self.assertEqual(result["최대 저장량"], "2")
         self.assertEqual(result["최대 동시보유량(알면 입력)"], "1.5")
+
+
+class InlineFacilityTests(unittest.TestCase):
+    def _run(self, indexes):
+        from streamlit.testing.v1 import AppTest
+
+        code = (
+            "import sys; sys.path.insert(0, %r)\n"
+            "from types import SimpleNamespace\n"
+            "from unittest.mock import patch\n"
+            "import streamlit as st\n"
+            "from engine.stage2 import cap_judgement as jd\n"
+            "from tests.test_stage2_cap_form1_engine import CAPForm1EngineTests\n"
+            "from tests.test_judgement_needed_values import REAL_REQUESTS, ROW1_REQUEST\n"
+            "from ui import judgement_panel as panel\n"
+            "if 'project' not in st.session_state:\n"
+            "    st.session_state['project'] = CAPForm1EngineTests()._project()\n"
+            "project = st.session_state['project']\n"
+            "ALL = REAL_REQUESTS + [ROW1_REQUEST]\n"
+            "outcome = SimpleNamespace(status='REQUEST', messages=tuple(ALL[i] for i in %r), questions=())\n"
+            "with patch('engine.stage2.storage.save_project'):\n"
+            "    panel._ask(project, outcome)\n"
+        ) % (str(ROOT), list(indexes))
+        return AppTest.from_string(code, default_timeout=60).run()
+
+    def test_the_facility_table_is_offered_inside_the_judgement_when_the_holding_needs_facilities(self):
+        at = self._run([4])  # 04_시설별최대보유량 요청만 있을 때
+        self.assertFalse(at.exception)
+        markdown = [m.value for m in at.markdown]
+        self.assertIn("**시설 입력 — 사업장 최대보유량 계산**", markdown)
+        self.assertGreaterEqual(len(list(at.get("arrow_data_frame"))), 1)  # 시설 표가 화면 안에 있다
+        self.assertEqual(len(at.info), 0)                                    # 안내 상자 없이 표만 보인다
+        self.assertFalse(any(b.label == "답을 저장하고 다시 판정" for b in at.button))  # 적을 답이 없으면 저장 버튼을 두지 않는다
+        self.assertNotIn("별지 제1호", " ".join(i.value for i in at.info))
+
+    def test_the_facility_section_names_the_substances_that_need_it(self):
+        at = self._run([5, 4])   # 1행(염소)의 최대보유량 요청 + 시설 정보 요청
+        captions = " ".join(c.value for c in at.caption)
+        self.assertIn("최대보유량을 요청한 물질: ", captions)
+
+    def test_no_facility_section_when_nothing_asks_for_it(self):
+        at = self._run([0])
+        self.assertNotIn("**시설 입력 — 사업장 최대보유량 계산**", [m.value for m in at.markdown])
+
+    def test_the_facility_table_is_one_shared_component(self):
+        from pathlib import Path as _P
+
+        page = (_P(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        panel = (_P(__file__).resolve().parents[1] / "ui/judgement_panel.py").read_text(encoding="utf-8")
+        self.assertIn('cap_facility_editor.render(project, "cap_form01")', page)
+        self.assertIn('cap_facility_editor.render(project, "judge_fac", on_saved=saved, compact=True)', panel)
+
+
+class FacilityQuantityIsLegalTests(unittest.TestCase):
+    def test_a_quantity_computed_from_facilities_is_passed_to_the_engine_as_legally_calculated(self):
+        from unittest.mock import patch
+
+        project = CAPForm1EngineTests()._project()
+        chem_rows = jd.chem._rows(project)[1]
+        cas = jd._clean(chem_rows[0].get("CAS No.") or chem_rows[0].get("CAS 번호"))
+        with patch.object(jd, "_facility_quantities", return_value={cas: 0.8}):
+            intake, _ = jd.build_intake(project)
+        first = intake.chemicals.iloc[0]
+        self.assertEqual(float(first["최대 동시보유량(알면 입력)"]), 0.8)
+        self.assertEqual(first["최대보유량 법정 산정 여부"], "Y")
+
+    def test_a_value_the_user_typed_keeps_the_answer_the_user_gave(self):
+        from unittest.mock import patch
+
+        project = CAPForm1EngineTests()._project()
+        jd.save_chemical_inputs(project, [{"최대 동시보유량(알면 입력)": "3", "최대보유량 법정 산정 여부": "N"}])
+        with patch.object(jd, "_facility_quantities", return_value={}):
+            intake, _ = jd.build_intake(project)
+        first = intake.chemicals.iloc[0]
+        self.assertEqual(first["최대보유량 법정 산정 여부"], "N")  # 사용자가 아니오라고 답했으면 그대로 넘긴다
 
 
 if __name__ == "__main__":

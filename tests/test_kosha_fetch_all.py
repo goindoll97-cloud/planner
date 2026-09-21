@@ -89,7 +89,9 @@ class FetchAllTests(unittest.TestCase):
     def test_mixture_products_are_mentioned_but_not_sent(self):
         project = _project()
         at = self._run(project, [])
-        self.assertTrue(any("혼합제품 1건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다" in c.value for c in at.caption))
+        heading = next(m for m in at.markdown if m.value.startswith("**SDS 제2항 분류 한 번에 조회"))
+        self.assertIn("혼합제품 1건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다", heading.help)  # ? 안에 있다
+        self.assertIn("왜 하나요?", heading.help)
 
     def test_component_classifications_are_shown_only_as_a_reference_with_a_warning(self):
         project = _project()
