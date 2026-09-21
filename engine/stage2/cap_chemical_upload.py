@@ -242,8 +242,11 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
     # 구형 한-시트 혼합물 양식의 성분 행도 안전하게 보존한다.
     for product in products:
-        if mixture_flag(product.get("혼합물 여부")) != "Y":
-            if not _clean(product.get("함량(%)")):
+        product_flag = mixture_flag(product.get("혼합물 여부"))
+        if product_flag != "Y":
+            # 새 양식에서 명시적으로 단일물질이라고 한 경우만 100%로 처리한다.
+            # 구형 파일처럼 구분이 비어 있으면 추정하지 않고 판정 단계에서 확인한다.
+            if product_flag == "N" and not _clean(product.get("함량(%)")):
                 product["함량(%)"] = "100"
             continue
 
@@ -305,8 +308,8 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
         flag = mixture_flag(row.get("혼합물 여부"))
         is_mixture = flag == "Y"
         if not flag:
-            errors += 1
-            notes.append("단일물질인지 혼합물인지 선택해 주세요.")
+            warnings += 1
+            notes.append("단일물질/혼합물 구분이 없습니다. 구형 파일로 보고 추가하며, 판정 전에 다시 확인합니다.")
         for problem in row.get("_component_problems") or []:
             errors += 1
             notes.append(problem)
