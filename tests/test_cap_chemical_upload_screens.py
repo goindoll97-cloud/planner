@@ -73,6 +73,7 @@ class PanelScreenTests(unittest.TestCase):
         seed = at.session_state["cap_start_seed"]
         self.assertEqual([r["제품명"] for r in seed], ["톨루엔", "염소", "아세톤", "혼합제품"])
         self.assertEqual(seed[0]["최대 동시보유량(ton)"], 12.5)
+        self.assertEqual(seed[0]["단위"], "ton")
         self.assertEqual(at.session_state["cap_start_gen"], 1)
         self.assertTrue(any("표에 추가했습니다" in s.value for s in at.success))
 
