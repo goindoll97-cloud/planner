@@ -15,9 +15,10 @@ from typing import Any, Callable, Mapping
 
 import pandas as pd
 
-from ..inventory import IntakeData, validate_intake
+from ..inventory import IntakeData, MIXTURE_COMPONENT_COLUMNS, MIXTURE_FLAG_COLUMN, validate_intake
 from ..stage1_workbook import assess_stage1_from_workbook
 from . import cap_chemical_workspace as chem
+from .cap_chemical_upload import cas_valid
 from .project import Stage2Project, _cap_group_from_status, _subject_from_status
 
 ANSWERS_KEY = "stage1.answers"
@@ -81,6 +82,7 @@ _BY_ITEM = {q.item: q for q in QUESTIONS}
 
 # 판정 엔진이 물질(행)마다 요구하는 값. 판정 화면의 표에서 입력받아 프로젝트에 남기고, 판정 입력(물질 표)에 덧붙인다.
 CHEM_INPUTS_KEY = "stage1.chemical_inputs"
+MIXTURE_COMPONENTS_KEY = "inventory.mixture_components"
 CHEM_INPUT_COLUMNS = (
     "함량(%)", "상온·상압 액체 여부(해당 시)", "최대 제조·사용량", "최대 저장량",
     "최대 동시보유량(알면 입력)", "최대보유량 법정 산정 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)",
@@ -102,6 +104,7 @@ class Outcome:
     cap_target: bool = False
     cap_group: str = ""
     missing_quantity: tuple[str, ...] = field(default_factory=tuple)
+    composition_rows: tuple[int, ...] = field(default_factory=tuple)
 
     @property
     def cap_status(self) -> str:
@@ -156,6 +159,176 @@ def save_chemical_inputs(project: Stage2Project, rows: list[Mapping[str, Any]]) 
     project.set_field(CHEM_INPUTS_KEY, "법정 판정에 필요한 물질별 확인값(회사 입력)",
                       [{k: _clean(v) for k, v in dict(row).items() if k in CHEM_INPUT_COLUMNS} for row in rows],
                       "USER_CONFIRMED")
+
+
+def mixture_components(project: Stage2Project) -> list[dict[str, Any]]:
+    """Return saved SDS Section-3 mixture components, preferring the live project field."""
+    record = project.get_field(MIXTURE_COMPONENTS_KEY)
+    source = record.value if record is not None and isinstance(record.value, list) else project.stage1_snapshot.get("mixture_components")
+    return [dict(row) for row in list(source or []) if isinstance(row, Mapping)]
+
+
+def _mixture_yes(value: object) -> bool:
+    return _clean(value).lower().replace(" ", "") in {"y", "yes", "예", "해당", "혼합물", "1", "true"}
+
+
+def _mixture_no(value: object) -> bool:
+    return _clean(value).lower().replace(" ", "") in {"n", "no", "아니오", "아님", "단일물질", "0", "false", "해당없음"}
+
+
+def composition_rows(project: Stage2Project) -> list[int]:
+    """Rows whose single-substance/mixture identity still needs company confirmation.
+
+    Legacy rows that already contain one valid CAS plus a concentration are kept
+    as-is. New minimal-input rows have no concentration, so they are routed to
+    the composition questionnaire before either statutory engine runs.
+    """
+    _, rows = chem._rows(project)
+    components = mixture_components(project)
+    parents = {
+        int(float(row.get("제품목록행번호")))
+        for row in components
+        if _clean(row.get("제품목록행번호")) and str(row.get("제품목록행번호")).replace(".", "", 1).isdigit()
+    }
+    unresolved: list[int] = []
+    for number, row in enumerate(rows, start=1):
+        cas = _clean(row.get("CAS No.") or row.get("CAS 번호") or row.get("CAS"))
+        content = _clean(row.get("함량(%)"))
+        flag = row.get(MIXTURE_FLAG_COLUMN)
+        if _mixture_yes(flag):
+            if number not in parents:
+                unresolved.append(number)
+            continue
+        if _mixture_no(flag):
+            if not cas_valid(cas):
+                unresolved.append(number)
+            continue
+        # Backward compatibility: old company files already supplied CAS+content.
+        if content and cas_valid(cas):
+            continue
+        unresolved.append(number)
+    return unresolved
+
+
+def save_composition(
+    project: Stage2Project,
+    classifications: list[Mapping[str, Any]],
+    components: list[Mapping[str, Any]],
+    *,
+    sds_confirmed: bool,
+) -> None:
+    """Save single/mixture identity using CAS as the legal identifier.
+
+    Single substances require one valid CAS and are stored as 100%. Mixtures
+    require at least one SDS Section-3 component; every component requires a
+    valid CAS and concentration. Component names are display-only and optional.
+    """
+    _, rows = chem._rows(project)
+    wanted = set(composition_rows(project))
+    by_row = {int(float(item.get("행"))): dict(item) for item in classifications if _clean(item.get("행"))}
+    if wanted - set(by_row):
+        missing = ", ".join(map(str, sorted(wanted - set(by_row))))
+        raise ValueError(f"{missing}행의 단일물질/혼합물 여부를 선택해 주세요.")
+
+    component_by_parent: dict[int, list[dict[str, Any]]] = {}
+    for raw in components:
+        try:
+            parent = int(float(raw.get("제품목록행번호")))
+        except (TypeError, ValueError):
+            continue
+        component_by_parent.setdefault(parent, []).append(dict(raw))
+
+    existing = [row for row in mixture_components(project) if int(float(row.get("제품목록행번호") or 0)) not in wanted]
+    new_components: list[dict[str, Any]] = []
+    any_mixture = False
+
+    for number in sorted(wanted):
+        if number <= 0 or number > len(rows):
+            raise ValueError(f"{number}행을 물질 목록에서 찾을 수 없습니다.")
+        answer = by_row[number]
+        kind = _clean(answer.get("구분"))
+        row = rows[number - 1]
+        product = _clean(row.get("제품명") or row.get("물질명")) or f"{number}행"
+
+        if kind == "단일물질":
+            cas = _clean(answer.get("CAS No.") or row.get("CAS No.") or row.get("CAS 번호"))
+            if not cas_valid(cas):
+                raise ValueError(f"{number}행({product}): 단일물질은 유효한 CAS No.가 반드시 필요합니다.")
+            row["CAS No."] = cas
+            row["함량(%)"] = 100.0
+            row[MIXTURE_FLAG_COLUMN] = "N"
+            continue
+
+        if kind != "혼합물":
+            raise ValueError(f"{number}행({product}): 단일물질 또는 혼합물을 선택해 주세요.")
+
+        any_mixture = True
+        rows[number - 1][MIXTURE_FLAG_COLUMN] = "Y"
+        rows[number - 1]["함량(%)"] = ""
+        listed = component_by_parent.get(number, [])
+        usable = []
+        seen: set[str] = set()
+        for raw in listed:
+            cas = _clean(raw.get("CAS No."))
+            pct_text = _clean(raw.get("함량(%)")).replace(",", "")
+            name = _clean(raw.get("구성성분명") or raw.get("성분명(선택)"))
+            if not cas and not pct_text and not name:
+                continue
+            if not cas_valid(cas):
+                raise ValueError(f"{number}행({product}) 혼합물 구성성분: 모든 성분에 유효한 CAS No.를 입력해 주세요.")
+            if cas in seen:
+                raise ValueError(f"{number}행({product}) 혼합물 구성성분: CAS {cas}가 중복되었습니다.")
+            seen.add(cas)
+            try:
+                pct = float(pct_text)
+            except ValueError:
+                raise ValueError(f"{number}행({product}) / CAS {cas}: 함량(%)을 숫자로 입력해 주세요.")
+            if pct <= 0 or pct > 100:
+                raise ValueError(f"{number}행({product}) / CAS {cas}: 함량(%)은 0 초과 100 이하이어야 합니다.")
+            usable.append({
+                "적용여부": "해당",
+                "제품목록행번호": number,
+                "제품명(확인용)": product,
+                "구성성분명": name,
+                "CAS No.": cas,
+                "함량(%)": pct,
+                "함량 최저(%)": None,
+                "함량 최고(%)": None,
+                "SDS 제3항 근거": "사용자 확인: 제품 SDS 제3항",
+                "비고": "",
+            })
+        if not usable:
+            raise ValueError(f"{number}행({product}): 혼합물은 SDS 제3항의 구성성분 CAS No.와 함량(%)을 한 줄 이상 입력해 주세요.")
+        new_components.extend(usable)
+
+    if any_mixture and not sds_confirmed:
+        raise ValueError("혼합물 구성성분의 CAS No.와 함량(%)을 제품 SDS 제3항과 대조했는지 확인해 주세요.")
+
+    all_components = [*existing, *new_components]
+    # Keep canonical and inventory rows synchronized so later form screens see the same facts.
+    canonical, _ = chem._rows(project)
+    keys = [chem.INVENTORY_KEY]
+    if canonical == chem.DETAILS_KEY:
+        keys.append(chem.DETAILS_KEY)
+    for key in keys:
+        current = project.get_field(key)
+        project.set_field(
+            key,
+            current.label if current is not None else "화학물질 목록",
+            [dict(row) for row in rows],
+            "USER_CONFIRMED",
+            evidence=list(current.evidence) if current is not None else [],
+            note="법정 대상 판정의 단일물질/혼합물 성분 확인 반영",
+        )
+    project.set_field(
+        MIXTURE_COMPONENTS_KEY,
+        "혼합물 구성성분",
+        all_components,
+        "USER_CONFIRMED" if all_components else "HOLD",
+        note="혼합물 성분은 제품 SDS 제3항의 CAS No.와 함량을 기준으로 입력",
+    )
+    project.stage1_snapshot["chemicals"] = [dict(row) for row in rows]
+    project.stage1_snapshot["mixture_components"] = [dict(row) for row in all_components]
 
 
 def request_rows(requests: list[str] | tuple[str, ...], total: int) -> list[int]:
@@ -224,23 +397,28 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
         also_given = _clean(extra.get("최대 제조·사용량")) or _clean(extra.get("최대 저장량"))
         if quantity in (None, "") and not also_given:
             missing.append(name or cas)
+        content = _clean(extra.get("함량(%)")) or _clean(row.get("함량(%)"))
+        if _mixture_no(row.get(MIXTURE_FLAG_COLUMN)) and not content:
+            content = "100"
         record = {
             "제품명": _clean(row.get("제품명")) or name, "CAS No.": cas, "물질명(알면 입력)": name,
-            "함량(%)": _clean(extra.get("함량(%)")) or row.get("함량(%)"), "취급형태": _clean(row.get("취급형태")) or "저장·사용",
+            "함량(%)": content, MIXTURE_FLAG_COLUMN: _clean(row.get(MIXTURE_FLAG_COLUMN)),
+            "취급형태": _clean(row.get("취급형태")) or "저장·사용",
             "수량 단위": _clean(row.get("수량 단위")) or "ton", "최대 동시보유량(알면 입력)": quantity,
         }
         for column in _EXTRA_INPUT_COLUMNS:
             record[column] = _clean(extra.get(column))
         records.append(record)
-    columns = ["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"]
+    columns = ["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", MIXTURE_FLAG_COLUMN, "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"]
     columns += [c for c in _EXTRA_INPUT_COLUMNS if any(r.get(c) for r in records)]
     frame = pd.DataFrame(records, columns=columns)
     fingerprint = hashlib.sha256(json.dumps({"business": business, "chemicals": records, "answers": answers(project)},
                                             ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
-    mixture = project.stage1_snapshot.get("mixture_components") or []
+    mixture = mixture_components(project)
+    mixture_frame = pd.DataFrame(mixture, columns=MIXTURE_COMPONENT_COLUMNS) if mixture else pd.DataFrame(columns=MIXTURE_COMPONENT_COLUMNS)
     intake = IntakeData(business=business, chemicals=frame, documents={}, final_conditions=dict(answers(project)),
                         source_fingerprint=fingerprint,
-                        mixture_components=pd.DataFrame(mixture) if mixture else pd.DataFrame())
+                        mixture_components=mixture_frame)
     return intake, missing
 
 
@@ -259,6 +437,13 @@ def _questions_for(requests: list[str], current: Mapping[str, str]) -> tuple[Que
 
 
 def judge(project: Stage2Project, assess: Callable[[IntakeData], Any] = assess_stage1_from_workbook) -> Outcome:
+    unresolved_composition = composition_rows(project)
+    if unresolved_composition:
+        return Outcome(
+            "COMPOSITION",
+            ("각 제품이 단일물질인지 혼합물인지 확인하고, 혼합물은 SDS 제3항의 구성성분 CAS No.와 함량(%)을 입력해 주세요.",),
+            composition_rows=tuple(unresolved_composition),
+        )
     intake, missing = build_intake(project)
     issues = validate_intake(intake)
     quantity_issues = [i for i in issues if QUANTITY_ISSUE in i]
