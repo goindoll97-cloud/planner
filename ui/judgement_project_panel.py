@@ -79,7 +79,12 @@ def _rows(project) -> list[dict]:
 def _chemicals(project) -> None:
     pid = project.project_id
     rows = _rows(project)
-    with st.expander(f"물질 목록 — {len(rows)}건", expanded=not rows):
+    unresolved = set(judgement.composition_rows(project))
+    mixture_file_needed = any(
+        number in unresolved and judgement._mixture_yes(row.get("혼합물 여부"))
+        for number, row in enumerate(rows, start=1)
+    )
+    with st.expander(f"물질 목록 — {len(rows)}건", expanded=(not rows or mixture_file_needed)):
         if rows:
             parts = judgement.components_by_row(project)
             frames.show(pd.DataFrame([{
