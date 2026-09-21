@@ -127,11 +127,17 @@ def _records(intake: IntakeData) -> list[dict[str, Any]]:
     return records
 
 
+def _business_args(business: Mapping[str, Any]) -> dict[str, str]:
+    return {"name": _clean(business.get("사업장명")), "address": _clean(business.get("사업장 주소")),
+            "industry": _clean(business.get("업종 또는 주요 생산품"))}
+
+
 def _pending(intake: IntakeData, messages: tuple[str, ...], **base: str) -> StartOutcome:
     """판정을 미룬 채 사업장을 만든다. 최대보유량은 별지 제1호 시설 입력으로 계산한 뒤, 판정에 필요한 질문에 답하고 판정한다."""
     snapshot = {"source_fingerprint": intake.source_fingerprint, "business": dict(intake.business), "documents": {},
                 "chemicals": _records(intake), "mixture_components": [], "facilities": [], "decision": {}}
     project = create_project_from_stage1_snapshot(snapshot)
+    cap_judgement.save_business(project, **_business_args(intake.business))
     project.stage1_snapshot[cap_judgement.PENDING_KEY] = True
     return StartOutcome("PENDING", messages, project, **base)
 
@@ -176,6 +182,7 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
         "decision": asdict(decision) if is_dataclass(decision) else dict(vars(decision)),
     }
     project = create_project_from_stage1_snapshot(snapshot)
+    cap_judgement.save_business(project, **_business_args(intake.business))
     psm_target, cap_target = project.psm_required is True, project.cap_required is True
     if not psm_target and not cap_target:
         return StartOutcome("NOT_REQUIRED", (), **base)
