@@ -25,6 +25,29 @@ def _status_line(project) -> str:
     return f"{CAP}: {decision.get('cap_status') or '확인 안 됨'} / {PSM}: {decision.get('psm_status') or '확인 안 됨'}"
 
 
+STEPS = ("성분 확인", "판정 질문", "물질별 값 확인", "결과")
+
+
+def current_step(outcome) -> int:
+    """지금 화면이 어느 단계인지(1~4). 판정 규칙이 요청하는 내용에 따라 필요한 단계만 나타납니다."""
+    status = getattr(outcome, "status", "")
+    if status == "COMPOSITION":
+        return 1
+    if status == "REQUEST":
+        return 2 if getattr(outcome, "questions", ()) else 3
+    if status == "PENDING":
+        return 3
+    return 4
+
+
+def step_line(step: int) -> str:
+    return " → ".join(f"**{i}. {name}**" if i == step else f"{i}. {name}" for i, name in enumerate(STEPS, start=1))
+
+
+def unit_help() -> str:
+    return "칸마다 kg 또는 ton을 고를 수 있습니다. 저장할 때 자동으로 ton으로 바꿔 줍니다."
+
+
 COMPOSITION_OPTIONS = ["선택하세요", "단일물질", "혼합물"]
 
 
@@ -152,18 +175,28 @@ def _composition_form(project, outcome) -> None:
 
 def _ask(project, outcome) -> None:
     st.markdown("#### 판정에 필요한 확인 사항")
-    st.caption("판정 규칙이 사업장에 대해 답을 요청한 항목만 물어봅니다. 모르면 '모름'을 고르세요. 그러면 판정이 보류되고 무엇을 확인해야 하는지 안내됩니다.")
+    st.caption("판정 규칙이 사업장에 대해 답을 요청한 항목만 물어봅니다. 답에 따라 작성해야 하는 문서가 달라질 수 있으니, "
+               "확실하지 않으면 추측하지 말고 '모름'을 고르세요. 그러면 판정이 보류되고 무엇을 확인해야 하는지 안내됩니다.")
     existing = judgement.answers(project)
     given: dict[str, str] = {}
     for question in outcome.questions:
         key = f"judge_q_{project.project_id}_{question.item}"
-        st.markdown(f"**{question.text}**  \n<small>{question.system}</small>", unsafe_allow_html=True)
+        st.markdown(f"**{question.text}**")
+        st.caption(f"이 답은 {question.system} 대상 여부를 정하는 데 쓰입니다." if question.system != "공통"
+                   else "이 답은 두 문서의 대상 여부에 모두 영향을 줄 수 있습니다.")
         if question.options:
             options = ["선택하세요", *question.options]
             current = existing.get(question.item, "")
             picked = st.radio(question.text, options, index=options.index(current) if current in options else 0,
-                              horizontal=True, key=key, help=question.help, label_visibility="collapsed")
+                              horizontal=True, key=key, help=question.help, label_visibility="collapsed",
+                              format_func=lambda v: ANSWER_LABELS.get(v, v))
             given[question.item] = "" if picked == "선택하세요" else picked
+        elif question.item.endswith("(kg)"):
+            value_col, unit_col = st.columns([3, 1])
+            typed = value_col.text_input(question.text, value=existing.get(question.item, ""), key=key,
+                                         help=question.help, label_visibility="collapsed")
+            unit = unit_col.selectbox("단위", ["kg", "ton"], key=key + "_unit", label_visibility="collapsed")
+            given[question.item] = judgement.convert_quantity(typed, unit, "kg")  # 판정에는 kg로 저장한다
         else:
             given[question.item] = st.text_input(question.text, value=existing.get(question.item, ""), key=key,
                                                  help=question.help, label_visibility="collapsed")
@@ -206,6 +239,7 @@ def _for_table(message: str) -> bool:
 
 
 YES_NO_UNKNOWN = ["", "Y", "N", "모름"]
+ANSWER_LABELS = {"Y": "예", "N": "아니오"}
 
 
 def _chemical_table(project, outcome, table_messages):
@@ -218,7 +252,8 @@ def _chemical_table(project, outcome, table_messages):
     if not rows:
         return None, {}
     st.markdown("**물질별로 확인할 값**")
-    st.caption("아래 표에서 비어 있는 칸을 채워 주세요. 모르는 칸은 비워 두면 됩니다. 판정 규칙이 요청한 물질만 보여 줍니다.")
+    st.caption("아래 표에서 비어 있는 칸을 채워 주세요. 판정 규칙이 요청한 물질만 보여 줍니다. "
+               "빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다. " + unit_help())
     for message in table_messages:
         st.write(f"• {judgement.display_request(message)}")
     wanted = judgement.request_rows(table_messages, len(rows))
@@ -237,6 +272,7 @@ def _chemical_table(project, outcome, table_messages):
             "행": number,
             "제품명": str(row.get("제품명") or row.get("물질명") or ""),
             "CAS No.": str(row.get("CAS No.") or row.get("CAS 번호") or ""),
+            "단위": "ton",  # 저장된 값은 항상 ton이다
             **{column: extra.get(column, "") for column in judgement.CHEM_INPUT_COLUMNS},
         })
     frame = pd.DataFrame(records)
@@ -248,14 +284,20 @@ def _chemical_table(project, outcome, table_messages):
         "CAS No.": st.column_config.TextColumn("CAS No.", disabled=True),
         "함량(%)": text("함량(%)", "제품 중 이 물질의 함량입니다."),
         "상온·상압 액체 여부(해당 시)": st.column_config.SelectboxColumn("상온·상압 액체 여부", options=YES_NO_UNKNOWN),
-        "최대 제조·사용량": text("최대 제조·사용량", "하루 최대 제조·사용량(수량 단위는 ton 기준으로 적으세요)."),
-        "최대 저장량": text("최대 저장량", "한꺼번에 저장하는 최대량(ton)."),
-        "최대 동시보유량(알면 입력)": text("최대 동시보유량(ton)", "법정 산정 방식으로 계산한 사업장 최대보유량을 알 때만 적으세요."),
+        "단위": st.column_config.SelectboxColumn("단위", options=list(judgement.UNIT_OPTIONS), required=True, width="small",
+                                                  help="이 행의 수량 칸에 적은 값의 단위입니다. 저장할 때 ton으로 바꿔 저장합니다."),
+        "최대 제조·사용량": text("하루 최대 제조·사용량", "하루에 가장 많이 제조·사용하는 양입니다. 모르면 비워 두고, 하지 않으면 0을 적으세요."),
+        "최대 저장량": text("최대 저장량", "한꺼번에 가장 많이 저장하는 양입니다. 모르면 비워 두고, 저장하지 않으면 0을 적으세요."),
+        "최대 동시보유량(알면 입력)": text(
+            "사업장 최대보유량",
+            "법에서 정한 방법(설비 용량 × 비중 등)으로 계산한 사업장 전체의 최대 보유량입니다. 계산하지 않았다면 비워 두세요. 별지 제1호에서 시설을 입력하면 자동 계산됩니다."),
         "최대보유량 법정 산정 여부": st.column_config.SelectboxColumn(
-            "법정 산정 여부", help="위 최대 동시보유량이 법정 방식으로 산정한 값이면 Y, 단순 재고량이나 추정이면 N입니다.",
+            "위 값은 법정 방식으로 계산했나요?",
+            help="바로 왼쪽 '사업장 최대보유량'을 법에서 정한 방법으로 계산했으면 Y(예), 창고 재고 등 단순 추정이면 N(아니오)입니다. 잘 모르면 '모름'을 고르세요.",
             options=YES_NO_UNKNOWN),
         "SDS 제2항 유해성·위험성 분류(선택 입력)": text(
-            "SDS 제2항 분류", "제품 SDS 제2항의 유해성·위험성 분류를 그대로 적습니다. 해당 분류가 없으면 '별표1 해당없음'."),
+            "SDS 제2항 분류",
+            "제품 SDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 판정 규칙이 요청한 물질만 채우면 되고, 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
     }
     editor = st.data_editor(frame, column_config=config, hide_index=True, width="stretch", num_rows="fixed",
                             key=f"judge_chem_{pid}_{st.session_state.get(gen_key, 0)}")
@@ -263,8 +305,10 @@ def _chemical_table(project, outcome, table_messages):
     used: dict = {}
     for position, number in enumerate(wanted):
         values = editor.iloc[position]
-        result[number - 1] = {column: ("" if pd.isna(values[column]) else str(values[column]).strip())
-                              for column in judgement.CHEM_INPUT_COLUMNS}
+        typed = {column: ("" if pd.isna(values[column]) else str(values[column]).strip())
+                 for column in judgement.CHEM_INPUT_COLUMNS}
+        typed["단위"] = "ton" if pd.isna(values["단위"]) else str(values["단위"])
+        result[number - 1] = judgement.rows_to_ton([typed])[0]  # 고른 단위를 ton으로 통일해 저장한다
         cas = str(values["CAS No."]).strip()
         cand = candidates.get(cas)
         # 후보 문구를 그대로 둔 칸만 'KOSHA 후보 사용'으로 본다(고쳐 쓴 칸은 사용자가 직접 적은 값이다).
@@ -336,6 +380,7 @@ def render(project) -> None:
     label = "법정 대상 판정" + (" — 판정 전" if pending else "")
     with st.expander(label, expanded=pending):
         st.write("현재 판정: " + _status_line(project))
+        st.caption("판정은 " + step_line(0) + " 순서로 진행합니다. 답에 따라 필요한 단계만 나타납니다.")
         if pending:
             st.caption("시설을 입력하면 최대보유량이 계산됩니다. 그 뒤 아래 버튼으로 법정 대상인지 판정하고 작성할 문서를 정합니다. "
                        "별지 작성은 판정 전에도 미리 할 수 있습니다.")
@@ -349,6 +394,7 @@ def render(project) -> None:
         outcome = st.session_state.get(key)
         if outcome is None:
             return
+        st.markdown("진행: " + step_line(current_step(outcome)))
         if outcome.status == "COMPOSITION":
             _composition_form(project, outcome)
         elif outcome.status == "INVALID":

@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """사업장 판정하기: 사업장과 물질 목록(엑셀·CSV 가능)을 넣고, 판정에 필요한 질문에 답하고, 작성할 문서를 정한 뒤 작성으로 넘어간다.
 
 예전의 '판정진단(엑셀 전체 양식) → 작성범위 선택' 두 화면을 한 화면으로 합쳤다. 물질 목록만 파일로 받고 나머지는 질문으로 묻는다.
 """
+
+from __future__ import annotations
 
 import streamlit as st
 
@@ -36,6 +36,7 @@ current = st.session_state.get(ACTIVE_PROJECT_KEY)
 selected = st.selectbox("사업장", ids, index=ids.index(current) if current in ids else 0, format_func=lambda pid: labels[pid],
                         key="judgement_project")
 st.session_state[ACTIVE_PROJECT_KEY] = selected
+st.caption("새 사업장을 추가하려면 아래 '새 사업장으로 시작하기'를 여세요.")
 cap_start_panel.render(expanded=False)
 
 try:

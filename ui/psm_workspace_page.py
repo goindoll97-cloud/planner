@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """공정안전보고서 작성: 화학사고예방관리계획서에서 이미 입력한 사실을 재사용해 별지 제13·15·19호의2를 작성한다."""
+
+from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
