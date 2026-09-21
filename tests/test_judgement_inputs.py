@@ -171,7 +171,7 @@ class TemplateColumnTests(unittest.TestCase):
         intake = cap_start.build_intake({"사업장명": "t"}, checked.rows)
         chem = intake.chemicals.iloc[0]
         self.assertEqual(chem["상온·상압 액체 여부(해당 시)"], "Y")
-        self.assertEqual(chem["최대 저장량"], "2")
+        self.assertEqual(chem["최대 저장량"], 2.0)
         self.assertEqual(chem["SDS 제2항 유해성·위험성 분류(선택 입력)"], "별표1 해당없음")
 
     def test_a_stored_project_row_feeds_the_judgement_input_without_asking_again(self):
