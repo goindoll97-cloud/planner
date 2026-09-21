@@ -43,7 +43,7 @@ def render(project) -> None:
 
 
         def add_uploaded(good, file_name, sha256):
-            added, skipped = chem_upload.add_to_project(project, good, file_name=file_name, sha256=sha256)
+            added, skipped = chem_upload.add_to_project(project, good, file_name=file_name, sha256=sha256, sds_confirmed=True)
             save_project(project)
             return (f"{file_name}에서 물질 {added}건을 추가했습니다(건너뜀 {skipped}건). 물질을 추가하면 법정 작성 대상 판정이 "
                     "달라질 수 있습니다. 시작하기의 판정은 처음 입력한 물질 기준입니다.")

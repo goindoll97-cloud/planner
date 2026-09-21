@@ -116,7 +116,8 @@ class TemplateTests(unittest.TestCase):
         book = load_workbook(BytesIO(up.blank_template()))
         first = book["물질 목록"]
         self.assertEqual([c.value for c in first[1]], [
-            "제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"])
+            "제품명", "단일물질/혼합물", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상(상온·상압)",
+            "SDS 제2항 분류(선택)"])
         self.assertEqual(first.max_row, 1)  # 빈 양식: 예시 행이 실수로 올라가지 않는다
         self.assertTrue(any("(예시)" in str(c.value) for row in book["작성 안내"].iter_rows() for c in row))
         parsed = up.parse(up.blank_template(), "template.xlsx")

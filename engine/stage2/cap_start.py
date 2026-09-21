@@ -14,7 +14,7 @@ from typing import Any, Callable, Mapping
 
 import pandas as pd
 
-from ..inventory import IntakeData, MIXTURE_FLAG_COLUMN, validate_intake
+from ..inventory import IntakeData, MIXTURE_COMPONENT_COLUMNS, MIXTURE_FLAG_COLUMN, validate_intake
 from ..stage1_workbook import assess_stage1_from_workbook
 from . import cap_judgement
 from .project import Stage2Project, create_project_from_stage1_snapshot
@@ -110,14 +110,37 @@ def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(records, columns=base + used)
 
 
-def build_intake(business: Mapping[str, Any], rows: list[Mapping[str, Any]]) -> IntakeData:
+def component_records(frame: pd.DataFrame, components: list[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+    """업로드한 혼합물 성분을 판정 입력 형식으로 바꾼다. 제품목록행번호는 물질 표에서의 위치(1부터)이고 제품명으로 찾는다."""
+    if not components:
+        return []
+    position = {_clean(name): index + 1 for index, name in enumerate(frame["제품명"].tolist())}
+    out = []
+    for component in components:
+        parent = position.get(_clean(component.get("제품명")))
+        if not parent:
+            continue  # 표에서 지운 제품의 성분은 버린다
+        out.append({
+            "적용여부": "Y", "제품목록행번호": parent, "제품명(확인용)": _clean(component.get("제품명")),
+            "구성성분명": _clean(component.get("구성성분명")), "CAS No.": _clean(component.get("CAS No.")),
+            "함량(%)": _clean(component.get("함량(%)")),
+            "SDS 제3항 근거": _clean(component.get("SDS 제3항 근거")) or "회사 입력 파일 — 제품 SDS 제3항과 대조 확인",
+        })
+    return out
+
+
+def build_intake(business: Mapping[str, Any], rows: list[Mapping[str, Any]],
+                 components: list[Mapping[str, Any]] | None = None) -> IntakeData:
     frame = chemical_frame(rows)
+    parts = component_records(frame, components)
     fingerprint = hashlib.sha256(
-        json.dumps({"business": dict(business), "chemicals": frame.astype(object).where(frame.notna(), None).to_dict("records")},
+        json.dumps({"business": dict(business), "chemicals": frame.astype(object).where(frame.notna(), None).to_dict("records"),
+                    "components": parts},
                    ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()
     return IntakeData(business={k: _clean(business.get(k)) for k in BUSINESS_FIELDS}, chemicals=frame, documents={},
-                      source_fingerprint=fingerprint)
+                      source_fingerprint=fingerprint,
+                      mixture_components=pd.DataFrame(parts, columns=MIXTURE_COMPONENT_COLUMNS))
 
 
 def _records(intake: IntakeData) -> list[dict[str, Any]]:
@@ -125,6 +148,13 @@ def _records(intake: IntakeData) -> list[dict[str, Any]]:
     for record in records:
         record["물질명"] = record.get("물질명(알면 입력)") or record.get("제품명")
     return records
+
+
+def _component_dicts(intake: IntakeData) -> list[dict[str, Any]]:
+    frame = intake.mixture_components
+    if frame is None or frame.empty:
+        return []
+    return frame.astype(object).where(frame.notna(), None).to_dict("records")
 
 
 def _business_args(business: Mapping[str, Any]) -> dict[str, str]:
@@ -135,7 +165,7 @@ def _business_args(business: Mapping[str, Any]) -> dict[str, str]:
 def _pending(intake: IntakeData, messages: tuple[str, ...], **base: str) -> StartOutcome:
     """판정을 미룬 채 사업장을 만든다. 최대보유량은 별지 제1호 시설 입력으로 계산한 뒤, 판정에 필요한 질문에 답하고 판정한다."""
     snapshot = {"source_fingerprint": intake.source_fingerprint, "business": dict(intake.business), "documents": {},
-                "chemicals": _records(intake), "mixture_components": [], "facilities": [], "decision": {}}
+                "chemicals": _records(intake), "mixture_components": _component_dicts(intake), "facilities": [], "decision": {}}
     project = create_project_from_stage1_snapshot(snapshot)
     cap_judgement.save_business(project, **_business_args(intake.business))
     project.stage1_snapshot[cap_judgement.PENDING_KEY] = True
@@ -143,10 +173,11 @@ def _pending(intake: IntakeData, messages: tuple[str, ...], **base: str) -> Star
 
 
 def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
+          components: list[Mapping[str, Any]] | None = None,
           assess: Callable[[IntakeData], Any] = assess_stage1_from_workbook) -> StartOutcome:
     """사업장을 만든다. 판정에 필요한 정보가 다 있으면 바로 판정하고, 부족하면(최대보유량을 모르거나 판정에 필요한 확인 사항이
     남았으면) 판정을 미룬 사업장을 만들어 별지 작성 화면에서 이어 가게 한다."""
-    intake = build_intake(business, rows)
+    intake = build_intake(business, rows, components)
     issues = validate_intake(intake)
     quantity_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE in i]
     other_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE not in i]
@@ -178,7 +209,7 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
         return _pending(intake, tuple(decision.company_requests), **base)
     snapshot = {
         "source_fingerprint": intake.source_fingerprint, "business": dict(intake.business), "documents": {},
-        "chemicals": _records(intake), "mixture_components": [], "facilities": [],
+        "chemicals": _records(intake), "mixture_components": _component_dicts(intake), "facilities": [],
         "decision": asdict(decision) if is_dataclass(decision) else dict(vars(decision)),
     }
     project = create_project_from_stage1_snapshot(snapshot)

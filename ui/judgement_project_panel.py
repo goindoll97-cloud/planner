@@ -69,7 +69,7 @@ def _chemicals(project) -> None:
             st.info("이 사업장에는 아직 물질이 없습니다. 아래에서 엑셀·CSV로 올려 주세요.")
 
         def add_uploaded(good, file_name, sha256):
-            added, skipped = chem_upload.add_to_project(project, good, file_name=file_name, sha256=sha256)
+            added, skipped = chem_upload.add_to_project(project, good, file_name=file_name, sha256=sha256, sds_confirmed=True)
             storage.save_project(project)
             st.session_state.pop(f"judge_out_{pid}", None)  # 물질이 바뀌면 예전 판정 결과는 더 이상 맞지 않는다
             return (f"{file_name}에서 물질 {added}건을 이 사업장에 추가했습니다(이미 있어 건너뜀 {skipped}건). "

@@ -17,11 +17,12 @@ import pandas as pd
 
 from .project import EvidenceRef, Stage2Project
 
-OUT_COLUMNS = ("제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위")
-# 기존 회사 파일의 함량·혼합물 표시와 과거 전문열은 계속 읽되 신규 빈 양식에는 노출하지 않는다.
+SDS_CLASS_COLUMN = "SDS 제2항 유해성·위험성 분류(선택 입력)"
+# 양식의 열. 법정 대상 판정에 필요한 값만 받는다(한 줄 = 한 CAS, 혼합물은 성분마다 한 줄).
+OUT_COLUMNS = ("제품명", "혼합물 여부", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상", SDS_CLASS_COLUMN)
+# 과거 회사 파일에 있던 값은 계속 읽어 보존한다.
 EXTRA_COLUMNS = (
-    "함량(%)", "혼합물 여부", "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)",
-    "최대보유량 법정 산정 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)",
+    "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)", "최대보유량 법정 산정 여부",
 )
 ALL_COLUMNS = OUT_COLUMNS + EXTRA_COLUMNS
 TON_EXTRAS = ("최대 제조·사용량", "최대 저장량")
@@ -34,7 +35,7 @@ FIELD_ALIASES = {
     "제품명": ("제품명", "물질명", "화학물질명", "유해화학물질명", "품명", "제품", "화학명", "물질", "productname", "name"),
     "CAS No.": ("casno", "cas번호", "cas", "화학물질식별번호", "casnumber", "cas no."),
     "함량(%)": ("함량", "농도", "순도", "성분함량", "함유량", "content", "함량%"),
-    "혼합물 여부": ("혼합물여부", "혼합여부", "mixture", "mixtureyn"),
+    "혼합물 여부": ("단일물질혼합물", "단일혼합", "혼합물여부", "혼합여부", "mixture", "mixtureyn"),
     "최대 동시보유량(ton)": ("최대동시보유량", "최대보유량", "보유량", "재고량"),
     "성상": ("성상", "상온상압성상", "물질상태", "상태"),
     "상온·상압 액체 여부(해당 시)": ("상온상압액체여부", "액체여부", "상온상압액체"),
@@ -183,6 +184,81 @@ def _content(text: str) -> tuple[str, str]:
     return f"{value:g}", ""
 
 
+def mixture_flag(text: object) -> str:
+    """'단일물질'/'혼합물'(또는 Y/N)을 Y/N으로 바꾼다. 읽지 못하면 빈 값."""
+    word = re.sub(r"\s", "", _clean(text)).lower()
+    if word in {"혼합물", "혼합", "y", "yes", "예", "mixture"}:
+        return "Y"
+    if word in {"단일물질", "단일", "n", "no", "아니오", "single"}:
+        return "N"
+    return ""
+
+
+def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """한 줄이 한 CAS인 표를 제품 단위로 묶는다.
+
+    제품명이 비어 있거나 바로 위 줄과 같으면 위 제품의 다음 성분이다. 혼합물은 제품 줄의 CAS·함량을 비우고 성분 목록을
+    `_components`에 담는다. 수량·단위·성상·SDS 분류는 제품의 첫 줄(또는 처음 값이 있는 줄)에서 가져온다.
+    """
+    groups: list[list[Mapping[str, Any]]] = []
+    last_name = ""
+    for row in rows:
+        name, cas = _clean(row.get("제품명")), _clean(row.get("CAS No."))
+        if not name and not cas and not _clean(row.get("함량(%)")):
+            continue
+        if groups and (not name or _norm(name) == _norm(last_name)):
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+            last_name = name
+    products: list[dict[str, Any]] = []
+    for group in groups:
+        first = dict(group[0])
+        name = _clean(first.get("제품명")) or _clean(first.get("CAS No."))
+        flags = {mixture_flag(r.get("혼합물 여부")) for r in group} - {""}
+        many = len([r for r in group if _clean(r.get("CAS No."))]) > 1
+        notes = [n for n in _clean(first.get("메모")).split(" / ") if n]
+        if many and "Y" not in flags:
+            notes.append("CAS가 여러 개라 혼합물로 처리했습니다")
+        is_mixture = "Y" in flags or many
+        for column in ("최대 제조·사용량", "최대 저장량", "단위", "성상", SDS_CLASS_COLUMN, "상온·상압 액체 여부(해당 시)",
+                       "최대 동시보유량(ton)", "최대보유량 법정 산정 여부"):
+            if not _clean(first.get(column)):
+                first[column] = next((_clean(r.get(column)) for r in group if _clean(r.get(column))), "")
+        if not is_mixture:
+            first.update({"제품명": name, "혼합물 여부": "N", "_components": []})
+            if not _clean(first.get("함량(%)")):
+                first["함량(%)"] = "100"
+            first["메모"] = " / ".join(notes)
+            products.append(first)
+            continue
+        components, problems, total = [], [], 0.0
+        for row in group:
+            cas = _clean(row.get("CAS No."))
+            if not cas:
+                continue
+            content = _clean(row.get("함량(%)"))
+            found = CAS_RE.findall(cas)
+            if len(found) != 1 or not cas_valid("-".join(found[0])):
+                problems.append(f"성분 CAS {cas}의 형식 또는 검산 숫자가 맞지 않습니다")
+            if not content:
+                problems.append(f"성분 {cas}의 함량(%)이 비어 있습니다")
+            elif not re.fullmatch(r"\d+(?:\.\d+)?", content):
+                problems.append(f"성분 {cas}의 함량(%)은 숫자만 적어야 합니다")
+            else:
+                total += float(content)
+            components.append({"CAS No.": "-".join(found[0]) if len(found) == 1 else cas, "함량(%)": content})
+        if not components:
+            problems.append("혼합물의 성분 CAS를 한 줄에 하나씩 적어 주세요")
+        if total > 100.5:
+            problems.append(f"성분 함량의 합이 {total:g}%로 100%를 넘습니다")
+        first.update({"제품명": name, "혼합물 여부": "Y", "CAS No.": "", "함량(%)": "", "_components": components,
+                      "_component_problems": problems})
+        first["메모"] = " / ".join([*notes, f"혼합물(성분 {len(components)}개)"])
+        products.append(first)
+    return products
+
+
 def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = None,
                existing_names: set[str] | None = None) -> Checked:
     """입력 표의 행을 검사한다. 오류가 있는 행은 추가되지 않고, 경고는 표시만 한다."""
@@ -196,6 +272,10 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
             continue
         notes: list[str] = []
         errors = warnings = 0
+        is_mixture = mixture_flag(row.get("혼합물 여부")) == "Y" and bool(row.get("_components") or row.get("_component_problems"))
+        for problem in row.get("_component_problems") or []:
+            errors += 1
+            notes.append(problem)
         cas_list = CAS_RE.findall(cas)
         if cas and not cas_list:
             errors += 1
@@ -211,7 +291,7 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
         if not name:
             warnings += 1
             notes.append("이름이 없어 CAS로 대신 표시합니다")
-        if not cas:
+        if not cas and not is_mixture:
             warnings += 1
             notes.append("CAS 번호가 없습니다(물질 식별이 어렵습니다)")
         key = cas or _norm(name)
@@ -222,7 +302,7 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
             errors += 1
             notes.append("이미 목록에 있는 물질입니다(건너뜀)")
         seen.add(key)
-        for column in ("함량(%)", "최대 동시보유량(ton)", *TON_EXTRAS):
+        for column in (("최대 동시보유량(ton)", *TON_EXTRAS) if is_mixture else ("함량(%)", "최대 동시보유량(ton)", *TON_EXTRAS)):
             text = _clean(row.get(column))
             if text and not re.fullmatch(r"\d+(?:\.\d+)?", text):
                 errors += 1
@@ -233,7 +313,9 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
         checked.errors += 1 if errors else 0
         checked.warnings += 1 if warnings and not errors else 0
         checked.rows.append({
-            "제품명": name or cas, "CAS No.": cas, "함량(%)": _clean(row.get("함량(%)")),
+            "제품명": name or cas, "혼합물 여부": mixture_flag(row.get("혼합물 여부")), "CAS No.": cas,
+            "함량(%)": _clean(row.get("함량(%)")), "성상": _clean(row.get("성상")), SDS_CLASS_COLUMN: _clean(row.get(SDS_CLASS_COLUMN)),
+            "_components": list(row.get("_components") or []), "_component_problems": list(row.get("_component_problems") or []),
             "최대 제조·사용량": _clean(row.get("최대 제조·사용량")),
             "최대 저장량": _clean(row.get("최대 저장량")),
             "단위": _clean(row.get("단위")) or "ton",
@@ -267,6 +349,7 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
                 notes.append(f"{column}: {note}")
 
         extras: dict[str, str] = {}
+        flag_text = cell("혼합물 여부")
         state_note = ""
         if cell("성상") and not cell(LIQUID_COLUMN):
             liquid = _STATE_WORDS.get(re.sub(r"[\s()]", "", cell("성상")).lower(), "")
@@ -275,9 +358,7 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
         else:
             liquid = ""
         for column in EXTRA_COLUMNS:
-            if column == "함량(%)":
-                extras[column] = content
-            elif column == "최대 동시보유량(ton)":
+            if column == "최대 동시보유량(ton)":
                 extras[column] = amount
             elif column == LIQUID_COLUMN and liquid:
                 extras[column] = liquid  # 성상 선택에서 액체 여부를 프로그램이 정한다(액체 Y, 기체·고체 N)
@@ -287,54 +368,62 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
             notes.append(state_note)
         # 업로드 단계에서 kg/ton을 ton으로 환산했으므로 이후 엔진에는 ton이라고 명시한다.
         normalized_unit = "ton" if any(quantities.values()) or amount else (cell("단위") or "")
-        rows.append({"제품명": cell("제품명"), "CAS No.": cell("CAS No."), "함량(%)": content,
+        if flag_text and not mixture_flag(flag_text):
+            notes.append(f"단일물질/혼합물 '{flag_text}'을 읽지 못했습니다(단일물질·혼합물 중에서 고르세요)")
+        rows.append({"제품명": cell("제품명"), "혼합물 여부": mixture_flag(flag_text), "CAS No.": cell("CAS No."),
+                     "함량(%)": content,
                      "최대 제조·사용량": quantities.get("최대 제조·사용량", ""),
                      "최대 저장량": quantities.get("최대 저장량", ""),
-                     "단위": normalized_unit,
+                     "단위": normalized_unit, "성상": cell("성상"), SDS_CLASS_COLUMN: cell(SDS_CLASS_COLUMN),
                      **extras,
                      "메모": " / ".join(notes)})
     return rows
 
 
 def blank_template() -> bytes:
-    """신입사원용 최소 입력 양식. 전문 판정항목은 필요할 때 화면에서 후속 질문한다."""
+    """법정 대상 판정에 필요한 값만 받는 양식. 한 줄이 한 CAS이고, 혼합물은 성분마다 한 줄씩 적는다."""
     from openpyxl import Workbook
     from openpyxl.worksheet.datavalidation import DataValidation
 
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "물질 목록"
-
-    headers = ["제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"]
+    headers = ["제품명", "단일물질/혼합물", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상(상온·상압)",
+               "SDS 제2항 분류(선택)"]
     sheet.append(headers)
-    for column, width in zip("ABCDE", (28, 16, 22, 20, 12)):
+    for column, width in zip("ABCDEFGHI", (26, 16, 16, 12, 20, 16, 10, 16, 30)):
         sheet.column_dimensions[column].width = width
 
-    unit_validation = DataValidation(
-        type="list", formula1='"kg,ton"', allow_blank=False,
-        showErrorMessage=True, errorTitle="단위를 선택하세요",
-        error="kg 또는 ton만 선택할 수 있습니다.",
-        showInputMessage=True, promptTitle="수량 단위",
-        prompt="최대 제조·사용량과 최대 저장량에 공통으로 적용할 단위를 고르세요.",
-    )
-    sheet.add_data_validation(unit_validation)
-    unit_validation.add("E2:E1000")
+    def dropdown(values: str, cells: str, title: str, prompt: str) -> None:
+        validation = DataValidation(type="list", formula1=f'"{values}"', allow_blank=True, showErrorMessage=True,
+                                    errorTitle=f"{title}을 선택하세요", error=f"{values} 중에서 고르세요.",
+                                    showInputMessage=True, promptTitle=title, prompt=prompt)
+        sheet.add_data_validation(validation)
+        validation.add(cells)
+
+    dropdown("단일물질,혼합물", "B2:B1000", "단일물질/혼합물", "혼합제품이면 '혼합물'을 고르고 성분마다 한 줄씩 적으세요.")
+    dropdown("kg,ton", "G2:G1000", "수량 단위", "최대 제조·사용량과 최대 저장량에 공통으로 적용할 단위입니다.")
+    dropdown("기체,액체,고체", "H2:H1000", "성상", "상온·상압(20℃, 1기압)에서의 상태입니다.")
 
     guide = workbook.create_sheet("작성 안내")
     for line in (
-        ["취급하는 제품 또는 물질을 한 줄에 하나씩 적습니다. 처음에는 아래 5개 항목만 작성하면 됩니다."],
-        ["제품명: 사내에서 사용하는 제품 또는 물질 이름입니다."],
-        ["CAS No.: 단일물질이면 반드시 CAS 번호를 적습니다. 혼합제품 자체에 CAS가 없으면 비워 두고, 판정 단계에서 SDS 제3항의 구성성분 CAS를 각각 입력합니다."],
-        ["함량(%)은 처음에 적지 않습니다. 단일물질이면 판정 단계에서 100%로 확인하고, 혼합물이면 구성성분별 CAS No.와 함량(%)을 받습니다."],
-        ["최대 제조·사용량: 하루에 가장 많이 제조·취급·사용하는 양. 해당 없으면 0을 입력합니다."],
-        ["최대 저장량: 한 시점에 가장 많이 저장하는 양. 해당 없으면 0을 입력합니다."],
-        ["단위: kg 또는 ton 중 실제 사내 자료와 같은 단위를 선택합니다. 프로그램이 내부에서 ton으로 자동 환산합니다."],
-        ["상온·상압 성상, 법정 최대보유량, SDS 제2항 분류 등 전문항목은 판정에 필요한 물질에 한해서 화면에서 추가로 질문합니다."],
-        ["기존 9열 양식이나 회사 자체 엑셀·CSV도 계속 업로드할 수 있습니다."],
-        ["(예시) 톨루엔 / 108-88-3 / 3000 / 12500 / kg"],
+        ["법정 대상 판정에 필요한 값만 적는 양식입니다. 한 줄이 한 CAS 번호입니다."],
+        ["■ 단일물질: 한 줄에 적습니다. 단일물질/혼합물에 '단일물질', CAS No., 수량을 적습니다(함량은 비워 두면 100%)."],
+        ["■ 혼합물: 성분마다 한 줄씩 적습니다. 첫 줄에 제품명, '혼합물', 수량, 첫 성분의 CAS No.와 함량(%)을 적고, "
+         "다음 줄부터는 제품명을 비우고 성분의 CAS No.와 함량(%)만 적습니다. 성분은 제품 SDS 제3항에서 옮깁니다."],
+        ["제품명: 사내에서 쓰는 이름입니다(표시용). 법적 판정은 CAS No.로 합니다."],
+        ["CAS No.: 단일물질이면 그 물질, 혼합물이면 각 성분의 CAS 번호입니다. 혼합제품 자체의 CAS는 적지 않습니다."],
+        ["함량(%): 혼합물 성분의 함량입니다. 범위는 상한값으로 적고 성분 함량의 합은 100%를 넘지 않게 합니다."],
+        ["최대 제조·사용량 / 최대 저장량: 제품 단위로 첫 줄에만 적습니다. 모르면 비우고, 하지 않으면 0을 적습니다(빈 칸은 '아직 모름')."],
+        ["단위: kg 또는 ton(두 수량에 공통). 프로그램이 ton으로 바꿔 저장합니다."],
+        ["성상: 상온·상압에서 기체·액체·고체 중 하나입니다. 제품 첫 줄에 적으면 됩니다."],
+        ["SDS 제2항 분류(선택): 비워도 됩니다. 비우면 판정 화면에서 KOSHA 후보를 불러올 수 있습니다."],
+        ["(예시) 단일물질 — 톨루엔 / 단일물질 / 108-88-3 / (함량 비움) / 3000 / 12500 / kg / 액체"],
+        ["(예시) 혼합물 — 첫 줄: 세척제A / 혼합물 / 67-64-1 / 60 / 500 / 2000 / kg / 액체  →  다음 줄: (제품명 비움) / (구분 비움) / 108-88-3 / 30"],
+        ["판정 질문(개별 주요취급시설·예외 해당 여부 등 사업장 전체에 대한 것)은 화면에서 몇 가지만 묻습니다."],
     ):
         guide.append(line)
-    guide.column_dimensions["A"].width = 110
+    guide.column_dimensions["A"].width = 130
     out = BytesIO()
     workbook.save(out)
     return out.getvalue()
@@ -367,18 +456,41 @@ def to_inventory_rows(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
+def _save_components(project: Stage2Project, products: list[Mapping[str, Any]], first_position: int, file_name: str) -> None:
+    """혼합물 성분을 프로젝트에 저장한다. 제품목록행번호는 화학물질 목록에서의 위치(1부터)다."""
+    from .cap_judgement import MIXTURE_COMPONENTS_KEY, mixture_components
+
+    added = []
+    for offset, product in enumerate(products):
+        for component in product.get("_components") or []:
+            added.append({
+                "적용여부": "Y", "제품목록행번호": first_position + offset, "제품명(확인용)": _clean(product.get("제품명")),
+                "구성성분명": "", "CAS No.": _clean(component.get("CAS No.")), "함량(%)": _clean(component.get("함량(%)")),
+                "SDS 제3항 근거": f"회사 입력 파일({file_name}) — 제품 SDS 제3항과 대조 확인",
+            })
+    if added:
+        project.set_field(MIXTURE_COMPONENTS_KEY, "혼합물 구성성분", [*mixture_components(project), *added], "USER_CONFIRMED")
+
+
 def add_to_project(project: Stage2Project, rows: list[Mapping[str, Any]], *, file_name: str, sha256: str,
-                   evidence: EvidenceRef | None = None) -> tuple[int, int]:
-    """검사를 통과한 행만 화학물질 목록에 추가한다. (추가한 수, 건너뛴 수)"""
+                   evidence: EvidenceRef | None = None, sds_confirmed: bool = False) -> tuple[int, int]:
+    """검사를 통과한 행만 화학물질 목록에 추가한다. (추가한 수, 건너뛴 수)
+
+    혼합물의 성분은 함께 저장한다. 성분의 CAS·함량을 제품 SDS 제3항과 대조했다는 확인(sds_confirmed)이 없으면 혼합물은 추가하지 않는다.
+    """
     from . import cap_chemical_workspace as chem
 
     cas_have, names_have = _existing(project)
     checked = check_rows(rows, cas_have, names_have)
     good = [r for r in checked.rows if r["_ok"]]
+    if not sds_confirmed and any(r.get("_components") for r in good):
+        raise ValueError("혼합물의 성분 CAS·함량을 제품 SDS 제3항과 대조해 확인한 뒤에 추가할 수 있습니다.")
     skipped = len(checked.rows) - len(good)
     if not good:
         return 0, skipped
     new_rows = to_inventory_rows(good)
+    first_position = len(chem._rows(project)[1]) + 1
+    _save_components(project, good, first_position, file_name)
     keys = [chem.INVENTORY_KEY]
     canonical, _ = chem._rows(project)
     if canonical == chem.DETAILS_KEY:

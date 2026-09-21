@@ -16,7 +16,7 @@ from engine.stage2 import cap_chemical_upload as up
 from ui import cap_frames as frames
 
 NONE = "(사용 안 함)"
-LABELS = {"제품명": "제품명(물질명)", "CAS No.": "CAS 번호", "함량(%)": "함량(%)", "혼합물 여부": "혼합물 여부", "최대 동시보유량(ton)": "최대 보유량",
+LABELS = {"제품명": "제품명(물질명)", "CAS No.": "CAS 번호", "함량(%)": "함량(%)", "혼합물 여부": "단일물질/혼합물", "최대 동시보유량(ton)": "최대 보유량",
           "성상": "성상(기체·액체·고체)", "상온·상압 액체 여부(해당 시)": "상온·상압 액체 여부(별도 열)", "최대 제조·사용량": "최대 제조·사용량",
           "최대 저장량": "최대 저장량", "최대보유량 법정 산정 여부": "최대보유량 법정 산정 여부",
           "SDS 제2항 유해성·위험성 분류(선택 입력)": "SDS 제2항 분류",
@@ -79,27 +79,37 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
             st.warning("제품명 또는 CAS 번호 열을 하나는 연결해야 합니다.")
             return
         sig = hashlib.sha1(repr(sorted(mapping.items())).encode("utf-8")).hexdigest()[:8]  # 열 맞춤이 바뀌면 미리보기를 새로 그린다
-        rows = [r for r in up.normalize(parsed, mapping) if r["제품명"] or r["CAS No."]]  # 빈 줄은 뺀다(표와 메모의 줄 번호를 맞춘다)
+        raw = [r for r in up.normalize(parsed, mapping) if r["제품명"] or r["CAS No."] or r["함량(%)"]]  # 빈 줄은 뺀다
+        rows = up.group_products(raw)  # 혼합물은 성분 줄을 제품 하나로 묶는다
         checked = up.check_rows(rows, *existing)
-        preview_columns = list(up.OUT_COLUMNS)
-        base = pd.DataFrame([{k: r[k] for k in preview_columns} for r in checked.rows], columns=preview_columns)
-        st.caption("미리보기에는 처음 작성하는 5개 기본 항목만 보여 줍니다. 기존 파일의 추가 정보는 자동으로 보존됩니다.")
+        preview_columns = [c for c in up.OUT_COLUMNS if c != up.SDS_CLASS_COLUMN]
+        base = pd.DataFrame([{k: r.get(k, "") for k in preview_columns} for r in checked.rows], columns=preview_columns)
+        st.caption("제품 단위로 보여 줍니다. 혼합물은 성분 줄이 한 제품으로 묶이고 성분은 아래에 따로 나옵니다. SDS 분류 등 나머지 정보는 자동으로 보존됩니다.")
         edited = st.data_editor(frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
                                 key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}")
         memo = {i: rows[i].get("메모", "") for i in range(len(rows))}
+        carried = (*up.EXTRA_COLUMNS, up.SDS_CLASS_COLUMN, "_components", "_component_problems")
         edited_rows = []
         for i, rec in enumerate(edited.to_dict("records")):
-            hidden = {k: checked.rows[i].get(k, "") for k in up.EXTRA_COLUMNS}
+            hidden = {k: checked.rows[i].get(k, "") for k in carried}
             edited_rows.append({**hidden, **rec, "메모": memo.get(i, "")})
         final = up.check_rows(edited_rows, *existing)
         good = [r for r in final.rows if r["_ok"]]
+        parts = [{"제품": r["제품명"], "성분 CAS No.": c["CAS No."], "함량(%)": c["함량(%)"]} for r in final.rows for c in r["_components"]]
+        if parts:
+            st.markdown("**혼합물 성분(파일에서 읽은 것)**")
+            frames.show(pd.DataFrame(parts), width="stretch", hide_index=True)
+        mixtures_ok = True
+        if any(r["_components"] for r in good):
+            mixtures_ok = st.checkbox("혼합물 성분의 CAS No.와 함량(%)을 제품 SDS 제3항과 대조해 확인했습니다.",
+                                      key=f"{prefix}_sds_ok_{parsed.sha256[:8]}_{sig}")
         c1, c2, c3 = st.columns(3)
         c1.metric("추가할 수 있음", len(good))
         c2.metric("확인 필요(경고)", sum(1 for r in final.rows if r["_ok"] and not r["확인"].startswith("✅")))
         c3.metric("추가되지 않음(오류·중복)", len(final.rows) - len(good))
         frames.show(pd.DataFrame([{k: r[k] for k in ("제품명", "CAS No.", "확인")} for r in final.rows]),
                     width="stretch", hide_index=True)
-        if good and st.button(f"정상 {len(good)}건 추가", type="primary", key=f"{prefix}_add"):
+        if good and st.button(f"정상 {len(good)}건 추가", type="primary", key=f"{prefix}_add", disabled=not mixtures_ok):
             st.session_state[message_key] = add_rows(good, upload.name, parsed.sha256)
             st.rerun()
         if not good:

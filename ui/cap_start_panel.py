@@ -95,12 +95,15 @@ def render(expanded: bool) -> None:
                 except ValueError:
                     return None
 
+            parts = list(st.session_state.get("cap_start_components") or [])
             current = [r for r in edited.to_dict("records") if str(r.get("제품명") or "").strip() or str(r.get("CAS No.") or "").strip()]
             have = {str(r.get("CAS No.") or "").strip() for r in current if str(r.get("CAS No.") or "").strip()}
             added = []
             for row in rows:
                 if row["CAS No."] and row["CAS No."] in have:
                     continue
+                for component in row.get("_components") or []:
+                    parts.append({"제품명": row["제품명"], "CAS No.": component["CAS No."], "함량(%)": component["함량(%)"]})
                 added.append({
                     "제품명": row["제품명"], "CAS No.": row["CAS No."],
                     "최대 제조·사용량": number(row.get("최대 제조·사용량", "")),
@@ -111,6 +114,7 @@ def render(expanded: bool) -> None:
                     cap_start.LEGACY_MAX_HOLDING_COLUMN: number(row.get(cap_start.LEGACY_MAX_HOLDING_COLUMN, "")),
                     **{col: row.get(col, "") for col in cap_start.EXTRA_INPUT_COLUMNS},
                 })
+            st.session_state["cap_start_components"] = parts
             st.session_state["cap_start_seed"] = [*current, *added]
             st.session_state["cap_start_gen"] = generation + 1
             return f"{file_name}에서 물질 {len(added)}건을 아래 표에 추가했습니다. 확인한 뒤 '법정 대상 판정하고 시작'을 누르세요."
@@ -124,6 +128,7 @@ def render(expanded: bool) -> None:
         outcome = cap_start.start(
             {"사업장명": name, "사업장 주소": address, "업종 또는 주요 생산품": industry},
             edited.to_dict("records"),
+            components=st.session_state.get("cap_start_components"),
         )
         if outcome.status == "INVALID":
             st.warning("입력을 확인해 주세요.")
@@ -135,6 +140,7 @@ def render(expanded: bool) -> None:
                 st.write(f"• {cap_judgement.display_request(message)}")
         elif outcome.status == "PENDING":
             save_project(outcome.project)
+            st.session_state.pop("cap_start_components", None)
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
             st.session_state["cap_start_notice"] = " ".join(cap_judgement.display_request(m) for m in outcome.messages[:1]) + " (사업장을 만들었습니다. 판정은 위 '법정 대상 판정'에서 이어서 합니다.)"
             st.rerun()
@@ -153,6 +159,7 @@ def render(expanded: bool) -> None:
                 except Exception:
                     pass
             save_project(outcome.project)
+            st.session_state.pop("cap_start_components", None)
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
             targets = [label for label, on in (("화학사고예방관리계획서", outcome.project.cap_required is True),
                                                  ("공정안전보고서", outcome.project.psm_required is True)) if on]
