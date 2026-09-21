@@ -43,7 +43,7 @@ class VersionPanelTests(unittest.TestCase):
     def test_first_version_can_only_be_new_and_is_saved(self):
         at = self._run()
         self.assertFalse(at.exception)
-        self.assertEqual(at.selectbox(key="ver_kind_CAP_p1").options, ["신규"])
+        self.assertEqual(at.selectbox(key="ver_kind_CAP_p1").options, ["신규제출"])
         at.button(key="ver_save_CAP_p1").click().run()
         self.assertFalse(at.exception)
         self.assertEqual([m.version_id for m in ver.list_versions("p1", "CAP")], ["CAP-v1.0"])
@@ -53,7 +53,7 @@ class VersionPanelTests(unittest.TestCase):
         save_project(_project(volume=8))
         at = self._run()
         self.assertTrue(any("변경 1건" in e.label for e in at.expander))
-        at.selectbox(key="ver_kind_CAP_p1").select("변경").run()
+        at.selectbox(key="ver_kind_CAP_p1").select("변경제출").run()
         at.button(key="ver_save_CAP_p1").click().run()
         self.assertTrue(at.error)
         self.assertEqual(len(ver.list_versions("p1", "CAP")), 1)
