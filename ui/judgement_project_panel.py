@@ -62,6 +62,10 @@ def _business(project) -> None:
         )
         st.caption("여기서 고친 내용은 이 사업장의 판정과 별지 작성에 바로 반영됩니다. 비워서 저장하면 기존 값은 지워지지 않습니다.")
         if st.button("사업장 정보 저장", key=f"judge_biz_save_{pid}"):
+            digits = "".join(ch for ch in str(ksic or "") if ch.isdigit())
+            if ksic and len(digits) != 5:
+                st.warning("업종 분류 코드(KSIC)는 숫자 5자리입니다. 모르면 비워 두어도 됩니다.")
+                return
             judgement.save_business(project, name, address, industry, ksic)
             storage.save_project(project)
             _changed(pid, "사업장 정보를 저장했습니다. 별지 작성 화면에도 같은 내용이 보입니다.")
