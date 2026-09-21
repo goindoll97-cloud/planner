@@ -69,11 +69,11 @@ def render(expanded: bool) -> None:
                 ),
                 "최대 제조·사용량": st.column_config.NumberColumn(
                     "하루 최대 제조·사용량", min_value=0.0,
-                    help="하루에 가장 많이 제조·취급·사용하는 양입니다. 해당 없으면 0을 입력하세요."
+                    help="하루에 가장 많이 제조·취급·사용하는 양입니다. 모르면 비워 두고, 하지 않으면 0을 입력하세요."
                 ),
                 "최대 저장량": st.column_config.NumberColumn(
                     "최대 저장량", min_value=0.0,
-                    help="한 시점에 가장 많이 저장하는 양입니다. 해당 없으면 0을 입력하세요."
+                    help="한 시점에 가장 많이 저장하는 양입니다. 모르면 비워 두고, 저장하지 않으면 0을 입력하세요. (빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다)"
                 ),
                 "단위": st.column_config.SelectboxColumn(
                     "단위", options=["kg", "ton"], required=True,

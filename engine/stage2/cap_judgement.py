@@ -155,6 +155,39 @@ def chemical_inputs(project: Stage2Project) -> list[dict[str, str]]:
     return [{str(k): _clean(v) for k, v in row.items()} if isinstance(row, dict) else {} for row in record.value]
 
 
+QUANTITY_COLUMNS = ("최대 제조·사용량", "최대 저장량", "최대 동시보유량(알면 입력)")
+UNIT_OPTIONS = ("ton", "kg")
+_KG_PER = {"kg": 1.0, "ton": 1000.0}
+
+
+def _fmt(number: float) -> str:
+    return f"{number:.10g}"
+
+
+def convert_quantity(value: object, unit: str, target: str) -> str:
+    """수량 문자열을 kg 또는 ton으로 바꾼다. 비어 있거나 숫자가 아니면 그대로 돌려준다(모르는 값을 0으로 만들지 않는다)."""
+    text = _clean(value).replace(",", "")
+    if not text or unit not in _KG_PER or target not in _KG_PER or unit == target:
+        return _clean(value)
+    try:
+        return _fmt(float(text) * _KG_PER[unit] / _KG_PER[target])
+    except ValueError:
+        return _clean(value)
+
+
+def rows_to_ton(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """표에서 행마다 고른 단위(kg/ton)를 ton으로 통일한다. 판정 엔진과 저장 값은 언제나 ton이다."""
+    out = []
+    for row in rows:
+        unit = _clean(row.get("단위")) or "ton"
+        item = {k: v for k, v in dict(row).items() if k != "단위"}
+        for column in QUANTITY_COLUMNS:
+            if column in item:
+                item[column] = convert_quantity(item[column], unit, "ton")
+        out.append(item)
+    return out
+
+
 def save_chemical_inputs(project: Stage2Project, rows: list[Mapping[str, Any]]) -> None:
     project.set_field(CHEM_INPUTS_KEY, "법정 판정에 필요한 물질별 확인값(회사 입력)",
                       [{k: _clean(v) for k, v in dict(row).items() if k in CHEM_INPUT_COLUMNS} for row in rows],
