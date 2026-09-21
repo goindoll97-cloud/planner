@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from .inventory import IntakeData
+from .inventory import IntakeData, _mixture_concentration_values, _mixture_int
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -181,6 +181,37 @@ def _cas_lookup(df: pd.DataFrame) -> dict[str, list[dict[str, Any]]]:
             if CAS_RE.fullmatch(cas):
                 lookup.setdefault(cas, []).append(row.to_dict())
     return lookup
+
+
+def _assessment_rows(intake: IntakeData) -> list[tuple[int, pd.Series]]:
+    """Expand mixture products to SDS Section-3 component CAS rows for PSM screening.
+
+    The parent product's manufacture/use and storage quantities are inherited by
+    each component. Existing concentration logic then applies the component
+    percentage (e.g. pure-substance-equivalent mass for ordinary Annex 13 rows).
+    Product/component names are never used for legal identity matching.
+    """
+    mixture_rows = set(intake.mixture_parent_rows())
+    if not mixture_rows:
+        return [(idx + 1, row.copy()) for idx, row in intake.chemicals.iterrows()]
+
+    components = intake.mixture_components if isinstance(intake.mixture_components, pd.DataFrame) else pd.DataFrame()
+    out: list[tuple[int, pd.Series]] = []
+    for idx, row in intake.chemicals.iterrows():
+        parent = idx + 1
+        if parent not in mixture_rows:
+            out.append((parent, row.copy()))
+            continue
+        if components.empty or "제품목록행번호" not in components.columns:
+            continue
+        matches = components[components["제품목록행번호"].map(_mixture_int).eq(parent)]
+        for _, component in matches.iterrows():
+            synthetic = row.copy()
+            synthetic["CAS No."] = _clean(component.get("CAS No."))
+            values, mode = _mixture_concentration_values(component)
+            synthetic["함량(%)"] = values[0] if mode == "exact" and values else None
+            out.append((parent, synthetic))
+    return out
 
 
 def _legal_condition(
@@ -386,6 +417,10 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
             assessment.messages.append(f"시행령 제43조제1항의 사업 종류와 KSIC 코드 일치: {code} {assessment.industry_match}")
 
     lookup = _cas_lookup(db)
+    if intake.mixture_parent_rows():
+        assessment.messages.append(
+            "혼합제품은 제품명으로 추정하지 않고 SDS 제3항 구성성분의 CAS No.와 함량을 기준으로 별표 13을 확인했습니다."
+        )
     contributions: list[dict[str, Any]] = []
     unsupported_mass_unit_rows: set[int] = set()
     missing_cas_rows: set[int] = set()
@@ -393,8 +428,7 @@ def assess_psm(intake: IntakeData) -> PSMAssessment:
     pending_questions: list[str] = []
     pending_condition_items: set[int] = set()
 
-    for idx, row in intake.chemicals.iterrows():
-        company_row = idx + 1
+    for company_row, row in _assessment_rows(intake):
         cas = _clean(row.get("CAS No."))
         product = _clean(row.get("제품명"))
         if not CAS_RE.fullmatch(cas):
