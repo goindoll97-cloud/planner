@@ -144,5 +144,38 @@ class StartTests(unittest.TestCase):
         self.assertEqual(jd.mixture_components(outcome.project), [])
 
 
+class SimpleUploadTests(unittest.TestCase):
+    def test_a_single_substance_with_a_blank_content_is_100_percent_without_any_warning(self):
+        checked = up.check_rows(_products([SINGLE]))
+        row = checked.rows[0]
+        self.assertEqual(row["함량(%)"], "100")
+        self.assertTrue(row["_ok"])
+        self.assertTrue(row["확인"].startswith("✅"), row["확인"])
+        self.assertNotIn("함량이 비어 있습니다", row["확인"])
+        self.assertEqual((checked.errors, checked.warnings), (0, 0))
+
+    def test_automatic_conversions_are_information_not_warnings(self):
+        checked = up.check_rows(_products([SINGLE, MIX1, MIX2]))
+        self.assertEqual((checked.errors, checked.warnings), (0, 0))
+        self.assertTrue(all(r["확인"].startswith("✅") for r in checked.rows))
+        self.assertIn("kg를 톤으로 바꿈", checked.rows[0]["확인"])  # 알려 주기는 하되 경고로 세지 않는다
+
+    def test_a_note_that_needs_a_human_still_shows_a_warning(self):
+        rows = [["가", "단일물질", "108-88-3", None, 1, 1, "ton", "반고체", None]]
+        checked = up.check_rows(_products(rows))
+        self.assertTrue(checked.rows[0]["확인"].startswith("⚠️"), checked.rows[0]["확인"])
+
+    def test_the_column_matching_step_is_gone_from_the_upload_screen(self):
+        text = open("ui/chemical_upload_panel.py", encoding="utf-8").read()
+        self.assertNotIn("열이 맞게 연결됐는지", text)
+        self.assertNotIn("selectbox", text)
+        self.assertIn("빈 양식 내려받기", text)
+        self.assertIn("제품명 또는 CAS No. 열을 찾지 못했습니다", text)  # 열 이름을 못 알아볼 때만 안내한다
+
+    def test_headers_are_recognised_automatically_from_the_template(self):
+        parsed = up.parse(_xlsx([SINGLE]), "물질.xlsx")
+        self.assertEqual({"제품명", "혼합물 여부", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상"} - set(parsed.mapping), set())
+
+
 if __name__ == "__main__":
     unittest.main()

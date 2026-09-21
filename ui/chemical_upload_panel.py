@@ -44,40 +44,11 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         except Exception as exc:
             st.error(f"파일을 읽지 못했습니다: {exc}")
             return
-        columns = list(parsed.frame.columns)
-        st.write(f"**{len(parsed.frame)}행**을 읽었습니다. 열이 맞게 연결됐는지 확인하세요.")
-        mapping: dict[str, str] = {}
-        cols = st.columns(3)
-        # 신규 사용자에게는 5개 기본 열만 보여 준다. 과거 파일의 함량·성상 등은
-        # 자동 인식하여 보존하되, 필요할 때만 '추가 열 매핑'을 펼쳐 수정한다.
-        for index, target in enumerate(up.OUT_COLUMNS):
-            options = [NONE, *columns]
-            guess = parsed.mapping.get(target)
-            picked = cols[index % 3].selectbox(LABELS[target], options, index=options.index(guess) if guess in options else 0,
-                                               key=f"{prefix}_map_{target}_{parsed.sha256[:8]}")
-            if picked != NONE:
-                mapping[target] = picked
-        advanced = [target for target in LABELS if target not in up.OUT_COLUMNS]
-        for target in advanced:
-            guess = parsed.mapping.get(target)
-            if guess in columns:
-                mapping[target] = guess
-        if st.checkbox("기존 파일의 함량·성상 등 추가 열 매핑을 확인/수정", key=f"{prefix}_advanced_{parsed.sha256[:8]}"):
-            extra_cols = st.columns(3)
-            for index, target in enumerate(advanced):
-                options = [NONE, *columns]
-                guess = mapping.get(target)
-                picked = extra_cols[index % 3].selectbox(
-                    LABELS[target], options, index=options.index(guess) if guess in options else 0,
-                    key=f"{prefix}_map_{target}_{parsed.sha256[:8]}",
-                )
-                if picked == NONE:
-                    mapping.pop(target, None)
-                else:
-                    mapping[target] = picked
+        mapping = dict(parsed.mapping)  # 열 이름은 자동으로 알아봅니다. 양식대로 올리면 가장 정확합니다.
         if "제품명" not in mapping and "CAS No." not in mapping:
-            st.warning("제품명 또는 CAS 번호 열을 하나는 연결해야 합니다.")
+            st.error("제품명 또는 CAS No. 열을 찾지 못했습니다. 위의 '빈 양식 내려받기'의 첫 줄(열 이름)과 같게 만들어 올려 주세요.")
             return
+        st.write(f"**{len(parsed.frame)}행**을 읽었습니다.")
         sig = hashlib.sha1(repr(sorted(mapping.items())).encode("utf-8")).hexdigest()[:8]  # 열 맞춤이 바뀌면 미리보기를 새로 그린다
         raw = [r for r in up.normalize(parsed, mapping) if r["제품명"] or r["CAS No."] or r["함량(%)"]]  # 빈 줄은 뺀다
         rows = up.group_products(raw)  # 혼합물은 성분 줄을 제품 하나로 묶는다

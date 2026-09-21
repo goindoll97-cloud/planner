@@ -217,7 +217,7 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         name = _clean(first.get("제품명")) or _clean(first.get("CAS No."))
         flags = {mixture_flag(r.get("혼합물 여부")) for r in group} - {""}
         many = len([r for r in group if _clean(r.get("CAS No."))]) > 1
-        notes = [n for n in _clean(first.get("메모")).split(" / ") if n]
+        notes = [n for n in _clean(first.get("메모")).split(" / ") if n and not n.startswith("함량이 비어 있습니다")]
         if many and "Y" not in flags:
             notes.append("CAS가 여러 개라 혼합물로 처리했습니다")
         is_mixture = "Y" in flags or many
@@ -257,6 +257,10 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         first["메모"] = " / ".join([*notes, f"혼합물(성분 {len(components)}개)"])
         products.append(first)
     return products
+
+
+# 자동으로 처리한 내용을 알려 주는 메모. 확인할 문제가 아니므로 ⚠️로 세지 않는다.
+_INFO_NOTE = re.compile(r"를 톤으로 바꿈|^혼합물\(성분 \d+개\)|상한값을 사용|비율로 보고 %로 바꿈|혼합물로 처리했습니다|^비고:")
 
 
 def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = None,
@@ -308,8 +312,11 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
                 errors += 1
                 notes.append(f"{column}은 숫자만 적어야 합니다")
         for extra in _clean(row.get("메모")).split(" / "):
-            if extra:
-                notes.append(extra)
+            if not extra:
+                continue
+            notes.append(extra)
+            if not _INFO_NOTE.search(extra):
+                warnings += 1  # 단위 환산 같은 단순 안내가 아니라 사용자가 확인해야 하는 메모
         checked.errors += 1 if errors else 0
         checked.warnings += 1 if warnings and not errors else 0
         checked.rows.append({
@@ -320,7 +327,7 @@ def check_rows(rows: list[Mapping[str, Any]], existing_cas: set[str] | None = No
             "최대 저장량": _clean(row.get("최대 저장량")),
             "단위": _clean(row.get("단위")) or "ton",
             **{column: _clean(row.get(column)) for column in EXTRA_COLUMNS},
-            "확인": ("❌ " if errors else "⚠️ " if warnings or notes else "✅ ") + ("; ".join(dict.fromkeys(notes)) or "이상 없음"),
+            "확인": ("❌ " if errors else "⚠️ " if warnings else "✅ ") + ("; ".join(dict.fromkeys(notes)) or "이상 없음"),
             "_ok": not errors,
         })
     return checked
