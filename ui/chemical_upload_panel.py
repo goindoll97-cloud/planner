@@ -16,7 +16,7 @@ from engine.stage2 import cap_chemical_upload as up
 from ui import cap_frames as frames
 
 NONE = "(사용 안 함)"
-LABELS = {"제품명": "제품명(물질명)", "CAS No.": "CAS 번호", "함량(%)": "함량(%)", "최대 동시보유량(ton)": "최대 보유량",
+LABELS = {"제품명": "제품명(물질명)", "CAS No.": "CAS 번호", "함량(%)": "함량(%)", "혼합물 여부": "혼합물 여부", "최대 동시보유량(ton)": "최대 보유량",
           "성상": "성상(기체·액체·고체)", "상온·상압 액체 여부(해당 시)": "상온·상압 액체 여부(별도 열)", "최대 제조·사용량": "최대 제조·사용량",
           "최대 저장량": "최대 저장량", "최대보유량 법정 산정 여부": "최대보유량 법정 산정 여부",
           "SDS 제2항 유해성·위험성 분류(선택 입력)": "SDS 제2항 분류",
@@ -48,21 +48,42 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         st.write(f"**{len(parsed.frame)}행**을 읽었습니다. 열이 맞게 연결됐는지 확인하세요.")
         mapping: dict[str, str] = {}
         cols = st.columns(3)
-        for index, target in enumerate(LABELS):
+        # 신규 사용자에게는 5개 기본 열만 보여 준다. 과거 파일의 함량·성상 등은
+        # 자동 인식하여 보존하되, 필요할 때만 '추가 열 매핑'을 펼쳐 수정한다.
+        for index, target in enumerate(up.OUT_COLUMNS):
             options = [NONE, *columns]
             guess = parsed.mapping.get(target)
             picked = cols[index % 3].selectbox(LABELS[target], options, index=options.index(guess) if guess in options else 0,
                                                key=f"{prefix}_map_{target}_{parsed.sha256[:8]}")
             if picked != NONE:
                 mapping[target] = picked
+        advanced = [target for target in LABELS if target not in up.OUT_COLUMNS]
+        for target in advanced:
+            guess = parsed.mapping.get(target)
+            if guess in columns:
+                mapping[target] = guess
+        if st.checkbox("기존 파일의 함량·성상 등 추가 열 매핑을 확인/수정", key=f"{prefix}_advanced_{parsed.sha256[:8]}"):
+            extra_cols = st.columns(3)
+            for index, target in enumerate(advanced):
+                options = [NONE, *columns]
+                guess = mapping.get(target)
+                picked = extra_cols[index % 3].selectbox(
+                    LABELS[target], options, index=options.index(guess) if guess in options else 0,
+                    key=f"{prefix}_map_{target}_{parsed.sha256[:8]}",
+                )
+                if picked == NONE:
+                    mapping.pop(target, None)
+                else:
+                    mapping[target] = picked
         if "제품명" not in mapping and "CAS No." not in mapping:
             st.warning("제품명 또는 CAS 번호 열을 하나는 연결해야 합니다.")
             return
         sig = hashlib.sha1(repr(sorted(mapping.items())).encode("utf-8")).hexdigest()[:8]  # 열 맞춤이 바뀌면 미리보기를 새로 그린다
         rows = [r for r in up.normalize(parsed, mapping) if r["제품명"] or r["CAS No."]]  # 빈 줄은 뺀다(표와 메모의 줄 번호를 맞춘다)
         checked = up.check_rows(rows, *existing)
-        base = pd.DataFrame([{k: r[k] for k in up.ALL_COLUMNS} for r in checked.rows], columns=list(up.ALL_COLUMNS))
-        st.caption("미리보기입니다. 잘못된 칸은 여기서 고쳐도 됩니다(고치면 아래 확인 결과가 바로 바뀝니다).")
+        preview_columns = list(up.OUT_COLUMNS)
+        base = pd.DataFrame([{k: r[k] for k in preview_columns} for r in checked.rows], columns=preview_columns)
+        st.caption("미리보기에는 처음 작성하는 5개 기본 항목만 보여 줍니다. 기존 파일의 추가 정보는 자동으로 보존됩니다.")
         edited = st.data_editor(frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
                                 key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}")
         memo = {i: rows[i].get("메모", "") for i in range(len(rows))}
