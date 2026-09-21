@@ -20,14 +20,18 @@ from . import cap_judgement
 from .project import Stage2Project, create_project_from_stage1_snapshot
 
 BUSINESS_FIELDS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
-CHEMICAL_INPUT_COLUMNS = ("제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)")
-# 양식에서 함께 받는 판정용 선택 열(cap_chemical_upload.EXTRA_COLUMNS와 같다). 값이 하나라도 있을 때만 판정 입력에 넣는다.
+# 신입사원이 처음 입력하는 최소 물질정보. 수량 단위는 kg/ton 중 하나를 고르고,
+# 내부 판정 엔진에는 ton으로 정규화해 전달한다.
+CHEMICAL_INPUT_COLUMNS = ("제품명", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위")
+LEGACY_MAX_HOLDING_COLUMN = "최대 동시보유량(ton)"
+# 전문적인 판정 보조값은 초기 표에서 받지 않고, 실제 판정에 필요할 때만 후속 질문으로 받는다.
 EXTRA_INPUT_COLUMNS = (
-    "상온·상압 액체 여부(해당 시)", "최대 제조·사용량", "최대 저장량", "최대보유량 법정 산정 여부",
+    "상온·상압 액체 여부(해당 시)", "최대보유량 법정 산정 여부",
     "SDS 제2항 유해성·위험성 분류(선택 입력)",
 )
 HANDLING_DEFAULT = "저장·사용"
 UNIT = "ton"
+INPUT_UNIT_OPTIONS = ("kg", "ton")
 
 
 @dataclass(frozen=True)
@@ -54,21 +58,50 @@ def _number(value: object) -> float | None:
         return None
 
 
+def _quantity_to_ton(value: object, unit: object) -> float | None:
+    """kg/ton 입력을 Stage 1 공통 단위인 ton으로 정규화한다."""
+    amount = _number(value)
+    if amount is None:
+        return None
+    norm = _clean(unit).lower().replace(" ", "")
+    if norm in {"kg", "㎏"}:
+        return amount / 1000.0
+    if norm in {"ton", "t", "톤"}:
+        return amount
+    return None
+
+
 def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
-    """Map the four typed columns onto the Stage 1 intake columns; blank rows are dropped."""
+    """Map the minimal typed columns onto the Stage 1 intake columns.
+
+    신규 입력은 제조·사용량/저장량과 kg·ton 단위만 받는다. 기존 9열 파일이나
+    저장 데이터에 있던 최대 동시보유량·전문 입력열은 계속 읽어 하위호환한다.
+    """
     records = []
     for row in rows:
         name, cas = _clean(row.get("제품명")), _clean(row.get("CAS No."))
         if not name and not cas:
             continue
+        input_unit = _clean(row.get("단위") or row.get("수량 단위")) or UNIT
         records.append({
-            "제품명": name or cas, "CAS No.": cas, "물질명(알면 입력)": name,
-            "함량(%)": _number(row.get("함량(%)")), "취급형태": HANDLING_DEFAULT, "수량 단위": UNIT,
-            "최대 동시보유량(알면 입력)": _number(row.get("최대 동시보유량(ton)")),
+            "제품명": name or cas,
+            "CAS No.": cas,
+            "물질명(알면 입력)": name,
+            "함량(%)": _number(row.get("함량(%)")),
+            "취급형태": HANDLING_DEFAULT,
+            # 판정 엔진은 공통적으로 ton 값을 받는다.
+            "수량 단위": UNIT,
+            "최대 제조·사용량": _quantity_to_ton(row.get("최대 제조·사용량"), input_unit),
+            "최대 저장량": _quantity_to_ton(row.get("최대 저장량"), input_unit),
+            # 이전 양식에서 이미 ton으로 저장한 값은 그대로 유지한다.
+            "최대 동시보유량(알면 입력)": _number(row.get(LEGACY_MAX_HOLDING_COLUMN)),
         })
         for column in EXTRA_INPUT_COLUMNS:
             records[-1][column] = _clean(row.get(column))
-    base = ["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"]
+    base = [
+        "제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태",
+        "최대 제조·사용량", "최대 저장량", "수량 단위", "최대 동시보유량(알면 입력)",
+    ]
     used = [c for c in EXTRA_INPUT_COLUMNS if any(r.get(c) for r in records)]
     return pd.DataFrame(records, columns=base + used)
 
