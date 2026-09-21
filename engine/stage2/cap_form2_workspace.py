@@ -19,7 +19,10 @@ SUBMISSION_REASON_KEY = "cap.business.submission_reason"
 UNIT_PLANT_KEY = "cap.business.unit_plant_name"
 CHANGE_LOG_KEY = "cap.prevention.change_log"
 
-SUBMISSION_TYPES = ("신규제출", "변경제출", "재제출", "이행점검 불이행")
+SUBMISSION_TYPES = (
+    "신규제출", "변경제출", "재제출", "5년 재제출",
+    "부적합 후 재제출", "이행점검 부적정 재제출",
+)
 SUBMISSION_REASONS = ("최초", "부적합")
 
 # 별지 제2호 주 ③·⑤ 원문의 선택지
