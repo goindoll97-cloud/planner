@@ -418,10 +418,10 @@ def assess_stage1_from_workbook(intake: IntakeData) -> Stage1WorkbookDecision:
                         decision.psm_explanation = "회사 입력파일에서 시행령 제43조제2항의 제외설비 유형이 확인되어 공정안전보고서 제출 대상에서 제외되는 것으로 판정했습니다."
                 else:
                     requests.append(_request("05_최종판정조건", "'시행령 제43조제2항 제외설비 해당 여부'를 Y/N으로 확인하여 작성해 주세요."))
-            elif not str(psm_base.industry_code or "").strip():
+            elif not re.fullmatch(r"\d{5}", str(psm_base.industry_code or "").strip()):
                 requests.append(_request(
                     "사업장정보",
-                    "공정안전보고서의 업종 기준을 확인하려면 사업장 정보의 '업종 분류 코드(KSIC)'가 필요합니다. "
+                    "공정안전보고서의 업종 기준을 확인하려면 사업장 정보의 '업종 분류 코드(KSIC)' 5자리가 필요합니다. "
                     "회사에서 사용하는 5자리 한국표준산업분류 코드를 확인해 입력해 주세요.",
                 ))
             else:
