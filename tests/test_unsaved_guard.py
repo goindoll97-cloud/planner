@@ -104,7 +104,9 @@ class GuardTests(unittest.TestCase):
 
     def test_an_example_that_fills_the_box_counts_as_unsaved_when_leaving(self):
         _project_, at = self._facts()
-        at.button(key=f"{KEY}__ex0").click().run()
+        first = at.radio(key=f"{KEY}__pick").options[0]
+        at.radio(key=f"{KEY}__pick").set_value(first).run()
+        at.button(key=f"{KEY}__use").click().run()
         at.selectbox(key="psm_form_no").select("13").run()
         self.assertEqual(at.session_state["psm_form_no__accepted"], "facts")
         self.assertIn("이동하면 이 내용은 사라집니다", _texts(at.warning))

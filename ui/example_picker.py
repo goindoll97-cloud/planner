@@ -8,8 +8,10 @@ from engine.stage2 import narrative_examples as examples
 from ui import unsaved_guard
 
 
-def _use(key: str, text: str) -> None:
-    st.session_state[key] = text
+def _use_picked(key: str, pick_key: str) -> None:
+    picked = st.session_state.get(pick_key)
+    if picked:
+        st.session_state[key] = picked
 
 
 def text_with_examples(label: str, key: str, *, value: str = "", help_text: str = "", choices: list[str] | None = None,
@@ -23,10 +25,12 @@ def text_with_examples(label: str, key: str, *, value: str = "", help_text: str 
         st.caption("문장 틀(예시): " + template)
     if choices:
         with st.expander("예시에서 고르기 (고른 뒤 고쳐 쓸 수 있습니다)"):
-            for index, sample in enumerate(choices):
-                left, right = st.columns([6, 1])
-                left.write(examples.labelled(sample))
-                right.button("사용", key=f"{key}__ex{index}", on_click=_use, args=(key, examples.labelled(sample)))
+            # 예시마다 열·버튼을 따로 그리면 화면 요소가 수천 개로 늘어 스크롤이 버벅인다. 라디오 하나와 버튼 하나로 합친다.
+            pick_key = f"{key}__pick"
+            st.radio("예시", [examples.labelled(sample) for sample in choices], index=None, key=pick_key,
+                     label_visibility="collapsed")
+            st.button("선택한 예시 사용", key=f"{key}__use", on_click=_use_picked, args=(key, pick_key),
+                      disabled=st.session_state.get(pick_key) is None)
             st.caption(examples.notice() + " 고른 문구 앞의 '(예시)' 표시는 우리 회사 내용으로 고친 뒤 지워야 저장됩니다.")
     if checks:
         st.caption("확인할 점: " + " / ".join(checks))

@@ -97,7 +97,8 @@ class ScreenTests(unittest.TestCase):
         sample = ex.choices("process.description")[0]
 
         def click(at):
-            at.button(key="psm_fact_process.description__ex0").click().run()
+            at.radio(key="psm_fact_process.description__pick").set_value(ex.labelled(sample)).run()
+            at.button(key="psm_fact_process.description__use").click().run()
         project, at = self._facts_screen(click)
         self.assertFalse(at.exception)
         self.assertEqual(at.text_area(key="psm_fact_process.description").value, ex.labelled(sample))  # 앞에 (예시) 표시
@@ -107,11 +108,12 @@ class ScreenTests(unittest.TestCase):
         sample = ex.choices("business.shift_pattern")[0]
 
         def click_and_save(at):
-            at.button(key="psm_fact_business.shift_pattern__ex0").click().run()
+            at.radio(key="psm_fact_business.shift_pattern__pick").set_value(ex.labelled(sample)).run()
+            at.button(key="psm_fact_business.shift_pattern__use").click().run()
             at.button(key="psm_fact_save").click().run()
         project, at = self._facts_screen(click_and_save)
         self.assertFalse(at.exception)
-        self.assertIn("(예시)", " ".join(m.value for m in at.markdown))  # 카드에 표시
+        self.assertTrue(all("(예시)" in o for o in at.radio(key="psm_fact_business.shift_pattern__pick").options))  # 예시 항목에 표시
         self.assertTrue(any("'(예시)' 표시가 남아 있습니다" in e.value for e in at.error))
         self.assertIsNone(project.get_field("business.shift_pattern"))
 
