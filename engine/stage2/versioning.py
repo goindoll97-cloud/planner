@@ -23,8 +23,10 @@ from .storage import DEFAULT_ROOT, _safe_component, project_dir
 
 DOC_TYPES = ("CAP", "PSM")
 # 새 주 버전(v2.0)을 여는 제출유형과, 부 버전(v1.1)만 올리는 제출유형.
-MAJOR_KINDS = ("신규", "재제출")
-MINOR_KINDS = ("변경",)
+MAJOR_KINDS = (
+    "신규", "신규제출", "재제출", "5년 재제출", "부적합 후 재제출", "이행점검 부적정 재제출",
+)
+MINOR_KINDS = ("변경", "변경제출")
 SNAPSHOT_SCHEMA = "stage2-version-snapshot-v1"
 
 
