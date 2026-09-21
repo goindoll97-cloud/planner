@@ -197,9 +197,15 @@ def start(business: Mapping[str, Any], rows: list[Mapping[str, Any]], *,
     intake = build_intake(business, rows, components)
     issues = validate_intake(intake)
     quantity_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE in i]
-    other_issues = [i for i in issues if cap_judgement.QUANTITY_ISSUE not in i]
+    mixture_issues = [i for i in issues if "02A_혼합물구성성분에 구성성분을 한 줄 이상" in i]
+    other_issues = [i for i in issues if i not in quantity_issues and i not in mixture_issues]
     if other_issues:
         return StartOutcome("INVALID", tuple(other_issues))
+    if mixture_issues:
+        return _pending(
+            intake,
+            ("혼합제품이 있습니다. 사업장을 만든 뒤 '혼합물 구성성분' 두 번째 파일에 SDS 제3항의 CAS No.와 함량(%)을 입력해 주세요.",),
+        )
     # 신규 5열 입력은 성분 함량을 일부러 받지 않는다. 판정 화면에서 단일물질/혼합물을
     # 먼저 확인한 뒤 단일물질은 100%, 혼합물은 SDS 제3항의 구성성분 CAS+함량으로 확정한다.
     composition_missing = []
