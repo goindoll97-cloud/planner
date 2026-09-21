@@ -31,8 +31,8 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
     with st.expander("엑셀·CSV로 물질 목록 올리기", expanded=bool(done)):
         if done:
             st.success(done)
-        st.caption("회사가 이미 가진 물질 목록 파일을 올리면 열 이름을 알아서 맞춥니다. 올린 뒤 미리보기에서 확인하고, "
-                   "이상 없는 행만 추가됩니다. 이미 목록에 있는 물질은 건너뜁니다.")
+        st.caption("기본 물질목록은 제품 하나당 한 줄입니다. 단일물질은 CAS No.를 적고, 혼합제품은 제품 CAS를 비워 둡니다. "
+                   "혼합제품이 있으면 저장 후 SDS 제3항용 두 번째 파일이 자동으로 나타납니다.")
         st.download_button("빈 양식 내려받기(엑셀)", data=up.blank_template(), file_name="물질목록_양식.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            key=f"{prefix}_template")
@@ -55,7 +55,7 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         checked = up.check_rows(rows, *existing)
         preview_columns = [c for c in up.OUT_COLUMNS if c != up.SDS_CLASS_COLUMN]
         base = pd.DataFrame([{k: r.get(k, "") for k in preview_columns} for r in checked.rows], columns=preview_columns)
-        st.caption("제품 단위로 보여 줍니다. 혼합물은 성분 줄이 한 제품으로 묶이고 성분은 아래에 따로 나옵니다. SDS 분류 등 나머지 정보는 자동으로 보존됩니다.")
+        st.caption("제품 단위 미리보기입니다. 혼합제품의 구성성분은 이 파일에서 요구하지 않습니다. 기존 구형 파일에 성분 행이 들어 있으면 하위호환으로 읽어 보존합니다.")
         edited = st.data_editor(frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
                                 key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}")
         memo = {i: rows[i].get("메모", "") for i in range(len(rows))}
