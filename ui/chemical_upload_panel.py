@@ -53,16 +53,39 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         raw = [r for r in up.normalize(parsed, mapping) if r["제품명"] or r["CAS No."] or r["함량(%)"]]  # 빈 줄은 뺀다
         rows = up.group_products(raw)  # 혼합물은 성분 줄을 제품 하나로 묶는다
         checked = up.check_rows(rows, *existing)
-        preview_columns = [c for c in up.OUT_COLUMNS if c != up.SDS_CLASS_COLUMN]
-        base = pd.DataFrame([{k: r.get(k, "") for k in preview_columns} for r in checked.rows], columns=preview_columns)
+        preview_columns = ["제품명", "단일물질/혼합물", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위"]
+        preview_rows = []
+        for r in checked.rows:
+            flag = str(r.get("혼합물 여부") or "").upper()
+            kind = "혼합물" if flag == "Y" else "단일물질" if flag == "N" else ""
+            preview_rows.append({
+                "제품명": r.get("제품명", ""),
+                "단일물질/혼합물": kind,
+                "CAS No.": r.get("CAS No.", ""),
+                "최대 제조·사용량": r.get("최대 제조·사용량", ""),
+                "최대 저장량": r.get("최대 저장량", ""),
+                "단위": r.get("단위", ""),
+            })
+        base = pd.DataFrame(preview_rows, columns=preview_columns)
         st.caption("제품 단위 미리보기입니다. 혼합제품의 구성성분은 이 파일에서 요구하지 않습니다. 기존 구형 파일에 성분 행이 들어 있으면 하위호환으로 읽어 보존합니다.")
-        edited = st.data_editor(frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
-                                key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}")
+        edited = st.data_editor(
+            frames.safe(base), hide_index=True, width="stretch", num_rows="fixed",
+            key=f"{prefix}_preview_{parsed.sha256[:8]}_{sig}",
+            column_config={
+                "단일물질/혼합물": st.column_config.SelectboxColumn(
+                    "단일물질/혼합물", options=["", "단일물질", "혼합물"],
+                    help="제품 SDS 제3항을 확인해 선택하세요."
+                ),
+                "단위": st.column_config.SelectboxColumn("단위", options=["kg", "ton"]),
+            },
+        )
         memo = {i: rows[i].get("메모", "") for i in range(len(rows))}
         carried = (*up.EXTRA_COLUMNS, up.SDS_CLASS_COLUMN, "_components", "_component_problems")
         edited_rows = []
         for i, rec in enumerate(edited.to_dict("records")):
             hidden = {k: checked.rows[i].get(k, "") for k in carried}
+            kind = rec.pop("단일물질/혼합물", "")
+            rec["혼합물 여부"] = up.mixture_flag(kind)
             edited_rows.append({**hidden, **rec, "메모": memo.get(i, "")})
         final = up.check_rows(edited_rows, *existing)
         good = [r for r in final.rows if r["_ok"]]
