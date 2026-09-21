@@ -96,6 +96,27 @@ class CapStartTests(unittest.TestCase):
         self.assertIn("최대보유량", outcome.messages[0])
         self.assertEqual(outcome.project.get_field("inventory.chemicals").value[0]["물질명"], "염소")
 
+    def test_explicit_single_direct_entry_requires_a_valid_cas(self):
+        chemicals = [{
+            "제품명": "CAS 없는 단일물질", "단일물질/혼합물": "단일물질", "CAS No.": "",
+            "최대 제조·사용량": 1, "최대 저장량": 2, "단위": "ton",
+        }]
+        outcome = cap_start.start(BUSINESS, chemicals, assess=lambda intake: _decision())
+        self.assertEqual(outcome.status, "INVALID")
+        self.assertTrue(any("CAS No." in message for message in outcome.messages))
+
+    def test_explicit_mixture_creates_a_pending_site_for_the_second_file(self):
+        chemicals = [{
+            "제품명": "세척제 A", "단일물질/혼합물": "혼합물", "CAS No.": "",
+            "최대 제조·사용량": 1, "최대 저장량": 2, "단위": "ton",
+        }]
+        called = []
+        outcome = cap_start.start(BUSINESS, chemicals, assess=lambda intake: called.append(1))
+        self.assertEqual(outcome.status, "PENDING")
+        self.assertEqual(called, [])
+        self.assertIn("혼합제품", outcome.messages[0])
+        self.assertIsNotNone(outcome.project)
+
     def test_other_input_problems_still_block(self):
         outcome = cap_start.start({**BUSINESS, "사업장명": ""}, CHEMICALS, assess=lambda intake: None)
         self.assertEqual(outcome.status, "INVALID")
