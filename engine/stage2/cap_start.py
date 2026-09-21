@@ -19,10 +19,11 @@ from ..stage1_workbook import assess_stage1_from_workbook
 from . import cap_judgement
 from .project import Stage2Project, create_project_from_stage1_snapshot
 
-BUSINESS_FIELDS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
-# 신입사원이 처음 입력하는 최소 물질정보. 수량 단위는 kg/ton 중 하나를 고르고,
-# 내부 판정 엔진에는 ton으로 정규화해 전달한다.
-CHEMICAL_INPUT_COLUMNS = ("제품명", "CAS No.", "최대 제조·사용량", "최대 저장량", "단위")
+BUSINESS_FIELDS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품", "한국표준산업분류(KSIC) 코드")
+MATERIAL_TYPE_COLUMN = "단일물질/혼합물"
+# 신입사원이 처음 입력하는 최소 물질정보. 단일물질과 혼합제품을 제품 단위로 한 줄씩 적고,
+# 혼합제품의 구성성분 CAS·함량은 별도 구성성분 파일 또는 후속 질문에서만 받는다.
+CHEMICAL_INPUT_COLUMNS = ("제품명", MATERIAL_TYPE_COLUMN, "CAS No.", "최대 제조·사용량", "최대 저장량", "단위")
 LEGACY_CONTENT_COLUMN = "함량(%)"
 LEGACY_MIXTURE_COLUMN = MIXTURE_FLAG_COLUMN
 LEGACY_MAX_HOLDING_COLUMN = "최대 동시보유량(ton)"
@@ -85,13 +86,25 @@ def chemical_frame(rows: list[Mapping[str, Any]]) -> pd.DataFrame:
         if not name and not cas:
             continue
         input_unit = _clean(row.get("단위") or row.get("수량 단위")) or UNIT
+        kind = _clean(row.get(MATERIAL_TYPE_COLUMN))
+        mixture = _clean(row.get(LEGACY_MIXTURE_COLUMN))
+        if not mixture:
+            if kind == "혼합물":
+                mixture = "Y"
+            elif kind == "단일물질":
+                mixture = "N"
+        content = _number(row.get(LEGACY_CONTENT_COLUMN))
+        if mixture == "N" and content is None:
+            content = 100.0
+        # 혼합제품 자체의 CAS는 법적 식별키로 사용하지 않는다. 구성성분 CAS는 별도 파일에서 받는다.
+        if mixture == "Y":
+            cas = ""
         records.append({
             "제품명": name or cas,
             "CAS No.": cas,
             "물질명(알면 입력)": name,
-            # 신규 최소입력에서는 함량을 받지 않는다. 기존 파일에 있던 값만 보존한다.
-            "함량(%)": _number(row.get(LEGACY_CONTENT_COLUMN)),
-            MIXTURE_FLAG_COLUMN: _clean(row.get(LEGACY_MIXTURE_COLUMN)),
+            "함량(%)": content,
+            MIXTURE_FLAG_COLUMN: mixture,
             "취급형태": HANDLING_DEFAULT,
             # 판정 엔진은 공통적으로 ton 값을 받는다.
             "수량 단위": UNIT,
@@ -158,8 +171,12 @@ def _component_dicts(intake: IntakeData) -> list[dict[str, Any]]:
 
 
 def _business_args(business: Mapping[str, Any]) -> dict[str, str]:
-    return {"name": _clean(business.get("사업장명")), "address": _clean(business.get("사업장 주소")),
-            "industry": _clean(business.get("업종 또는 주요 생산품"))}
+    return {
+        "name": _clean(business.get("사업장명")),
+        "address": _clean(business.get("사업장 주소")),
+        "industry": _clean(business.get("업종 또는 주요 생산품")),
+        "ksic": _clean(business.get("한국표준산업분류(KSIC) 코드")),
+    }
 
 
 def _pending(intake: IntakeData, messages: tuple[str, ...], **base: str) -> StartOutcome:
