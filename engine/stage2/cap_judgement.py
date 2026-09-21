@@ -460,6 +460,70 @@ def save_composition(
     project.stage1_snapshot["mixture_components"] = [dict(row) for row in all_components]
 
 
+# 엔진 요청 문구에 이 글이 있으면 그 행에는 오른쪽의 값이 필요하다(화면 표의 '필요한 값' 칸에 쓴다).
+NEED_LABELS = (
+    ("SDS 제2항", "SDS 제2항 분류"),
+    ("법정 사업장 최대보유량", "사업장 최대보유량"),
+    ("농도·성상", "함량·성상"),
+    ("함량(%)", "함량"),
+    ("최대 제조·사용량", "제조·사용량, 저장량"),
+    ("판정 수량을 kg", "수량"),
+    ("CAS No.를 확인", "CAS No."),
+)
+# 표의 열 묶음: 필요한 값 이름 -> 보여 줄 열
+NEED_COLUMNS = {
+    "SDS 제2항 분류": ("SDS 제2항 유해성·위험성 분류(선택 입력)",),
+    "사업장 최대보유량": ("최대 동시보유량(알면 입력)", "최대보유량 법정 산정 여부"),
+    "함량·성상": ("함량(%)", "상온·상압 액체 여부(해당 시)"),
+    "함량": ("함량(%)",),
+    "제조·사용량, 저장량": ("최대 제조·사용량", "최대 저장량"),
+    "수량": ("최대 제조·사용량", "최대 저장량"),
+    "CAS No.": (),
+}
+
+
+def request_needs(requests: list[str] | tuple[str, ...], total: int) -> dict[int, list[str]]:
+    """행(1부터)마다 엔진이 요청한 값의 이름 목록. 행을 특정하지 못하는 요청은 모든 행에 적용한다."""
+    needs: dict[int, list[str]] = {}
+    for text in requests:
+        message = display_request(text)
+        labels = [label for marker, label in NEED_LABELS if marker in message]
+        if not labels:
+            continue
+        found = {int(n) for n in re.findall(r"(\d+)행", message)}
+        lead = re.match(r"^\s*((?:\d+\s*,\s*)*\d+)\s*의", message)
+        if lead:
+            found |= {int(n) for n in re.findall(r"\d+", lead.group(1))}
+        targets = sorted(n for n in found if 1 <= n <= total) if found else list(range(1, total + 1))
+        for number in targets:
+            for label in labels:
+                if label not in needs.setdefault(number, []):
+                    needs[number].append(label)
+    return needs
+
+
+def columns_for(needs: dict[int, list[str]]) -> list[str]:
+    """필요한 값에 맞춰 표에 보여 줄 입력 열(CHEM_INPUT_COLUMNS의 부분집합, 원래 순서 유지)."""
+    wanted = {column for labels in needs.values() for label in labels for column in NEED_COLUMNS.get(label, ())}
+    return [column for column in CHEM_INPUT_COLUMNS if column in wanted]
+
+
+PLAIN_REQUESTS = (
+    ("시설별 최대보유량 정보를 작성해 주세요",
+     "사업장 최대보유량을 계산하려면 시설(저장탱크·용기 등)의 정보가 필요합니다. 화학사고예방관리계획서 작성의 별지 제1호에서 "
+     "시설을 입력하면 자동으로 계산됩니다. 이미 법에서 정한 방식으로 계산한 값이 있으면 위 표의 '사업장 최대보유량' 칸에 적어도 됩니다."),
+)
+
+
+def plain_request(value: object) -> str:
+    """엔진 요청 문구를 사용자가 이해할 수 있는 말로 바꾼다(엑셀 시트·칸 이름을 말하는 문구는 화면 용어로)."""
+    text = display_request(value)
+    for marker, plain in PLAIN_REQUESTS:
+        if marker in text:
+            return plain
+    return re.sub(r"0\d\s*시트의\s*", "", text)
+
+
 def request_rows(requests: list[str] | tuple[str, ...], total: int) -> list[int]:
     """엔진 요청 문구에서 물질 표의 행 번호(1부터)를 뽑는다. 행을 특정하지 못하는 요청이 있으면 모든 행을 돌려준다."""
     rows: set[int] = set()
