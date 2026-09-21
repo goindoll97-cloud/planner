@@ -8,6 +8,7 @@ import streamlit as st
 from engine.stage2 import report_export as export
 from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
+from engine.stage2 import cap_submission_forms
 from engine.stage2.storage import save_project
 from engine.stage2.workflow import validation_confirmed
 from ui import cap_frames as frames
@@ -90,6 +91,39 @@ def render(project, system: str) -> None:
                        type="primary" if state.final_ready else "secondary")
     st.download_button("내부 검토용 DOCX(서술형 항목 포함) 내려받기", data=outputs.review_docx, file_name=outputs.review_name,
                        mime=export.DOCX_MIME, key=f"{prefix}_dl_review", width="stretch")
+
+    if system == "CAP":
+        st.markdown("### 제출 행정서식")
+        submission_rec = project.get_field("cap.business.submission_type")
+        submission_type = str(submission_rec.value if submission_rec else "")
+        if submission_type == cap_submission_forms.FORM32_TYPE:
+            form = cap_submission_forms.form32_readiness(project)
+            if form.ready:
+                st.download_button(
+                    "별지 제32호 변경 검토신청서 DOCX 내려받기",
+                    data=cap_submission_forms.build_form32_docx(project),
+                    file_name=cap_submission_forms.form32_filename(project),
+                    mime=export.DOCX_MIME,
+                    key=f"{prefix}_dl_cap_form32",
+                    width="stretch",
+                )
+            else:
+                st.info("별지 제32호는 '제출·변경 행정서식' 화면에서 최종 적합통보 정보와 비교 기준 버전을 확인하면 내려받을 수 있습니다.")
+        elif submission_type in cap_submission_forms.FORM31_TYPES:
+            form = cap_submission_forms.form31_readiness(project)
+            if form.ready:
+                st.download_button(
+                    "별지 제31호 검토신청서 DOCX 내려받기",
+                    data=cap_submission_forms.build_form31_docx(project),
+                    file_name=cap_submission_forms.form31_filename(project),
+                    mime=export.DOCX_MIME,
+                    key=f"{prefix}_dl_cap_form31",
+                    width="stretch",
+                )
+            else:
+                st.info("별지 제31호는 '제출·변경 행정서식' 화면에서 관할기관·제출방법·신청일 등 제출정보를 확인하면 내려받을 수 있습니다.")
+        else:
+            st.info("제출구분을 확인하면 해당하는 별지 제31호 또는 제32호를 안내합니다.")
 
     if system == "PSM":
         st.markdown("### 심사 제출 행정서식")
