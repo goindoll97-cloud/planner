@@ -195,8 +195,7 @@ def _mixture_validation_issues(data: IntakeData) -> list[str]:
             issues.append(f"02A_혼합물구성성분 {excel_row}행: 구성성분이 입력된 제품 {parent}행의 '혼합물 여부'를 Y로 확인해 주세요.")
         name = _mixture_clean(row.get("구성성분명"))
         cas = _mixture_clean(row.get("CAS No."))
-        if not name:
-            issues.append(f"02A_혼합물구성성분 {excel_row}행: 구성성분명이 필요합니다.")
+        # 법적 식별은 구성성분명이 아니라 CAS No.를 기준으로 한다. 성분명은 표시용 선택값이다.
         if not _MIXTURE_CAS_RE.fullmatch(cas):
             issues.append(f"02A_혼합물구성성분 {excel_row}행({name or '성분'}): CAS No.를 확인해 주세요.")
         if not _mixture_concentration_values(row)[0]:
