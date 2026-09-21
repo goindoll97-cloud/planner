@@ -36,7 +36,8 @@ def render(expanded: bool) -> None:
         st.caption(
             "사업장 정보와 취급하는 유해화학물질만 적으면 법정 작성 대상(화학사고예방관리계획서, 공정안전보고서)인지 먼저 판정합니다. "
             "대상인 문서는 바로 별지 작성으로 이어집니다. "
-            "처음에는 제품명·CAS No.·하루 최대 제조·사용량·최대 저장량만 입력하면 됩니다. 함량은 나중에 단일물질/혼합물 확인 단계에서 필요한 경우만 묻습니다. 수량은 kg 또는 ton 중 편한 단위를 선택하세요."
+            "처음에는 제품별 기본정보만 적습니다. 혼합제품이 있으면 사업장을 만든 뒤 SDS 제3항용 두 번째 파일이 자동으로 나타납니다. "
+            "성상·SDS 분류·법적 예외 같은 어려운 항목은 판정에 실제로 필요할 때만 질문합니다."
         )
         left, middle, right = st.columns(3)
         name = left.text_input("사업장명", key="cap_start_name", help="사업자등록증에 적힌 사업장(회사) 이름입니다.",
@@ -44,14 +45,24 @@ def render(expanded: bool) -> None:
         address = middle.text_input("사업장 주소", key="cap_start_address", help="사업장이 실제로 있는 도로명 주소입니다. 기상 정보와 주변 보호대상 조회에 쓰입니다.",
                                   placeholder="(예시) 울산광역시 남구 산업로 1")
         industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry",
-                                  help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 판정 계산에는 쓰이지 않고, 공정안전보고서 별지 제12호의 주요 생산품 칸에 다시 쓰입니다.",
+                                  help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 예: 합성수지 제조 / 접착제 생산.",
                                   placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산")
+        ksic = st.text_input(
+            "업종 분류 코드(KSIC, 알면 입력)",
+            key="cap_start_ksic",
+            placeholder="예: 20111",
+            help=(
+                "KSIC는 '한국표준산업분류'의 약자로, 사업장의 주된 일을 숫자로 구분한 코드입니다. "
+                "공정안전보고서(PSM)는 일부 업종 자체가 대상 기준이 될 수 있어 필요합니다. "
+                "회사에서 쓰는 5자리 업종 코드를 알고 있으면 적고, 모르면 비워 두세요. 판정에 꼭 필요할 때 다시 안내합니다."
+            ),
+        )
         hidden_columns = [
             cap_start.LEGACY_CONTENT_COLUMN, cap_start.LEGACY_MIXTURE_COLUMN,
             cap_start.LEGACY_MAX_HOLDING_COLUMN, *cap_start.EXTRA_INPUT_COLUMNS,
         ]
-        blank = {"제품명": "", "CAS No.": "", "최대 제조·사용량": None, "최대 저장량": None, "단위": "kg",
-                 **{col: "" for col in hidden_columns}}
+        blank = {"제품명": "", cap_start.MATERIAL_TYPE_COLUMN: "", "CAS No.": "", "최대 제조·사용량": None,
+                 "최대 저장량": None, "단위": "kg", **{col: "" for col in hidden_columns}}
         generation = st.session_state.get("cap_start_gen", 0)  # 엑셀로 행을 추가하면 새 표로 다시 그린다
         frame = pd.DataFrame(
             st.session_state.get("cap_start_seed") or [blank],
@@ -63,9 +74,13 @@ def render(expanded: bool) -> None:
                 "제품명": st.column_config.TextColumn(
                     "제품명(물질명)", help="취급하는 제품 또는 물질 이름입니다. CAS 번호만 알아도 됩니다."
                 ),
+                cap_start.MATERIAL_TYPE_COLUMN: st.column_config.SelectboxColumn(
+                    "단일물질/혼합물", options=["", "단일물질", "혼합물"],
+                    help="제품 SDS 제3항을 보세요. 구성성분이 하나인 물질은 단일물질, 여러 성분으로 된 제품은 혼합물입니다.",
+                ),
                 "CAS No.": st.column_config.TextColumn(
                     "CAS No.",
-                    help="단일물질이면 CAS 번호를 적습니다. 혼합제품 자체에 CAS가 없으면 비워 두고, 다음 단계에서 SDS 제3항 구성성분의 CAS 번호를 각각 입력합니다.",
+                    help="단일물질이면 반드시 적습니다. 혼합제품 자체의 CAS는 비워 두세요. 구성성분 CAS는 두 번째 파일에서 입력합니다.",
                 ),
                 "최대 제조·사용량": st.column_config.NumberColumn(
                     "하루 최대 제조·사용량", min_value=0.0,
@@ -104,8 +119,9 @@ def render(expanded: bool) -> None:
                     continue
                 for component in row.get("_components") or []:
                     parts.append({"제품명": row["제품명"], "CAS No.": component["CAS No."], "함량(%)": component["함량(%)"]})
+                kind = "혼합물" if str(row.get("혼합물 여부") or "").strip().upper() == "Y" else "단일물질" if str(row.get("혼합물 여부") or "").strip().upper() == "N" else ""
                 added.append({
-                    "제품명": row["제품명"], "CAS No.": row["CAS No."],
+                    "제품명": row["제품명"], cap_start.MATERIAL_TYPE_COLUMN: kind, "CAS No.": row["CAS No."],
                     "최대 제조·사용량": number(row.get("최대 제조·사용량", "")),
                     "최대 저장량": number(row.get("최대 저장량", "")),
                     "단위": row.get("단위") or "ton",
@@ -126,7 +142,8 @@ def render(expanded: bool) -> None:
         if _gate_hold():
             return
         outcome = cap_start.start(
-            {"사업장명": name, "사업장 주소": address, "업종 또는 주요 생산품": industry},
+            {"사업장명": name, "사업장 주소": address, "업종 또는 주요 생산품": industry,
+             "한국표준산업분류(KSIC) 코드": ksic},
             edited.to_dict("records"),
             components=st.session_state.get("cap_start_components"),
         )
