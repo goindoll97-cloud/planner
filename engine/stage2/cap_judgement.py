@@ -565,6 +565,38 @@ def _facility_quantities(project: Stage2Project) -> dict[str, float]:
     return out
 
 
+def components_by_row(project: Stage2Project) -> dict[int, list[tuple[str, str]]]:
+    """혼합제품의 성분(CAS, 함량%)을 물질 목록의 행 번호(1부터)별로 묶는다."""
+    out: dict[int, list[tuple[str, str]]] = {}
+    for component in mixture_components(project):
+        try:
+            row = int(float(component.get("제품목록행번호")))
+        except (TypeError, ValueError):
+            continue
+        cas = _clean(component.get("CAS No."))
+        if cas:
+            out.setdefault(row, []).append((cas, _clean(component.get("함량(%)"))))
+    return out
+
+
+def cas_display(row: Mapping[str, Any], row_number: int, parts: Mapping[int, list[tuple[str, str]]]) -> str:
+    """표에 보여 줄 CAS. 혼합제품은 제품 자체의 CAS가 없으므로 성분 CAS를 보여 준다(빈칸으로 두면 값이 빠진 것처럼 보인다)."""
+    cas = _clean(row.get("CAS No.") or row.get("CAS 번호") or row.get("CAS"))
+    if cas:
+        return cas
+    listed = parts.get(row_number) or []
+    if listed:
+        return " · ".join(c for c, _ in listed) + " (혼합물 성분)"
+    return "(혼합물 — 성분 없음)" if _mixture_yes(row.get(MIXTURE_FLAG_COLUMN)) else ""
+
+
+def content_display(row: Mapping[str, Any], row_number: int, parts: Mapping[int, list[tuple[str, str]]]) -> str:
+    listed = parts.get(row_number) or []
+    if listed and not _clean(row.get("CAS No.") or row.get("CAS 번호")):
+        return " · ".join(p or "?" for _, p in listed)
+    return _clean(row.get("함량(%)"))
+
+
 BUSINESS_KEYS = ("사업장명", "사업장 주소", "업종 또는 주요 생산품")
 
 

@@ -60,12 +60,18 @@ def _chemicals(project) -> None:
     rows = _rows(project)
     with st.expander(f"물질 목록 — {len(rows)}건", expanded=not rows):
         if rows:
+            parts = judgement.components_by_row(project)
             frames.show(pd.DataFrame([{
                 "제품명": r.get("제품명") or r.get("물질명") or "",
-                "CAS No.": r.get("CAS No.") or r.get("CAS 번호") or "",
+                "구분": "혼합물" if judgement._mixture_yes(r.get("혼합물 여부")) else "단일물질",
+                "CAS No.": judgement.cas_display(r, number, parts),
+                "함량(%)": judgement.content_display(r, number, parts),
                 "하루 최대 제조·사용량(ton)": r.get("최대 제조·사용량") or "",
                 "최대 저장량(ton)": r.get("최대 저장량") or "",
-            } for r in rows]), width="stretch", hide_index=True)
+            } for number, r in enumerate(rows, start=1)]), width="stretch", hide_index=True)
+            if parts:
+                st.caption("혼합제품은 제품 자체의 CAS가 없으므로, CAS 칸에 제품 SDS 제3항에서 옮긴 성분 CAS를 보여 줍니다. "
+                           "판정은 이 성분 CAS와 함량으로 합니다.")
         else:
             st.info("이 사업장에는 아직 물질이 없습니다. 아래에서 엑셀·CSV로 올려 주세요.")
 

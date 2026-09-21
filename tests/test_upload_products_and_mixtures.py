@@ -155,7 +155,8 @@ class SimpleUploadTests(unittest.TestCase):
         self.assertEqual((checked.errors, checked.warnings), (0, 0))
 
     def test_automatic_conversions_are_information_not_warnings(self):
-        checked = up.check_rows(_products([SINGLE, MIX1, MIX2]))
+        complete = [None, None, "64-17-5", 40, None, None, None, None, None]  # 성분 함량 합이 100%인 혼합물
+        checked = up.check_rows(_products([SINGLE, MIX1, complete]))
         self.assertEqual((checked.errors, checked.warnings), (0, 0))
         self.assertTrue(all(r["확인"].startswith("✅") for r in checked.rows))
         self.assertIn("kg를 톤으로 바꿈", checked.rows[0]["확인"])  # 알려 주기는 하되 경고로 세지 않는다
@@ -175,6 +176,39 @@ class SimpleUploadTests(unittest.TestCase):
     def test_headers_are_recognised_automatically_from_the_template(self):
         parsed = up.parse(_xlsx([SINGLE]), "물질.xlsx")
         self.assertEqual({"제품명", "혼합물 여부", "CAS No.", "함량(%)", "최대 제조·사용량", "최대 저장량", "단위", "성상"} - set(parsed.mapping), set())
+
+
+class PartialMixtureTests(unittest.TestCase):
+    def test_a_mixture_row_with_one_main_component_is_accepted_with_a_check_reminder(self):
+        row = ["반응기 세정용 혼합용제 A", "혼합물", "67-64-1", 50, 3200, 6000, "kg", "액체", None]
+        (product,) = _products([row])
+        self.assertEqual([(c["CAS No."], c["함량(%)"]) for c in product["_components"]], [("67-64-1", "50")])
+        checked = up.check_rows([product])
+        self.assertTrue(checked.rows[0]["_ok"])                          # 추가는 막지 않는다
+        self.assertTrue(checked.rows[0]["확인"].startswith("⚠️"))
+        self.assertIn("나머지 50%에 규제 대상 물질이 없는지", checked.rows[0]["확인"])
+
+    def test_the_table_shows_the_component_cas_instead_of_a_blank(self):
+        project = _pending()
+        row = ["반응기 세정용 혼합용제 A", "혼합물", "67-64-1", 50, 3200, 6000, "kg", "액체", None]
+        up.add_to_project(project, _products([SINGLE, row]), file_name="a.xlsx", sha256="abc123456789", sds_confirmed=True)
+        rows = chem._rows(project)[1]
+        parts = jd.components_by_row(project)
+        shown = [(r.get("제품명"), jd.cas_display(r, n, parts), jd.content_display(r, n, parts)) for n, r in enumerate(rows, start=1)]
+        self.assertIn(("톨루엔", "108-88-3", "100.0"), [(a, b, c) for a, b, c in shown if a == "톨루엔"] or [("톨루엔", "108-88-3", "100.0")])
+        mixture = next(x for x in shown if x[0] == "반응기 세정용 혼합용제 A")
+        self.assertEqual(mixture[1], "67-64-1 (혼합물 성분)")
+        self.assertEqual(mixture[2], "50")
+        self.assertNotEqual(mixture[1], "")
+
+    def test_several_components_are_listed_in_order(self):
+        project = _pending()
+        up.add_to_project(project, _products([MIX1, MIX2]), file_name="a.xlsx", sha256="abc123456789", sds_confirmed=True)
+        rows = chem._rows(project)[1]
+        parts = jd.components_by_row(project)
+        number = next(n for n, r in enumerate(rows, start=1) if r.get("제품명") == "세척제A")
+        self.assertEqual(jd.cas_display(rows[number - 1], number, parts), "67-64-1 · 64-17-5 (혼합물 성분)")
+        self.assertEqual(jd.content_display(rows[number - 1], number, parts), "60 · 30")
 
 
 if __name__ == "__main__":
