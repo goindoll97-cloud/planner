@@ -90,7 +90,11 @@ version_panel.render(project, "CAP")
 
 from ui import cap_forms_registry as registry
 
-SPECIAL = {"narrative": "서술형 항목 · 사전관리방침과 비상대응계획", "export": "점검·내보내기 · 보고서 내려받기"}
+SPECIAL = {
+    "submission": "제출·변경 행정서식 · 별지 제31호·제32호",
+    "narrative": "서술형 항목 · 사전관리방침과 비상대응계획",
+    "export": "점검·내보내기 · 보고서 내려받기",
+}
 
 
 def _option_label(option) -> str:
@@ -269,7 +273,11 @@ def _render_form1(project) -> None:
 form_no = unsaved_guard.selector("작성할 서식(별지 순서대로)", [*registry.FORM_NUMBERS, *SPECIAL], key="cap_form_no",
                                  format_func=_option_label)
 try:
-    if form_no == "narrative":
+    if form_no == "submission":
+        from ui import cap_submission_forms_view
+
+        cap_submission_forms_view.render(project)
+    elif form_no == "narrative":
         from engine.stage2 import cap_narrative_workspace as cap_narrative
         from ui import narrative_panel
 
