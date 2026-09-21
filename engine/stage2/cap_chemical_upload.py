@@ -25,12 +25,18 @@ EXTRA_COLUMNS = (
 )
 ALL_COLUMNS = OUT_COLUMNS + EXTRA_COLUMNS
 TON_EXTRAS = ("최대 제조·사용량", "최대 저장량")
+STATE_COLUMN = "성상(상온·상압)"
+STATE_OPTIONS = ("기체", "액체", "고체")
+LIQUID_COLUMN = "상온·상압 액체 여부(해당 시)"
+YES_NO_OPTIONS = ("Y", "N")
+_STATE_WORDS = {"액체": "Y", "liquid": "Y", "기체": "N", "gas": "N", "고체": "N", "solid": "N"}
 FIELD_ALIASES = {
     "제품명": ("제품명", "물질명", "화학물질명", "유해화학물질명", "품명", "제품", "화학명", "물질", "productname", "name"),
     "CAS No.": ("casno", "cas번호", "cas", "화학물질식별번호", "casnumber", "cas no."),
     "함량(%)": ("함량", "농도", "순도", "성분함량", "함유량", "content", "함량%"),
     "최대 동시보유량(ton)": ("최대동시보유량", "최대보유량", "최대저장량", "보유량", "저장량", "취급량", "최대취급량", "재고량"),
-    "상온·상압 액체 여부(해당 시)": ("상온상압액체여부", "액체여부", "상온상압액체", "성상"),
+    "성상": ("성상", "상온상압성상", "물질상태", "상태"),
+    "상온·상압 액체 여부(해당 시)": ("상온상압액체여부", "액체여부", "상온상압액체"),
     "최대 제조·사용량": ("최대제조사용량", "제조사용량", "최대제조량", "최대사용량", "하루최대제조사용량"),
     "최대 저장량": ("최대저장량", "저장최대량"),
     "최대보유량 법정 산정 여부": ("최대보유량법정산정여부", "법정산정여부", "법정산정"),
@@ -251,14 +257,25 @@ def normalize(parsed: Parsed, mapping: Mapping[str, str]) -> list[dict[str, str]
         if cell("비고"):
             notes.append(f"비고: {cell('비고')}")
         extras: dict[str, str] = {}
+        state_note = ""
+        if cell("성상") and not cell(LIQUID_COLUMN):
+            liquid = _STATE_WORDS.get(re.sub(r"[\s()]", "", cell("성상")).lower(), "")
+            if not liquid:
+                state_note = f"성상 '{cell('성상')}'을 기체·액체·고체 중에서 읽지 못했습니다"
+        else:
+            liquid = ""
         for column in EXTRA_COLUMNS:
-            if column in TON_EXTRAS:
+            if column == LIQUID_COLUMN and liquid:
+                extras[column] = liquid  # 성상 선택에서 액체 여부를 프로그램이 정한다(액체 Y, 기체·고체 N)
+            elif column in TON_EXTRAS:
                 value, note = _to_ton(cell(column), "", mapping.get(column, ""))
                 extras[column] = value
                 if note:
                     notes.append(f"{column}: {note}")
             else:
                 extras[column] = cell(column)
+        if state_note:
+            notes.append(state_note)
         rows.append({"제품명": cell("제품명"), "CAS No.": cell("CAS No."), "함량(%)": content,
                      "최대 동시보유량(ton)": amount, **extras, "메모": " / ".join(notes)})
     return rows
@@ -271,17 +288,32 @@ def blank_template() -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "물질 목록"
-    sheet.append(["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)",
-                  "최대 제조·사용량(ton)", "최대 저장량(ton)", "최대보유량 법정 산정 여부",
-                  "SDS 제2항 유해성·위험성 분류(선택 입력)"])
-    for column, width in zip("ABCDEFGHI", (28, 16, 12, 22, 22, 20, 18, 22, 44)):
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    headers = ["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", STATE_COLUMN,
+               "최대 제조·사용량(ton)", "최대 저장량(ton)", "최대보유량 법정 산정 여부",
+               "SDS 제2항 유해성·위험성 분류(선택 입력)"]
+    sheet.append(headers)
+    for column, width in zip("ABCDEFGHI", (28, 16, 12, 22, 20, 20, 18, 22, 44)):
         sheet.column_dimensions[column].width = width
+    # 직접 타이핑하지 않고 목록에서 고르게 한다(엑셀 셀 선택 목록).
+    for header, options, message in (
+        (STATE_COLUMN, STATE_OPTIONS, "상온·상압에서의 상태를 목록에서 고르세요."),
+        ("최대보유량 법정 산정 여부", YES_NO_OPTIONS, "법정 산정 방식으로 계산한 값이면 Y, 단순 재고량이나 추정이면 N."),
+    ):
+        letter = "ABCDEFGHI"[headers.index(header)]
+        validation = DataValidation(type="list", formula1='"' + ",".join(options) + '"', allow_blank=True,
+                                    showErrorMessage=True, errorTitle="목록에서 고르세요",
+                                    error="목록에 있는 값만 넣을 수 있습니다. 모르면 비워 두세요.",
+                                    showInputMessage=True, promptTitle=header, prompt=message)
+        sheet.add_data_validation(validation)
+        validation.add(f"{letter}2:{letter}1000")
     guide = workbook.create_sheet("작성 안내")
     for line in (
         ["취급하는 유해화학물질을 한 줄에 하나씩 적습니다. 모르는 칸은 비워 두어도 됩니다."],
         ["제품명: 제품 또는 물질 이름 / CAS No.: 화학물질 고유 번호 / 함량(%): 제품 안 그 물질의 비율(숫자만)"],
         ["최대 동시보유량: 한꺼번에 가장 많이 보유하는 양. 열 이름에 단위를 적으세요: (ton) 또는 (kg)"],
-        ["상온·상압 액체 여부: 상온·상압에서 액체이면 Y, 아니면 N (해당하는 물질만)"],
+        ["성상(상온·상압): 목록에서 기체·액체·고체를 고르세요. 액체 여부는 이 선택으로 프로그램이 정합니다(모르면 비워 두세요)."],
         ["최대 제조·사용량 / 최대 저장량: 하루 최대 제조·사용량과 한꺼번에 저장하는 최대량. 열 이름에 단위를 적으세요: (ton) 또는 (kg)"],
         ["최대보유량 법정 산정 여부: 위 최대 동시보유량을 법정 산정 방식으로 계산한 값이면 Y, 단순 재고량이나 추정이면 N"],
         ["SDS 제2항 분류: 제품 SDS 제2항의 유해성·위험성 분류를 그대로 적습니다. 해당 분류가 없으면 '별표1 해당없음'"],

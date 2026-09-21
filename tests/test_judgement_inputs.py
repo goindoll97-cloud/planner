@@ -115,7 +115,7 @@ class TemplateColumnTests(unittest.TestCase):
 
         data = up.blank_template()
         parsed = up.parse(data, "물질목록_양식.xlsx")
-        self.assertEqual(set(parsed.mapping), set(up.ALL_COLUMNS))
+        self.assertEqual(set(parsed.mapping), (set(up.ALL_COLUMNS) | {"성상"}) - {"상온·상압 액체 여부(해당 시)"})
         self.assertEqual(parsed.mapping["최대 저장량"], "최대 저장량(ton)")
         self.assertEqual(parsed.mapping["최대 동시보유량(ton)"], "최대 동시보유량(ton)")
 
@@ -124,10 +124,10 @@ class TemplateColumnTests(unittest.TestCase):
 
         from engine.stage2 import cap_chemical_upload as up
 
-        headers = ["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", "상온·상압 액체 여부(해당 시)",
+        headers = ["제품명", "CAS No.", "함량(%)", "최대 동시보유량(ton)", "성상(상온·상압)",
                    "최대 제조·사용량(kg)", "최대 저장량(ton)", "최대보유량 법정 산정 여부",
                    "SDS 제2항 유해성·위험성 분류(선택 입력)"]
-        frame = pd.DataFrame([["아세톤", "67-64-1", "99", "3", "Y", "500", "2", "Y", "별표1 해당없음"]], columns=headers)
+        frame = pd.DataFrame([["아세톤", "67-64-1", "99", "3", "액체", "500", "2", "Y", "별표1 해당없음"]], columns=headers)
         from io import BytesIO
         buffer = BytesIO()
         frame.to_excel(buffer, index=False)
@@ -152,3 +152,31 @@ class TemplateColumnTests(unittest.TestCase):
         built, missing = j.build_intake(project)
         self.assertEqual(missing, [])
         self.assertEqual(built.chemicals.loc[0, "상온·상압 액체 여부(해당 시)"], "Y")
+
+
+    def test_template_state_and_yes_no_columns_are_dropdown_lists(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        from engine.stage2 import cap_chemical_upload as up
+
+        sheet = load_workbook(BytesIO(up.blank_template()))["물질 목록"]
+        lists = {tuple(v.sqref.ranges)[0].coord: v.formula1 for v in sheet.data_validations.dataValidation if v.type == "list"}
+        self.assertEqual(lists["E2:E1000"], '"기체,액체,고체"')
+        self.assertEqual(lists["H2:H1000"], '"Y,N"')
+
+    def test_state_choice_decides_the_liquid_answer_and_unknown_words_are_flagged(self):
+        import pandas as pd
+        from io import BytesIO
+
+        from engine.stage2 import cap_chemical_upload as up
+
+        frame = pd.DataFrame([["가", "67-64-1", "액체"], ["나", "7782-50-5", "기체"], ["다", "7647-01-0", "고체"],
+                              ["라", "64-17-5", "반고체"]], columns=["제품명", "CAS No.", "성상(상온·상압)"])
+        buffer = BytesIO()
+        frame.to_excel(buffer, index=False)
+        parsed = up.parse(buffer.getvalue(), "x.xlsx")
+        rows = up.normalize(parsed, parsed.mapping)
+        self.assertEqual([r["상온·상압 액체 여부(해당 시)"] for r in rows], ["Y", "N", "N", ""])
+        self.assertIn("성상 '반고체'", rows[3]["메모"])
