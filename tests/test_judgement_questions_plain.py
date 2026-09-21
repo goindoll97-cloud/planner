@@ -143,8 +143,11 @@ class AskScreenTests(unittest.TestCase):
 
     def test_requests_without_an_answer_type_are_shown_once_as_an_info_box(self):
         at = self._run([2, len(ENGINE_REQUESTS)])
-        infos = [i.value for i in at.info]
-        self.assertTrue(any("CAS 하나로 확정할 수 없는" in v and "물질 목록이나 시설 정보" in v for v in infos))
+        shown = [m.value for m in at.markdown]
+        self.assertIn("• CAS 하나로 확정할 수 없는 염·화합물군이 있습니다.", shown)
+        heading = next(m for m in at.markdown if m.value == "**함께 확인할 내용**")
+        self.assertIn("물질 목록이나 시설 정보", heading.help)       # 설명은 ? 안에 있다
+        self.assertEqual(len(at.info), 0)
 
     def test_the_excluded_gas_table_appears_when_the_engine_asks_for_it(self):
         at = self._run([0, len(ENGINE_REQUESTS) + 1])

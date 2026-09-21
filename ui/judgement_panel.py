@@ -27,6 +27,26 @@ def _status_line(project) -> str:
 
 STEPS = ("성분 확인", "판정 질문", "물질별 값 확인", "결과")
 
+HELP_FLOW = ("판정은 성분 확인 → 판정 질문 → 물질별 값 확인 → 결과 순서로 진행합니다. 입력하신 물질 목록으로 법정 대상인지 먼저 확인하고, "
+             "더 필요한 정보가 있으면 그것만 물어봅니다. 별지 작성은 판정 전에도 미리 시작할 수 있습니다.")
+WHY_ASK = ("**왜 묻나요?** 입력하신 물질 목록만으로는 법정 대상인지 확정할 수 없어서, 판정 규칙이 사업장에 대해 추가로 확인을 요청한 항목입니다. "
+           "사업장 전체에 대한 질문이라 물질과 상관없이 한 번만 답하면 됩니다.\n\n"
+           "**모르면?** 답에 따라 작성할 문서가 달라질 수 있으니 확실하지 않으면 추측하지 말고 '모름'을 고르세요. 판정이 보류되고 확인할 것이 안내됩니다.")
+WHY_ROWS = ("**왜 이 물질들만 나오나요?** 물질의 양이 규정수량 기준에 가까워서 정확한 값이 있어야 판정할 수 있는 물질만 보여 드립니다. "
+            "나머지 물질은 이미 입력한 값만으로 판정할 수 있어 묻지 않습니다.\n\n"
+            "**어떻게 채우나요?** '필요한 값' 칸에 적힌 내용을 같은 줄에서 채우세요. 모르는 칸은 비워 두면 되고, "
+            "빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다. 수량은 칸마다 kg 또는 ton을 고를 수 있고 저장할 때 ton으로 바꿔 줍니다.")
+HOLDING_HELP = ("**사업장 최대보유량이란?** 같은 물질이 사업장 안의 여러 시설(저장탱크·반응기·보관창고 등)에 동시에 있을 수 있는 양을 "
+                "법에서 정한 방식으로 계산해 합한 값입니다. 규정수량과 비교해 작성 대상인지 정하는 기준입니다.\n\n"
+                "**어떻게 채우나요?** '시설 입력'에 시설의 설계용량·비중을 적으면 프로그램이 계산합니다. "
+                "이미 법에서 정한 방식으로 계산한 값이 있으면 표에 직접 적어도 됩니다.")
+FACILITY_HELP = ("별지 제1호와 같은 표입니다. 여기에 저장하면 별지 작성 화면에도 그대로 들어가고, 저장하는 즉시 다시 판정합니다.\n\n"
+                 + HOLDING_HELP)
+KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 SDS 제2항 분류(인화성·독성 등)를 요청합니다. 제품 SDS를 일일이 찾는 대신 "
+              "CAS 번호로 KOSHA(한국산업안전보건공단)에서 후보를 불러옵니다.\n\n"
+              "**주의** 조회 결과는 참고자료입니다. 판정 규칙이 요청한 물질의 표에 후보로 미리 채워지며, 제품 SDS와 대조해 확인해야 판정에 쓰입니다. "
+              "CAS 번호만 전송하고 회사·수량 정보는 보내지 않습니다.")
+
 
 def current_step(outcome) -> int:
     """지금 화면이 어느 단계인지(1~4). 판정 규칙이 요청하는 내용에 따라 필요한 단계만 나타납니다."""
@@ -215,8 +235,7 @@ def _note8_table(project):
 
 
 def _ask(project, outcome) -> None:
-    st.markdown("#### 판정에 필요한 확인 사항")
-    st.caption("사업장 전체에 대한 질문입니다. 각 질문 옆 ? 에 뜻과 확인 방법이 있습니다. 확실하지 않으면 추측하지 말고 '모름'을 고르세요.")
+    st.markdown("#### 판정에 필요한 확인 사항", help=WHY_ASK)
     existing = judgement.answers(project)
     given: dict[str, str] = {}
     groups = {name: [q for q in outcome.questions if q.system == name] for name in SYSTEM_ORDER}
@@ -229,20 +248,28 @@ def _ask(project, outcome) -> None:
             given[question.item] = _question(project, question, existing)
     table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
+    facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
     covered = [m for m in outcome.messages
                if m in table_messages or any(q.trigger and q.trigger in m for q in outcome.questions)
-               or judgement.NOTE8_TABLE_MARKER in m]
+               or judgement.NOTE8_TABLE_MARKER in m or judgement.HOLDING_FACILITY_MARKER in m]
     others = [m for m in outcome.messages if m not in covered]
     if others:
-        st.info("판정 규칙이 함께 요청한 내용입니다. 답을 적는 질문이 아니라, 물질 목록이나 시설 정보를 보완하면 해결됩니다.\n\n"
-                + "\n".join(f"• {judgement.plain_request(m)}" for m in others))
+        st.markdown("**함께 확인할 내용**", help="답을 적는 질문이 아니라, 물질 목록이나 시설 정보를 보완하면 해결되는 내용입니다.")
+        for message in others:
+            st.write(f"• {judgement.plain_request(message)}")
     note8_rows = _note8_table(project) if note8_needed else None
     edited, used = _chemical_table(project, outcome, table_messages)
+    if facility_needed:
+        holding_names = _names_needing_holding(project, table_messages)
+        _facilities(project, outcome, holding_names)
     confirmed = True
     if used:
         confirmed = st.checkbox(
             f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
             key=f"judge_kosha_ok_{project.project_id}")
+    has_answers = bool(outcome.questions) or edited is not None or note8_rows is not None
+    if not has_answers:
+        return False  # 적을 답이 없고 시설 표만 있으면, 시설을 저장할 때 바로 다시 판정한다
     if st.button("답을 저장하고 다시 판정", type="primary", key=f"judge_answer_{project.project_id}", disabled=not confirmed):
         table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
         note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
@@ -259,6 +286,7 @@ def _ask(project, outcome) -> None:
             storage.save_project(project)
             st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
             st.rerun()
+    return True
 
 
 def _filled(rows: list[dict]) -> list[dict]:
@@ -275,15 +303,37 @@ ANSWER_LABELS = {"Y": "예", "N": "아니오"}
 
 
 def _holding_help() -> None:
-    """'사업장 최대보유량'이 무엇이고 어떻게 채우는지. 표에 그 열이 있을 때만 보여 준다."""
-    st.info("**사업장 최대보유량**은 같은 물질이 사업장 안의 여러 시설(저장탱크·반응기·보관창고 등)에 동시에 있을 수 있는 양을 "
-            "법에서 정한 방식으로 계산해 합한 값입니다. 규정수량과 비교해 작성 대상인지 정하는 기준이 됩니다.\n\n"
-            "• **시설 정보를 입력하면 프로그램이 계산해 줍니다.** 아래 링크의 별지 제1호에서 시설(용량·비중 등)을 입력하세요.\n\n"
-            "• 이미 법에서 정한 방식으로 계산한 값이 있으면 아래 표에 직접 적어도 됩니다.")
-    try:
-        st.page_link("ui/cap_workspace_page.py", label="별지 제1호에서 시설 입력하기", icon="📝")
-    except Exception:
-        pass  # 페이지 이동 정보가 없는 환경(테스트 등)에서는 링크만 생략한다
+    """'사업장 최대보유량'이 무엇이고 어떻게 채우는지. 표에 그 열이 있을 때만 한 줄로 보이고, 설명은 ? 안에 있다."""
+    st.markdown("**사업장 최대보유량은 어떻게 채우나요?**", help=HOLDING_HELP)
+
+
+def _facilities(project, outcome, needs_names: list[str]) -> None:
+    """판정 화면 안에서 시설(저장탱크 등)을 입력해 사업장 최대보유량을 계산한다. 별지 제1호와 같은 표·같은 자료다."""
+    from ui import cap_facility_editor
+
+    from engine.stage2 import cap_workspace as ws
+
+    st.markdown("**시설 입력 — 사업장 최대보유량 계산**",
+                help=FACILITY_HELP + "\n\n**표 작성 안내** " + str(ws.section(1, "facility_table").get("form_note") or ""))
+    if needs_names:
+        st.caption("판정 규칙이 최대보유량을 요청한 물질: " + ", ".join(needs_names)
+                   + " — '취급물질' 칸에는 물질 목록의 이름(혼합제품은 제품명)과 같게 적으세요.")
+
+    def saved(count: int) -> None:
+        st.session_state.pop(f"judge_out_{project.project_id}", None)
+        st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
+        st.rerun()
+
+    cap_facility_editor.render(project, "judge_fac", on_saved=saved, compact=True)
+
+
+def _names_needing_holding(project, table_messages) -> list[str]:
+    from engine.stage2 import cap_chemical_workspace as chem
+
+    _, rows = chem._rows(project)
+    needs = judgement.request_needs(table_messages, len(rows))
+    return [str(rows[n - 1].get("제품명") or rows[n - 1].get("물질명") or "")
+            for n in sorted(needs) if "사업장 최대보유량" in needs[n] and 1 <= n <= len(rows)]
 
 
 def _chemical_table(project, outcome, table_messages):
@@ -299,9 +349,7 @@ def _chemical_table(project, outcome, table_messages):
     wanted = sorted(needs)
     shown = judgement.columns_for(needs) or list(judgement.CHEM_INPUT_COLUMNS)
     has_quantity = any(column in shown for column in judgement.QUANTITY_COLUMNS)
-    st.markdown("**물질별로 확인할 값**")
-    st.caption("아래 표의 '필요한 값' 칸에 적힌 내용을 같은 줄에서 채워 주세요. 모르는 칸은 비워 두면 됩니다. "
-               "빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다." + (" " + unit_help() if has_quantity else ""))
+    st.markdown("**물질별로 확인할 값**", help=WHY_ROWS)
     if "사업장 최대보유량" in {label for labels in needs.values() for label in labels}:
         _holding_help()
     stored = judgement.chemical_inputs(project)
@@ -379,8 +427,7 @@ def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, can
         if cas and not stored[number - 1].get(sds_col):
             asked.append(cas)
     empty = kosha_candidates.pending_cas(asked, candidates)  # 처음이거나 네트워크 오류로 실패한 것만
-    help_text = ("CAS 번호만 KOSHA 물질안전보건자료 조회 서비스로 보내고, 제2항의 분류를 후보로 채웁니다. "
-                 "참고자료이므로 제품 SDS와 대조해 확인해야 합니다.")
+    help_text = KOSHA_HELP
     if st.button("KOSHA에서 SDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
                  help=help_text):
         with st.spinner(f"KOSHA에서 {len(set(empty))}개 CAS를 조회하는 중입니다."):
@@ -429,43 +476,41 @@ def _decided(project, outcome) -> None:
 
 
 def render(project) -> None:
+    """법정 대상 판정. 판정 버튼은 한 번에 하나만 보인다: 아직 답을 받는 중이면 그 아래의 '답을 저장하고 다시 판정' 하나만, 아니면 아래의 판정 버튼 하나만."""
     from ui.cap_start_panel import _gate_hold
 
     pending = judgement.undecided(project)
     label = "법정 대상 판정" + (" — 판정 전" if pending else "")
     with st.expander(label, expanded=pending):
-        st.write("현재 판정: " + _status_line(project))
-        st.caption("판정은 " + step_line(0) + " 순서로 진행합니다. 답에 따라 필요한 단계만 나타납니다.")
-        if pending:
-            st.caption("시설을 입력하면 최대보유량이 계산됩니다. 그 뒤 아래 버튼으로 법정 대상인지 판정하고 작성할 문서를 정합니다. "
-                       "별지 작성은 판정 전에도 미리 할 수 있습니다.")
-        else:
-            st.caption("물질이나 시설을 바꿨다면 다시 판정해서 결과가 달라지는지 확인하세요.")
+        st.markdown("**현재 판정:** " + _status_line(project), help=HELP_FLOW)
         key = f"judge_out_{project.project_id}"
-        if st.button("법정 대상 판정하기" if pending else "다시 판정하기", key=f"judge_run_{project.project_id}"):
-            if _gate_hold():
-                return
-            st.session_state[key] = judgement.judge(project)
         outcome = st.session_state.get(key)
-        if outcome is None:
-            return
-        st.markdown("진행: " + step_line(current_step(outcome)))
-        if outcome.status == "COMPOSITION":
-            _composition_form(project, outcome)
-        elif outcome.status == "INVALID":
-            st.warning("입력을 확인해 주세요.")
-            for message in outcome.messages:
-                st.write(f"• {judgement.display_request(message)}")
-        elif outcome.status == "PENDING":
-            st.warning("최대보유량을 알 수 없는 물질이 있어 판정할 수 없습니다.")
-            for name in outcome.missing_quantity:
-                st.write(f"• {name}")
-            st.caption("별지 제1호에서 시설(용량·비중 등)을 입력하면 물질별 최대보유량이 계산됩니다. 알고 있는 값이 있으면 물질 표에 직접 적어도 됩니다.")
-        elif outcome.status == "SYSTEM":
-            st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
-            for message in outcome.messages:
-                st.write(f"• {judgement.display_request(message)}")
-        elif outcome.status == "REQUEST":
-            _ask(project, outcome)
-        else:
-            _decided(project, outcome)
+        has_own_button = False
+        if outcome is not None:
+            st.markdown("진행: " + step_line(current_step(outcome)))
+            if outcome.status == "COMPOSITION":
+                _composition_form(project, outcome)
+                has_own_button = True
+            elif outcome.status == "INVALID":
+                st.warning("입력을 확인해 주세요.")
+                for message in outcome.messages:
+                    st.write(f"• {judgement.display_request(message)}")
+            elif outcome.status == "PENDING":
+                st.warning("최대보유량을 알 수 없는 물질이 있어 판정할 수 없습니다.")
+                for name in outcome.missing_quantity:
+                    st.write(f"• {name}")
+                _facilities(project, outcome, list(outcome.missing_quantity))
+            elif outcome.status == "SYSTEM":
+                st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
+                for message in outcome.messages:
+                    st.write(f"• {judgement.display_request(message)}")
+            elif outcome.status == "REQUEST":
+                has_own_button = _ask(project, outcome)
+            else:
+                _decided(project, outcome)
+        if not has_own_button:
+            if st.button("법정 대상 판정하기" if pending else "다시 판정하기", key=f"judge_run_{project.project_id}"):
+                if _gate_hold():
+                    return
+                st.session_state[key] = judgement.judge(project)
+                st.rerun()

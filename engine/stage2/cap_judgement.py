@@ -508,10 +508,11 @@ def columns_for(needs: dict[int, list[str]]) -> list[str]:
     return [column for column in CHEM_INPUT_COLUMNS if column in wanted]
 
 
+HOLDING_FACILITY_MARKER = "시설별 최대보유량 정보를 작성해 주세요"
 PLAIN_REQUESTS = (
-    ("시설별 최대보유량 정보를 작성해 주세요",
-     "사업장 최대보유량을 계산하려면 시설(저장탱크·용기 등)의 정보가 필요합니다. 화학사고예방관리계획서 작성의 별지 제1호에서 "
-     "시설을 입력하면 자동으로 계산됩니다. 이미 법에서 정한 방식으로 계산한 값이 있으면 위 표의 '사업장 최대보유량' 칸에 적어도 됩니다."),
+    (HOLDING_FACILITY_MARKER,
+     "사업장 최대보유량을 계산하려면 시설(저장탱크·용기 등)의 정보가 필요합니다. 이 화면 아래의 '시설 입력'에서 바로 입력하세요. "
+     "이미 법에서 정한 방식으로 계산한 값이 있으면 표의 '사업장 최대보유량' 칸에 적어도 됩니다."),
 )
 
 
@@ -652,8 +653,10 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
         cas = _clean(row.get("CAS No.") or row.get("CAS 번호") or row.get("CAS"))
         extra = {c: _clean(extra.get(c)) or _clean(row.get(c)) for c in CHEM_INPUT_COLUMNS}
         quantity = extra.get("최대 동시보유량(알면 입력)") or row.get("최대 동시보유량(알면 입력)")
+        from_facilities = False
         if quantity in (None, "") or (isinstance(quantity, float) and quantity != quantity):
             quantity = computed.get(cas) if cas in computed else computed.get(name)
+            from_facilities = quantity not in (None, "")
         also_given = _clean(extra.get("최대 제조·사용량")) or _clean(extra.get("최대 저장량"))
         if quantity in (None, "") and not also_given:
             missing.append(name or cas)
@@ -668,6 +671,9 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
         }
         for column in _EXTRA_INPUT_COLUMNS:
             record[column] = _clean(extra.get(column))
+        if from_facilities and not record.get("최대보유량 법정 산정 여부"):
+            # 별지 제1호 시설 입력으로 프로그램이 법정 방식(설계용량 × 비중 등)으로 계산한 값이므로 법정 산정으로 표시한다.
+            record["최대보유량 법정 산정 여부"] = "Y"
         records.append(record)
     columns = ["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", MIXTURE_FLAG_COLUMN, "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"]
     columns += [c for c in _EXTRA_INPUT_COLUMNS if any(r.get(c) for r in records)]

@@ -15,7 +15,7 @@ from engine.stage2 import cap_judgement as judgement
 from engine.stage2 import kosha_candidates
 from engine.stage2 import storage
 from ui import cap_frames as frames
-from ui import chemical_upload_panel
+from ui import chemical_upload_panel, judgement_panel
 
 
 def _flash_key(pid: str) -> str:
@@ -118,10 +118,9 @@ def _kosha_all(project) -> None:
     part_cas = [c for c in dict.fromkeys(p["CAS No."] for p in parts) if c not in singles]
     targets = [*singles, *part_cas]
     mixtures = len(_rows(project)) - len(singles)
-    st.markdown("**SDS 제2항 분류 한 번에 조회 (KOSHA)**")
-    st.caption("물질 목록의 단일물질 전체를 CAS 번호만 KOSHA로 보내 조회합니다. 조회 결과는 참고자료이며, 판정 규칙이 요청한 물질의 "
-               "표에 후보로 미리 채워집니다(제품 SDS와 대조해 확인해야 판정에 쓰입니다)."
-               + (f" 혼합제품 {mixtures}건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다." if mixtures > 0 else ""))
+    extra = (f"\n\n혼합제품 {mixtures}건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다."
+             if mixtures > 0 else "")
+    st.markdown("**SDS 제2항 분류 한 번에 조회 (KOSHA)**", help=judgement_panel.KOSHA_HELP + extra)
     todo = kosha_candidates.pending_cas(targets, candidates)
     label = ("조회 완료" if not todo else "KOSHA에서 전체 물질 SDS 분류 조회" if len(todo) == len(targets)
              else "조회하지 못한 물질만 다시 조회")
