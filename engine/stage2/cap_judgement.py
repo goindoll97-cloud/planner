@@ -54,12 +54,42 @@ QUESTIONS: tuple[Question, ...] = (
              trigger="제외설비 해당 여부"),
     Question("시행령 제43조제2항 제외설비 유형", "공정안전보고서", "어떤 제외설비 유형인가요?",
              "법령상 제외설비 유형을 그대로 적습니다.", options=(), follows="시행령 제43조제2항 제외설비 해당 여부"),
+    *(
+        q
+        for no, label in ((1, "인화성 가스"), (2, "인화성 액체"))
+        for q in (
+            Question(f"별표 13 제{no}호 {label} 해당 여부", "공정안전보고서",
+                     f"귀사의 취급물질·공정에 산업안전보건법 시행령 별표 13 제{no}호({label})에 해당하는 것이 있나요?",
+                     f"제{no}호({label}) 규정량 대상 물질을 취급하면 Y, 아니면 N입니다. 잘 모르면 '모름'을 고르세요.",
+                     trigger=f"제{no}호({label})"),
+            Question(f"별표 13 제{no}호 하루 최대 제조·취급량(kg)", "공정안전보고서",
+                     f"제{no}호({label})의 하루 최대 제조·취급량은 몇 kg인가요?",
+                     "숫자만 적습니다(kg). 해당 물질을 하루에 가장 많이 제조·취급하는 양입니다.",
+                     options=(), follows=f"별표 13 제{no}호 {label} 해당 여부"),
+            Question(f"별표 13 제{no}호 최대 저장량(kg)", "공정안전보고서",
+                     f"제{no}호({label})의 최대 저장량은 몇 kg인가요?",
+                     "숫자만 적습니다(kg). 해당 물질을 한꺼번에 가장 많이 저장하는 양입니다.",
+                     options=(), follows=f"별표 13 제{no}호 {label} 해당 여부"),
+        )
+    ),
     Question("미확인 결정조건 존재 여부", "공통",
              "판정에 영향을 주는데 아직 확인하지 못한 조건이 남아 있나요?",
              "사내에서 아직 확인하지 못한 사실이 있으면 '예'입니다. '예'이면 판정을 보류하고 확인 후 다시 판정합니다.",
              trigger="미확인 결정조건"),
 )
 _BY_ITEM = {q.item: q for q in QUESTIONS}
+
+# 판정 엔진이 물질(행)마다 요구하는 값. 판정 화면의 표에서 입력받아 프로젝트에 남기고, 판정 입력(물질 표)에 덧붙인다.
+CHEM_INPUTS_KEY = "stage1.chemical_inputs"
+CHEM_INPUT_COLUMNS = (
+    "함량(%)", "상온·상압 액체 여부(해당 시)", "최대 제조·사용량", "최대 저장량",
+    "최대 동시보유량(알면 입력)", "최대보유량 법정 산정 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)",
+)
+_EXTRA_INPUT_COLUMNS = ("상온·상압 액체 여부(해당 시)", "최대 제조·사용량", "최대 저장량",
+                        "최대보유량 법정 산정 여부", "SDS 제2항 유해성·위험성 분류(선택 입력)")
+# 이 문구가 들어 있는 엔진 요청은 물질 표에서 답한다.
+CHEM_REQUEST_MARKERS = ("최대 제조·사용량", "SDS 제2항", "법정 사업장 최대보유량", "농도·성상", "함량(%)",
+                        "판정 수량을 kg", "CAS No.를 확인")
 
 
 @dataclass
@@ -115,6 +145,40 @@ def save_answers(project: Stage2Project, new: Mapping[str, str]) -> None:
     project.set_field(ANSWERS_KEY, "법정 판정에 필요한 확인 사항(회사 답변)", merged, "USER_CONFIRMED")
 
 
+def chemical_inputs(project: Stage2Project) -> list[dict[str, str]]:
+    record = project.get_field(CHEM_INPUTS_KEY)
+    if record is None or not isinstance(record.value, list):
+        return []
+    return [{str(k): _clean(v) for k, v in row.items()} if isinstance(row, dict) else {} for row in record.value]
+
+
+def save_chemical_inputs(project: Stage2Project, rows: list[Mapping[str, Any]]) -> None:
+    project.set_field(CHEM_INPUTS_KEY, "법정 판정에 필요한 물질별 확인값(회사 입력)",
+                      [{k: _clean(v) for k, v in dict(row).items() if k in CHEM_INPUT_COLUMNS} for row in rows],
+                      "USER_CONFIRMED")
+
+
+def request_rows(requests: list[str] | tuple[str, ...], total: int) -> list[int]:
+    """엔진 요청 문구에서 물질 표의 행 번호(1부터)를 뽑는다. 행을 특정하지 못하는 요청이 있으면 모든 행을 돌려준다."""
+    rows: set[int] = set()
+    generic = False
+    for text in requests:
+        message = display_request(text)
+        if not any(marker in message for marker in CHEM_REQUEST_MARKERS):
+            continue
+        found = {int(n) for n in re.findall(r"(\d+)행", message)}
+        lead = re.match(r"^\s*((?:\d+\s*,\s*)*\d+)\s*의", message)
+        if lead:
+            found |= {int(n) for n in re.findall(r"\d+", lead.group(1))}
+        if found:
+            rows |= found
+        else:
+            generic = True
+    if generic:
+        return list(range(1, total + 1))
+    return sorted(n for n in rows if 1 <= n <= total)
+
+
 def _facility_quantities(project: Stage2Project) -> dict[str, float]:
     """별지 제1호 시설 입력으로 계산된 사업장 내 최대보유량(ton)을 CAS별로 돌려준다(없으면 빈 값)."""
     try:
@@ -148,21 +212,28 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
     computed = _facility_quantities(project)
     records: list[dict[str, Any]] = []
     missing: list[str] = []
-    for row in rows:
+    entered = chemical_inputs(project)
+    for index, row in enumerate(rows):
+        extra = entered[index] if index < len(entered) else {}
         name = _clean(row.get("물질명") or row.get("제품명") or row.get("유해화학물질명"))
         cas = _clean(row.get("CAS No.") or row.get("CAS 번호") or row.get("CAS"))
-        quantity = row.get("최대 동시보유량(알면 입력)")
+        quantity = _clean(extra.get("최대 동시보유량(알면 입력)")) or row.get("최대 동시보유량(알면 입력)")
         if quantity in (None, "") or (isinstance(quantity, float) and quantity != quantity):
             quantity = computed.get(cas) if cas in computed else computed.get(name)
-        if quantity in (None, ""):
+        also_given = _clean(extra.get("최대 제조·사용량")) or _clean(extra.get("최대 저장량"))
+        if quantity in (None, "") and not also_given:
             missing.append(name or cas)
-        records.append({
+        record = {
             "제품명": _clean(row.get("제품명")) or name, "CAS No.": cas, "물질명(알면 입력)": name,
-            "함량(%)": row.get("함량(%)"), "취급형태": _clean(row.get("취급형태")) or "저장·사용",
+            "함량(%)": _clean(extra.get("함량(%)")) or row.get("함량(%)"), "취급형태": _clean(row.get("취급형태")) or "저장·사용",
             "수량 단위": _clean(row.get("수량 단위")) or "ton", "최대 동시보유량(알면 입력)": quantity,
-        })
-    frame = pd.DataFrame(records, columns=["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태", "수량 단위",
-                                            "최대 동시보유량(알면 입력)"])
+        }
+        for column in _EXTRA_INPUT_COLUMNS:
+            record[column] = _clean(extra.get(column))
+        records.append(record)
+    columns = ["제품명", "CAS No.", "물질명(알면 입력)", "함량(%)", "취급형태", "수량 단위", "최대 동시보유량(알면 입력)"]
+    columns += [c for c in _EXTRA_INPUT_COLUMNS if any(r.get(c) for r in records)]
+    frame = pd.DataFrame(records, columns=columns)
     fingerprint = hashlib.sha256(json.dumps({"business": business, "chemicals": records, "answers": answers(project)},
                                             ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
     mixture = project.stage1_snapshot.get("mixture_components") or []
