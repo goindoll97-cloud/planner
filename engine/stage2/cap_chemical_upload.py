@@ -218,7 +218,14 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         flag = mixture_flag(row.get("혼합물 여부"))
 
         # 과거 양식의 후속 성분 행: 앞 제품이 명시적으로 혼합물일 때만 허용한다.
-        if not name:
+        # 제품명을 비우거나 같은 제품명을 반복한 구형 양식 둘 다 하위호환한다.
+        repeated_legacy_component = (
+            current_mixture is not None
+            and name
+            and _norm(name) == _norm(current_mixture.get("제품명"))
+            and not flag
+        )
+        if not name or repeated_legacy_component:
             if current_mixture is None:
                 orphan = dict(row)
                 orphan["제품명"] = cas or "(제품명 누락)"
@@ -248,6 +255,11 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
             # 구형 파일처럼 구분이 비어 있으면 추정하지 않고 판정 단계에서 확인한다.
             if product_flag == "N" and not _clean(product.get("함량(%)")):
                 product["함량(%)"] = "100"
+                notes = [
+                    n for n in _clean(product.get("메모")).split(" / ")
+                    if n and not n.startswith("함량이 비어 있습니다")
+                ]
+                product["메모"] = " / ".join(notes)
             continue
 
         legacy = list(product.pop("_legacy_component_rows", []) or [])
@@ -265,7 +277,9 @@ def group_products(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 continue
             if not cas_valid(part_cas):
                 problems.append(f"성분 CAS {part_cas or '(빈칸)'}의 형식 또는 검산 숫자가 맞지 않습니다")
-            if not re.fullmatch(r"\d+(?:\.\d+)?", part_pct):
+            if not part_pct:
+                problems.append(f"성분 {part_cas or '(CAS 미입력)'}의 함량(%)이 비어 있습니다")
+            elif not re.fullmatch(r"\d+(?:\.\d+)?", part_pct):
                 problems.append(f"성분 {part_cas or '(CAS 미입력)'}의 함량(%)은 숫자로 적어야 합니다")
             else:
                 total += float(part_pct)
