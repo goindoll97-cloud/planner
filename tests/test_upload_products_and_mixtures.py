@@ -64,11 +64,13 @@ class GroupingTests(unittest.TestCase):
         self.assertEqual(len(products), 1)
         self.assertEqual(len(products[0]["_components"]), 2)
 
-    def test_several_cas_without_a_mixture_mark_are_treated_as_a_mixture(self):
+    def test_several_cas_without_a_mixture_mark_are_not_silently_inferred_as_a_mixture(self):
         rows = [["세척제B", None, "67-64-1", 60, 1, 1, "ton", "액체", None], [None, None, "64-17-5", 40, None, None, None, None, None]]
-        product = _products(rows)[0]
-        self.assertEqual(product["혼합물 여부"], "Y")
-        self.assertIn("혼합물로 처리", product["메모"])
+        products = _products(rows)
+        self.assertNotEqual(products[0]["혼합물 여부"], "Y")
+        checked = up.check_rows(products)
+        self.assertFalse(all(row["_ok"] for row in checked.rows))
+        self.assertTrue(any("단일물질/혼합물" in row["확인"] or "제품명이 비어" in row["확인"] for row in checked.rows))
 
     def test_mixture_problems_are_reported_and_block_the_row(self):
         bad = [["세척제C", "혼합물", "67-64-1", 80, 1, 1, "ton", "액체", None], [None, None, "64-17-5", 40, None, None, None, None, None],
