@@ -95,7 +95,12 @@ COMPANY_FACT_SPECS: tuple[CompanyFactSpec, ...] = (
     # rule/analysis pipeline derives them.
     CompanyFactSpec("화학사고예방관리계획서 단위공장명", "제1생산공장 (가상)", "대상 시", "화학사고예방관리계획서", "계획서 작성 단위가 되는 단위공장명", ("cap.business.unit_plant_name",)),
     CompanyFactSpec("화학사고예방관리계획서 산업단지명", "울산미포국가산업단지 (가상)", "대상 시", "화학사고예방관리계획서", "산업단지 밖이면 '해당없음'", ("cap.business.industrial_complex",)),
-    CompanyFactSpec("화학사고예방관리계획서 제출구분", "신규", "대상 시", "화학사고예방관리계획서", "신규 / 변경 / 재제출 / 모름", ("cap.business.submission_type",), ("신규", "변경", "재제출", "모름")),
+    CompanyFactSpec(
+        "화학사고예방관리계획서 제출구분", "신규제출", "대상 시", "화학사고예방관리계획서",
+        "신규제출 / 변경제출 / 재제출 / 5년 재제출 / 부적합 후 재제출 / 이행점검 부적정 재제출 / 모름",
+        ("cap.business.submission_type",),
+        ("신규제출", "변경제출", "재제출", "5년 재제출", "부적합 후 재제출", "이행점검 부적정 재제출", "모름"),
+    ),
     CompanyFactSpec("화학사고예방관리계획서 공동비상대응계획 수립 여부", "N", "대상 시", "화학사고예방관리계획서", "회사에서 수립 여부를 확인해 Y / N / 해당없음 / 모름", ("cap.business.joint_emergency_plan",), ("Y", "N", "해당없음", "모름")),
     CompanyFactSpec("화학사고예방관리계획서 유사제도 심사결과 활용 여부", "N", "대상 시", "화학사고예방관리계획서", "기존 유사제도 심사결과 활용 여부", ("cap.business.other_system_review",), ("Y", "N", "해당없음", "모름")),
     CompanyFactSpec("화학사고예방관리계획서 최근 3년간 화학사고 발생 여부", "N", "대상 시", "화학사고예방관리계획서", "회사 사고기록을 기준으로 Y / N / 모름", ("cap.business.recent_accident",), ("Y", "N", "모름")),

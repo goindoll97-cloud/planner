@@ -41,6 +41,14 @@ class VersioningTests(unittest.TestCase):
         metas = list_versions("p1", "CAP", self.root)
         self.assertEqual(metas[1].parent_id, "CAP-v1.0")
 
+    def test_cap_statutory_submission_kinds_drive_version_numbers(self):
+        project = _project()
+        ids = [
+            freeze_version(project, "CAP", kind, root=self.root).version_id
+            for kind in ("신규제출", "변경제출", "변경제출", "5년 재제출")
+        ]
+        self.assertEqual(ids, ["CAP-v1.0", "CAP-v1.1", "CAP-v1.2", "CAP-v2.0"])
+
     def test_diff_reports_added_removed_and_changed_but_ignores_timestamps(self):
         project = _project()
         freeze_version(project, "CAP", "신규", root=self.root)
