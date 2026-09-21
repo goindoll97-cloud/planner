@@ -20,7 +20,8 @@ REQUESTS = [
 
 
 def _project(count=3, quantity="0.5"):
-    rows = [{"제품명": f"물질{i}", "CAS No.": f"67-6{i}-0", "함량(%)": "99", "최대 동시보유량(ton)": quantity}
+    valid_cas = ["108-88-3", "67-64-1", "7782-50-5", "64-17-5", "50-00-0"]
+    rows = [{"제품명": f"물질{i}", "CAS No.": valid_cas[i - 1], "함량(%)": "99", "최대 동시보유량(ton)": quantity}
             for i in range(1, count + 1)]
     intake = cap_start.build_intake(
         {"회사명": "t", "사업장명": "t", "사업장 주소": "울산", "업종 또는 주요 생산품": "화학"}, rows)
@@ -55,9 +56,10 @@ class JudgementInputTests(unittest.TestCase):
         self.assertEqual(str(intake.chemicals.loc[0, "최대 제조·사용량"]), "2")
         self.assertEqual(len(missing), 2)  # 값을 준 물질만 수량이 확인된 것으로 본다
 
-    def test_untouched_projects_keep_the_original_seven_columns(self):
+    def test_untouched_projects_keep_the_composition_flag_column(self):
         intake, _ = j.build_intake(_project())
-        self.assertEqual(len(intake.chemicals.columns), 7)
+        self.assertEqual(len(intake.chemicals.columns), 8)
+        self.assertIn("혼합물 여부", intake.chemicals.columns)
 
 
 def _app():
