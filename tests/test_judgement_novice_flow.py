@@ -89,7 +89,7 @@ class AskScreenTests(unittest.TestCase):
         key = next(t.key for t in at.text_input if t.key and t.key.endswith("(kg)"))
         at.text_input(key=key).set_value("1.5")
         at.selectbox(key=key + "_unit").select("ton")
-        next(b for b in at.button if b.label == "답변 확정하기").click()
+        next(b for b in at.button if b.label == "판정 조건 확정하기").click()
         at.run()
         project = at.session_state["project"]
         self.assertEqual(jd.answers(project)[[q for q in jd.QUESTIONS if q.item.endswith("(kg)")][0].item], "1500")
