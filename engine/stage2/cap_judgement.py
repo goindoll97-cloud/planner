@@ -702,6 +702,43 @@ def build_intake(project: Stage2Project) -> tuple[IntakeData, list[str]]:
 _YN_REQUEST = re.compile(r"'([^']{3,80})'[을를] Y/N으로")
 
 
+def holding_target_rows(project: Stage2Project) -> list[int]:
+    """판정엔진이 시설별 최대보유량 산정을 요구하는 물질 행 번호를 돌려준다.
+
+    화면 문구를 다시 파싱하지 않고 Stage 1과 같은 혼합물-aware 시설대상 스크리닝을
+    재사용한다. 대상 행을 확정하지 못하면 빈 목록을 반환해 UI가 임의 물질을 묻지 않게 한다.
+    """
+    try:
+        from ..cap_mixture import screen_facility_stage
+
+        intake, _ = build_intake(project)
+        screen = screen_facility_stage(intake)
+    except Exception:
+        return []
+    if not getattr(screen, "ready", False) or getattr(screen, "blockers", None):
+        return []
+    total = len(intake.chemicals)
+    return sorted({
+        int(number)
+        for number in (getattr(screen, "row_numbers", None) or [])
+        if str(number).isdigit() and 1 <= int(number) <= total
+    })
+
+
+def holding_target_names(project: Stage2Project) -> list[str]:
+    """시설 입력 화면에 자동으로 고정할 제품/물질명."""
+    _, rows = chem._rows(project)
+    names: list[str] = []
+    for number in holding_target_rows(project):
+        if not (1 <= number <= len(rows)):
+            continue
+        row = rows[number - 1]
+        name = _clean(row.get("제품명") or row.get("물질명") or row.get("유해화학물질명"))
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 def generic_question(message: str) -> Question | None:
     """'항목'을 Y/N으로 확인해 달라는 엔진 요청에 답할 칸을 만든다. 그런 형식이 아니면 None."""
     match = _YN_REQUEST.search(display_request(message))
