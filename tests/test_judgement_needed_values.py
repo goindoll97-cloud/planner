@@ -132,10 +132,13 @@ class InlineFacilityTests(unittest.TestCase):
         self.assertFalse(any(b.label == "답변 확정하기" for b in at.button))  # 적을 답이 없으면 저장 버튼을 두지 않는다
         self.assertNotIn("별지 제1호", " ".join(i.value for i in at.info))
 
-    def test_the_facility_section_names_the_substances_that_need_it(self):
-        at = self._run([5, 4])   # 1행(염소)의 최대보유량 요청 + 시설 정보 요청
-        captions = " ".join(c.value for c in at.caption)
-        self.assertIn("최대보유량을 요청한 물질: ", captions)
+    def test_the_facility_section_uses_engine_selected_substances_not_message_parsing(self):
+        from pathlib import Path as _P
+
+        panel = (_P(__file__).resolve().parents[1] / "ui/judgement_panel.py").read_text(encoding="utf-8")
+        self.assertIn("holding_names = judgement.holding_target_names(project)", panel)
+        self.assertNotIn("holding_names = _names_needing_holding(project, table_messages)", panel)
+        self.assertIn("물질명은 자동으로 채워지며 바꿀 수 없습니다", panel)
 
     def test_no_facility_section_when_nothing_asks_for_it(self):
         at = self._run([0])
