@@ -135,6 +135,16 @@ class AskScreenTests(unittest.TestCase):
         self.assertFalse(any("Y/N으로 확인해 주세요" in m.value for m in at.markdown))  # 답할 칸 없는 예전 안내문이 없다
         self.assertFalse(any("Y/N으로 확인해 주세요" in i.value for i in at.info))
 
+    def test_yes_answer_reveals_required_followups_before_confirmation(self):
+        at = self._run([1])  # 화학사고예방관리계획서 면제 여부
+        self.assertFalse(at.exception)
+        parent = next(r for r in at.radio if "작성하지 않아도 되는 시설" in r.label)
+        parent.set_value("Y").run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any("어떤 면제 시설" in s.label for s in at.selectbox))
+        self.assertTrue(any("취급하는 시설 전체" in r.label for r in at.radio))
+        self.assertTrue(any(b.label == "판정 조건 확정하기" for b in at.button))
+
     def test_questions_are_grouped_under_the_document_they_affect(self):
         at = self._run([2, 5])
         headings = [m.value for m in at.markdown]
