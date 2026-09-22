@@ -6,7 +6,7 @@ import unittest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
-JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정 조건 확정하기", "물질 성분 확정하기"}
+JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "물질 성분 확정하기", "판정 조건 확정하기", "최대보유량 확정하기", "최종판정하기"}
 
 
 class SingleJudgeButtonTests(unittest.TestCase):
@@ -30,7 +30,7 @@ class SingleJudgeButtonTests(unittest.TestCase):
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=tuple(msgs), questions=jd._questions_for(msgs, {}))\n"
             "elif kind == 'facility_only':\n"
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=(REAL_REQUESTS[4],), questions=())\n"
-            "with patch('engine.stage2.storage.save_project'):\n"
+            "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['염소']):\n"
             "    panel.render(project)\n"
         ) % (str(ROOT), kind)
         return AppTest.from_string(code, default_timeout=60).run()
@@ -48,17 +48,17 @@ class SingleJudgeButtonTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(self._judge_buttons(at), ["판정 조건 확정하기"])
 
-    def test_when_nothing_can_be_answered_the_normal_judge_button_is_the_only_one(self):
+    def test_facility_only_stage_shows_only_the_holding_confirmation_button(self):
         at = self._run("facility_only")
         self.assertFalse(at.exception)
-        self.assertEqual(self._judge_buttons(at), ["판정 시작하기"])
+        self.assertEqual(self._judge_buttons(at), ["최대보유량 확정하기"])
 
     def test_the_explanations_live_in_question_mark_help_not_in_visible_text(self):
         at = self._run("asking")
         heading = next(m for m in at.markdown if m.value.startswith("#### 판정에 필요한 확인 사항"))
         self.assertIn("왜 묻나요?", heading.help)
         status = next(m for m in at.markdown if m.value.startswith("**현재 판정:**"))
-        self.assertIn("성분 확인 → 판정 질문", status.help)
+        self.assertIn("물질 성분 확정 → 판정 조건 확정", status.help)
         captions = " ".join(c.value for c in at.caption)
         self.assertNotIn("판정은 1. 성분 확인", captions)                  # 예전의 긴 설명 문구는 화면에 없다
         self.assertNotIn("시설을 입력하면 최대보유량이 계산됩니다", captions)
