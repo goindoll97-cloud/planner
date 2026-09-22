@@ -30,6 +30,8 @@ class SingleJudgeButtonTests(unittest.TestCase):
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=tuple(msgs), questions=jd._questions_for(msgs, {}))\n"
             "elif kind == 'facility_only':\n"
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=(REAL_REQUESTS[4],), questions=())\n"
+            "elif kind == 'decided':\n"
+            "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='DECIDED', messages=(), questions=(), cap_status='1군', psm_status='비대상', decision=SimpleNamespace(cap_explanation='', psm_explanation=''), cap_target=True, psm_target=False)\n"
             "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['염소']):\n"
             "    panel.render(project)\n"
         ) % (str(ROOT), kind)
@@ -52,6 +54,11 @@ class SingleJudgeButtonTests(unittest.TestCase):
         at = self._run("facility_only")
         self.assertFalse(at.exception)
         self.assertEqual(self._judge_buttons(at), ["최대보유량 확정하기"])
+
+    def test_final_stage_uses_final_judgement_button(self):
+        at = self._run("decided")
+        self.assertFalse(at.exception)
+        self.assertEqual(self._judge_buttons(at), ["최종판정하기"])
 
     def test_the_explanations_live_in_question_mark_help_not_in_visible_text(self):
         at = self._run("asking")
