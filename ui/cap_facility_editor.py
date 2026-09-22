@@ -1,4 +1,8 @@
-"""별지 제1호 시설 표(시설 입력 → 최대보유량 계산). 별지 작성 화면과 판정 화면이 같은 표를 쓴다."""
+"""시설 최대보유량 입력 UI.
+
+판정 화면(compact=True)은 판정에 필요한 사실만 조건부로 묻고,
+별지 제1호 작성 화면은 정식 시설표를 보여 준다. 두 화면은 같은 저장값을 공유한다.
+"""
 
 from __future__ import annotations
 
@@ -33,12 +37,364 @@ def column_config(columns: list[dict]) -> dict:
     return config
 
 
-def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = False) -> None:
-    """시설 표를 그리고 저장한다. on_saved(저장한 시설 수)를 주면 저장 뒤 기본 안내문 대신 그것을 부른다."""
+
+COMPACT_CORE_IDS = ("취급물질", "시설유형", "물질성상")
+
+
+def _clean(value) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
+def _norm(value) -> str:
+    return "".join(_clean(value).lower().split())
+
+
+def compact_core_frame(project, focus_names: list[str] | None = None) -> pd.DataFrame:
+    """판정 화면의 첫 표: 물질·시설유형·상태만 보인다.
+
+    focus_names가 있으면 판정 규칙이 지금 최대보유량을 요구한 물질만 보여 주되,
+    해당 물질의 기존 저장행은 그대로 다시 불러온다.
+    """
+    saved = [dict(row) for row in ws.facility_editor_rows(project)]
+    wanted = [_clean(name) for name in (focus_names or []) if _clean(name)]
+    if wanted:
+        wanted_norm = {_norm(name) for name in wanted}
+        visible = [row for row in saved if _norm(row.get("취급물질")) in wanted_norm]
+        existing = {_norm(row.get("취급물질")) for row in visible}
+        for name in wanted:
+            if _norm(name) not in existing:
+                visible.append({"취급물질": name})
+                existing.add(_norm(name))
+    else:
+        visible = saved
+    return pd.DataFrame(
+        [{key: row.get(key, "") for key in COMPACT_CORE_IDS} for row in visible],
+        columns=list(COMPACT_CORE_IDS),
+    )
+
+
+def _compact_source_rows(project, focus_names: list[str] | None) -> tuple[list[dict], list[dict]]:
+    """(화면에 보이는 저장행, 이번 판정에서 건드리지 않을 다른 저장행)."""
+    saved = [dict(row) for row in ws.facility_editor_rows(project)]
+    wanted = [_clean(name) for name in (focus_names or []) if _clean(name)]
+    if not wanted:
+        return saved, []
+    wanted_norm = {_norm(name) for name in wanted}
+    visible = [row for row in saved if _norm(row.get("취급물질")) in wanted_norm]
+    untouched = [row for row in saved if _norm(row.get("취급물질")) not in wanted_norm]
+    existing = {_norm(row.get("취급물질")) for row in visible}
+    for name in wanted:
+        if _norm(name) not in existing:
+            visible.append({"취급물질": name})
+            existing.add(_norm(name))
+    return visible, untouched
+
+
+def _compact_choice(label: str, options: list[str], value, key: str, help_text: str = "") -> str:
+    choices = [""] + list(options)
+    current = _clean(value)
+    index = choices.index(current) if current in choices else 0
+    return st.selectbox(label, choices, index=index, key=key, help=help_text or None)
+
+
+def _compact_text_number(label: str, value, key: str, help_text: str = "", placeholder: str = "숫자만") -> str:
+    return st.text_input(
+        label, value=_clean(value), key=key, help=help_text or None, placeholder=placeholder,
+    ).strip()
+
+
+def _compact_direct_mass(row: dict, prefix: str, pid: str, index: int) -> None:
+    row["직접확인 최대보유량"] = _compact_text_number(
+        "이미 확인한 최대보유량",
+        row.get("직접확인 최대보유량"),
+        f"{prefix}_compact_direct_{pid}_{index}",
+        "회사 산정표나 설비자료에서 이미 최대보유량을 질량으로 확인한 경우 그 값을 적습니다.",
+    )
+    row["질량단위"] = _compact_choice(
+        "질량 단위", ["kg", "ton"], row.get("질량단위"),
+        f"{prefix}_compact_mass_unit_{pid}_{index}",
+        "바로 위 최대보유량 값의 단위입니다.",
+    )
+    row["직접확인 근거"] = st.text_input(
+        "확인 근거",
+        value=_clean(row.get("직접확인 근거")),
+        key=f"{prefix}_compact_direct_basis_{pid}_{index}",
+        help="예: 탱크 설계도서, 회사 최대보유량 산정표. 근거가 없으면 직접확인 값으로 확정하지 않습니다.",
+        placeholder="예: 설비 최대보유량 산정표",
+    ).strip()
+
+
+def _compact_volume_density(project, row: dict, prefix: str, pid: str, index: int, gravity_pool: list[dict]) -> None:
+    left, right = st.columns([2, 1])
+    row["용량"] = left.text_input(
+        "설계용량",
+        value=_clean(row.get("용량")),
+        key=f"{prefix}_compact_capacity_{pid}_{index}",
+        help="설비 명판이나 설계도서에 적힌 최대 설계용량입니다.",
+        placeholder="예: 10",
+    ).strip()
+    row["용량단위"] = right.selectbox(
+        "용량 단위", ["", "m3", "L"],
+        index=(["", "m3", "L"].index(_clean(row.get("용량단위"))) if _clean(row.get("용량단위")) in {"m3", "L"} else 0),
+        key=f"{prefix}_compact_capacity_unit_{pid}_{index}",
+        help="설계도서에 적힌 단위를 그대로 고르세요.",
+    )
+
+    matches = ws.gravity_matches_for(row, gravity_pool)
+    if matches:
+        labels = ["직접 입력"] + [f"{m['비중']:g} ({m['물질명']})" for m in matches]
+        current = _clean(row.get("비중"))
+        default = 0
+        try:
+            current_num = float(current)
+            default = next((i for i, m in enumerate(matches, start=1) if abs(m["비중"] - current_num) < 1e-9), 0)
+        except ValueError:
+            pass
+        picked = st.selectbox(
+            "비중/밀도 참고값",
+            labels,
+            index=default,
+            key=f"{prefix}_compact_gravity_pick_{pid}_{index}",
+            help="별지 제6호 등에서 이미 확인한 같은 물질의 비중이 있으면 선택할 수 있습니다. 값이 다르면 직접 입력하세요.",
+        )
+        if picked != "직접 입력":
+            row["비중"] = matches[labels.index(picked) - 1]["비중"]
+
+    row["비중"] = _compact_text_number(
+        "비중/밀도 (SDS 제9항)",
+        row.get("비중"),
+        f"{prefix}_compact_gravity_{pid}_{index}",
+        "상온에서의 비중 또는 밀도입니다. 보통 제품 SDS 제9항 '물리화학적 특성'에서 확인합니다. "
+        "m3를 쓸 때 kg/L 값은 ton/m3와 같은 숫자로 계산됩니다.",
+        placeholder="예: 0.87",
+    )
+
+
+def _compact_process(row: dict, prefix: str, pid: str, index: int) -> None:
+    row["공정유형"] = _compact_choice(
+        "이 시설에서 물질이 어떻게 처리되나요?",
+        list(ws.PROCESS_TYPES),
+        row.get("공정유형"),
+        f"{prefix}_compact_process_{pid}_{index}",
+        "그대로 저장·사용하면 '변화없음', 섞기만 하면 '단순혼합', 화학반응이 일어나면 '반응'을 고릅니다.",
+    )
+    if row["공정유형"] in {"단순혼합", "반응"}:
+        row["별표4 기준함량(%)"] = _compact_text_number(
+            "계산에 사용할 함량(%)",
+            row.get("별표4 기준함량(%)"),
+            f"{prefix}_compact_pct_{pid}_{index}",
+            "단순혼합은 투입이 끝난 뒤의 최종 함량, 반응은 반응 직전의 최종 함량을 적습니다.",
+        )
+        row["함량근거"] = st.text_input(
+            "함량 확인 자료",
+            value=_clean(row.get("함량근거")),
+            key=f"{prefix}_compact_pct_basis_{pid}_{index}",
+            help="예: 공정 배합표, 제품 SDS. 계산에 사용한 함량의 출처입니다.",
+            placeholder="예: 공정 배합표",
+        ).strip()
+
+
+def _compact_gas(project, row: dict, prefix: str, pid: str, index: int) -> None:
+    direct = bool(_clean(row.get("직접확인 최대보유량")))
+    method = st.radio(
+        "기체의 최대보유량을 어떻게 확인할까요?",
+        ["운전조건으로 계산", "이미 계산한 값을 입력"],
+        index=1 if direct else 0,
+        horizontal=True,
+        key=f"{prefix}_compact_gas_method_{pid}_{index}",
+        help="설비의 용량·압력·온도를 알면 프로그램이 계산할 수 있습니다. 회사에서 이미 법정 방식으로 산정한 값이 있으면 그 값을 입력해도 됩니다.",
+    )
+    if method == "이미 계산한 값을 입력":
+        _compact_direct_mass(row, prefix, pid, index)
+        return
+
+    left, right = st.columns([2, 1])
+    row["용량"] = left.text_input(
+        "설계용량",
+        value=_clean(row.get("용량")),
+        key=f"{prefix}_compact_gas_capacity_{pid}_{index}",
+        help="기체가 들어 있는 설비의 설계용량입니다. 설비 명판이나 설계도서에서 확인합니다.",
+        placeholder="예: 5",
+    ).strip()
+    row["용량단위"] = right.selectbox(
+        "용량 단위", ["", "m3", "L"],
+        index=(["", "m3", "L"].index(_clean(row.get("용량단위"))) if _clean(row.get("용량단위")) in {"m3", "L"} else 0),
+        key=f"{prefix}_compact_gas_capacity_unit_{pid}_{index}",
+    )
+    row["운전압력(MPa)"] = _compact_text_number(
+        "운전압력(MPa, 게이지)",
+        row.get("운전압력(MPa)"),
+        f"{prefix}_compact_pressure_{pid}_{index}",
+        "정상 운전 중 사용하는 압력입니다. 설비 운전자료나 명세서에서 확인합니다.",
+        placeholder="예: 0.5",
+    )
+    row["운전온도(℃)"] = _compact_text_number(
+        "운전온도(℃)",
+        row.get("운전온도(℃)"),
+        f"{prefix}_compact_temp_{pid}_{index}",
+        "정상 운전 중의 온도입니다.",
+        placeholder="예: 25",
+    )
+    row["분자량"] = _compact_text_number(
+        "분자량(g/mol, 알면 입력)",
+        row.get("분자량"),
+        f"{prefix}_compact_mw_{pid}_{index}",
+        "화학물질 목록에 분자량이 있으면 프로그램이 그 값을 사용할 수 있습니다. 없으면 SDS 제9항 등에서 확인해 적습니다.",
+        placeholder="예: 98.9",
+    )
+    # 계산 방식을 고른 경우 예전에 저장한 직접확인값이 우선하지 않도록 지운다.
+    row.pop("직접확인 최대보유량", None)
+    row.pop("질량단위", None)
+    row.pop("직접확인 근거", None)
+
+
+def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] | None = None) -> None:
+    """판정용 최소 시설 입력. 보고서 식별정보는 묻지 않는다."""
+    pid = project.project_id
+    source_rows, untouched = _compact_source_rows(project, focus_names)
+    frame = pd.DataFrame(
+        [{key: row.get(key, "") for key in COMPACT_CORE_IDS} for row in source_rows],
+        columns=list(COMPACT_CORE_IDS),
+    )
+    names = []
+    for name in [*(focus_names or []), *[_clean(r.get("취급물질")) for r in source_rows]]:
+        if _clean(name) and _clean(name) not in names:
+            names.append(_clean(name))
+
+    st.caption("시설마다 한 줄입니다. 우선 물질·시설 유형·물질 상태만 확인하세요. 선택한 내용에 따라 계산에 필요한 칸만 아래에 나타납니다.")
+    edited = st.data_editor(
+        frame,
+        column_config={
+            "취급물질": st.column_config.SelectboxColumn(
+                "취급 물질",
+                options=names or None,
+                help="이번 판정에서 최대보유량을 계산해야 하는 물질입니다. 같은 물질을 여러 시설에서 취급하면 행을 추가해 같은 물질을 다시 고르세요.",
+            ),
+            "시설유형": st.column_config.SelectboxColumn(
+                "시설 유형",
+                options=list(ws.FACILITY_TYPES),
+                help="저장탱크, 제조·사용시설, 보관시설 중 실제 형태를 고릅니다. 탱크로리·사외배관·취급중단 신고시설은 법정 최대보유량 산정에서 제외되는 유형입니다.",
+            ),
+            "물질성상": st.column_config.SelectboxColumn(
+                "물질 상태",
+                options=list(ws.SUBSTANCE_STATES),
+                help="이 시설의 실제 운전조건에서 액체·고체·기체/고압가스 중 무엇인지 고릅니다.",
+            ),
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        width="stretch",
+        key=f"{prefix}_compact_core_{pid}",
+    )
+
+    rows: list[dict] = []
+    for index, record in enumerate(edited.to_dict("records")):
+        old_row = dict(source_rows[index]) if index < len(source_rows) else {}
+        row = {**old_row, **{k: ("" if pd.isna(v) else v) for k, v in record.items()}}
+        if not any(_clean(row.get(key)) for key in COMPACT_CORE_IDS):
+            continue
+        rows.append(row)
+
+    gravity_pool = ws.gravity_candidates(project)
+    for index, row in enumerate(rows):
+        material = _clean(row.get("취급물질")) or f"{index + 1}번째 시설"
+        ftype = _clean(row.get("시설유형"))
+        state = _clean(row.get("물질성상"))
+        if not ftype:
+            st.caption(f"• {material}: 시설 유형을 고르면 필요한 입력칸이 나타납니다.")
+            continue
+        if ftype in ws.EXCLUDED_TYPES:
+            st.info(f"{material}: '{ftype}'은 최대보유량 계산에서 제외되는 시설 유형입니다.")
+            continue
+        if not state:
+            st.caption(f"• {material}: 물질 상태를 고르면 필요한 입력칸이 나타납니다.")
+            continue
+
+        with st.expander(f"{material} — 계산에 필요한 정보", expanded=True):
+            if state == "기체·고압가스":
+                _compact_gas(project, row, prefix, pid, index)
+            elif state == "복수성상":
+                st.caption("액체·기체 등 여러 상태가 함께 존재하면 프로그램이 임의 계산하지 않습니다. 회사에서 확인한 최대보유량과 근거를 입력하세요.")
+                _compact_direct_mass(row, prefix, pid, index)
+            elif ftype == "보관시설":
+                row["보관계획도 최대량"] = _compact_text_number(
+                    "보관계획도에 적힌 최대량",
+                    row.get("보관계획도 최대량"),
+                    f"{prefix}_compact_plan_{pid}_{index}",
+                    "보관계획도 또는 창고 배치계획에서 허용하는 최대 보관량입니다.",
+                )
+                row["일일최대보관량"] = _compact_text_number(
+                    "하루 중 실제 최대 보관량",
+                    row.get("일일최대보관량"),
+                    f"{prefix}_compact_daily_{pid}_{index}",
+                    "하루 동안 실제로 보관될 수 있는 가장 큰 양입니다. 프로그램은 두 값 중 큰 값을 사용합니다.",
+                )
+                row["질량단위"] = _compact_choice(
+                    "수량 단위", ["kg", "ton"], row.get("질량단위"),
+                    f"{prefix}_compact_storage_unit_{pid}_{index}",
+                )
+            elif ftype == "기타":
+                st.caption("자동 계산 규칙을 적용하기 어려운 시설입니다. 회사에서 확인한 최대보유량을 입력하세요.")
+                _compact_direct_mass(row, prefix, pid, index)
+            else:
+                _compact_volume_density(project, row, prefix, pid, index, gravity_pool)
+                if ftype == "제조·사용시설":
+                    _compact_process(row, prefix, pid, index)
+
+    live = ws.compute_holdings(project, rows) if rows else []
+    if live:
+        st.markdown("**계산 결과 미리보기**")
+        frames.show(
+            pd.DataFrame([
+                {
+                    "취급 물질": row.get("취급물질"),
+                    "계산된 최대보유량(ton)": None if result.ton is None else round(result.ton, 6),
+                    "확인할 내용": result.basis or result.problem,
+                }
+                for row, result in zip(rows, live)
+            ]),
+            width="stretch",
+            hide_index=True,
+        )
+
+    if st.button("시설정보 저장하고 판정 계속", type="primary", key=f"{prefix}_save_{pid}"):
+        saved = ws.save_facility_rows(project, [*untouched, *rows])
+        if saved:
+            save_project(project)
+            if on_saved is not None:
+                on_saved(saved)
+            else:
+                st.success(f"시설 {saved}건을 저장했습니다.")
+        else:
+            st.warning("저장할 시설 정보가 없습니다.")
+
+    if any(_clean(row.get("시설유형")) in {"저장탱크", "제조·사용시설"} and
+           _clean(row.get("물질성상")) not in {"기체·고압가스", "복수성상"} for row in rows):
+        with st.expander("설계용량을 모르면 치수로 계산"):
+            st.caption("설비 치수로 대략적인 내부 부피를 계산합니다. 설계도서의 설계용량이 있으면 그 값을 우선 사용하세요.")
+            shape = st.selectbox("형태", list(SHAPES), format_func=lambda key: SHAPES[key], key=f"{prefix}_compact_shape")
+            dims = {}
+            dim_cols = st.columns(len(SHAPE_DIMENSIONS[shape]))
+            for column, name in zip(dim_cols, SHAPE_DIMENSIONS[shape]):
+                dims[name] = column.number_input(DIM_LABELS[name], min_value=0.0, value=0.0,
+                                                 key=f"{prefix}_compact_dim_{shape}_{name}")
+            volume = ws.volume_from_dimensions(shape, **dims)
+            if volume is not None:
+                st.metric("계산된 설계용량", f"{volume:g} m³")
+
+
+def _render_full(project, prefix: str, on_saved=None) -> None:
+    """별지 제1호 작성용 전체 시설표."""
     fac = ws.section(1, "facility_table")
     columns = ws.facility_columns()
     core_ids = [c["id"] for c in columns]
-
 
     def _grid_frame() -> pd.DataFrame:
         frame = pd.DataFrame(ws.facility_editor_rows(project), columns=core_ids)
@@ -47,10 +403,18 @@ def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = F
                 frame[col["id"]] = pd.to_numeric(frame[col["id"]], errors="coerce")
         return frame
 
+    current_rows = ws.facility_editor_rows(project)
+    st.subheader("시설 표")
+    st.info("※ " + fac["form_note"])
+    if current_rows and any(
+        not _clean(row.get("단위공장·공정")) or not _clean(row.get("설비번호")) or not _clean(row.get("설비명"))
+        for row in current_rows
+    ):
+        st.info(
+            "판정 단계에서 입력한 계산값을 불러왔습니다. 보고서 완성을 위해 "
+            "'단위공장', '구분기호(설비번호)', '취급시설명'처럼 판정에는 필요하지 않았던 식별정보를 여기서 보완하세요."
+        )
 
-    if not compact:  # 판정 화면 안에서는 제목·안내 상자 없이 표만 보여 준다(안내는 위쪽 제목의 ? 안에 있다)
-        st.subheader("시설 표")
-        st.info("※ " + fac["form_note"])
     edited = st.data_editor(
         _grid_frame(),
         column_config=column_config(columns),
@@ -60,7 +424,7 @@ def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = F
     )
     rows = [{k: ("" if pd.isna(v) else v) for k, v in row.items()} for row in edited.to_dict("records")]
     saved_rows = {
-        (str(r.get("설비번호") or ""), str(r.get("설비명") or "")): r for r in ws.facility_editor_rows(project)
+        (str(r.get("설비번호") or ""), str(r.get("설비명") or "")): r for r in current_rows
     }
     gravity_pool = ws.gravity_candidates(project)
     for index, row in enumerate(rows):
@@ -148,3 +512,12 @@ def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = F
         else:
             st.metric("계산된 설계용량", f"{volume:g} m³")
             st.caption("표의 '설계용량'에 이 값을 m3 단위로 넣으세요.")
+
+
+def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = False,
+           focus_names: list[str] | None = None) -> None:
+    """시설정보를 표시한다. 판정(compact)과 별지 작성(full)은 화면만 다르고 같은 저장값을 쓴다."""
+    if compact:
+        _render_compact(project, prefix, on_saved=on_saved, focus_names=focus_names)
+        return
+    _render_full(project, prefix, on_saved=on_saved)

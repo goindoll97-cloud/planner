@@ -40,8 +40,13 @@ HOLDING_HELP = ("**사업장 최대보유량이란?** 같은 물질이 사업장
                 "법에서 정한 방식으로 계산해 합한 값입니다. 규정수량과 비교해 작성 대상인지 정하는 기준입니다.\n\n"
                 "**어떻게 채우나요?** '시설 입력'에 시설의 설계용량·비중을 적으면 프로그램이 계산합니다. "
                 "이미 법에서 정한 방식으로 계산한 값이 있으면 표에 직접 적어도 됩니다.")
-FACILITY_HELP = ("별지 제1호와 같은 표입니다. 여기에 저장하면 별지 작성 화면에도 그대로 들어가고, 저장하는 즉시 다시 판정합니다.\n\n"
-                 + HOLDING_HELP)
+FACILITY_HELP = (
+    "**판정 단계에서는 무엇만 입력하나요?** 최대보유량 계산에 필요한 시설 유형·물질 상태와, "
+    "그 선택에 따라 필요한 설계용량·비중·운전조건 등만 묻습니다. 단위공장명, 설비번호, 정식 시설명처럼 "
+    "보고서 작성용 식별정보는 지금 묻지 않습니다.\n\n"
+    "**나중에는?** 여기서 입력한 계산값은 보고서 작성 화면에 그대로 이어지며, 그때 단위공장명·설비번호·정식 시설명 같은 식별정보만 보완합니다.\n\n"
+    + HOLDING_HELP
+)
 KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 SDS 제2항 분류(인화성·독성 등)를 요청합니다. 제품 SDS를 일일이 찾는 대신 "
               "CAS 번호로 KOSHA(한국산업안전보건공단)에서 후보를 불러옵니다.\n\n"
               "**주의** 조회 결과는 참고자료입니다. 판정 규칙이 요청한 물질의 표에 후보로 미리 채워지며, 제품 SDS와 대조해 확인해야 판정에 쓰입니다. "
@@ -309,10 +314,7 @@ def _facilities(project, outcome, needs_names: list[str]) -> None:
     """판정 화면 안에서 시설(저장탱크 등)을 입력해 사업장 최대보유량을 계산한다. 별지 제1호와 같은 표·같은 자료다."""
     from ui import cap_facility_editor
 
-    from engine.stage2 import cap_workspace as ws
-
-    st.markdown("**시설 입력 — 사업장 최대보유량 계산**",
-                help=FACILITY_HELP + "\n\n**표 작성 안내** " + str(ws.section(1, "facility_table").get("form_note") or ""))
+    st.markdown("**시설 입력 — 사업장 최대보유량 계산**", help=FACILITY_HELP)
     if needs_names:
         st.caption("판정 규칙이 최대보유량을 요청한 물질: " + ", ".join(needs_names)
                    + " — '취급물질' 칸에는 물질 목록의 이름(혼합제품은 제품명)과 같게 적으세요.")
@@ -322,7 +324,9 @@ def _facilities(project, outcome, needs_names: list[str]) -> None:
         st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
         st.rerun()
 
-    cap_facility_editor.render(project, "judge_fac", on_saved=saved, compact=True)
+    cap_facility_editor.render(
+        project, "judge_fac", on_saved=saved, compact=True, focus_names=needs_names
+    )
 
 
 def _names_needing_holding(project, table_messages) -> list[str]:

@@ -304,22 +304,25 @@ def calculate_facility_rows(intake: IntakeData, facilities: pd.DataFrame) -> tup
         cas = _clean(source_item.get("CAS No."))
         facility_name = _clean(row.get("시설명"))
         facility_type = _clean(row.get("시설유형"))
-        if not facility_name or facility_type not in {"제조·사용시설", "저장탱크", "보관시설", "기타"}:
-            reason = f"시설정보 {excel_row}행({product or cas}): 시설명과 시설유형을 확인해 주세요."
+        if facility_type not in {"제조·사용시설", "저장탱크", "보관시설", "기타"}:
+            reason = f"시설정보 {excel_row}행({product or cas}): 시설유형을 확인해 주세요."
             blockers.append(reason)
             calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, None, None, False, "", reason))
             continue
+        # 시설명은 별지 작성용 식별정보다. 최대보유량 판정 계산 자체에는 필요하지 않으므로
+        # 판정 단계에서는 비워 둘 수 있다.
+        facility_label = facility_name or product or cas or f"{excel_row}행 시설"
 
         excluded_flag = _clean(row.get("제외시설여부"))
         exclusion_reason = _clean(row.get("제외사유"))
         if excluded_flag not in {"Y", "N"}:
-            reason = f"시설정보 {excel_row}행({facility_name}): 제외시설 여부를 Y 또는 N으로 확정해 주세요."
+            reason = f"시설정보 {excel_row}행({facility_label}): 제외시설 여부를 Y 또는 N으로 확정해 주세요."
             blockers.append(reason)
             calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, None, None, False, "", reason))
             continue
         if excluded_flag == "Y":
             if exclusion_reason not in RECOGNIZED_EXCLUSIONS:
-                reason = f"시설정보 {excel_row}행({facility_name}): 별표4 산정 제외 사유를 확인할 수 없습니다."
+                reason = f"시설정보 {excel_row}행({facility_label}): 별표4 산정 제외 사유를 확인할 수 없습니다."
                 blockers.append(reason)
                 calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, None, None, False, "", reason))
             else:
@@ -343,7 +346,7 @@ def calculate_facility_rows(intake: IntakeData, facilities: pd.DataFrame) -> tup
         if state in {"기체·고압가스", "복수성상"}:
             if direct_mass is None or not direct_basis:
                 reason = (
-                    f"시설정보 {excel_row}행({facility_name}): {state}은 자동 추정하지 않습니다. "
+                    f"시설정보 {excel_row}행({facility_label}): {state}은 자동 추정하지 않습니다. "
                     "검증된 직접 최대보유량과 근거를 입력해 주세요."
                 )
                 blockers.append(reason)
@@ -357,7 +360,7 @@ def calculate_facility_rows(intake: IntakeData, facilities: pd.DataFrame) -> tup
         if facility_type == "제조·사용시설" and process_type in {"단순혼합", "반응"}:
             if _num(row.get("별표4 기준함량(%)")) is None or not _clean(row.get("함량근거")):
                 reason = (
-                    f"시설정보 {excel_row}행({facility_name}): {process_type} 공정은 별표4 기준시점의 함량과 근거가 필요합니다."
+                    f"시설정보 {excel_row}행({facility_label}): {process_type} 공정은 별표4 기준시점의 함량과 근거가 필요합니다."
                 )
                 blockers.append(reason)
                 calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, content_pct, None, False, "", reason))
@@ -365,7 +368,7 @@ def calculate_facility_rows(intake: IntakeData, facilities: pd.DataFrame) -> tup
 
         if direct_mass is not None:
             if not direct_basis:
-                reason = f"시설정보 {excel_row}행({facility_name}): 직접확인 최대보유량의 근거를 입력해 주세요."
+                reason = f"시설정보 {excel_row}행({facility_label}): 직접확인 최대보유량의 근거를 입력해 주세요."
                 blockers.append(reason)
                 calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, content_pct, None, False, "", reason))
                 continue
@@ -376,7 +379,7 @@ def calculate_facility_rows(intake: IntakeData, facilities: pd.DataFrame) -> tup
                 row.get("설계용량"), row.get("용량단위"), row.get("비중 또는 밀도(kg/L=ton/m3)")
             )
             if mass_ton is None:
-                reason = f"시설정보 {excel_row}행({facility_name}): 설계용량·용량단위·비중(밀도)이 필요합니다."
+                reason = f"시설정보 {excel_row}행({facility_label}): 설계용량·용량단위·비중(밀도)이 필요합니다."
                 blockers.append(reason)
                 calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, content_pct, None, False, "", reason))
                 continue
@@ -385,14 +388,14 @@ def calculate_facility_rows(intake: IntakeData, facilities: pd.DataFrame) -> tup
             plan_ton = _mass_ton(row.get("보관계획도 최대량"), row.get("질량단위"))
             daily_ton = _mass_ton(row.get("일일최대보관량"), row.get("질량단위"))
             if plan_ton is None or daily_ton is None:
-                reason = f"시설정보 {excel_row}행({facility_name}): 보관계획도 최대량과 일일최대보관량을 모두 입력해 주세요."
+                reason = f"시설정보 {excel_row}행({facility_label}): 보관계획도 최대량과 일일최대보관량을 모두 입력해 주세요."
                 blockers.append(reason)
                 calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, content_pct, None, False, "", reason))
                 continue
             mass_ton = max(plan_ton, daily_ton)
             basis = "별표4 보관계획도 최대량과 일일최대보관량 중 큰 값"
         else:
-            reason = f"시설정보 {excel_row}행({facility_name}): 기타 시설유형은 자동 산정하지 않습니다."
+            reason = f"시설정보 {excel_row}행({facility_label}): 기타 시설유형은 자동 산정하지 않습니다."
             blockers.append(reason)
             calculations.append(FacilityCalculation(row_no, product, cas, facility_name, facility_type, content_pct, None, False, "", reason))
             continue

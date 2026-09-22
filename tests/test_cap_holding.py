@@ -134,5 +134,35 @@ class CAPHoldingTests(unittest.TestCase):
         self.assertIsNone(rows[0].max_holding_ton)
 
 
+
+class JudgementOnlyFacilityIdentityTests(unittest.TestCase):
+    def test_facility_name_is_not_required_for_quantity_calculation(self):
+        from engine.cap_holding import calculate_facility_rows
+        from engine.inventory import IntakeData
+
+        intake = IntakeData(
+            business={},
+            chemicals=pd.DataFrame([{
+                "제품명": "톨루엔", "CAS No.": "108-88-3", "함량(%)": 100,
+            }]),
+            documents={},
+        )
+        facilities = pd.DataFrame([{
+            "목록행번호": 1,
+            "시설명": "",
+            "시설유형": "저장탱크",
+            "제외시설여부": "N",
+            "제외사유": "해당없음",
+            "물질성상": "액체",
+            "설계용량": 10,
+            "용량단위": "m3",
+            "비중 또는 밀도(kg/L=ton/m3)": 0.87,
+        }])
+        rows, blockers = calculate_facility_rows(intake, facilities)
+        self.assertEqual(blockers, [])
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0].max_holding_ton, 8.7)
+
+
 if __name__ == "__main__":
     unittest.main()

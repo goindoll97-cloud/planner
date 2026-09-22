@@ -153,6 +153,56 @@ class CAPWorkspaceTests(unittest.TestCase):
         )
         self.assertIn("수정된 염소탱크", text)
 
+    def test_judgement_compact_frame_only_contains_calculation_core_columns(self):
+        from ui import cap_facility_editor
+
+        project = _project()
+        frame = cap_facility_editor.compact_core_frame(project, ["염소"])
+        self.assertEqual(list(frame.columns), ["취급물질", "시설유형", "물질성상"])
+        self.assertEqual(frame.iloc[0]["취급물질"], "염소")
+        self.assertNotIn("단위공장·공정", frame.columns)
+        self.assertNotIn("설비번호", frame.columns)
+        self.assertNotIn("설비명", frame.columns)
+        self.assertNotIn("용량", frame.columns)
+        self.assertNotIn("비중", frame.columns)
+
+    def test_judgement_facility_can_calculate_without_report_only_identifiers(self):
+        project = _project()
+        rows = [{
+            "취급물질": "염소",
+            "시설유형": "저장탱크",
+            "물질성상": "액체",
+            "용량": 2.5,
+            "용량단위": "m3",
+            "비중": 1.4,
+            "설비번호": "",
+            "설비명": "",
+            "단위공장·공정": "",
+        }]
+        [result] = ws.compute_holdings(project, rows)
+        self.assertEqual(result.problem, "")
+        self.assertAlmostEqual(result.ton, 3.5)
+
+    def test_values_saved_during_judgement_are_carried_to_full_form_for_later_identifiers(self):
+        project = _project()
+        rows = [{
+            "취급물질": "염소",
+            "시설유형": "저장탱크",
+            "물질성상": "액체",
+            "용량": 2.5,
+            "용량단위": "m3",
+            "비중": 1.4,
+        }]
+        self.assertEqual(ws.save_facility_rows(project, rows), 1)
+        [saved] = ws.facility_editor_rows(project)
+        self.assertEqual(saved["취급물질"], "염소")
+        self.assertEqual(saved["시설유형"], "저장탱크")
+        self.assertEqual(saved["용량"], 2.5)
+        self.assertEqual(saved["비중"], 1.4)
+        self.assertEqual(saved["설비번호"], "")
+        self.assertEqual(saved["설비명"], "")
+        self.assertEqual(saved["단위공장·공정"], "")
+
     def test_missing_core_answers_are_reported_per_facility(self):
         project = _project()
         with patch("engine.stage2.cap_form1_engine.screen_facility_stage", return_value=_screen()):
