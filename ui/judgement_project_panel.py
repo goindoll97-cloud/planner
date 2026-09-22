@@ -15,7 +15,7 @@ from engine.stage2 import cap_judgement as judgement
 from engine.stage2 import kosha_candidates
 from engine.stage2 import storage
 from ui import cap_frames as frames
-from ui import chemical_upload_panel, judgement_panel, mixture_component_upload_panel
+from ui import chemical_upload_panel, judgement_panel
 
 
 def _flash_key(pid: str) -> str:
@@ -79,12 +79,7 @@ def _rows(project) -> list[dict]:
 def _chemicals(project) -> None:
     pid = project.project_id
     rows = _rows(project)
-    unresolved = set(judgement.composition_rows(project))
-    mixture_file_needed = any(
-        number in unresolved and judgement._mixture_yes(row.get("혼합물 여부"))
-        for number, row in enumerate(rows, start=1)
-    )
-    with st.expander(f"물질 목록 — {len(rows)}건", expanded=(not rows or mixture_file_needed)):
+    with st.expander(f"물질 목록 — {len(rows)}건", expanded=not rows):
         if rows:
             parts = judgement.components_by_row(project)
             frames.show(pd.DataFrame([{
@@ -109,8 +104,6 @@ def _chemicals(project) -> None:
                     "물질이 바뀌었으니 아래 '법정 대상 판정하기'(또는 '다시 판정하기')로 결과를 확인하세요.")
 
         chemical_upload_panel.render(f"judge_upload_{pid}", existing=chem_upload.existing_keys(project), add_rows=add_uploaded)
-        # 기본 물질목록에서 혼합제품이 발견됐고 아직 성분이 없을 때만 두 번째 파일을 보여 준다.
-        mixture_component_upload_panel.render(project, f"judge_mix_{pid}")
         if rows:
             _kosha_all(project)
 
