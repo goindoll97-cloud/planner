@@ -94,6 +94,30 @@ def _facility_blocker_requests(blockers: list[str]) -> list[str]:
     return [_request("04_시설별최대보유량", blocker) for blocker in clean]
 
 
+def _chemical_blocker_requests(intake: IntakeData, blockers: list[str]) -> list[str]:
+    """Attach the originating chemical-list row number to each Appendix-2/3
+    screening blocker instead of collapsing every blocker into one generic,
+    un-targeted sentence (which made request_needs() flag every row as
+    unresolved, even rows the engine never actually questioned)."""
+    clean = list(dict.fromkeys(str(v).strip() for v in blockers if str(v or "").strip()))
+    if not clean:
+        return []
+    name_to_row: dict[str, int] = {}
+    if intake.chemicals is not None:
+        for idx, row in intake.chemicals.iterrows():
+            name = _clean_text(row.get("제품명"))
+            if name and name not in name_to_row:
+                name_to_row[name] = idx + 1
+    requests: list[str] = []
+    for blocker in clean:
+        match = re.match(r"^([^:/]+)", blocker)
+        candidate = match.group(1).strip() if match else ""
+        row_no = name_to_row.get(candidate)
+        text = f"{row_no}행 ({candidate}): {blocker}" if row_no else blocker
+        requests.append(_request("02_화학물질목록", text))
+    return requests
+
+
 def _row_label(intake: IntakeData, row_no: int) -> str:
     if row_no <= 0 or row_no > len(intake.chemicals):
         return f"{row_no}행"
@@ -438,7 +462,7 @@ def assess_stage1_from_workbook(intake: IntakeData) -> Stage1WorkbookDecision:
     if not cap_screen.ready:
         system.extend(cap_screen.blockers or ["화학사고예방관리계획서 규정수량 승인 DB를 확인해 주세요."])
     elif cap_screen.blockers:
-        requests.append(_request("02_화학물질목록", "농도·성상 등 규정수량 결정에 필요한 항목을 확인하여 작성해 주세요."))
+        requests.extend(_chemical_blocker_requests(intake, cap_screen.blockers))
         cap_unresolved.extend(cap_screen.blockers)
     elif cap_screen.row_numbers:
         if not app4_db_ready():
