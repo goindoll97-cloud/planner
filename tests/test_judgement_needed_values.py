@@ -76,8 +76,8 @@ class TableScreenTests(unittest.TestCase):
         shown = [m.value for m in at.markdown]
         self.assertFalse(any("'최대 동시보유량'과 '최대보유량 법정 산정 여부=Y'" in v for v in shown))
         helps = " ".join(str(m.help or "") for m in at.markdown)          # 설명은 ? 안에 들어 있다
-        self.assertIn("사업장 최대보유량이란?", helps)
-        self.assertIn("시설 입력", helps)
+        self.assertNotIn("사업장 최대보유량이란?", helps)  # 최대보유량은 다음 단계로 분리한다
+        self.assertTrue(any("판정 조건을 먼저 확정하면 다음 단계에서 최대보유량" in c.value for c in at.caption))
         self.assertNotIn("별지 제1호", " ".join(i.value for i in at.info) + helps.replace("별지 제1호와 같은 표", ""))
         self.assertFalse(any("02 시트" in m.value for m in at.markdown))
         self.assertEqual(len(at.info), 0)                                   # 긴 안내 상자는 없다
