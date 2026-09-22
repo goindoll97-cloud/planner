@@ -256,26 +256,57 @@ def _compact_gas(project, row: dict, prefix: str, pid: str, index: int) -> None:
 
 
 def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] | None = None) -> None:
-    """판정용 최소 시설 입력. 보고서 식별정보는 묻지 않는다."""
+    """판정용 최소 시설 입력.
+
+    대상 물질은 판정엔진이 정하고 화면에서 잠근다. 같은 물질의 시설이 여러 개일 때만
+    사용자가 '시설 추가' 버튼으로 그 물질의 행을 복제한다.
+    """
     pid = project.project_id
-    source_rows, untouched = _compact_source_rows(project, focus_names)
+    names = []
+    for name in (focus_names or []):
+        clean = _clean(name)
+        if clean and clean not in names:
+            names.append(clean)
+
+    if not names:
+        st.warning("판정 대상 물질이 정해지지 않아 시설정보를 입력할 수 없습니다. 먼저 물질별 확인값을 저장하고 다시 판정해 주세요.")
+        return
+
+    source_rows, untouched = _compact_source_rows(project, names)
+    extra_key = f"{prefix}_compact_extra_rows_{pid}"
+    extra_counts = dict(st.session_state.get(extra_key, {}) or {})
+
+    # 동일 물질의 추가 시설은 사용자가 물질명을 다시 선택하지 않고 해당 물질 버튼으로 만든다.
+    st.caption(
+        "물질명은 판정 결과에서 자동으로 정해집니다. 시설이 하나면 그대로 입력하고, "
+        "같은 물질을 탱크·반응기 등 여러 시설에서 취급할 때만 해당 물질의 '시설 추가'를 누르세요."
+    )
+    button_cols = st.columns(min(len(names), 3)) if names else []
+    for idx, name in enumerate(names):
+        col = button_cols[idx % len(button_cols)] if button_cols else st
+        if col.button(f"{name} 시설 추가", key=f"{prefix}_add_{pid}_{idx}"):
+            extra_counts[name] = int(extra_counts.get(name, 0)) + 1
+            st.session_state[extra_key] = extra_counts
+            st.rerun()
+
+    # 아직 저장하지 않은 추가 시설행을 자동으로 동일 물질명으로 만든다.
+    working_rows = [dict(row) for row in source_rows]
+    for name in names:
+        for _ in range(int(extra_counts.get(name, 0))):
+            working_rows.append({"취급물질": name})
+
     frame = pd.DataFrame(
-        [{key: row.get(key, "") for key in COMPACT_CORE_IDS} for row in source_rows],
+        [{key: row.get(key, "") for key in COMPACT_CORE_IDS} for row in working_rows],
         columns=list(COMPACT_CORE_IDS),
     )
-    names = []
-    for name in [*(focus_names or []), *[_clean(r.get("취급물질")) for r in source_rows]]:
-        if _clean(name) and _clean(name) not in names:
-            names.append(_clean(name))
 
-    st.caption("시설마다 한 줄입니다. 우선 물질·시설 유형·물질 상태만 확인하세요. 선택한 내용에 따라 계산에 필요한 칸만 아래에 나타납니다.")
     edited = st.data_editor(
         frame,
         column_config={
-            "취급물질": st.column_config.SelectboxColumn(
+            "취급물질": st.column_config.TextColumn(
                 "취급 물질",
-                options=names or None,
-                help="이번 판정에서 최대보유량을 계산해야 하는 물질입니다. 같은 물질을 여러 시설에서 취급하면 행을 추가해 같은 물질을 다시 고르세요.",
+                disabled=True,
+                help="판정엔진이 최대보유량 계산 대상으로 확인한 물질입니다. 사용자가 다른 물질로 바꿀 수 없습니다.",
             ),
             "시설유형": st.column_config.SelectboxColumn(
                 "시설 유형",
@@ -288,7 +319,8 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
                 help="이 시설의 실제 운전조건에서 액체·고체·기체/고압가스 중 무엇인지 고릅니다.",
             ),
         },
-        num_rows="dynamic",
+        disabled=["취급물질"],
+        num_rows="fixed",
         hide_index=True,
         width="stretch",
         key=f"{prefix}_compact_core_{pid}",
@@ -296,15 +328,17 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
 
     rows: list[dict] = []
     for index, record in enumerate(edited.to_dict("records")):
-        old_row = dict(source_rows[index]) if index < len(source_rows) else {}
+        old_row = dict(working_rows[index]) if index < len(working_rows) else {}
         row = {**old_row, **{k: ("" if pd.isna(v) else v) for k, v in record.items()}}
-        if not any(_clean(row.get(key)) for key in COMPACT_CORE_IDS):
+        # 방어적으로 취급물질은 source row의 자동값을 강제한다.
+        row["취급물질"] = _clean(old_row.get("취급물질"))
+        if not row["취급물질"]:
             continue
         rows.append(row)
 
     gravity_pool = ws.gravity_candidates(project)
     for index, row in enumerate(rows):
-        material = _clean(row.get("취급물질")) or f"{index + 1}번째 시설"
+        material = _clean(row.get("취급물질"))
         ftype = _clean(row.get("시설유형"))
         state = _clean(row.get("물질성상"))
         if not ftype:
@@ -317,7 +351,8 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
             st.caption(f"• {material}: 물질 상태를 고르면 필요한 입력칸이 나타납니다.")
             continue
 
-        with st.expander(f"{material} — 계산에 필요한 정보", expanded=True):
+        suffix = f"{material} · 시설 {sum(1 for r in rows[:index+1] if _norm(r.get('취급물질')) == _norm(material))}"
+        with st.expander(f"{suffix} — 계산에 필요한 정보", expanded=True):
             if state == "기체·고압가스":
                 _compact_gas(project, row, prefix, pid, index)
             elif state == "복수성상":
@@ -367,6 +402,7 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
     if st.button("시설정보 확정하기", type="primary", key=f"{prefix}_save_{pid}"):
         saved = ws.save_facility_rows(project, [*untouched, *rows])
         if saved:
+            st.session_state.pop(extra_key, None)
             save_project(project)
             if on_saved is not None:
                 on_saved(saved)

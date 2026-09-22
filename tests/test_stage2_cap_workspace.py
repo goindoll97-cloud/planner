@@ -153,6 +153,16 @@ class CAPWorkspaceTests(unittest.TestCase):
         )
         self.assertIn("수정된 염소탱크", text)
 
+    def test_compact_editor_locks_material_name_and_uses_explicit_add_buttons(self):
+        from pathlib import Path
+
+        text = (Path(__file__).resolve().parents[1] / "ui" / "cap_facility_editor.py").read_text(encoding="utf-8")
+        self.assertIn('"취급물질": st.column_config.TextColumn(', text)
+        self.assertIn('disabled=["취급물질"]', text)
+        self.assertIn('f"{name} 시설 추가"', text)
+        self.assertIn('num_rows="fixed"', text)
+        self.assertNotIn('"취급물질": st.column_config.SelectboxColumn(', text)
+
     def test_judgement_compact_frame_only_contains_calculation_core_columns(self):
         from ui import cap_facility_editor
 

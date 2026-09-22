@@ -100,6 +100,34 @@ class QuestionTests(unittest.TestCase):
         self.assertEqual(result.messages, ("물질명·CAS 확인이 필요합니다.",))
 
 
+class HoldingTargetTests(unittest.TestCase):
+    def test_holding_target_names_come_from_facility_screen_row_numbers(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        project = CAPForm1EngineTests()._project()
+        rows = project.get_field("inventory.chemicals").value
+        rows.append({
+            "제품명": "추가물질", "물질명": "추가물질", "CAS No.": "67-64-1",
+            "함량(%)": 100, "혼합물 여부": "N",
+        })
+        project.set_field("inventory.chemicals", "물질", rows, "USER_CONFIRMED")
+
+        with patch("engine.cap_mixture.screen_facility_stage",
+                   return_value=SimpleNamespace(ready=True, blockers=[], row_numbers=[2])):
+            self.assertEqual(jd.holding_target_rows(project), [2])
+            self.assertEqual(jd.holding_target_names(project), ["추가물질"])
+
+    def test_holding_target_names_fail_closed_when_screen_is_not_ready(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        project = CAPForm1EngineTests()._project()
+        with patch("engine.cap_mixture.screen_facility_stage",
+                   return_value=SimpleNamespace(ready=False, blockers=["확인 필요"], row_numbers=[1])):
+            self.assertEqual(jd.holding_target_names(project), [])
+
+
 class ApplyTests(unittest.TestCase):
     def _project(self):
         project = CAPForm1EngineTests()._project()
