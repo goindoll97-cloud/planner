@@ -19,7 +19,7 @@ NONE = "(사용 안 함)"
 LABELS = {"제품명": "제품명(물질명)", "CAS No.": "CAS 번호", "함량(%)": "함량(%)", "혼합물 여부": "단일물질/혼합물", "최대 동시보유량(ton)": "최대 보유량",
           "성상": "성상(기체·액체·고체)", "상온·상압 액체 여부(해당 시)": "상온·상압 액체 여부(별도 열)", "최대 제조·사용량": "최대 제조·사용량",
           "최대 저장량": "최대 저장량", "최대보유량 법정 산정 여부": "최대보유량 법정 산정 여부",
-          "SDS 제2항 유해성·위험성 분류(선택 입력)": "SDS 제2항 분류",
+          "SDS 제2항 유해성·위험성 분류(선택 입력)": "MSDS 제2항 분류",
           "단위": "단위(별도 열이 있을 때)", "비고": "비고"}
 
 
@@ -32,7 +32,7 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
         if done:
             st.success(done)
         st.caption("기본 물질목록은 제품 하나당 한 줄입니다. 단일물질은 CAS No.를 적고, 혼합제품은 제품 CAS를 비워 둡니다. "
-                   "혼합제품이 있으면 저장 후 SDS 제3항용 두 번째 파일이 자동으로 나타납니다.")
+                   "혼합제품이 있으면 저장 후 MSDS 제3항용 두 번째 파일이 자동으로 나타납니다.")
         st.download_button("빈 양식 내려받기(엑셀)", data=up.blank_template(), file_name="물질목록_양식.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                            key=f"{prefix}_template")
@@ -74,7 +74,7 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
             column_config={
                 "단일물질/혼합물": st.column_config.SelectboxColumn(
                     "단일물질/혼합물", options=["", "단일물질", "혼합물"],
-                    help="제품 SDS 제3항을 확인해 선택하세요."
+                    help="제품 MSDS 제3항을 확인해 선택하세요."
                 ),
                 "단위": st.column_config.SelectboxColumn("단위", options=["kg", "ton"]),
             },
@@ -95,7 +95,7 @@ def render(prefix: str, *, existing: tuple[set[str], set[str]],
             frames.show(pd.DataFrame(parts), width="stretch", hide_index=True)
         mixtures_ok = True
         if any(r["_components"] for r in good):
-            mixtures_ok = st.checkbox("혼합물 성분의 CAS No.와 함량(%)을 제품 SDS 제3항과 대조해 확인했습니다.",
+            mixtures_ok = st.checkbox("혼합물 성분의 CAS No.와 함량(%)을 제품 MSDS 제3항과 대조해 확인했습니다.",
                                       key=f"{prefix}_sds_ok_{parsed.sha256[:8]}_{sig}")
         c1, c2, c3 = st.columns(3)
         c1.metric("추가할 수 있음", len(good))

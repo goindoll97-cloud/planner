@@ -47,9 +47,9 @@ FACILITY_HELP = (
     "**나중에는?** 여기서 입력한 계산값은 보고서 작성 화면에 그대로 이어지며, 그때 단위공장명·설비번호·정식 시설명 같은 식별정보만 보완합니다.\n\n"
     + HOLDING_HELP
 )
-KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 SDS 제2항 분류(인화성·독성 등)를 요청합니다. 제품 SDS를 일일이 찾는 대신 "
+KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 MSDS 제2항 분류(인화성·독성 등)를 요청합니다. 제품 MSDS를 일일이 찾는 대신 "
               "CAS 번호로 KOSHA(한국산업안전보건공단)에서 후보를 불러옵니다.\n\n"
-              "**주의** 조회 결과는 참고자료입니다. 판정 규칙이 요청한 물질의 표에 후보로 미리 채워지며, 제품 SDS와 대조해 확인해야 판정에 쓰입니다. "
+              "**주의** 조회 결과는 참고자료입니다. 판정 규칙이 요청한 물질의 표에 후보로 미리 채워지며, 제품 MSDS와 대조해 확인해야 판정에 쓰입니다. "
               "CAS 번호만 전송하고 회사·수량 정보는 보내지 않습니다.")
 
 
@@ -100,7 +100,7 @@ def _composition_form(project, outcome) -> None:
         "#### 물질 성분 확인",
         help=(
             "**단일물질**은 CAS No. 하나로 확인합니다.\n\n"
-            "**혼합제품**은 제품명으로 추정하지 않고, 제품 SDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
+            "**혼합제품**은 제품명으로 추정하지 않고, 제품 MSDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
             "혼합제품은 아래 '혼합물 구성성분' 두 번째 파일에 한 번만 입력합니다. "
             "파일 사용이 어려운 경우에만 '직접 입력'을 선택하세요."
         ),
@@ -151,7 +151,7 @@ def _composition_form(project, outcome) -> None:
                 COMPOSITION_OPTIONS,
                 horizontal=True,
                 key=f"judge_comp_kind_{pid}_{number}",
-                help="제품 SDS 제3항을 확인해 단일물질인지 혼합물인지 선택하세요.",
+                help="제품 MSDS 제3항을 확인해 단일물질인지 혼합물인지 선택하세요.",
                 label_visibility="collapsed",
             )
 
@@ -182,11 +182,11 @@ def _composition_form(project, outcome) -> None:
                 column_config={
                     "CAS No.": st.column_config.TextColumn(
                         "구성성분 CAS No.",
-                        help="제품 SDS 제3항에 적힌 구성성분 CAS No.를 그대로 입력합니다. 모든 성분 행에 필수입니다.",
+                        help="제품 MSDS 제3항에 적힌 구성성분 CAS No.를 그대로 입력합니다. 모든 성분 행에 필수입니다.",
                     ),
                     "함량(%)": st.column_config.NumberColumn(
                         "함량(%)", min_value=0.0, max_value=100.0,
-                        help="제품 SDS 제3항에 적힌 해당 구성성분 함량을 입력합니다.",
+                        help="제품 MSDS 제3항에 적힌 해당 구성성분 함량을 입력합니다.",
                     ),
                 },
             )
@@ -206,7 +206,7 @@ def _composition_form(project, outcome) -> None:
     confirmed = True
     if any_mixture:
         confirmed = st.checkbox(
-            "혼합물 구성성분의 CAS No.와 함량(%)을 제품 SDS 제3항과 대조해 확인했습니다.",
+            "혼합물 구성성분의 CAS No.와 함량(%)을 제품 MSDS 제3항과 대조해 확인했습니다.",
             key=f"judge_comp_sds_ok_{pid}",
         )
 
@@ -305,7 +305,7 @@ def _ask(project, outcome) -> bool:
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
     facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
     # 시설 산정 단계가 따로 필요한 경우, 최대보유량 직접입력 요청은 판정조건 표에 섞지 않는다.
-    # SDS 등 다른 물질별 판정조건만 먼저 확정하고, 최대보유량은 다음 단계에서 시설정보로 계산한다.
+    # MSDS 등 다른 물질별 판정조건만 먼저 확정하고, 최대보유량은 다음 단계에서 시설정보로 계산한다.
     table_messages = [
         m for m in all_table_messages
         if not (facility_needed and "법정 사업장 최대보유량" in judgement.display_request(m))
@@ -332,7 +332,7 @@ def _ask(project, outcome) -> bool:
         confirmed = True
         if used:
             confirmed = st.checkbox(
-                f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
+                f"KOSHA 후보로 채운 MSDS 분류 {len(used)}건은 참고자료입니다. 제품 MSDS 제2항과 대조해 확인했습니다.",
                 key=f"judge_kosha_ok_{project.project_id}")
 
         if st.button("판정정보 확인하기", type="primary",
@@ -489,8 +489,8 @@ def _chemical_table(project, outcome, table_messages):
             help="바로 왼쪽 '사업장 최대보유량'을 법에서 정한 방법으로 계산했으면 Y(예), 창고 재고 등 단순 추정이면 N(아니오)입니다. 잘 모르면 '모름'을 고르세요.",
             options=YES_NO_UNKNOWN),
         sds_col: text(
-            "SDS 제2항 분류",
-            "제품 SDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
+            "MSDS 제2항 분류",
+            "제품 MSDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
     }
     editor = st.data_editor(frame, column_config=config, hide_index=True, width="stretch", num_rows="fixed",
                             key=f"judge_chem_{pid}_{st.session_state.get(gen_key, 0)}")
@@ -520,7 +520,7 @@ def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, can
             asked.append(cas)
     empty = kosha_candidates.pending_cas(asked, candidates)  # 처음이거나 네트워크 오류로 실패한 것만
     help_text = KOSHA_HELP
-    if st.button("KOSHA에서 SDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
+    if st.button("KOSHA에서 MSDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
                  help=help_text):
         with st.spinner(f"KOSHA에서 {len(set(empty))}개 CAS를 조회하는 중입니다."):
             found = kosha_candidates.fetch(empty)
@@ -613,4 +613,3 @@ def render(project) -> None:
                         return
                     st.session_state[key] = judgement.judge(project)
                 st.rerun()
-

@@ -31,8 +31,8 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         "**혼합물 구성성분 입력**",
         help=(
             "**왜 필요한가요?** 혼합제품은 제품명만으로 법적 물질을 판단하지 않습니다. "
-            "제품 SDS 제3항의 구성성분 CAS No.와 함량(%)을 기준으로 판정합니다.\n\n"
-            "**어디서 확인하나요?** 제품 SDS 제3항 '구성성분의 명칭 및 함유량'을 확인하세요.\n\n"
+            "제품 MSDS 제3항의 구성성분 CAS No.와 함량(%)을 기준으로 판정합니다.\n\n"
+            "**어디서 확인하나요?** 제품 MSDS 제3항 '구성성분의 명칭 및 함유량'을 확인하세요.\n\n"
             "**방법** 아래 두 번째 파일을 내려받아 CAS No.와 함량(%)만 채운 뒤 다시 올리면 됩니다."
         ),
     )
@@ -48,7 +48,7 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         "혼합물 구성성분 파일(.xlsx 또는 .csv)",
         type=["xlsx", "xlsm", "csv"],
         key=f"{prefix}_file_{project.project_id}",
-        help="제품 SDS 제3항을 보고 '혼합제품명 / CAS No. / 함량(%)'만 적은 두 번째 파일입니다.",
+        help="제품 MSDS 제3항을 보고 '혼합제품명 / CAS No. / 함량(%)'만 적은 두 번째 파일입니다.",
     )
     if upload is None:
         return True
@@ -67,7 +67,7 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         st.error(error)
 
     confirmed = st.checkbox(
-        "입력한 CAS No.와 함량(%)을 각 제품의 SDS 제3항과 대조해 확인했습니다.",
+        "입력한 CAS No.와 함량(%)을 각 제품의 MSDS 제3항과 대조해 확인했습니다.",
         key=f"{prefix}_confirmed_{project.project_id}",
     )
     if st.button(
@@ -89,4 +89,3 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         st.success("혼합물 구성성분을 저장했습니다.")
         st.rerun()
     return True
-

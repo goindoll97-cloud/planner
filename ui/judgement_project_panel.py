@@ -96,7 +96,7 @@ def _delete_chemical_rows(project, rows: list[dict]) -> None:
                             disabled=disabled, key=f"judge_chem_rows_{pid}_{generation}",
                             column_config={"삭제": st.column_config.CheckboxColumn("삭제", help="지울 물질을 고르세요.")})
     if parts:
-        st.caption("혼합제품은 제품 자체의 CAS가 없으므로, CAS 칸에 제품 SDS 제3항에서 옮긴 성분 CAS를 보여 줍니다. "
+        st.caption("혼합제품은 제품 자체의 CAS가 없으므로, CAS 칸에 제품 MSDS 제3항에서 옮긴 성분 CAS를 보여 줍니다. "
                    "판정은 이 성분 CAS와 함량으로 합니다.")
     picked = [number for number, checked in enumerate(edited["삭제"].tolist(), start=1) if checked]
     if picked:
@@ -151,7 +151,7 @@ def mixture_component_rows(project) -> list[dict]:
 
 
 def _kosha_all(project) -> None:
-    """물질 목록 전체의 SDS 제2항 분류 후보를 KOSHA에서 한 번에 조회한다.
+    """물질 목록 전체의 MSDS 제2항 분류 후보를 KOSHA에서 한 번에 조회한다.
 
     단일물질은 판정 표가 그대로 쓰는 후보가 된다. 혼합제품은 제품 분류를 성분 분류로 대신할 수 없으므로, 성분 CAS는 조회해서
     '참고'로 보여 주기만 하고 판정 입력에는 넣지 않는다.
@@ -166,9 +166,9 @@ def _kosha_all(project) -> None:
     mixtures = len(_rows(project)) - len(singles)
     extra = (f"\n\n혼합제품 {mixtures}건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다."
              if mixtures > 0 else "")
-    st.markdown("**SDS 제2항 분류 한 번에 조회 (KOSHA)**", help=judgement_panel.KOSHA_HELP + extra)
+    st.markdown("**MSDS 제2항 분류 한 번에 조회 (KOSHA)**", help=judgement_panel.KOSHA_HELP + extra)
     todo = kosha_candidates.pending_cas(targets, candidates)
-    label = ("조회 완료" if not todo else "KOSHA에서 전체 물질 SDS 분류 조회" if len(todo) == len(targets)
+    label = ("조회 완료" if not todo else "KOSHA에서 전체 물질 MSDS 분류 조회" if len(todo) == len(targets)
              else "조회하지 못한 물질만 다시 조회")
     if st.button(label, key=f"judge_kosha_all_{pid}", disabled=not todo,
                  help="CAS 번호만 전송합니다. 회사·수량 정보는 보내지 않습니다."):
@@ -184,11 +184,11 @@ def _kosha_all(project) -> None:
         if missing:
             st.caption("후보를 얻지 못한 물질: " + ", ".join(
                 f"{cas}({candidates[cas].message or candidates[cas].status})" for cas in missing[:6]) + (" 외" if len(missing) > 6 else "")
-                + " — 이 물질은 제품 SDS를 보고 직접 적어 주세요.")
+                + " — 이 물질은 제품 MSDS를 보고 직접 적어 주세요.")
     reference = [p for p in parts if candidates.get(p["CAS No."]) is not None]
     if reference:
         st.markdown("**혼합제품 성분별 참고 분류**")
-        st.warning("성분 하나하나의 분류를 참고로 보여 드립니다. **혼합제품의 SDS 제2항 분류는 제품 SDS에 적힌 것을 그대로 옮겨 적어야 합니다.** "
+        st.warning("성분 하나하나의 분류를 참고로 보여 드립니다. **혼합제품의 MSDS 제2항 분류는 제품 MSDS에 적힌 것을 그대로 옮겨 적어야 합니다.** "
                    "혼합물의 분류는 성분의 함량과 제품 자체의 물성으로 정해지므로 아래 값과 다를 수 있고, 이 값은 판정에 자동으로 반영되지 않습니다.")
         frames.show(pd.DataFrame([{
             "혼합제품": p["제품명"], "성분 CAS No.": p["CAS No."], "함량(%)": p["함량(%)"],

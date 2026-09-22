@@ -49,8 +49,8 @@ def render(expanded: bool) -> None:
         st.caption(
             "사업장 정보와 취급하는 유해화학물질만 적으면 법정 작성 대상(화학사고예방관리계획서, 공정안전보고서)인지 먼저 판정합니다. "
             "대상인 문서는 바로 별지 작성으로 이어집니다. "
-            "처음에는 제품별 기본정보만 적습니다. 혼합제품이 있으면 사업장을 만든 뒤 SDS 제3항용 두 번째 파일이 자동으로 나타납니다. "
-            "성상·SDS 분류·법적 예외 같은 어려운 항목은 판정에 실제로 필요할 때만 질문합니다."
+            "처음에는 제품별 기본정보만 적습니다. 혼합제품이 있으면 사업장을 만든 뒤 MSDS 제3항용 두 번째 파일이 자동으로 나타납니다. "
+            "성상·MSDS 분류·법적 예외 같은 어려운 항목은 판정에 실제로 필요할 때만 질문합니다."
         )
         left, middle, right = st.columns(3)
         name = left.text_input("사업장명", key="cap_start_name", help="사업자등록증에 적힌 사업장(회사) 이름입니다.",
@@ -89,7 +89,7 @@ def render(expanded: bool) -> None:
                 ),
                 cap_start.MATERIAL_TYPE_COLUMN: st.column_config.SelectboxColumn(
                     "단일물질/혼합물", options=["", "단일물질", "혼합물"],
-                    help="제품 SDS 제3항을 보세요. 구성성분이 하나인 물질은 단일물질, 여러 성분으로 된 제품은 혼합물입니다.",
+                    help="제품 MSDS 제3항을 보세요. 구성성분이 하나인 물질은 단일물질, 여러 성분으로 된 제품은 혼합물입니다.",
                 ),
                 "CAS No.": st.column_config.TextColumn(
                     "CAS No.",

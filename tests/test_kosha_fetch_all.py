@@ -63,7 +63,7 @@ class FetchAllTests(unittest.TestCase):
         at = self._run(project, seen)
         self.assertFalse(at.exception)
         button = at.button(key=f"judge_kosha_all_{project.project_id}")
-        self.assertEqual(button.label, "KOSHA에서 전체 물질 SDS 분류 조회")
+        self.assertEqual(button.label, "KOSHA에서 전체 물질 MSDS 분류 조회")
         button.click().run()
         self.assertFalse(at.exception)
         self.assertEqual(len(seen), 1)
@@ -89,7 +89,7 @@ class FetchAllTests(unittest.TestCase):
     def test_mixture_products_are_mentioned_but_not_sent(self):
         project = _project()
         at = self._run(project, [])
-        heading = next(m for m in at.markdown if m.value.startswith("**SDS 제2항 분류 한 번에 조회"))
+        heading = next(m for m in at.markdown if m.value.startswith("**MSDS 제2항 분류 한 번에 조회"))
         self.assertIn("혼합제품 1건은 제품 자체의 CAS가 없어 조회하지 않고, 성분 CAS만 참고용으로 조회합니다", heading.help)  # ? 안에 있다
         self.assertIn("왜 하나요?", heading.help)
 
@@ -101,7 +101,7 @@ class FetchAllTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertTrue(any("혼합제품 성분별 참고 분류" in m.value for m in at.markdown))
         warning = " ".join(w.value for w in at.warning)
-        self.assertIn("제품 SDS에 적힌 것을 그대로 옮겨 적어야 합니다", warning)
+        self.assertIn("제품 MSDS에 적힌 것을 그대로 옮겨 적어야 합니다", warning)
         self.assertIn("판정에 자동으로 반영되지 않습니다", warning)
         # 성분 결과는 혼합제품 줄의 SDS 분류 후보가 되지 않는다(제품 줄에는 CAS가 없다)
         stored = at.session_state[f"judge_kosha_{project.project_id}"]
