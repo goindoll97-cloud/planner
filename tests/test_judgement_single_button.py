@@ -6,7 +6,7 @@ import unittest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
-JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "물질 성분 확정하기", "판정 조건 확정하기", "최대보유량 확정하기", "최종판정하기"}
+JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "최대보유량 확인하기", "최종판정하기"}
 
 
 class SingleJudgeButtonTests(unittest.TestCase):
@@ -48,12 +48,12 @@ class SingleJudgeButtonTests(unittest.TestCase):
     def test_while_questions_are_being_asked_only_the_save_and_rejudge_button_is_shown(self):
         at = self._run("asking")
         self.assertFalse(at.exception)
-        self.assertEqual(self._judge_buttons(at), ["판정 조건 확정하기"])
+        self.assertEqual(self._judge_buttons(at), ["판정정보 확인하기"])
 
     def test_facility_only_stage_shows_only_the_holding_confirmation_button(self):
         at = self._run("facility_only")
         self.assertFalse(at.exception)
-        self.assertEqual(self._judge_buttons(at), ["최대보유량 확정하기"])
+        self.assertEqual(self._judge_buttons(at), ["최대보유량 확인하기"])
 
     def test_final_stage_uses_final_judgement_button(self):
         at = self._run("decided")
@@ -65,7 +65,7 @@ class SingleJudgeButtonTests(unittest.TestCase):
         heading = next(m for m in at.markdown if m.value.startswith("#### 판정에 필요한 확인 사항"))
         self.assertIn("왜 묻나요?", heading.help)
         status = next(m for m in at.markdown if m.value.startswith("**현재 판정:**"))
-        self.assertIn("물질 성분 확정 → 판정 조건 확정", status.help)
+        self.assertIn("판정정보 확인 → 최대보유량 확인", status.help)
         captions = " ".join(c.value for c in at.caption)
         self.assertNotIn("판정은 1. 성분 확인", captions)                  # 예전의 긴 설명 문구는 화면에 없다
         self.assertNotIn("시설을 입력하면 최대보유량이 계산됩니다", captions)
@@ -73,3 +73,4 @@ class SingleJudgeButtonTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

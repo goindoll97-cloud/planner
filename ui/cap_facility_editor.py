@@ -399,7 +399,7 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
             hide_index=True,
         )
 
-    if st.button("최대보유량 확정하기", type="primary", key=f"{prefix}_save_{pid}"):
+    if st.button("최대보유량 확인하기", type="primary", key=f"{prefix}_save_{pid}"):
         saved = ws.save_facility_rows(project, [*untouched, *rows])
         if saved:
             st.session_state.pop(extra_key, None)
@@ -557,3 +557,4 @@ def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = F
         _render_compact(project, prefix, on_saved=on_saved, focus_names=focus_names)
         return
     _render_full(project, prefix, on_saved=on_saved)
+

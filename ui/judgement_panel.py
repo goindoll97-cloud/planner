@@ -25,9 +25,9 @@ def _status_line(project) -> str:
     return f"{CAP}: {decision.get('cap_status') or '확인 안 됨'} / {PSM}: {decision.get('psm_status') or '확인 안 됨'}"
 
 
-STEPS = ("물질 성분", "판정 조건", "최대보유량", "최종판정")
+STEPS = ("판정정보 확인", "최대보유량 확인", "최종판정")
 
-HELP_FLOW = ("판정은 물질 성분 확정 → 판정 조건 확정 → 최대보유량 확정 → 최종판정 순서로 진행합니다. 입력하신 물질 목록으로 법정 대상인지 먼저 확인하고, "
+HELP_FLOW = ("판정은 판정정보 확인 → 최대보유량 확인 → 최종판정 순서로 진행합니다. 내부적으로 필요한 물질 성분과 판정 조건을 먼저 확인하고, "
              "더 필요한 정보가 있으면 그것만 물어봅니다. 별지 작성은 판정 전에도 미리 시작할 수 있습니다.")
 WHY_ASK = ("**왜 묻나요?** 입력하신 물질 목록만으로는 법정 대상인지 확정할 수 없어서, 판정 규칙이 사업장에 대해 추가로 확인을 요청한 항목입니다. "
            "사업장 전체에 대한 질문이라 물질과 상관없이 한 번만 답하면 됩니다.\n\n"
@@ -54,15 +54,15 @@ KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 SDS 제2항 
 
 
 def current_step(outcome) -> int:
-    """지금 화면이 어느 단계인지(1~4). 판정 규칙이 요청하는 내용에 따라 필요한 단계만 나타납니다."""
+    """지금 화면이 어느 단계인지(1~3). 내부 판정 상태를 사용자용 3단계로 묶어 표시합니다."""
     status = getattr(outcome, "status", "")
     if status == "COMPOSITION":
         return 1
     if status == "REQUEST":
-        return 2 if getattr(outcome, "questions", ()) else 3
+        return 1 if getattr(outcome, "questions", ()) else 2
     if status == "PENDING":
-        return 3
-    return 4
+        return 2
+    return 3
 
 
 def step_line(step: int) -> str:
@@ -211,7 +211,7 @@ def _composition_form(project, outcome) -> None:
         )
 
     if st.button(
-        "물질 성분 확정하기",
+        "판정정보 확인하기",
         type="primary",
         key=f"judge_comp_save_{pid}",
         disabled=any_mixture and not confirmed,
@@ -327,7 +327,7 @@ def _ask(project, outcome) -> bool:
     has_condition_inputs = bool(base_questions) or edited is not None or note8_rows is not None
     if has_condition_inputs:
         if facility_needed:
-            st.caption("판정 조건을 먼저 확정하면 다음 단계에서 최대보유량을 확인합니다.")
+            st.caption("판정정보를 먼저 확인하면 다음 단계에서 최대보유량을 확인합니다.")
 
         confirmed = True
         if used:
@@ -335,7 +335,7 @@ def _ask(project, outcome) -> bool:
                 f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
                 key=f"judge_kosha_ok_{project.project_id}")
 
-        if st.button("판정 조건 확정하기", type="primary",
+        if st.button("판정정보 확인하기", type="primary",
                      key=f"judge_answer_{project.project_id}", disabled=not confirmed):
             table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
             note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
@@ -568,7 +568,7 @@ def _decided(project, outcome) -> None:
 
 
 def render(project) -> None:
-    """법정 대상 판정. 사용자는 물질 성분 → 판정 조건 → 최대보유량 → 최종판정 순서의 단계 버튼만 본다."""
+    """법정 대상 판정. 사용자는 판정정보 확인 → 최대보유량 확인 → 최종판정 순서만 본다."""
     from ui.cap_start_panel import _gate_hold
 
     pending = judgement.undecided(project)
@@ -613,3 +613,4 @@ def render(project) -> None:
                         return
                     st.session_state[key] = judgement.judge(project)
                 st.rerun()
+

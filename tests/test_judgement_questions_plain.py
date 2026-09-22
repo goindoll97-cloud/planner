@@ -143,7 +143,7 @@ class AskScreenTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertTrue(any("어떤 면제 시설" in s.label for s in at.selectbox))
         self.assertTrue(any("취급하는 시설 전체" in r.label for r in at.radio))
-        self.assertTrue(any(b.label == "판정 조건 확정하기" for b in at.button))
+        self.assertTrue(any(b.label == "판정정보 확인하기" for b in at.button))
 
     def test_questions_are_grouped_under_the_document_they_affect(self):
         at = self._run([2, 5])
@@ -167,3 +167,4 @@ class AskScreenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

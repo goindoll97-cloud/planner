@@ -71,7 +71,7 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         key=f"{prefix}_confirmed_{project.project_id}",
     )
     if st.button(
-        "혼합물질 성분 확정하기",
+        "판정정보 확인하기",
         type="primary",
         disabled=not checked.ok or not confirmed,
         key=f"{prefix}_save_{project.project_id}",
@@ -89,3 +89,4 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         st.success("혼합물 구성성분을 저장했습니다.")
         st.rerun()
     return True
+

@@ -34,14 +34,14 @@ class UnitTests(unittest.TestCase):
 class StepTests(unittest.TestCase):
     def test_current_step_follows_what_the_engine_asks_for(self):
         self.assertEqual(panel.current_step(SimpleNamespace(status="COMPOSITION")), 1)
-        self.assertEqual(panel.current_step(SimpleNamespace(status="REQUEST", questions=("q",))), 2)
-        self.assertEqual(panel.current_step(SimpleNamespace(status="REQUEST", questions=())), 3)
-        self.assertEqual(panel.current_step(SimpleNamespace(status="PENDING")), 3)
-        self.assertEqual(panel.current_step(SimpleNamespace(status="DECIDED")), 4)
+        self.assertEqual(panel.current_step(SimpleNamespace(status="REQUEST", questions=("q",))), 1)
+        self.assertEqual(panel.current_step(SimpleNamespace(status="REQUEST", questions=())), 2)
+        self.assertEqual(panel.current_step(SimpleNamespace(status="PENDING")), 2)
+        self.assertEqual(panel.current_step(SimpleNamespace(status="DECIDED")), 3)
 
     def test_step_line_marks_only_the_current_step(self):
         line = panel.step_line(2)
-        self.assertIn("**2. 판정 조건**", line)
+        self.assertIn("**2. 최대보유량 확인**", line)
         self.assertNotIn("**1.", line)
         self.assertEqual(panel.step_line(0).count("**"), 0)
 
@@ -89,7 +89,8 @@ class AskScreenTests(unittest.TestCase):
         key = next(t.key for t in at.text_input if t.key and t.key.endswith("(kg)"))
         at.text_input(key=key).set_value("1.5")
         at.selectbox(key=key + "_unit").select("ton")
-        next(b for b in at.button if b.label == "판정 조건 확정하기").click()
+        next(b for b in at.button if b.label == "판정정보 확인하기").click()
         at.run()
         project = at.session_state["project"]
         self.assertEqual(jd.answers(project)[[q for q in jd.QUESTIONS if q.item.endswith("(kg)")][0].item], "1500")
+
