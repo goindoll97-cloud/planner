@@ -6,7 +6,7 @@ import unittest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
-JUDGE_LABELS = {"법정 대상 판정하기", "다시 판정하기", "답을 저장하고 다시 판정", "성분정보 저장하고 판정 계속"}
+JUDGE_LABELS = {"법정 대상 판정하기", "다시 판정하기", "답변 확정하기", "물질 성분 확정하기"}
 
 
 class SingleJudgeButtonTests(unittest.TestCase):
@@ -46,7 +46,7 @@ class SingleJudgeButtonTests(unittest.TestCase):
     def test_while_questions_are_being_asked_only_the_save_and_rejudge_button_is_shown(self):
         at = self._run("asking")
         self.assertFalse(at.exception)
-        self.assertEqual(self._judge_buttons(at), ["답을 저장하고 다시 판정"])
+        self.assertEqual(self._judge_buttons(at), ["답변 확정하기"])
 
     def test_when_nothing_can_be_answered_the_normal_judge_button_is_the_only_one(self):
         at = self._run("facility_only")
