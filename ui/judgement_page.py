@@ -14,6 +14,21 @@ from ui import cap_start_panel, judgement_panel, judgement_project_panel
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 FLASH_KEY = "_judgement_flash"
 
+
+def _clear_project_ui_state(project_id: str) -> None:
+    """삭제한 프로젝트와 새 사업장 초안에 연결된 화면 상태를 함께 비운다."""
+    prefixes = (
+        f"judge_out_{project_id}", f"judge_proj_flash_{project_id}", f"judge_biz_",
+        f"judge_mix_", f"judge_comp_", f"judge_fac_", f"judge_kosha_", f"delete_confirm_{project_id}",
+    )
+    for key in list(st.session_state.keys()):
+        text = str(key)
+        if any(text == prefix or text.startswith(prefix) for prefix in prefixes):
+            st.session_state.pop(key, None)
+    # 새 사업장 입력표는 프로젝트와 별도의 세션 초안이므로 삭제 시에도 비운다.
+    cap_start_panel.clear_start_draft_state()
+
+
 st.set_page_config(page_title="사업장 판정하기", page_icon="✅", layout="wide")
 st.title("✅ 사업장 판정하기")
 st.caption(
@@ -67,8 +82,9 @@ with st.expander("프로젝트 관리", expanded=False):
             st.error(f"프로젝트를 삭제하지 못했습니다: {type(exc).__name__}: {exc}")
         else:
             if removed:
+                _clear_project_ui_state(selected)
                 st.session_state.pop(ACTIVE_PROJECT_KEY, None)
-                st.session_state[FLASH_KEY] = f"프로젝트를 삭제했습니다: {selected}"
+                st.session_state[FLASH_KEY] = f"프로젝트와 물질목록·혼합물 성분·시설자료를 모두 삭제했습니다: {selected}"
                 st.rerun()
             else:
                 st.warning("이미 삭제되었거나 저장된 프로젝트를 찾을 수 없습니다.")
