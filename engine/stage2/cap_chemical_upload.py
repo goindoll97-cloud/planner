@@ -73,6 +73,11 @@ def _norm(value: object) -> str:
     return re.sub(r"[\s_./·\-]", "", text).lower()
 
 
+def normalize_name(value: object) -> str:
+    """check_rows가 이름 기준 중복 판정에 쓰는 정규화. 다른 화면이 같은 기준으로 '이미 있음' 집합을 만들 때 쓴다."""
+    return _norm(value)
+
+
 def _clean(value: object) -> str:
     if value is None or (isinstance(value, float) and value != value):
         return ""

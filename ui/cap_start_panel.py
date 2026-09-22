@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from engine.stage2 import cap_chemical_upload as chem_upload
 from engine.stage2 import cap_judgement, cap_start
 from ui import chemical_upload_panel
 from engine.stage2.storage import save_project
@@ -124,10 +125,16 @@ def render(expanded: bool) -> None:
 
             parts = list(st.session_state.get("cap_start_components") or [])
             current = [r for r in edited.to_dict("records") if str(r.get("제품명") or "").strip() or str(r.get("CAS No.") or "").strip()]
-            have = {str(r.get("CAS No.") or "").strip() for r in current if str(r.get("CAS No.") or "").strip()}
+            have_cas = {str(r.get("CAS No.") or "").strip() for r in current if str(r.get("CAS No.") or "").strip()}
+            # 혼합제품은 제품 자체의 CAS가 없으므로 이름으로도 확인한다. CAS만 보면 같은 혼합제품을
+            # 다시 올렸을 때(같은 파일 재업로드, 겹치는 두 파일 등) 중복으로 걸러지지 않는다.
+            have_names = {chem_upload.normalize_name(r.get("제품명")) for r in current if str(r.get("제품명") or "").strip()}
             added = []
             for row in rows:
-                if row["CAS No."] and row["CAS No."] in have:
+                cas = str(row.get("CAS No.") or "").strip()
+                if cas and cas in have_cas:
+                    continue
+                if not cas and chem_upload.normalize_name(row.get("제품명")) in have_names:
                     continue
                 for component in row.get("_components") or []:
                     parts.append({"제품명": row["제품명"], "CAS No.": component["CAS No."], "함량(%)": component["함량(%)"]})
@@ -147,8 +154,11 @@ def render(expanded: bool) -> None:
             st.session_state["cap_start_gen"] = generation + 1
             return f"{file_name}에서 물질 {len(added)}건을 아래 표에 추가했습니다. 확인한 뒤 '법정 대상 판정하고 시작'을 누르세요."
 
+        edited_records = edited.to_dict("records")
         chemical_upload_panel.render("cap_start_upload", existing=(
-            {str(r.get("CAS No.") or "").strip() for r in edited.to_dict("records")} - {""}, set()), add_rows=add_uploaded)
+            {str(r.get("CAS No.") or "").strip() for r in edited_records} - {""},
+            {chem_upload.normalize_name(r.get("제품명")) for r in edited_records if str(r.get("제품명") or "").strip()},
+        ), add_rows=add_uploaded)
         if not st.button("법정 대상 판정하고 시작", type="primary", key="cap_start_go"):
             return
         with st.spinner("법정 대상 여부를 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
