@@ -364,7 +364,7 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
             hide_index=True,
         )
 
-    if st.button("시설정보 저장하고 판정 계속", type="primary", key=f"{prefix}_save_{pid}"):
+    if st.button("시설정보 확정하기", type="primary", key=f"{prefix}_save_{pid}"):
         saved = ws.save_facility_rows(project, [*untouched, *rows])
         if saved:
             save_project(project)

@@ -211,7 +211,7 @@ def _composition_form(project, outcome) -> None:
         )
 
     if st.button(
-        "성분정보 저장하고 판정 계속",
+        "물질 성분 확정하기",
         type="primary",
         key=f"judge_comp_save_{pid}",
         disabled=any_mixture and not confirmed,
@@ -303,13 +303,13 @@ def _ask(project, outcome) -> None:
     has_answers = bool(outcome.questions) or edited is not None or note8_rows is not None
     if not has_answers:
         return False  # 적을 답이 없고 시설 표만 있으면, 시설을 저장할 때 바로 다시 판정한다
-    if st.button("답을 저장하고 다시 판정", type="primary", key=f"judge_answer_{project.project_id}", disabled=not confirmed):
+    if st.button("답변 확정하기", type="primary", key=f"judge_answer_{project.project_id}", disabled=not confirmed):
         table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
         note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
         if not any(given.values()) and not table_changed and not note8_changed:
             st.warning("한 가지 이상 답해 주세요.")
         else:
-            with st.spinner("답을 저장하고 다시 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
+            with st.spinner("답변을 확정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
                 if given:
                     judgement.save_answers(project, given)
                 if table_changed:
@@ -509,7 +509,7 @@ def _decided(project, outcome) -> None:
 
 
 def render(project) -> None:
-    """법정 대상 판정. 판정 버튼은 한 번에 하나만 보인다: 아직 답을 받는 중이면 그 아래의 '답을 저장하고 다시 판정' 하나만, 아니면 아래의 판정 버튼 하나만."""
+    """법정 대상 판정. 버튼은 한 번에 하나만 보인다: 단계별로 확정 버튼(물질 성분 확정하기·답변 확정하기 등)이 있으면 그것만, 없으면 판정 버튼 하나만."""
     from ui.cap_start_panel import _gate_hold
 
     pending = judgement.undecided(project)

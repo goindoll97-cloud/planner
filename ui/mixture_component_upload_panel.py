@@ -71,7 +71,7 @@ def render(project, prefix: str = "mix_components", *, continue_judgement: bool 
         key=f"{prefix}_confirmed_{project.project_id}",
     )
     if st.button(
-        "구성성분 저장",
+        "혼합물질 성분 확정하기",
         type="primary",
         disabled=not checked.ok or not confirmed,
         key=f"{prefix}_save_{project.project_id}",
