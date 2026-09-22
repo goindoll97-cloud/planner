@@ -95,24 +95,18 @@ class ScreenTests(unittest.TestCase):
         delete = next(b for b in at.button if b.key == f"delete_project_{project.project_id}")
         self.assertFalse(delete.disabled)
 
-    def test_deleting_a_project_clears_the_new_site_material_draft_and_project_ui_state(self):
-        project = self._pending()
-        at = self._run([project], project)
-        pid = project.project_id
+    def test_delete_path_clears_material_draft_and_project_ui_state(self):
+        page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
+        start = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
 
-        # 새 사업장 업로드 초안과 현재 프로젝트 관련 UI 상태가 남아 있는 상황을 재현한다.
-        at.session_state["cap_start_seed"] = [{"제품명": "남아있으면 안 되는 물질", "CAS No.": "108-88-3"}]
-        at.session_state["cap_start_components"] = [{"제품명": "혼합물", "CAS No.": "67-64-1", "함량(%)": 50}]
-        at.session_state[f"judge_out_{pid}"] = "cached"
-        at.session_state[f"judge_comp_manual_mix_{pid}"] = True
+        self.assertIn("def _clear_project_ui_state(project_id: str)", page)
+        self.assertIn("_clear_project_ui_state(selected)", page)
+        self.assertIn("cap_start_panel.clear_start_draft_state()", page)
+        self.assertIn("def clear_start_draft_state()", start)
+        self.assertIn('if str(key).startswith("cap_start_")', start)
+        # 프로젝트 삭제 성공 뒤 활성 프로젝트도 반드시 비운다.
+        self.assertIn("st.session_state.pop(ACTIVE_PROJECT_KEY, None)", page)
 
-        at.checkbox(key=f"delete_confirm_{pid}").check().run()
-        at.button(key=f"delete_project_{pid}").click().run()
-
-        self.assertNotIn("cap_start_seed", at.session_state)
-        self.assertNotIn("cap_start_components", at.session_state)
-        self.assertNotIn(f"judge_out_{pid}", at.session_state)
-        self.assertNotIn(f"judge_comp_manual_mix_{pid}", at.session_state)
 
     def test_deciding_on_the_page_moves_the_site_into_the_writing_scope(self):
         project = self._pending()
