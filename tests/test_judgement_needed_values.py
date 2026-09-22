@@ -129,7 +129,7 @@ class InlineFacilityTests(unittest.TestCase):
         self.assertIn("**시설 입력 — 사업장 최대보유량 계산**", markdown)
         self.assertGreaterEqual(len(list(at.get("arrow_data_frame"))), 1)  # 시설 표가 화면 안에 있다
         self.assertEqual(len(at.info), 0)                                    # 안내 상자 없이 표만 보인다
-        self.assertFalse(any(b.label == "답변 확정하기" for b in at.button))  # 적을 답이 없으면 저장 버튼을 두지 않는다
+        self.assertFalse(any(b.label == "판정 조건 확정하기" for b in at.button))  # 적을 답이 없으면 저장 버튼을 두지 않는다
         self.assertNotIn("별지 제1호", " ".join(i.value for i in at.info))
 
     def test_the_facility_section_uses_engine_selected_substances_not_message_parsing(self):
