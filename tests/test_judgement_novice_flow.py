@@ -41,7 +41,7 @@ class StepTests(unittest.TestCase):
 
     def test_step_line_marks_only_the_current_step(self):
         line = panel.step_line(2)
-        self.assertIn("**2. 판정 질문**", line)
+        self.assertIn("**2. 판정 조건**", line)
         self.assertNotIn("**1.", line)
         self.assertEqual(panel.step_line(0).count("**"), 0)
 
