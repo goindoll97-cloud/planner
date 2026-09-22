@@ -95,6 +95,19 @@ class ScreenTests(unittest.TestCase):
         delete = next(b for b in at.button if b.key == f"delete_project_{project.project_id}")
         self.assertFalse(delete.disabled)
 
+    def test_delete_path_clears_material_draft_and_project_ui_state(self):
+        page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
+        start = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
+
+        self.assertIn("def _clear_project_ui_state(project_id: str)", page)
+        self.assertIn("_clear_project_ui_state(selected)", page)
+        self.assertIn("cap_start_panel.clear_start_draft_state()", page)
+        self.assertIn("def clear_start_draft_state()", start)
+        self.assertIn('if str(key).startswith("cap_start_")', start)
+        # 프로젝트 삭제 성공 뒤 활성 프로젝트도 반드시 비운다.
+        self.assertIn("st.session_state.pop(ACTIVE_PROJECT_KEY, None)", page)
+
+
     def test_deciding_on_the_page_moves_the_site_into_the_writing_scope(self):
         project = self._pending()
         original = jd.judge

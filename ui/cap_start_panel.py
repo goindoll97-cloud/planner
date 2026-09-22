@@ -12,6 +12,18 @@ from engine.stage2.storage import save_project
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 
 
+def clear_start_draft_state() -> None:
+    """새 사업장 입력 중인 임시값을 모두 비운다.
+
+    프로젝트에 저장된 값과 별개로 Streamlit 위젯/업로드 미리보기가 세션에 남을 수 있으므로,
+    새 사업장을 만든 뒤나 프로젝트를 삭제한 뒤에는 반드시 초기화한다.
+    """
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("cap_start_"):
+            st.session_state.pop(key, None)
+
+
+
 def _gate_hold() -> bool:
     """예전 판정진단과 같은 법령 최신성 확인. 보류 상태면 안내하고 True."""
     from engine.law_monitor import run_law_monitor
@@ -157,7 +169,7 @@ def render(expanded: bool) -> None:
                 st.write(f"• {cap_judgement.display_request(message)}")
         elif outcome.status == "PENDING":
             save_project(outcome.project)
-            st.session_state.pop("cap_start_components", None)
+            clear_start_draft_state()
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
             st.session_state["cap_start_notice"] = " ".join(cap_judgement.display_request(m) for m in outcome.messages[:1]) + " (사업장을 만들었습니다. 판정은 위 '법정 대상 판정'에서 이어서 합니다.)"
             st.rerun()
@@ -176,7 +188,7 @@ def render(expanded: bool) -> None:
                 except Exception:
                     pass
             save_project(outcome.project)
-            st.session_state.pop("cap_start_components", None)
+            clear_start_draft_state()
             st.session_state[ACTIVE_PROJECT_KEY] = outcome.project.project_id
             targets = [label for label, on in (("화학사고예방관리계획서", outcome.project.cap_required is True),
                                                  ("공정안전보고서", outcome.project.psm_required is True)) if on]
