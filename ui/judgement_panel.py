@@ -301,12 +301,18 @@ def _ask(project, outcome) -> bool:
             for question in questions:
                 given[question.item] = _question(project, question, {**merged_answers, **given})
 
-    table_messages = [m for m in outcome.messages if _for_table(m)]
+    all_table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
     facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
+    # 시설 산정 단계가 따로 필요한 경우, 최대보유량 직접입력 요청은 판정조건 표에 섞지 않는다.
+    # SDS 등 다른 물질별 판정조건만 먼저 확정하고, 최대보유량은 다음 단계에서 시설정보로 계산한다.
+    table_messages = [
+        m for m in all_table_messages
+        if not (facility_needed and "법정 사업장 최대보유량" in judgement.display_request(m))
+    ]
 
     covered = [m for m in outcome.messages
-               if m in table_messages or any(q.trigger and q.trigger in m for q in expanded)
+               if m in all_table_messages or any(q.trigger and q.trigger in m for q in expanded)
                or judgement.NOTE8_TABLE_MARKER in m or judgement.HOLDING_FACILITY_MARKER in m]
     others = [m for m in outcome.messages if m not in covered]
     if others:
@@ -599,6 +605,7 @@ def render(project) -> None:
                 has_own_button = _ask(project, outcome)
             else:
                 _decided(project, outcome)
+                has_own_button = True
         if not has_own_button:
             if st.button("판정 시작하기" if pending else "판정 다시 시작하기", key=f"judge_run_{project.project_id}"):
                 with st.spinner("법정 대상 여부를 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
