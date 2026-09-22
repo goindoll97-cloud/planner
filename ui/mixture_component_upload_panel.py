@@ -22,7 +22,7 @@ def _missing_mixture_names(project) -> list[str]:
     return names
 
 
-def render(project, prefix: str = "mix_components") -> bool:
+def render(project, prefix: str = "mix_components", *, continue_judgement: bool = False) -> bool:
     names = _missing_mixture_names(project)
     if not names:
         return False
@@ -51,7 +51,6 @@ def render(project, prefix: str = "mix_components") -> bool:
         help="제품 SDS 제3항을 보고 '혼합제품명 / CAS No. / 함량(%)'만 적은 두 번째 파일입니다.",
     )
     if upload is None:
-        st.caption("파일 대신 아래 판정 단계의 질문표에서 직접 입력해도 됩니다.")
         return True
 
     try:
@@ -83,7 +82,10 @@ def render(project, prefix: str = "mix_components") -> bool:
             st.error(str(exc))
             return True
         storage.save_project(project)
-        st.session_state.pop(f"judge_out_{project.project_id}", None)
+        if continue_judgement:
+            st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
+        else:
+            st.session_state.pop(f"judge_out_{project.project_id}", None)
         st.success("혼합물 구성성분을 저장했습니다.")
         st.rerun()
     return True
