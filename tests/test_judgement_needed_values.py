@@ -117,7 +117,7 @@ class InlineFacilityTests(unittest.TestCase):
             "project = st.session_state['project']\n"
             "ALL = REAL_REQUESTS + [ROW1_REQUEST]\n"
             "outcome = SimpleNamespace(status='REQUEST', messages=tuple(ALL[i] for i in %r), questions=())\n"
-            "with patch('engine.stage2.storage.save_project'):\n"
+            "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['염소']):\n"
             "    panel._ask(project, outcome)\n"
         ) % (str(ROOT), list(indexes))
         return AppTest.from_string(code, default_timeout=60).run()
