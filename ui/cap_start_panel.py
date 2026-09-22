@@ -151,14 +151,15 @@ def render(expanded: bool) -> None:
             {str(r.get("CAS No.") or "").strip() for r in edited.to_dict("records")} - {""}, set()), add_rows=add_uploaded)
         if not st.button("법정 대상 판정하고 시작", type="primary", key="cap_start_go"):
             return
-        if _gate_hold():
-            return
-        outcome = cap_start.start(
-            {"사업장명": name, "사업장 주소": address, "업종 또는 주요 생산품": industry,
-             "한국표준산업분류(KSIC) 코드": ksic},
-            edited.to_dict("records"),
-            components=st.session_state.get("cap_start_components"),
-        )
+        with st.spinner("법정 대상 여부를 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
+            if _gate_hold():
+                return
+            outcome = cap_start.start(
+                {"사업장명": name, "사업장 주소": address, "업종 또는 주요 생산품": industry,
+                 "한국표준산업분류(KSIC) 코드": ksic},
+                edited.to_dict("records"),
+                components=st.session_state.get("cap_start_components"),
+            )
         if outcome.status == "INVALID":
             st.warning("입력을 확인해 주세요.")
             for message in outcome.messages:

@@ -122,6 +122,17 @@ class ScreenTests(unittest.TestCase):
         at = self._run([project], project)
         self.assertFalse(at.exception)
 
+    def test_deleting_a_project_clears_the_leftover_new_site_chemical_draft(self):
+        # cap_start_seed는 '새 사업장으로 시작하기'의 물질 표(프로젝트별이 아닌 화면 하나짜리 상태)다.
+        # 지우지 않으면 이 프로젝트를 지운 뒤에도 전에 거기 올렸던 물질 목록이 그대로 남아 보인다.
+        project = self._pending()
+        at = self._run([project], project)
+        at.session_state["cap_start_seed"] = [{"제품명": "이전 사업장 물질", "CAS No.": "108-88-3"}]
+        at.checkbox(key=f"delete_confirm_{project.project_id}").check().run()
+        at.button(key=f"delete_project_{project.project_id}").click().run()
+        self.assertFalse(at.exception)
+        self.assertNotIn("cap_start_seed", at.session_state)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -309,15 +309,16 @@ def _ask(project, outcome) -> None:
         if not any(given.values()) and not table_changed and not note8_changed:
             st.warning("한 가지 이상 답해 주세요.")
         else:
-            if given:
-                judgement.save_answers(project, given)
-            if table_changed:
-                judgement.save_chemical_inputs(project, edited)
-                kosha_candidates.record_use(project, used)
-            if note8_changed:
-                judgement.save_note8_rows(project, note8_rows)
-            storage.save_project(project)
-            st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
+            with st.spinner("답을 저장하고 다시 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
+                if given:
+                    judgement.save_answers(project, given)
+                if table_changed:
+                    judgement.save_chemical_inputs(project, edited)
+                    kosha_candidates.record_use(project, used)
+                if note8_changed:
+                    judgement.save_note8_rows(project, note8_rows)
+                storage.save_project(project)
+                st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
             st.rerun()
     return True
 
@@ -542,7 +543,8 @@ def render(project) -> None:
                 _decided(project, outcome)
         if not has_own_button:
             if st.button("법정 대상 판정하기" if pending else "다시 판정하기", key=f"judge_run_{project.project_id}"):
-                if _gate_hold():
-                    return
-                st.session_state[key] = judgement.judge(project)
+                with st.spinner("법정 대상 여부를 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
+                    if _gate_hold():
+                        return
+                    st.session_state[key] = judgement.judge(project)
                 st.rerun()
