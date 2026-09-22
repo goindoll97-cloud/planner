@@ -77,8 +77,13 @@ COMPOSITION_OPTIONS = ["선택하세요", "단일물질", "혼합물"]
 
 
 def _composition_form(project, outcome) -> None:
-    """입력파일에서 확정되지 않은 성분정보만 보완한다. CAS가 법적 식별키다."""
+    """성분 확인은 한 경로에서만 받는다.
+
+    기본 물질목록에서 이미 '혼합물'로 확인된 제품은 두 번째 구성성분 파일을 기본 경로로 쓴다.
+    사용자가 명시적으로 원할 때만 같은 자리에서 직접 입력 표를 연다.
+    """
     from engine.stage2 import cap_chemical_workspace as chem
+    from ui import mixture_component_upload_panel
 
     _, rows = chem._rows(project)
     targets = list(outcome.composition_rows or judgement.composition_rows(project))
@@ -86,14 +91,39 @@ def _composition_form(project, outcome) -> None:
         st.info("확인할 물질 성분 정보가 없습니다.")
         return
 
+    known_mixtures = [
+        number for number in targets
+        if 1 <= number <= len(rows) and judgement._mixture_yes(rows[number - 1].get("혼합물 여부"))
+    ]
+
     st.markdown(
         "#### 물질 성분 확인",
         help=(
             "**단일물질**은 CAS No. 하나로 확인합니다.\n\n"
-            "**혼합제품**은 제품 자체 이름이나 CAS를 추정하지 않고, 제품 SDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
-            "두 번째 '혼합물 구성성분' 파일을 쓰지 않은 경우에만 여기서 직접 적으면 됩니다."
+            "**혼합제품**은 제품명으로 추정하지 않고, 제품 SDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
+            "혼합제품은 아래 '혼합물 구성성분' 두 번째 파일에 한 번만 입력합니다. "
+            "파일 사용이 어려운 경우에만 '직접 입력'을 선택하세요."
         ),
     )
+
+    manual_mixtures = False
+    if known_mixtures:
+        # 혼합물 성분 입력의 기본·유일한 위치. 물질목록 영역에서는 같은 업로더를 다시 보여 주지 않는다.
+        mixture_component_upload_panel.render(
+            project,
+            f"judge_mix_step_{project.project_id}",
+            continue_judgement=True,
+        )
+        manual_mixtures = st.checkbox(
+            "파일 대신 이 화면에서 혼합물 성분 직접 입력",
+            key=f"judge_comp_manual_mix_{project.project_id}",
+            help="두 번째 엑셀 파일을 사용하기 어려운 경우에만 선택하세요. 같은 내용을 파일과 여기 두 곳에 모두 입력할 필요는 없습니다.",
+        )
+        if not manual_mixtures:
+            other_targets = [number for number in targets if number not in known_mixtures]
+            if other_targets:
+                st.caption("혼합물 구성성분을 먼저 저장하면 남아 있는 성분 확인 항목이 이어서 나타납니다.")
+            return
 
     stored_components = judgement.mixture_components(project)
     classifications: list[dict] = []
