@@ -293,7 +293,8 @@ def _ask(project, outcome) -> None:
     note8_rows = _note8_table(project) if note8_needed else None
     edited, used = _chemical_table(project, outcome, table_messages)
     if facility_needed:
-        holding_names = _names_needing_holding(project, table_messages)
+        # 시설 입력 대상은 요청문구를 파싱하지 않고, Stage 1의 실제 시설대상 스크리닝 결과에서 가져온다.
+        holding_names = judgement.holding_target_names(project)
         _facilities(project, outcome, holding_names)
     confirmed = True
     if used:
@@ -342,13 +343,21 @@ def _holding_help() -> None:
 
 
 def _facilities(project, outcome, needs_names: list[str]) -> None:
-    """판정 화면 안에서 시설(저장탱크 등)을 입력해 사업장 최대보유량을 계산한다. 별지 제1호와 같은 표·같은 자료다."""
+    """판정 화면 안에서 법적 스크리닝 대상 물질의 시설정보만 받는다."""
     from ui import cap_facility_editor
 
     st.markdown("**시설 입력 — 사업장 최대보유량 계산**", help=FACILITY_HELP)
-    if needs_names:
-        st.caption("판정 규칙이 최대보유량을 요청한 물질: " + ", ".join(needs_names)
-                   + " — '취급물질' 칸에는 물질 목록의 이름(혼합제품은 제품명)과 같게 적으세요.")
+    if not needs_names:
+        st.warning(
+            "최대보유량 계산이 필요한 물질을 판정엔진에서 특정하지 못했습니다. "
+            "물질별 확인값을 먼저 저장한 뒤 다시 판정해 주세요."
+        )
+        return
+    st.caption(
+        "아래 물질은 판정엔진이 최대보유량 계산 대상으로 확인했습니다: "
+        + ", ".join(needs_names)
+        + ". 물질명은 자동으로 채워지며 바꿀 수 없습니다."
+    )
 
     def saved(count: int) -> None:
         st.session_state.pop(f"judge_out_{project.project_id}", None)
@@ -360,13 +369,9 @@ def _facilities(project, outcome, needs_names: list[str]) -> None:
     )
 
 
-def _names_needing_holding(project, table_messages) -> list[str]:
-    from engine.stage2 import cap_chemical_workspace as chem
-
-    _, rows = chem._rows(project)
-    needs = judgement.request_needs(table_messages, len(rows))
-    return [str(rows[n - 1].get("제품명") or rows[n - 1].get("물질명") or "")
-            for n in sorted(needs) if "사업장 최대보유량" in needs[n] and 1 <= n <= len(rows)]
+def _names_needing_holding(project, table_messages=None) -> list[str]:
+    """하위호환용 래퍼. 시설대상은 이제 요청문구가 아니라 판정엔진에서 직접 가져온다."""
+    return judgement.holding_target_names(project)
 
 
 def _chemical_table(project, outcome, table_messages):
