@@ -450,6 +450,9 @@ def _chemical_table(project, outcome, table_messages):
     pid = project.project_id
     cand_key, gen_key, sds_col = f"judge_kosha_{pid}", f"judge_chem_gen_{pid}", "SDS 제2항 유해성·위험성 분류(선택 입력)"
     candidates: dict = st.session_state.get(cand_key, {})
+    kosha_targets = _kosha_targets(rows, wanted, parts)
+    if sds_col in shown:
+        candidates = _auto_lookup_kosha(project, kosha_targets, candidates, cand_key, gen_key)
     records = []
     for number in wanted:
         row, extra = rows[number - 1], stored[number - 1]
@@ -468,7 +471,8 @@ def _chemical_table(project, outcome, table_messages):
         records.append(record)
     frame = pd.DataFrame(records)
     if sds_col in shown:
-        _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates)
+        _kosha_button(project, kosha_targets, cand_key, gen_key, candidates)
+        _mixture_kosha_reference(rows, wanted, parts, candidates)
     text = lambda label, help_text=None: st.column_config.TextColumn(label, help=help_text)
     config = {
         "행": st.column_config.NumberColumn("행", disabled=True, width="small"),
@@ -512,13 +516,36 @@ def _chemical_table(project, outcome, table_messages):
     return result, used
 
 
-def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates) -> None:
-    asked = []
+def _kosha_targets(rows, wanted, parts) -> list[str]:
+    """판정조건 화면에서 KOSHA 참고조회할 CAS를 구성성분 단위로 만든다.
+
+    혼합물은 제품행의 CAS가 없으므로 구성성분 CAS를 각각 조회한다. 이 목록은
+    참고조회용이며 혼합물 제품의 MSDS 제2항 분류를 대신하지 않는다.
+    """
+    targets: list[str] = []
     for number in wanted:
-        cas = str(rows[number - 1].get("CAS No.") or rows[number - 1].get("CAS 번호") or "").strip()
-        if cas and not stored[number - 1].get(sds_col):
-            asked.append(cas)
-    empty = kosha_candidates.pending_cas(asked, candidates)  # 처음이거나 네트워크 오류로 실패한 것만
+        row = rows[number - 1]
+        parent_cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
+        component_cas = [cas for cas, _ in (parts.get(number) or []) if cas]
+        targets.extend(component_cas or ([parent_cas] if parent_cas else []))
+    return list(dict.fromkeys(targets))
+
+
+def _auto_lookup_kosha(project, targets, candidates, cand_key, gen_key) -> dict:
+    """화면 진입 시 아직 조회하지 않은 CAS의 KOSHA 후보를 한 번 자동조회한다."""
+    missing = [cas for cas in targets if cas not in candidates]
+    if not missing:
+        return candidates
+    with st.spinner(f"KOSHA에서 MSDS 참고분류 {len(missing)}건을 자동조회하는 중입니다."):
+        found = kosha_candidates.fetch(missing)
+    merged = {**candidates, **found}
+    st.session_state[cand_key] = merged
+    st.session_state[gen_key] = st.session_state.get(gen_key, 0) + 1
+    return merged
+
+
+def _kosha_button(project, targets, cand_key, gen_key, candidates) -> None:
+    empty = kosha_candidates.pending_cas(targets, candidates)  # 네트워크 오류 등은 수동 재조회 허용
     help_text = KOSHA_HELP
     if st.button("KOSHA에서 MSDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
                  help=help_text):
@@ -532,6 +559,26 @@ def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, can
         got = len(candidates) - len(misses)
         detail = " (" + ", ".join(f"{c.cas}: {c.message or c.status}" for c in misses[:3]) + ")" if misses else ""
         st.caption(f"KOSHA 후보 {got}건을 채웠습니다. 채우지 못한 {len(misses)}건은 직접 적어 주세요.{detail}")
+
+
+def _mixture_kosha_reference(rows, wanted, parts, candidates) -> None:
+    """혼합물 구성성분별 KOSHA 결과를 참고자료로만 표시한다."""
+    reference = []
+    for number in wanted:
+        row = rows[number - 1]
+        for cas, pct in parts.get(number) or []:
+            candidate = candidates.get(cas)
+            if candidate is None:
+                continue
+            reference.append({
+                "제품명": str(row.get("제품명") or row.get("물질명") or f"{number}행"),
+                "구성성분 CAS No.": cas,
+                "함량(%)": pct,
+                "KOSHA 참고분류": candidate.text or f"({candidate.message or candidate.status})",
+            })
+    if reference:
+        st.caption("혼합물 구성성분별 KOSHA 조회 결과는 참고자료입니다. 제품 MSDS 제2항 분류는 제품 MSDS를 확인해 입력하세요.")
+        st.dataframe(pd.DataFrame(reference), hide_index=True, width="stretch")
 
 
 
