@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 import json
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 from . import cap_form1_engine as form1
@@ -229,6 +230,43 @@ EXTRA_FIELDS: dict[str, dict[str, Any]] = {
     "보관계획도 최대량": {"label": "보관계획도 최대량", "kind": "number", "help": "보관시설의 보관계획도에 표시된 최대 보관량입니다."},
     "일일최대보관량": {"label": "일일 최대 보관량", "kind": "number", "help": "하루 중 보관하는 최대량입니다. 보관계획도 최대량과 비교해 큰 값을 사용합니다."},
 }
+
+
+def _norm_name(text: object) -> str:
+    return re.sub(r"\s+", "", str(text or "")).lower()
+
+
+def gravity_candidates(project: Stage2Project) -> list[dict[str, Any]]:
+    """물질명·비중이 모두 있는 화학물질 목록 행(별지 제6호에서 채운 값).
+
+    시설 표의 '취급물질' 문구와 이름을 맞춰 비중 참고값 선택지를 만드는 데 쓴다.
+    """
+    from .cap_form6_workspace import property_rows
+
+    out = []
+    for row in property_rows(project):
+        value = _float(row.get("비중"))
+        name = _clean_text(row.get("물질명"))
+        if value is not None and name:
+            out.append({"물질명": name, "CAS 번호": _clean_text(row.get("CAS 번호")), "비중": value})
+    return out
+
+
+def gravity_matches_for(row: Mapping[str, Any], candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """이 시설 행의 '취급물질' 문구와 이름이 일치하는 화학물질의 비중 후보. 정확히 같은 이름을 먼저 찾고,
+    없으면 한쪽 이름이 다른 쪽에 포함되는 경우로 넓힌다(짧은 약칭으로 적은 경우 등)."""
+    text = _norm_name(row.get("취급물질"))
+    if not text:
+        return []
+    exact = [c for c in candidates if _norm_name(c["물질명"]) == text]
+    if exact:
+        return exact
+    return [c for c in candidates if _norm_name(c["물질명"]) and
+            (_norm_name(c["물질명"]) in text or text in _norm_name(c["물질명"]))]
+
+
+def _clean_text(value: object) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def extra_fields_for(row: Mapping[str, Any]) -> list[str]:

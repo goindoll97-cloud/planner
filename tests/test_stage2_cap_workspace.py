@@ -228,5 +228,89 @@ class CAPSharedFactsTests(unittest.TestCase):
         self.assertEqual(workspace_facility_rows(_project()), [])
 
 
+class GravityCandidateTests(unittest.TestCase):
+    def _project_with_properties(self):
+        from engine.stage2 import cap_chemical_workspace as chem
+
+        project = _project()
+        project.set_field(
+            chem.DETAILS_KEY, "화학물질 목록",
+            [
+                {"물질명": "염소", "CAS 번호": "7782-50-5", "함량(%)": 99.9, "비중": "1.4"},
+                {"물질명": "톨루엔", "CAS 번호": "108-88-3", "함량(%)": 99.5, "비중": ""},
+            ],
+            "USER_CONFIRMED",
+        )
+        return project
+
+    def test_candidates_only_include_rows_with_a_numeric_gravity(self):
+        candidates = ws.gravity_candidates(self._project_with_properties())
+        self.assertEqual(candidates, [{"물질명": "염소", "CAS 번호": "7782-50-5", "비중": 1.4}])
+
+    def test_exact_name_match_is_preferred_over_partial(self):
+        candidates = [
+            {"물질명": "염소", "CAS 번호": "7782-50-5", "비중": 1.4},
+            {"물질명": "무수 톨루엔", "CAS 번호": "", "비중": 0.87},
+        ]
+        exact = ws.gravity_matches_for({"취급물질": "염소"}, candidates)
+        self.assertEqual(exact, [{"물질명": "염소", "CAS 번호": "7782-50-5", "비중": 1.4}])
+        # 정확히 같은 이름이 없으면 부분적으로 겹치는 이름까지 넓힌다(짧은 약칭으로 적은 경우 등).
+        partial = ws.gravity_matches_for({"취급물질": "무수 톨루엔 보관"}, candidates)
+        self.assertEqual(partial, [{"물질명": "무수 톨루엔", "CAS 번호": "", "비중": 0.87}])
+
+    def test_no_match_when_facility_substance_is_blank_or_unrelated(self):
+        candidates = ws.gravity_candidates(self._project_with_properties())
+        self.assertEqual(ws.gravity_matches_for({"취급물질": ""}, candidates), [])
+        self.assertEqual(ws.gravity_matches_for({"취급물질": "황산"}, candidates), [])
+
+
+class GravityFacilityEditorTests(unittest.TestCase):
+    def test_picking_a_candidate_overwrites_the_gravity_cell(self):
+        from streamlit.testing.v1 import AppTest
+
+        from engine.stage2 import cap_chemical_workspace as chem
+
+        project = _project()
+        project.set_field(
+            chem.DETAILS_KEY, "화학물질 목록",
+            [{"물질명": "염소", "CAS 번호": "7782-50-5", "함량(%)": 99.9, "비중": "1.4"}],
+            "USER_CONFIRMED",
+        )
+        rows = ws.facility_editor_rows(project)
+        rows[0]["취급물질"] = "염소"
+        rows[0]["비중"] = ""
+        ws.save_facility_rows(project, rows)  # sets project.fields in memory; no disk needed
+
+        def app():
+            import streamlit as st
+
+            from engine.stage2.storage import load_project
+            from ui import cap_facility_editor
+
+            cap_facility_editor.render(load_project(st.session_state["_gravity_test_project_id"]), prefix="test")
+
+        # ui.cap_facility_editor imported `save_project` by name at module load time
+        # (possibly from an earlier, unrelated test's AppTest run in this same
+        # process), so patching engine.stage2.storage.save_project would not reach
+        # it; patch the name where it is actually looked up. load_project is
+        # imported fresh inside app() on every rerun, so patching it on the
+        # storage module works. Real disk I/O (and the cross-test path/tempdir
+        # races that come with it) is avoided entirely.
+        with patch("engine.stage2.storage.load_project", return_value=project), \
+             patch("ui.cap_facility_editor.save_project"):
+            at = AppTest.from_function(app, default_timeout=60)
+            at.session_state["_gravity_test_project_id"] = project.project_id
+            at.run()
+            self.assertFalse(at.exception)
+            gravity_select = next(s for s in at.selectbox if s.key.startswith("test_gravity_"))
+            self.assertEqual(gravity_select.options, ["직접 입력", "1.4 (염소)"])
+            gravity_select.select("1.4 (염소)").run()
+            at.button(key=f"test_save_{project.project_id}").click().run()
+            self.assertFalse(at.exception)
+
+        saved = ws.facility_editor_rows(project)
+        self.assertEqual(str(saved[0]["비중"]), "1.4")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -62,13 +62,32 @@ def render(project, prefix: str = "cap_form01", on_saved=None, compact: bool = F
     saved_rows = {
         (str(r.get("설비번호") or ""), str(r.get("설비명") or "")): r for r in ws.facility_editor_rows(project)
     }
+    gravity_pool = ws.gravity_candidates(project)
     for index, row in enumerate(rows):
         old = saved_rows.get((str(row.get("설비번호") or ""), str(row.get("설비명") or "")), {})
         row.update({k: old[k] for k in ws.EXTRA_FIELDS if k in old})
         wanted = ws.extra_fields_for(row)
         label = str(row.get("설비명") or row.get("설비번호") or f"{index + 1}번째 시설")
-        if wanted:
+        gravity_matches = ws.gravity_matches_for(row, gravity_pool)
+        if wanted or gravity_matches:
             with st.expander(f"{label} — 추가로 필요한 정보", expanded=True):
+                if gravity_matches:
+                    options = ["직접 입력", *[f"{m['비중']:g} ({m['물질명']})" for m in gravity_matches]]
+                    current = str(row.get("비중") or "").strip()
+                    default = 0
+                    if current.replace(".", "", 1).replace("-", "", 1).isdigit():
+                        default = next(
+                            (i for i, m in enumerate(gravity_matches, start=1) if abs(m["비중"] - float(current)) < 1e-9),
+                            0,
+                        )
+                    picked = st.selectbox(
+                        "비중 참고값(화학물질 목록에서)", options, index=default,
+                        key=f"{prefix}_gravity_{project.project_id}_{index}",
+                        help="시설 표의 '취급물질'과 이름이 같은 화학물질의 비중입니다(별지 제6호에서 확인한 값). "
+                             "물질이 다르거나 값이 안 맞으면 '직접 입력'을 고르고 표의 비중 칸에 직접 적으세요.",
+                    )
+                    if picked != "직접 입력":
+                        row["비중"] = gravity_matches[options.index(picked) - 1]["비중"]
                 for field_id in wanted:
                     spec = ws.EXTRA_FIELDS[field_id]
                     key = f"{prefix}_extra_{project.project_id}_{index}_{field_id}"
