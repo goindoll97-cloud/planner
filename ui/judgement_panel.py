@@ -267,50 +267,81 @@ def _note8_table(project):
     return [{k: ("" if pd.isna(v) else str(v).strip()) for k, v in row.items()} for row in edited.to_dict("records")]
 
 
-def _ask(project, outcome) -> None:
+def _ask(project, outcome) -> bool:
+    """판정 질문 단계.
+
+    판정 조건과 최대보유량 입력을 한 화면에 섞지 않는다.
+    먼저 판정 조건을 모두 확정한 뒤 재판정하고, 그 다음에 시설 최대보유량 단계로 넘어간다.
+    """
     st.markdown("#### 판정에 필요한 확인 사항", help=WHY_ASK)
     existing = judgement.answers(project)
     given: dict[str, str] = {}
-    groups = {name: [q for q in outcome.questions if q.system == name] for name in SYSTEM_ORDER}
+
+    # 1) 엔진이 현재 요청한 기본 질문을 표시한다.
+    base_questions = list(outcome.questions)
+    groups = {name: [q for q in base_questions if q.system == name] for name in SYSTEM_ORDER}
     for name, questions in groups.items():
         if not questions:
             continue
         if len([g for g in groups.values() if g]) > 1:
             st.markdown(f"**{name}**")
         for question in questions:
-            given[question.item] = _question(project, question, existing)
+            given[question.item] = _question(project, question, {**existing, **given})
+
+    # 2) 현재 화면에서 '예'를 고르면 필요한 후속 질문을 즉시 같은 화면에 펼친다.
+    merged_answers = {**existing, **{k: v for k, v in given.items() if v}}
+    expanded = list(judgement._questions_for(list(outcome.messages), merged_answers))
+    base_items = {q.item for q in base_questions}
+    followups = [q for q in expanded if q.item not in base_items]
+    if followups:
+        follow_groups = {name: [q for q in followups if q.system == name] for name in SYSTEM_ORDER}
+        for name, questions in follow_groups.items():
+            if not questions:
+                continue
+            for question in questions:
+                given[question.item] = _question(project, question, {**merged_answers, **given})
+
     table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
     facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
+
     covered = [m for m in outcome.messages
-               if m in table_messages or any(q.trigger and q.trigger in m for q in outcome.questions)
+               if m in table_messages or any(q.trigger and q.trigger in m for q in expanded)
                or judgement.NOTE8_TABLE_MARKER in m or judgement.HOLDING_FACILITY_MARKER in m]
     others = [m for m in outcome.messages if m not in covered]
     if others:
         st.markdown("**함께 확인할 내용**", help="답을 적는 질문이 아니라, 물질 목록이나 시설 정보를 보완하면 해결되는 내용입니다.")
         for message in others:
             st.write(f"• {judgement.plain_request(message)}")
+
     note8_rows = _note8_table(project) if note8_needed else None
     edited, used = _chemical_table(project, outcome, table_messages)
-    if facility_needed:
-        # 시설 입력 대상은 요청문구를 파싱하지 않고, Stage 1의 실제 시설대상 스크리닝 결과에서 가져온다.
-        holding_names = judgement.holding_target_names(project)
-        _facilities(project, outcome, holding_names)
-    confirmed = True
-    if used:
-        confirmed = st.checkbox(
-            f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
-            key=f"judge_kosha_ok_{project.project_id}")
-    has_answers = bool(outcome.questions) or edited is not None or note8_rows is not None
-    if not has_answers:
-        return False  # 적을 답이 없고 시설 표만 있으면, 시설을 저장할 때 바로 다시 판정한다
-    if st.button("판정 조건 확정하기", type="primary", key=f"judge_answer_{project.project_id}", disabled=not confirmed):
-        table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
-        note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
-        if not any(given.values()) and not table_changed and not note8_changed:
-            st.warning("한 가지 이상 답해 주세요.")
-        else:
-            with st.spinner("판정 조건을 확정하고 다시 계산하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
+
+    # 질문·물질별 값·비고8 표가 하나라도 있으면 먼저 이 단계만 끝낸다.
+    has_condition_inputs = bool(base_questions) or edited is not None or note8_rows is not None
+    if has_condition_inputs:
+        if facility_needed:
+            st.caption("판정 조건을 먼저 확정하면 다음 단계에서 최대보유량을 확인합니다.")
+
+        confirmed = True
+        if used:
+            confirmed = st.checkbox(
+                f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
+                key=f"judge_kosha_ok_{project.project_id}")
+
+        if st.button("판정 조건 확정하기", type="primary",
+                     key=f"judge_answer_{project.project_id}", disabled=not confirmed):
+            table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
+            note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
+            answer_changed = any(
+                value and value != existing.get(item, "")
+                for item, value in given.items()
+            )
+            if not answer_changed and not table_changed and not note8_changed:
+                st.warning("새로 입력하거나 변경한 판정 조건이 없습니다.")
+                return True
+
+            with st.spinner("판정 조건을 확정하고 다음 단계를 확인하는 중입니다."):
                 if given:
                     judgement.save_answers(project, given)
                 if table_changed:
@@ -319,9 +350,26 @@ def _ask(project, outcome) -> None:
                 if note8_changed:
                     judgement.save_note8_rows(project, note8_rows)
                 storage.save_project(project)
-                st.session_state[f"judge_out_{project.project_id}"] = judgement.judge(project)
+                next_outcome = judgement.judge(project)
+                st.session_state[f"judge_out_{project.project_id}"] = next_outcome
+                if next_outcome.status in {"DECIDED", "NOT_REQUIRED"}:
+                    st.session_state[f"judge_flash_{project.project_id}"] = "판정 조건이 확정되었습니다. 최종 판정 결과를 확인해 주세요."
+                elif next_outcome.status == "PENDING" or any(
+                    judgement.HOLDING_FACILITY_MARKER in m for m in getattr(next_outcome, "messages", ())
+                ):
+                    st.session_state[f"judge_flash_{project.project_id}"] = "판정 조건이 확정되었습니다. 다음 단계에서 최대보유량을 확정해 주세요."
+                else:
+                    st.session_state[f"judge_flash_{project.project_id}"] = "입력한 조건을 저장했습니다. 추가로 필요한 확인 사항이 아래에 표시됩니다."
             st.rerun()
-    return True
+        return True
+
+    # 판정 조건 입력이 더 없고 시설정보만 필요할 때에만 최대보유량 단계를 표시한다.
+    if facility_needed:
+        holding_names = judgement.holding_target_names(project)
+        _facilities(project, outcome, holding_names)
+        return True
+
+    return False
 
 
 def _filled(rows: list[dict]) -> list[dict]:
@@ -522,6 +570,10 @@ def render(project) -> None:
     with st.expander(label, expanded=pending):
         st.markdown("**현재 판정:** " + _status_line(project), help=HELP_FLOW)
         key = f"judge_out_{project.project_id}"
+        flash_key = f"judge_flash_{project.project_id}"
+        flash = st.session_state.pop(flash_key, None)
+        if flash:
+            st.success(flash)
         outcome = st.session_state.get(key)
         has_own_button = False
         if outcome is not None:
@@ -534,10 +586,11 @@ def render(project) -> None:
                 for message in outcome.messages:
                     st.write(f"• {judgement.display_request(message)}")
             elif outcome.status == "PENDING":
-                st.warning("최대보유량을 알 수 없는 물질이 있어 판정할 수 없습니다.")
+                st.warning("최대보유량을 확인해야 최종판정을 진행할 수 있습니다.")
                 for name in outcome.missing_quantity:
                     st.write(f"• {name}")
                 _facilities(project, outcome, list(outcome.missing_quantity))
+                has_own_button = True
             elif outcome.status == "SYSTEM":
                 st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
                 for message in outcome.messages:
