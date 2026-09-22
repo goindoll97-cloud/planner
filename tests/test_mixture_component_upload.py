@@ -71,5 +71,28 @@ class MixtureComponentFileTests(unittest.TestCase):
         self.assertEqual({r["CAS No."] for r in rows}, {"67-64-1", "108-88-3"})
 
 
+
+class MixtureCompositionUIContractTests(unittest.TestCase):
+    def test_mixture_uploader_exists_only_in_the_composition_step(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        project_panel = (root / "ui" / "judgement_project_panel.py").read_text(encoding="utf-8")
+        judgement_panel = (root / "ui" / "judgement_panel.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("mixture_component_upload_panel.render(", project_panel)
+        self.assertIn("mixture_component_upload_panel.render(", judgement_panel)
+        self.assertIn("continue_judgement=True", judgement_panel)
+
+    def test_manual_mixture_grid_is_an_explicit_fallback_not_the_default(self):
+        from pathlib import Path
+
+        text = (Path(__file__).resolve().parents[1] / "ui" / "judgement_panel.py").read_text(encoding="utf-8")
+        self.assertIn("파일 대신 이 화면에서 혼합물 성분 직접 입력", text)
+        self.assertIn("if not manual_mixtures:", text)
+        # Default path returns after showing the second-file uploader, before per-product manual editors are rendered.
+        self.assertIn("return\n\n    stored_components", text)
+
+
 if __name__ == "__main__":
     unittest.main()
