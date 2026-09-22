@@ -576,3 +576,57 @@ def add_to_project(project: Stage2Project, rows: list[Mapping[str, Any]], *, fil
                           note=f"엑셀·CSV 업로드로 물질 {len(new_rows)}건 추가({file_name}, SHA-256 {sha256[:12]})")
     project.notes.append(f"물질 목록 업로드: {file_name} (SHA-256 {sha256[:12]}…) {len(new_rows)}건 추가, {skipped}건 제외")
     return len(new_rows), skipped
+
+
+def remove_rows(project: Stage2Project, row_numbers: list[int]) -> list[str]:
+    """물질 목록에서 행(1부터, 표에 보이는 순서)을 지운다. 지운 물질의 제품명 목록을 돌려준다.
+
+    같은 행 번호를 쓰는 혼합물 성분(mixture_components)도 함께 지우고, 남은 성분·물질별 확인값(chemical_inputs)의
+    행 번호는 뒤로 당겨진 새 위치에 맞춰 다시 매긴다. 판정에 이미 쓴 물질을 지우면 이전 판정 결과가 더는 맞지 않으므로,
+    호출한 쪽에서 판정 결과(judge_out_*)를 지우고 다시 판정하도록 안내해야 한다.
+    """
+    from . import cap_chemical_workspace as chem
+    from .cap_judgement import CHEM_INPUTS_KEY, MIXTURE_COMPONENTS_KEY, chemical_inputs, mixture_components
+
+    canonical, rows = chem._rows(project)
+    total = len(rows)
+    wanted = {n for n in row_numbers if 1 <= n <= total}
+    if not wanted or not canonical:
+        return []
+
+    removed_names = [
+        _clean(rows[n - 1].get("제품명")) or _clean(rows[n - 1].get("CAS No.")) or f"{n}행"
+        for n in sorted(wanted)
+    ]
+    kept_old_positions = [n for n in range(1, total + 1) if n not in wanted]
+    new_position = {old: index + 1 for index, old in enumerate(kept_old_positions)}
+    kept_rows = [rows[n - 1] for n in kept_old_positions]
+
+    keys = [chem.INVENTORY_KEY]
+    if canonical == chem.DETAILS_KEY:
+        keys.append(chem.DETAILS_KEY)
+    for key in keys:
+        record = project.get_field(key)
+        label = record.label if record is not None else "화학물질 목록"
+        evidence = list(record.evidence) if record is not None else []
+        project.set_field(key, label, [dict(r) for r in kept_rows], "USER_CONFIRMED", evidence=evidence,
+                          note=f"물질 {len(wanted)}건 삭제: {', '.join(removed_names)}")
+
+    kept_components = []
+    for component in mixture_components(project):
+        try:
+            old_position = int(float(component.get("제품목록행번호")))
+        except (TypeError, ValueError):
+            continue
+        if old_position in new_position:
+            item = dict(component)
+            item["제품목록행번호"] = new_position[old_position]
+            kept_components.append(item)
+    project.set_field(MIXTURE_COMPONENTS_KEY, "혼합물 구성성분", kept_components, "USER_CONFIRMED")
+
+    entered = chemical_inputs(project)
+    kept_inputs = [entered[old - 1] if old - 1 < len(entered) else {} for old in kept_old_positions]
+    project.set_field(CHEM_INPUTS_KEY, "법정 판정에 필요한 물질별 확인값(회사 입력)", kept_inputs, "USER_CONFIRMED")
+
+    project.notes.append(f"물질 목록에서 {len(wanted)}건 삭제: {', '.join(removed_names)}")
+    return removed_names

@@ -76,23 +76,48 @@ def _rows(project) -> list[dict]:
     return rows
 
 
+def _delete_chemical_rows(project, rows: list[dict]) -> None:
+    """물질 목록 표에 삭제 칸을 두고, 고른 행을 지운다. 혼합물 성분·물질별 확인값도 같이 정리한다."""
+    pid = project.project_id
+    parts = judgement.components_by_row(project)
+    gen_key = f"judge_chem_rows_gen_{pid}"
+    generation = st.session_state.get(gen_key, 0)
+    table = pd.DataFrame([{
+        "삭제": False,
+        "제품명": r.get("제품명") or r.get("물질명") or "",
+        "구분": "혼합물" if judgement._mixture_yes(r.get("혼합물 여부")) else "단일물질",
+        "CAS No.": judgement.cas_display(r, number, parts),
+        "함량(%)": judgement.content_display(r, number, parts),
+        "하루 최대 제조·사용량(ton)": r.get("최대 제조·사용량") or "",
+        "최대 저장량(ton)": r.get("최대 저장량") or "",
+    } for number, r in enumerate(rows, start=1)])
+    disabled = [c for c in table.columns if c != "삭제"]
+    edited = st.data_editor(frames.safe(table), width="stretch", hide_index=True, num_rows="fixed",
+                            disabled=disabled, key=f"judge_chem_rows_{pid}_{generation}",
+                            column_config={"삭제": st.column_config.CheckboxColumn("삭제", help="지울 물질을 고르세요.")})
+    if parts:
+        st.caption("혼합제품은 제품 자체의 CAS가 없으므로, CAS 칸에 제품 SDS 제3항에서 옮긴 성분 CAS를 보여 줍니다. "
+                   "판정은 이 성분 CAS와 함량으로 합니다.")
+    picked = [number for number, checked in enumerate(edited["삭제"].tolist(), start=1) if checked]
+    if picked:
+        st.caption(f"{len(picked)}건을 선택했습니다.")
+    # 라벨·도움말을 선택 개수에 따라 바꾸면 Streamlit이 매번 다른 위젯으로 봐서 클릭이 다음 실행에 반영되지 않는다.
+    # 그래서 라벨은 고정하고 건수는 위의 캡션으로만 보여 준다.
+    if st.button("선택한 물질 삭제", key=f"judge_chem_del_{pid}", disabled=not picked,
+                help="법정 판정과 관련된 확인값·혼합물 성분도 함께 지웁니다. 되돌릴 수 없습니다."):
+        removed = chem_upload.remove_rows(project, picked)
+        storage.save_project(project)
+        st.session_state[gen_key] = generation + 1
+        _changed(pid, f"물질 {len(removed)}건을 지웠습니다: {', '.join(removed)}. "
+                      "물질이 바뀌었으니 아래 '법정 대상 판정하기'(또는 '다시 판정하기')로 결과를 확인하세요.")
+
+
 def _chemicals(project) -> None:
     pid = project.project_id
     rows = _rows(project)
     with st.expander(f"물질 목록 — {len(rows)}건", expanded=not rows):
         if rows:
-            parts = judgement.components_by_row(project)
-            frames.show(pd.DataFrame([{
-                "제품명": r.get("제품명") or r.get("물질명") or "",
-                "구분": "혼합물" if judgement._mixture_yes(r.get("혼합물 여부")) else "단일물질",
-                "CAS No.": judgement.cas_display(r, number, parts),
-                "함량(%)": judgement.content_display(r, number, parts),
-                "하루 최대 제조·사용량(ton)": r.get("최대 제조·사용량") or "",
-                "최대 저장량(ton)": r.get("최대 저장량") or "",
-            } for number, r in enumerate(rows, start=1)]), width="stretch", hide_index=True)
-            if parts:
-                st.caption("혼합제품은 제품 자체의 CAS가 없으므로, CAS 칸에 제품 SDS 제3항에서 옮긴 성분 CAS를 보여 줍니다. "
-                           "판정은 이 성분 CAS와 함량으로 합니다.")
+            _delete_chemical_rows(project, rows)
         else:
             st.info("이 사업장에는 아직 물질이 없습니다. 아래에서 엑셀·CSV로 올려 주세요.")
 
