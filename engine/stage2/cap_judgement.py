@@ -53,6 +53,13 @@ def _psm_exclusion_labels() -> tuple[str, ...]:
     return tuple(guide.what_to_check) if guide is not None else ()
 
 
+def _psm_target_industry_labels() -> tuple[str, ...]:
+    # Keep the user-facing choices synchronized with the engine's approved KSIC mapping.
+    from ..psm_engine import PSM_TARGET_INDUSTRIES
+
+    return tuple(PSM_TARGET_INDUSTRIES.values())
+
+
 def _help(meaning: str, *, why: str = "", where: str = "", example: str = "", unsure: str = "잘 모르면 '모름'을 고르세요. 판정이 보류되고 무엇을 확인해야 하는지 안내됩니다.") -> str:
     parts = [f"**무슨 뜻인가요?** {meaning}"]
     if example:
@@ -102,6 +109,16 @@ QUESTIONS: tuple[Question, ...] = (
     Question("시행령 제43조제2항 제외설비 유형", "공정안전보고서", "어떤 제외설비인가요?",
              _help("제외설비의 종류입니다. 목록에서 고르세요.", unsure="목록에 없으면 앞 질문에서 '모름'으로 바꿔 주세요."),
              options=(), follows="시행령 제43조제2항 제외설비 해당 여부", choices=_psm_exclusion_labels()),
+    Question("PSM 법정 대상 업종 선택", "공정안전보고서",
+             "사업장의 주된 업종은 다음 중 어디에 해당하나요?",
+             _help(
+                 "사업장 정보에 KSIC 코드를 입력하지 않는 경우, 사업장의 실제 주된 생산·영업활동을 기준으로 선택하세요. "
+                 "합성수지 및 기타 플라스틱물질 제조업은 별표 13 제1호 또는 제2호 물질 취급 조건도 충족해야 합니다.",
+                 where="사업자등록증·공장등록증의 업종과 실제 주된 생산활동을 확인하세요.",
+                 unsure="정확히 구분하기 어려우면 '모름'을 선택하세요. 업종 기준을 확인한 뒤 판정해야 합니다.",
+             ),
+             options=(), trigger="PSM 법정 대상 업종 선택",
+             choices=("해당 없음", *_psm_target_industry_labels(), "모름")),
     *(
         q
         for no, label, meaning, example, where in (

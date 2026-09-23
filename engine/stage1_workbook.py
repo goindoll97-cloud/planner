@@ -353,7 +353,9 @@ def _psm_industry_clause(code: str) -> str:
     }.get(str(code or "").strip(), "")
 
 
-def _psm_subject_explanation(psm_result, psm_facts: PSMFollowupFacts) -> str:
+def _psm_subject_explanation(
+    psm_result, psm_facts: PSMFollowupFacts, industry_selection: str = ""
+) -> str:
     parts = [
         "「산업안전보건법」 제44조제1항은 사업장에 대통령령으로 정하는 유해하거나 위험한 설비가 있는 경우 공정안전보고서를 작성·제출하도록 규정하고 있습니다."
     ]
@@ -372,9 +374,14 @@ def _psm_subject_explanation(psm_result, psm_facts: PSMFollowupFacts) -> str:
             parts.append(
                 f"귀사가 입력한 한국표준산업분류 코드 {code}는 「산업안전보건법 시행령」 제43조제1항{clause}의 '{industry}'에 해당하고, 같은 호 단서에서 요구하는 {condition} 해당 사실도 확인되었습니다."
             )
-        else:
+        elif code:
             parts.append(
                 f"귀사가 입력한 한국표준산업분류 코드 {code}는 「산업안전보건법 시행령」 제43조제1항{clause}의 '{industry}'에 해당합니다."
+            )
+        elif industry_selection:
+            detail = " 별표 13 제1호 또는 제2호 물질 취급 조건도 확인했습니다." if industry_selection == PSM_TARGET_INDUSTRIES.get("20202") else ""
+            parts.append(
+                f"사업장 입력 업종을 PSM 법정 대상 업종인 '{industry_selection}'에 해당하는 것으로 확인했습니다.{detail}"
             )
 
     if psm_result.quantity_trigger:
@@ -487,11 +494,24 @@ def assess_stage1_from_workbook(intake: IntakeData) -> Stage1WorkbookDecision:
             requests.append(_request("05_최종판정조건", "'가스를 전문으로 저장·판매하는 시설 내 가스 여부'를 Y/N으로 확인해 주세요."))
 
         if not psm_result.blockers and not [r for r in requests if r.startswith("05_최종판정조건") or r.startswith("06_PSM") or r.startswith("02_화학물질목록")]:
-            if psm_result.industry_trigger or psm_result.quantity_trigger:
+            industry_selection = _clean_text(_condition_value(intake.final_conditions, "PSM 법정 대상 업종 선택"))
+            known_industry_choices = {"해당 없음", *PSM_TARGET_INDUSTRIES.values()}
+            user_industry_trigger = industry_selection in PSM_TARGET_INDUSTRIES.values()
+            if industry_selection == PSM_TARGET_INDUSTRIES.get("20202"):
+                user_industry_trigger = any(
+                    answer.applicable is True for answer in psm_facts.property_answers.values()
+                )
+            industry_trigger = bool(psm_result.industry_trigger or user_industry_trigger)
+            psm_result.industry_trigger = industry_trigger
+
+            if industry_trigger or psm_result.quantity_trigger:
                 exclusion_raw = _condition_value(intake.final_conditions, "시행령 제43조제2항 제외설비 해당 여부") or _condition_value(intake.final_conditions, "법정 제외설비 해당 여부")
                 if _answer_is_no(exclusion_raw):
                     decision.psm_status = "공정안전보고서 제출 대상"
-                    decision.psm_explanation = _psm_subject_explanation(psm_result, psm_facts)
+                    decision.psm_explanation = _psm_subject_explanation(
+                        psm_result, psm_facts,
+                        industry_selection if industry_selection in PSM_TARGET_INDUSTRIES.values() else "",
+                    )
                 elif _answer_is_yes(exclusion_raw):
                     exclusion_type = _condition_value(intake.final_conditions, "시행령 제43조제2항 제외설비 유형")
                     if not _known_psm_exclusion(exclusion_type):
@@ -501,15 +521,21 @@ def assess_stage1_from_workbook(intake: IntakeData) -> Stage1WorkbookDecision:
                         decision.psm_explanation = "회사 입력파일에서 시행령 제43조제2항의 제외설비 유형이 확인되어 공정안전보고서 제출 대상에서 제외되는 것으로 판정했습니다."
                 else:
                     requests.append(_request("05_최종판정조건", "'시행령 제43조제2항 제외설비 해당 여부'를 Y/N으로 확인하여 작성해 주세요."))
-            elif not re.fullmatch(r"\d{5}", str(psm_base.industry_code or "").strip()):
+            elif (not re.fullmatch(r"\d{5}", str(psm_base.industry_code or "").strip())
+                  and industry_selection not in known_industry_choices):
                 requests.append(_request(
-                    "사업장정보",
-                    "공정안전보고서의 업종 기준을 확인하려면 사업장 정보의 '업종 분류 코드(KSIC)' 5자리가 필요합니다. "
-                    "회사에서 사용하는 5자리 한국표준산업분류 코드를 확인해 입력해 주세요.",
+                    "05_최종판정조건",
+                    "PSM 법정 대상 업종 선택을 확인해 주세요. 사업장의 실제 주된 업종을 기준으로 판정 화면에서 선택합니다.",
                 ))
             else:
                 decision.psm_status = "현재 확인 범위에서 공정안전보고서 제출 대상 기준 미해당"
-                decision.psm_explanation = "회사 입력파일의 사업 종류, 별표 13 물성·특수조건 및 비고 제7호 합산한 값(R)을 확인한 결과 제출 대상 기준이 확인되지 않았습니다."
+                if industry_selection == "해당 없음" and not psm_base.industry_code:
+                    decision.psm_explanation = (
+                        "사업장 입력 업종을 PSM 법정 대상 업종 목록과 대조해 '해당 없음'으로 확인했고, "
+                        "별표 13 물성·특수조건 및 비고 제7호 합산한 값(R)에서도 제출 대상 기준이 확인되지 않았습니다."
+                    )
+                else:
+                    decision.psm_explanation = "회사 입력파일의 사업 종류, 별표 13 물성·특수조건 및 비고 제7호 합산한 값(R)을 확인한 결과 제출 대상 기준이 확인되지 않았습니다."
         decision.psm_legal_basis = ["「산업안전보건법」 제44조제1항", "「산업안전보건법 시행령」 제43조제1항·제2항", "같은 영 별표 13 및 비고 제7호·제8호(해당 시)"]
 
     # ---- CAP: workbook facts only ----
