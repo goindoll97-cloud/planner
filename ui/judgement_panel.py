@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """법정 대상 판정 화면 조각: 판정 전 사업장의 판정, 이미 판정한 사업장의 다시 판정, 판정에 필요한 질문."""
 
+import re
+
 import pandas as pd
 import streamlit as st
 
