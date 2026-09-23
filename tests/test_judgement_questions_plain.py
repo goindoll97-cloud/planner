@@ -145,6 +145,16 @@ class AskScreenTests(unittest.TestCase):
         self.assertTrue(any("취급하는 시설 전체" in r.label for r in at.radio))
         self.assertTrue(any(b.label == "판정정보 확인하기" for b in at.button))
 
+    def test_flammable_liquid_uses_product_selection_instead_of_retyping_quantities(self):
+        at = self._run([5])
+        self.assertFalse(at.exception)
+        parent = next(r for r in at.radio if "인화성 액체" in r.label)
+        parent.set_value("Y").run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any("인화성 액체에 해당하는 제품" in m.label for m in at.multiselect))
+        self.assertFalse(any("인화성 액체의 하루 최대 제조" in t.label for t in at.text_input))
+        self.assertFalse(any("인화성 액체의 최대 저장량" in t.label for t in at.text_input))
+
     def test_questions_are_grouped_under_the_document_they_affect(self):
         at = self._run([2, 5])
         headings = [m.value for m in at.markdown]
