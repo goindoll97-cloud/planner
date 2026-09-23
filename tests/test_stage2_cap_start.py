@@ -32,6 +32,16 @@ class CapStartTests(unittest.TestCase):
         self.assertEqual(row["최대 동시보유량(알면 입력)"], 3.0)
         self.assertTrue(intake.source_fingerprint)
 
+    def test_typed_kg_quantities_are_converted_to_ton_for_stage1(self):
+        intake = cap_start.build_intake(BUSINESS, [{
+            "제품명": "염소", "CAS No.": "7782-50-5", "단일물질/혼합물": "단일물질",
+            "최대 제조·사용량": 500, "최대 저장량": 2_000, "단위": "kg",
+        }])
+        row = intake.chemicals.iloc[0]
+        self.assertEqual(row["최대 제조·사용량"], 0.5)
+        self.assertEqual(row["최대 저장량"], 2.0)
+        self.assertEqual(row["수량 단위"], "ton")
+
     def test_missing_basics_are_reported_before_any_judgement(self):
         called = []
         outcome = cap_start.start({"사업장명": "", "사업장 주소": "", "업종 또는 주요 생산품": ""}, [],
