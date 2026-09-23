@@ -27,6 +27,24 @@ def _status_line(project) -> str:
 
 STEPS = ("판정정보 확인", "최대보유량 확인", "최종판정")
 
+
+def _is_psm_quantity_question(question) -> bool:
+    """PSM 물질군 수량 질문은 1단계가 아니라 2단계에서 받는다.
+
+    질문의 생성·판정·저장 형식은 엔진에 맡기고, 사용자 화면에서만 단계 위치를
+    바꾼다. 따라서 규정수량이나 PSM 판정식은 이 함수의 영향을 받지 않는다.
+    """
+    item = str(getattr(question, "item", "") or "")
+    return (
+        getattr(question, "system", "") == PSM
+        and item.startswith("별표 13 제")
+        and ("하루 최대 제조·취급량(kg)" in item or "최대 저장량(kg)" in item)
+    )
+
+
+def _stage2_questions(outcome) -> list:
+    return [question for question in getattr(outcome, "questions", ()) if _is_psm_quantity_question(question)]
+
 HELP_FLOW = ("판정은 판정정보 확인 → 최대보유량 확인 → 최종판정 순서로 진행합니다. 내부적으로 필요한 물질 성분과 판정 조건을 먼저 확인하고, "
              "더 필요한 정보가 있으면 그것만 물어봅니다. 별지 작성은 판정 전에도 미리 시작할 수 있습니다.")
 WHY_ASK = ("**왜 묻나요?** 입력하신 물질 목록만으로는 법정 대상인지 확정할 수 없어서, 판정 규칙이 사업장에 대해 추가로 확인을 요청한 항목입니다. "
@@ -59,7 +77,10 @@ def current_step(outcome) -> int:
     if status == "COMPOSITION":
         return 1
     if status == "REQUEST":
-        return 1 if getattr(outcome, "questions", ()) else 2
+        questions = tuple(getattr(outcome, "questions", ()) or ())
+        if questions and all(_is_psm_quantity_question(question) for question in questions):
+            return 2
+        return 1 if questions else 2
     if status == "PENDING":
         return 2
     return 3
@@ -278,7 +299,8 @@ def _ask(project, outcome) -> bool:
     given: dict[str, str] = {}
 
     # 1) 엔진이 현재 요청한 기본 질문을 표시한다.
-    base_questions = list(outcome.questions)
+    # PSM 물질군의 제조·취급량·저장량은 판정조건이 아니라 2단계에서 받는다.
+    base_questions = [question for question in outcome.questions if not _is_psm_quantity_question(question)]
     groups = {name: [q for q in base_questions if q.system == name] for name in SYSTEM_ORDER}
     for name, questions in groups.items():
         if not questions:
@@ -292,7 +314,7 @@ def _ask(project, outcome) -> bool:
     merged_answers = {**existing, **{k: v for k, v in given.items() if v}}
     expanded = list(judgement._questions_for(list(outcome.messages), merged_answers))
     base_items = {q.item for q in base_questions}
-    followups = [q for q in expanded if q.item not in base_items]
+    followups = [q for q in expanded if q.item not in base_items and not _is_psm_quantity_question(q)]
     if followups:
         follow_groups = {name: [q for q in followups if q.system == name] for name in SYSTEM_ORDER}
         for name, questions in follow_groups.items():
@@ -311,8 +333,10 @@ def _ask(project, outcome) -> bool:
         if not (facility_needed and "법정 사업장 최대보유량" in judgement.display_request(m))
     ]
 
+    deferred_items = {q.item for q in outcome.questions if _is_psm_quantity_question(q)}
     covered = [m for m in outcome.messages
                if m in all_table_messages or any(q.trigger and q.trigger in m for q in expanded)
+               or any(item and item in judgement.display_request(m) for item in deferred_items)
                or judgement.NOTE8_TABLE_MARKER in m or judgement.HOLDING_FACILITY_MARKER in m]
     others = [m for m in outcome.messages if m not in covered]
     if others:
@@ -390,6 +414,41 @@ def _ask(project, outcome) -> bool:
         return True
 
     return False
+
+
+def _holding_psm_questions(project, outcome) -> bool:
+    """2단계에서 PSM 물질군 수량을 저장하고 엔진에 다시 전달한다."""
+    questions = _stage2_questions(outcome)
+    if not questions:
+        return False
+
+    st.markdown(
+        "#### 최대보유량 확인에 필요한 PSM 정보",
+        help=(
+            "인화성 가스·액체 해당 여부는 1단계에서 확인하고, 해당하는 경우의 하루 제조·취급량과 "
+            "최대 저장량은 이 단계에서 확인합니다. 입력값은 공정안전보고서 판정엔진에 그대로 전달됩니다."
+        ),
+    )
+    existing = judgement.answers(project)
+    given: dict[str, str] = {}
+    for question in questions:
+        given[question.item] = _question(project, question, {**existing, **given})
+
+    if st.button("최대보유량 확인하기", type="primary", key=f"judge_psm_quantity_{project.project_id}"):
+        if not any(value != existing.get(item, "") for item, value in given.items()):
+            st.warning("새로 입력하거나 변경한 PSM 수량이 없습니다.")
+            return True
+        with st.spinner("PSM 수량을 저장하고 다음 단계를 확인하는 중입니다."):
+            judgement.save_answers(project, given)
+            storage.save_project(project)
+            next_outcome = judgement.judge(project)
+            st.session_state[f"judge_out_{project.project_id}"] = next_outcome
+            if next_outcome.status in {"DECIDED", "NOT_REQUIRED"}:
+                st.session_state[f"judge_flash_{project.project_id}"] = "PSM 수량이 확정되었습니다. 최종 판정 결과를 확인해 주세요."
+            else:
+                st.session_state[f"judge_flash_{project.project_id}"] = "PSM 수량이 확정되었습니다. 다음 최대보유량 정보를 확인해 주세요."
+        st.rerun()
+    return True
 
 
 def _filled(rows: list[dict]) -> list[dict]:
@@ -757,7 +816,12 @@ def render(project) -> None:
                 for message in outcome.messages:
                     st.write(f"• {judgement.display_request(message)}")
             elif outcome.status == "REQUEST":
-                has_own_button = _ask(project, outcome)
+                if _stage2_questions(outcome) and not any(
+                    not _is_psm_quantity_question(question) for question in outcome.questions
+                ):
+                    has_own_button = _holding_psm_questions(project, outcome)
+                else:
+                    has_own_button = _ask(project, outcome)
             else:
                 _decided(project, outcome)
                 has_own_button = True
@@ -768,4 +832,3 @@ def render(project) -> None:
                         return
                     st.session_state[key] = judgement.judge(project)
                 st.rerun()
-
