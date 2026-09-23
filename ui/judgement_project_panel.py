@@ -49,24 +49,10 @@ def _business(project) -> None:
             help="사업장에서 주로 하는 일이나 만드는 제품을 짧게 적습니다. 예: 합성수지 제조 / 접착제 생산.",
             placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산",
         )
-        ksic = st.text_input(
-            "업종 분류 코드(KSIC, 알면 입력)",
-            value=info.get("한국표준산업분류(KSIC) 코드", ""),
-            key=f"judge_biz_ksic_{pid}",
-            placeholder="예: 20111",
-            help=(
-                "KSIC는 '한국표준산업분류'의 약자입니다. 사업장의 주된 일을 숫자로 구분한 코드이며, "
-                "공정안전보고서(PSM)는 일부 업종 자체가 대상 기준이 될 수 있어 사용합니다. "
-                "회사에서 쓰는 5자리 코드를 알고 있으면 적으세요. 모르면 비워 두어도 되고, 판정에 꼭 필요할 때 다시 안내합니다."
-            ),
-        )
-        st.caption("여기서 고친 내용은 이 사업장의 판정과 별지 작성에 바로 반영됩니다. 비워서 저장하면 기존 값은 지워지지 않습니다.")
+        st.caption("여기서 고친 내용은 이 사업장의 판정과 별지 작성에 바로 반영됩니다.")
         if st.button("사업장 정보 저장", key=f"judge_biz_save_{pid}"):
-            digits = "".join(ch for ch in str(ksic or "") if ch.isdigit())
-            if ksic and len(digits) != 5:
-                st.warning("업종 분류 코드(KSIC)는 숫자 5자리입니다. 모르면 비워 두어도 됩니다.")
-                return
-            judgement.save_business(project, name, address, industry, ksic)
+            # KSIC는 판정에 실제로 필요할 때 후속 질문으로 확인하며, 기존 저장값은 보존한다.
+            judgement.save_business(project, name, address, industry)
             storage.save_project(project)
             _changed(pid, "사업장 정보를 저장했습니다. 별지 작성 화면에도 같은 내용이 보입니다.")
 
