@@ -60,16 +60,6 @@ def render(expanded: bool) -> None:
         industry = right.text_input("업종 또는 주요 생산품", key="cap_start_industry",
                                   help="사업장에서 하는 일과 만드는 제품을 짧게 적습니다. 예: 합성수지 제조 / 접착제 생산.",
                                   placeholder="(예시) 기초화학물질 제조 / 염화비닐 생산")
-        ksic = st.text_input(
-            "업종 분류 코드(KSIC, 알면 입력)",
-            key="cap_start_ksic",
-            placeholder="예: 20111",
-            help=(
-                "KSIC는 '한국표준산업분류'의 약자로, 사업장의 주된 일을 숫자로 구분한 코드입니다. "
-                "공정안전보고서(PSM)는 일부 업종 자체가 대상 기준이 될 수 있어 필요합니다. "
-                "회사에서 쓰는 5자리 업종 코드를 알고 있으면 적고, 모르면 비워 두세요. 판정에 꼭 필요할 때 다시 안내합니다."
-            ),
-        )
         hidden_columns = [
             cap_start.LEGACY_CONTENT_COLUMN, cap_start.LEGACY_MIXTURE_COLUMN,
             cap_start.LEGACY_MAX_HOLDING_COLUMN, *cap_start.EXTRA_INPUT_COLUMNS,
@@ -170,7 +160,7 @@ def render(expanded: bool) -> None:
                 return
             outcome = cap_start.start(
                 {"사업장명": name, "사업장 주소": address, "업종 또는 주요 생산품": industry,
-                 "한국표준산업분류(KSIC) 코드": ksic},
+                 "한국표준산업분류(KSIC) 코드": ""},
                 edited.to_dict("records"),
                 components=st.session_state.get("cap_start_components"),
             )
