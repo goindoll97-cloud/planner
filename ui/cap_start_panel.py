@@ -76,6 +76,10 @@ def render(expanded: bool) -> None:
         ]
         blank = {"제품명": "", cap_start.MATERIAL_TYPE_COLUMN: "", "CAS No.": "", "최대 제조·사용량": None,
                  "최대 저장량": None, "단위": "kg", **{col: "" for col in hidden_columns}}
+        st.info(
+            "제조·사용량과 저장량은 각 행의 ‘단위’로 입력하세요. 판정 시작 시 kg 값은 ton으로 자동 환산됩니다. "
+            "시설별 최대보유량은 다음 시설 입력 단계에서 확인합니다."
+        )
         generation = st.session_state.get("cap_start_gen", 0)  # 엑셀로 행을 추가하면 새 표로 다시 그린다
         frame = pd.DataFrame(
             st.session_state.get("cap_start_seed") or [blank],
@@ -96,16 +100,16 @@ def render(expanded: bool) -> None:
                     help="단일물질이면 반드시 적습니다. 혼합제품 자체의 CAS는 비워 두세요. 구성성분 CAS는 두 번째 파일에서 입력합니다.",
                 ),
                 "최대 제조·사용량": st.column_config.NumberColumn(
-                    "하루 최대 제조·사용량", min_value=0.0,
-                    help="하루에 가장 많이 제조·취급·사용하는 양입니다. 모르면 비워 두고, 하지 않으면 0을 입력하세요."
+                    "하루 최대 제조·사용량 (선택 단위)", min_value=0.0,
+                    help="하루에 가장 많이 제조·취급·사용하는 양입니다. 아래 ‘단위’로 입력하며, 판정 시작 시 ton으로 자동 환산됩니다. 모르면 비워 두고, 하지 않으면 0을 입력하세요."
                 ),
                 "최대 저장량": st.column_config.NumberColumn(
-                    "최대 저장량", min_value=0.0,
-                    help="한 시점에 가장 많이 저장하는 양입니다. 모르면 비워 두고, 저장하지 않으면 0을 입력하세요. (빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다)"
+                    "최대 저장량 (선택 단위)", min_value=0.0,
+                    help="한 시점에 가장 많이 저장하는 양입니다. 아래 ‘단위’로 입력하며, 판정 시작 시 ton으로 자동 환산됩니다. 모르면 비워 두고, 저장하지 않으면 0을 입력하세요. (빈 칸은 '아직 모름', 0은 '없음'으로 다르게 처리합니다)"
                 ),
                 "단위": st.column_config.SelectboxColumn(
                     "단위", options=["kg", "ton"], required=True,
-                    help="두 수량에 공통으로 적용할 단위입니다. kg 또는 ton을 고르세요."
+                    help="같은 행의 제조·사용량과 저장량에 공통으로 적용할 단위입니다. kg 또는 ton을 고르세요. 판정 시작 시 ton으로 자동 환산됩니다."
                 ),
                 # 기존 파일에 이미 있던 함량·혼합물·전문값은 보존하되 초기 화면에서는 숨긴다.
                 cap_start.LEGACY_CONTENT_COLUMN: None,
