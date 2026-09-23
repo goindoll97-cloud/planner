@@ -182,6 +182,42 @@ class MergeTests(unittest.TestCase):
         self.assertIn("톨루엔", [r.get("물질명") for r in project.get_field(chem.INVENTORY_KEY).value])
 
 
+class ReplaceTests(unittest.TestCase):
+    def test_old_rows_are_gone_and_only_the_new_file_remains(self):
+        from engine.stage2.cap_judgement import CHEM_INPUTS_KEY, MIXTURE_COMPONENTS_KEY
+
+        project = CAPForm1EngineTests()._project()  # 염소를 이미 물질 목록에 갖고 있다
+        project.set_field(MIXTURE_COMPONENTS_KEY, "혼합물 구성성분",
+                          [{"제품목록행번호": 1, "CAS No.": "7782-50-5", "함량(%)": "100"}], "USER_CONFIRMED")
+        project.set_field(CHEM_INPUTS_KEY, "물질별 확인값", [{"함량(%)": "100"}], "USER_CONFIRMED")
+
+        parsed = up.parse(_xlsx([HEADER, *ROWS]), "list.xlsx")
+        added, skipped = up.replace_project(project, up.normalize(parsed, parsed.mapping), file_name="list.xlsx",
+                                            sha256=parsed.sha256)
+        self.assertEqual(added, 4)  # 톨루엔, 염소, 아세톤, 혼합제품(오타물질·파일 안 중복은 제외)
+        names = [r["물질명"] for r in chem._rows(project)[1]]
+        self.assertEqual(sorted(names), sorted(["톨루엔", "염소", "아세톤", "혼합제품"]))
+        # 옛 염소 행 번호를 가리키던 자료는 새 목록 기준으로 다시 만들어지지 않는 한 남겨 두지 않는다.
+        self.assertEqual(project.get_field(MIXTURE_COMPONENTS_KEY).value, [])
+        self.assertEqual(project.get_field(CHEM_INPUTS_KEY).value, [])
+
+    def test_details_and_inventory_keys_both_end_up_with_the_same_replaced_list(self):
+        project = CAPForm1EngineTests()._project()
+        project.set_field(chem.DETAILS_KEY, "상세", chem._rows(project)[1], "USER_CONFIRMED")
+        parsed = up.parse(_xlsx([HEADER, ROWS[0]]), "l.xlsx")
+        up.replace_project(project, up.normalize(parsed, parsed.mapping), file_name="l.xlsx", sha256="a" * 64)
+        self.assertEqual([r["물질명"] for r in project.get_field(chem.DETAILS_KEY).value], ["톨루엔"])
+        self.assertEqual([r["물질명"] for r in project.get_field(chem.INVENTORY_KEY).value], ["톨루엔"])
+
+    def test_uploading_the_same_file_twice_still_leaves_exactly_one_copy(self):
+        project = CAPForm1EngineTests()._project()
+        parsed = up.parse(_xlsx([HEADER, ROWS[0]]), "l.xlsx")
+        rows = up.normalize(parsed, parsed.mapping)
+        up.replace_project(project, rows, file_name="l.xlsx", sha256="a" * 64)
+        up.replace_project(project, rows, file_name="l.xlsx", sha256="a" * 64)
+        self.assertEqual([r["물질명"] for r in chem._rows(project)[1]], ["톨루엔"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -90,11 +90,12 @@ class PanelScreenTests(unittest.TestCase):
         self.assertEqual(seed[0]["최대 동시보유량(ton)"], 12.5)
         self.assertEqual(seed[0]["단위"], "ton")
         self.assertEqual(at.session_state["cap_start_gen"], 1)
-        self.assertTrue(any("표에 추가했습니다" in s.value for s in at.success))
+        self.assertTrue(any("통째로 바꿨습니다" in s.value for s in at.success))
 
-    def test_uploading_the_same_mixture_product_twice_does_not_duplicate_it(self):
-        # 혼합제품 행은 제품 자체의 CAS가 없으므로(성분 CAS로 대체), CAS만 보고 중복을 거르면
-        # 같은 파일을 다시 올리거나 '추가'를 두 번 눌러도 걸러지지 않고 두 줄이 생긴다.
+    def test_uploading_a_file_replaces_the_draft_table_instead_of_merging(self):
+        # 혼합제품 행은 제품 자체의 CAS가 없다(성분 CAS로 대체). '보충' 방식일 때는 CAS만 보고
+        # 중복을 걸렀기 때문에 같은 파일을 다시 올리면 같은 혼합제품이 두 줄로 쌓였다.
+        # 지금은 업로드가 표 전체를 새 파일 내용으로 바꾸므로애초에 두 줄이 될 수 없다.
         at = _run([
             "st.file_uploader = fake_mixture_file_uploader",
             "from ui import cap_start_panel",
@@ -106,19 +107,18 @@ class PanelScreenTests(unittest.TestCase):
         seed = at.session_state["cap_start_seed"]
         self.assertEqual([r["제품명"] for r in seed], ["세척제A"])
 
-        # 같은 제품이 이미 표에 있는 상태로 같은 파일을 다시 올리면, 미리보기 단계에서부터
-        # '이미 목록에 있는 물질'로 걸러져 추가 버튼 자체가 나타나지 않아야 한다.
+        # 표에 다른 물질이 남아 있는 상태로 다시 올려도(같은 파일이든 다른 파일이든),
+        # 표 안의 옛 내용은 남지 않고 새 파일 내용으로 통째로 바뀐다.
         at2 = _run([
             "st.file_uploader = fake_mixture_file_uploader",
             "from ui import cap_start_panel",
             "cap_start_panel.render(expanded=True)",
         ])
-        at2.session_state["cap_start_seed"] = seed
+        at2.session_state["cap_start_seed"] = [*seed, {"제품명": "표에 직접 적은 물질", "CAS No.": "108-88-3"}]
         at2.session_state["cap_start_gen"] = at.session_state["cap_start_gen"]
         at2.run()
+        at2.button(key="cap_start_upload_add").click().run()
         self.assertFalse(at2.exception)
-        self.assertFalse(any(b.key == "cap_start_upload_add" for b in at2.button))
-        self.assertTrue(any("추가할 수 있는 행이 없습니다" in i.value for i in at2.info))
         self.assertEqual([r["제품명"] for r in at2.session_state["cap_start_seed"]], ["세척제A"])
 
     def test_form6_identity_step_accepts_an_upload_into_the_project(self):

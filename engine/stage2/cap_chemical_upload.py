@@ -73,11 +73,6 @@ def _norm(value: object) -> str:
     return re.sub(r"[\s_./·\-]", "", text).lower()
 
 
-def normalize_name(value: object) -> str:
-    """check_rows가 이름 기준 중복 판정에 쓰는 정규화. 다른 화면이 같은 기준으로 '이미 있음' 집합을 만들 때 쓴다."""
-    return _norm(value)
-
-
 def _clean(value: object) -> str:
     if value is None or (isinstance(value, float) and value != value):
         return ""
@@ -630,3 +625,42 @@ def remove_rows(project: Stage2Project, row_numbers: list[int]) -> list[str]:
 
     project.notes.append(f"물질 목록에서 {len(wanted)}건 삭제: {', '.join(removed_names)}")
     return removed_names
+
+
+def replace_project(project: Stage2Project, rows: list[Mapping[str, Any]], *, file_name: str, sha256: str,
+                    evidence: EvidenceRef | None = None, sds_confirmed: bool = False) -> tuple[int, int]:
+    """기존 화학물질 목록을 이 파일 내용으로 통째로 바꾼다(add_to_project처럼 보충하지 않는다).
+
+    혼합물 구성성분·물질별 판정 입력(stage1.chemical_inputs)은 화학물질 목록의 행 번호(1부터)로 이전
+    항목을 가리키므로, 목록을 통째로 바꾸면 더는 맞는 행을 가리키지 않는다. 새 파일 기준으로 다시 만들고
+    옛 값은 지운다. 판정 질문 답변(stage1.answers)은 항목 이름으로만 구분되어 행 번호와 무관하므로 남긴다.
+    """
+    from . import cap_chemical_workspace as chem
+    from .cap_judgement import CHEM_INPUTS_KEY, MIXTURE_COMPONENTS_KEY
+
+    checked = check_rows(rows)
+    good = [r for r in checked.rows if r["_ok"]]
+    if not sds_confirmed and any(r.get("_components") for r in good):
+        raise ValueError("혼합물의 성분 CAS·함량을 제품 SDS 제3항과 대조해 확인한 뒤에 교체할 수 있습니다.")
+    skipped = len(checked.rows) - len(good)
+    new_rows = to_inventory_rows(good)
+
+    components = []
+    for position, product in enumerate(good, start=1):
+        for component in product.get("_components") or []:
+            components.append({
+                "적용여부": "Y", "제품목록행번호": position, "제품명(확인용)": _clean(product.get("제품명")),
+                "구성성분명": "", "CAS No.": _clean(component.get("CAS No.")), "함량(%)": _clean(component.get("함량(%)")),
+                "SDS 제3항 근거": f"회사 입력 파일({file_name}) — 제품 SDS 제3항과 대조 확인",
+            })
+    project.set_field(MIXTURE_COMPONENTS_KEY, "혼합물 구성성분", components, "USER_CONFIRMED")
+    project.set_field(CHEM_INPUTS_KEY, "법정 판정에 필요한 물질별 확인값(회사 입력)", [], "USER_CONFIRMED")
+
+    refs = list(evidence and [evidence] or [])
+    for key in (chem.INVENTORY_KEY, chem.DETAILS_KEY):
+        record = project.get_field(key)
+        label = record.label if record is not None else "화학물질 목록"
+        project.set_field(key, label, list(new_rows), "USER_CONFIRMED", evidence=refs,
+                          note=f"엑셀·CSV 업로드로 물질 목록 전체 교체({file_name}, SHA-256 {sha256[:12]})")
+    project.notes.append(f"물질 목록 전체 교체: {file_name} (SHA-256 {sha256[:12]}…) {len(new_rows)}건, {skipped}건 제외")
+    return len(new_rows), skipped

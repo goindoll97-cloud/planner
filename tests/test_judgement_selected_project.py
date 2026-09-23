@@ -132,7 +132,11 @@ class ScreenTests(unittest.TestCase):
         at = self._run(project)
         labels = [e.label for e in at.expander]
         self.assertTrue(any(label.startswith("물질 목록 —") for label in labels))
-        self.assertGreaterEqual(sum("엑셀·CSV로 물질 목록 올리기" in label for label in labels), 2)  # 선택한 사업장 + 새 사업장
+        # 선택한 사업장은 이미 물질이 있으므로(염소) 업로드가 전체 교체임을 확인해야 열린다.
+        self.assertEqual(sum("엑셀·CSV로 물질 목록 올리기" in label for label in labels), 1)  # 새 사업장 쪽만 바로 보인다
+        at.checkbox(key=f"judge_replace_confirm_{project.project_id}").check().run()
+        labels = [e.label for e in at.expander]
+        self.assertGreaterEqual(sum("엑셀·CSV로 물질 목록 올리기" in label for label in labels), 2)  # 확인 후 선택한 사업장 + 새 사업장
 
 
 if __name__ == "__main__":

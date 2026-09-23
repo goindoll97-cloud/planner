@@ -108,13 +108,25 @@ def _chemicals(project) -> None:
             st.info("이 사업장에는 아직 물질이 없습니다. 아래에서 엑셀·CSV로 올려 주세요.")
 
         def add_uploaded(good, file_name, sha256):
-            added, skipped = chem_upload.add_to_project(project, good, file_name=file_name, sha256=sha256, sds_confirmed=True)
+            added, skipped = chem_upload.replace_project(project, good, file_name=file_name, sha256=sha256, sds_confirmed=True)
             storage.save_project(project)
             st.session_state.pop(f"judge_out_{pid}", None)  # 물질이 바뀌면 예전 판정 결과는 더 이상 맞지 않는다
-            return (f"{file_name}에서 물질 {added}건을 이 사업장에 추가했습니다(이미 있어 건너뜀 {skipped}건). "
+            return (f"{file_name}로 물질 목록을 전체 교체했습니다({added}건, 확인 필요 {skipped}건 제외). "
+                    "기존 물질 목록과 이미 입력했던 혼합물 구성성분·물질별 확인값은 함께 지워졌습니다. "
                     "물질이 바뀌었으니 아래 '법정 대상 판정하기'(또는 '다시 판정하기')로 결과를 확인하세요.")
 
-        chemical_upload_panel.render(f"judge_upload_{pid}", existing=chem_upload.existing_keys(project), add_rows=add_uploaded)
+        can_upload = True
+        if rows:
+            st.warning("새 파일을 올리면 지금 있는 물질 목록과 이미 입력한 혼합물 구성성분·물질별 확인값이 모두 지워지고 "
+                       "새 파일 내용으로 통째로 바뀝니다(보충이 아닙니다). 되돌릴 수 없습니다.")
+            can_upload = st.checkbox(
+                "기존 물질 목록과 관련 자료를 지우고 새 파일로 전체 교체합니다.",
+                key=f"judge_replace_confirm_{pid}",
+            )
+        if can_upload:
+            chemical_upload_panel.render(f"judge_upload_{pid}", existing=(set(), set()), add_rows=add_uploaded)
+        else:
+            st.caption("위 확인란에 체크해야 파일을 올릴 수 있습니다.")
         if rows:
             _kosha_all(project)
 
