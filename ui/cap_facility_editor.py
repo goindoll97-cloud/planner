@@ -120,6 +120,105 @@ def _compact_text_number(label: str, value, key: str, help_text: str = "", place
     ).strip()
 
 
+def _single_cas_for_facility(project, row: dict) -> str:
+    """Resolve one CAS from the facility row or its matching confirmed chemical name."""
+    from engine.stage2.msds_reference import extract_cas_numbers, inventory_chemicals
+
+    direct = extract_cas_numbers(row.get("CAS 번호", ""))
+    if len(direct) == 1:
+        return direct[0]
+    if direct:
+        return ""
+    material = _norm(row.get("취급물질"))
+    matches = {
+        chemical.cas
+        for chemical in inventory_chemicals(project)
+        if material and _norm(chemical.chemical_name) == material
+    }
+    return next(iter(matches)) if len(matches) == 1 else ""
+
+
+def _kosha_gravity_candidate(project, cas: str) -> tuple[str, str] | None:
+    """Return a dimensionless relative density candidate, converting explicit density units."""
+    from engine.stage2.msds_reference import stored_msds_reference
+    from engine.stage2.cap_authoritative import _first_explicit
+
+    payload = stored_msds_reference(project, cas)
+    if not payload:
+        return None
+    hit = _first_explicit(payload, (9,), ("비중", "상대밀도", "밀도"))
+    if not hit:
+        return None
+    raw, _section, source = hit
+    import re
+
+    source_norm = _norm(source)
+    if "증기" in source_norm:
+        return None
+
+    match = re.search(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", raw.replace(",", ""))
+    if not match:
+        return None
+    value = float(match.group())
+    text = raw.lower().replace(" ", "")
+    if "상대밀도" in source_norm or "비중" in source_norm:
+        pass
+    elif any(unit in text for unit in ("kg/m3", "kg/m³", "g/l")):
+        value /= 1000.0
+    elif "mg/ml" in text:
+        value /= 1000.0
+    elif any(unit in text for unit in ("g/cm3", "g/cm³", "kg/l")):
+        pass
+    else:
+        # A bare value labelled only as density has no safe unit interpretation.
+        return None
+    if value <= 0:
+        return None
+    return f"{value:g}", f"{raw} · {source}"
+
+
+def _render_kosha_gravity(project, row: dict, prefix: str, pid: str, index: int, density_key: str) -> None:
+    """Offer a Section 9 value for explicit user review; never fetch during reruns."""
+    cas = _single_cas_for_facility(project, row)
+    if not cas:
+        st.caption("KOSHA 조회는 물질 목록과 연결되는 단일 CAS 번호가 있을 때 사용할 수 있습니다.")
+        return
+
+    from engine.stage2.msds_reference import stored_msds_reference
+    payload = stored_msds_reference(project, cas)
+    candidate = _kosha_gravity_candidate(project, cas) if payload else None
+    query_key = f"{prefix}_kosha_s9_{pid}_{index}"
+    sections = payload.get("sections", {}) if payload else {}
+    has_section9 = isinstance(sections, dict) and ("9" in sections or 9 in sections)
+    can_query = not payload or not has_section9
+    if not candidate and can_query and st.button(
+        "KOSHA에서 MSDS 제9항 조회" if not payload else "KOSHA 제9항 다시 조회",
+        key=query_key,
+        help="CAS 번호만 조회합니다. KOSHA 자료는 참고 후보이며 회사 제품 MSDS를 대체하지 않습니다.",
+    ):
+        from engine.kosha_msds import lookup_full_msds_by_cas
+        from engine.stage2.msds_reference import refresh_msds_references
+
+        with st.spinner("KOSHA MSDS 제9항을 조회하고 있습니다."):
+            refresh_msds_references(
+                project,
+                cas_numbers=[cas],
+                lookup=lambda value: lookup_full_msds_by_cas(value, sections=[9]),
+            )
+        save_project(project)
+        st.rerun()
+
+    if payload:
+        if candidate:
+            st.caption(f"KOSHA 참고 후보: {candidate[1]} · CAS {cas}. 제품 MSDS와 값·온도를 대조하세요.")
+            use_key = f"{prefix}_kosha_use_s9_{pid}_{index}"
+            if st.button("KOSHA 참고값을 비중 칸에 넣기", key=use_key):
+                st.session_state[density_key] = candidate[0]
+                st.rerun()
+        else:
+            st.caption(f"CAS {cas}의 KOSHA 제9항에서 단위가 분명한 비중·밀도 값을 찾지 못했습니다. 제품 MSDS를 직접 확인하세요.")
+
+
 def _compact_direct_mass(row: dict, prefix: str, pid: str, index: int) -> None:
     row["직접확인 최대보유량"] = _compact_text_number(
         "이미 확인한 최대보유량",
@@ -177,10 +276,12 @@ def _compact_volume_density(project, row: dict, prefix: str, pid: str, index: in
         if picked != "직접 입력":
             row["비중"] = matches[labels.index(picked) - 1]["비중"]
 
+    density_key = f"{prefix}_compact_gravity_{pid}_{index}"
+    _render_kosha_gravity(project, row, prefix, pid, index, density_key)
     row["비중"] = _compact_text_number(
         "비중/밀도 (MSDS 제9항)",
         row.get("비중"),
-        f"{prefix}_compact_gravity_{pid}_{index}",
+        density_key,
         "상온에서의 비중 또는 밀도입니다. 보통 제품 MSDS 제9항 '물리화학적 특성'에서 확인합니다. "
         "m3를 쓸 때 kg/L 값은 ton/m3와 같은 숫자로 계산됩니다.",
         placeholder="예: 0.87",
@@ -364,7 +465,7 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
             st.caption(f"• {material}: 물질 상태를 고르면 필요한 입력칸이 나타납니다.")
         else:
             suffix = f"{material} · 시설 {sum(1 for r in rows[:index+1] if _norm(r.get('취급물질')) == _norm(material))}"
-            with st.expander(f"{suffix} — 계산에 필요한 정보", expanded=True):
+            with st.expander(f"{suffix} — 계산에 필요한 정보", expanded=False):
                 if state == "기체·고압가스":
                     _compact_gas(project, row, prefix, pid, index)
                 elif state == "복수성상":

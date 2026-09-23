@@ -176,6 +176,24 @@ class CAPWorkspaceTests(unittest.TestCase):
         self.assertEqual([row["취급물질"] for row in remaining], ["톨루엔", "메탄올"])
         self.assertIsNone(_without_extra_facility_row(remaining, 0))
 
+    def test_kosha_section9_gravity_candidate_converts_only_explicit_density_units(self):
+        from engine.stage2.msds_reference import reference_field_key
+        from ui.cap_facility_editor import _kosha_gravity_candidate
+
+        project = _project()
+        project.set_field(
+            reference_field_key("7782-50-5"), "KOSHA MSDS 참고자료",
+            {"sections": {"9": {"items": [["밀도", "1,400 kg/m3"]]}}}, "HOLD",
+        )
+        value, _source = _kosha_gravity_candidate(project, "7782-50-5")
+        self.assertEqual(value, "1.4")
+
+        project.set_field(
+            reference_field_key("7782-50-5"), "KOSHA MSDS 참고자료",
+            {"sections": {"9": {"items": [["증기밀도", "1.4 kg/m3"]]}}}, "HOLD",
+        )
+        self.assertIsNone(_kosha_gravity_candidate(project, "7782-50-5"))
+
     def test_compact_editor_delete_button_persists_removal_of_extra_facility(self):
         from streamlit.testing.v1 import AppTest
 
