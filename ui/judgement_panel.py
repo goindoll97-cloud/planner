@@ -53,15 +53,20 @@ def _after_save_flash(outcome) -> str:
     status = getattr(outcome, "status", "")
     if status in {"DECIDED", "NOT_REQUIRED"}:
         return "판정 조건이 확정되었습니다. 최종 판정 결과를 확인해 주세요."
+    if status == "REQUEST":
+        if _stage2_questions(outcome):
+            return "일부 PSM 수량이 아직 확인되지 않았습니다. 필요한 수량을 입력해 주세요."
+        if any(
+            judgement.HOLDING_FACILITY_MARKER in message
+            for message in getattr(outcome, "messages", ())
+        ):
+            return "PSM 수량을 저장했습니다. 아래 시설 입력에서 최대보유량 정보를 확인해 주세요."
+        return "입력이 저장되었습니다. 추가 확인사항을 아래에서 확인해 주세요."
     if status == "PENDING" or any(
         judgement.HOLDING_FACILITY_MARKER in message
         for message in getattr(outcome, "messages", ())
     ):
         return "입력이 저장되었습니다. 다음 최대보유량 정보를 확인해 주세요."
-    if status == "REQUEST":
-        if _stage2_questions(outcome):
-            return "일부 PSM 수량이 아직 확인되지 않았습니다. 필요한 수량을 입력해 주세요."
-        return "입력이 저장되었습니다. 추가 확인사항을 아래에서 확인해 주세요."
     return "입력이 저장되었습니다. 아래 안내를 확인해 주세요."
 
 HELP_FLOW = ("판정은 판정정보 확인 → 최대보유량 확인 → 최종판정 순서로 진행합니다. 내부적으로 필요한 물질 성분과 판정 조건을 먼저 확인하고, "
