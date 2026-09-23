@@ -430,14 +430,21 @@ def _holding_psm_questions(project, outcome) -> bool:
         ),
     )
     existing = judgement.answers(project)
+    suggested = _psm_quantity_suggestions(project, questions)
+    if suggested:
+        st.caption(
+            "물질목록에 입력한 제품 MSDS 제2항 분류와 수량을 기준으로 자동 계산한 참고값입니다. "
+            "실제 PSM 합계와 대조한 뒤 수정하거나 확인하세요."
+        )
     given: dict[str, str] = {}
     for question in questions:
-        given[question.item] = _question(project, question, {**existing, **given})
+        given[question.item] = _question(project, question, {**suggested, **existing, **given})
 
     if st.button("최대보유량 확인하기", type="primary", key=f"judge_psm_quantity_{project.project_id}"):
         if not any(value != existing.get(item, "") for item, value in given.items()):
-            st.warning("새로 입력하거나 변경한 PSM 수량이 없습니다.")
-            return True
+            if not all(str(existing.get(item, "")).strip() for item in (question.item for question in questions)):
+                st.warning("PSM 수량을 입력하거나 물질목록의 수량을 먼저 확인해 주세요.")
+                return True
         with st.spinner("PSM 수량을 저장하고 다음 단계를 확인하는 중입니다."):
             judgement.save_answers(project, given)
             storage.save_project(project)
@@ -449,6 +456,56 @@ def _holding_psm_questions(project, outcome) -> bool:
                 st.session_state[f"judge_flash_{project.project_id}"] = "PSM 수량이 확정되었습니다. 다음 최대보유량 정보를 확인해 주세요."
         st.rerun()
     return True
+
+
+def _psm_quantity_suggestions(project, questions) -> dict[str, str]:
+    """물질목록의 제품 MSDS와 수량을 PSM 합계의 참고값으로 만든다.
+
+    이 값은 사용자 화면의 초기 제안일 뿐이며, 법정 판정엔진의 규정량·분류·계산식은
+    변경하지 않는다. 제품 MSDS 제2항이 확인된 행만 합산해 혼합물 구성성분 후보를
+    제품 분류로 잘못 사용하는 일을 막는다.
+    """
+    from engine.stage2 import cap_chemical_workspace as chem
+
+    _, rows = chem._rows(project)
+    inputs = judgement.chemical_inputs(project)
+    if not rows:
+        return {}
+    inputs = inputs + [{}] * (len(rows) - len(inputs))
+    sds_col = "SDS 제2항 유해성·위험성 분류(선택 입력)"
+    totals: dict[int, dict[str, float]] = {}
+    for index, row in enumerate(rows):
+        extra = inputs[index]
+        classification = str(extra.get(sds_col) or "").strip()
+        if not classification:
+            continue
+        if "인화성 액체" in classification:
+            item_no = 2
+        elif "인화성 가스" in classification:
+            item_no = 1
+        else:
+            continue
+        unit = str(row.get("수량 단위") or extra.get("단위") or "ton").strip().lower()
+        bucket = totals.setdefault(item_no, {"mfg": 0.0, "storage": 0.0})
+        for key, target in (("최대 제조·사용량", "mfg"), ("최대 저장량", "storage")):
+            raw = extra.get(key) or row.get(key)
+            try:
+                value = float(str(raw).replace(",", "").strip())
+            except (TypeError, ValueError):
+                continue
+            bucket[target] += value * (1000.0 if unit == "ton" else 1.0)
+
+    suggestions: dict[str, str] = {}
+    for question in questions:
+        item_no = 1 if "제1호" in question.item else 2
+        bucket = totals.get(item_no)
+        if not bucket:
+            continue
+        if "하루 최대 제조·취급량" in question.item:
+            suggestions[question.item] = judgement._fmt(bucket["mfg"])
+        elif "최대 저장량" in question.item:
+            suggestions[question.item] = judgement._fmt(bucket["storage"])
+    return suggestions
 
 
 def _filled(rows: list[dict]) -> list[dict]:
