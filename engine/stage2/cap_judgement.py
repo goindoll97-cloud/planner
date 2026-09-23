@@ -782,6 +782,16 @@ def _questions_for(requests: list[str], current: Mapping[str, str]) -> tuple[Que
     for question in QUESTIONS:  # 위 질문에 'Y'라고 답했을 때 이어서 묻는 질문
         if question.follows and any(q.item == question.follows and current.get(q.item, "").upper().startswith(("Y", "예", "해당"))
                                     for q in wanted + [_BY_ITEM[k] for k in current if k in _BY_ITEM]):
+            # PSM 수량 후속질문은 부모의 적용 답변만으로 매번 되살아나면 안 된다.
+            # 다른 요청이 남아 재판정되는 경우에도, 이미 저장된 수량을 다시 묻지 않는다.
+            if question.system == "공정안전보고서" and question.numeric and question.item.startswith("별표 13 제"):
+                raw = _clean(current.get(question.item, "")).replace(",", "")
+                try:
+                    float(raw)
+                except (TypeError, ValueError):
+                    pass
+                else:
+                    continue
             wanted.append(question)
     return tuple(dict.fromkeys(wanted))
 

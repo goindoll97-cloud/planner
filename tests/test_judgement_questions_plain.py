@@ -51,6 +51,29 @@ class EveryRequestHasAnAnswerBoxTests(unittest.TestCase):
         self.assertEqual(jd._questions_for([request], {})[0].item, "새로 생긴 확인 항목 여부")
         self.assertIsNone(jd.generic_question("CAS 하나로 확정할 수 없는 염·화합물군이 있습니다."))
 
+    def test_saved_psm_quantity_followups_are_not_reopened_on_reassessment(self):
+        parent = "별표 13 제2호 인화성 액체 해당 여부"
+        request = "05_최종판정조건: 미확인 결정조건 존재 여부를 확인해 주세요."
+        pending = jd._questions_for([request], {parent: "Y"})
+        self.assertTrue(any("별표 13 제2호 하루 최대 제조·취급량" in q.item for q in pending))
+
+        saved = jd._questions_for([request], {
+            parent: "Y",
+            "별표 13 제2호 하루 최대 제조·취급량(kg)": "500",
+            "별표 13 제2호 최대 저장량(kg)": "2000",
+        })
+        self.assertFalse(any(q.item.startswith("별표 13 제2호") for q in saved))
+
+    def test_zero_is_a_completed_psm_quantity_answer(self):
+        parent = "별표 13 제2호 인화성 액체 해당 여부"
+        request = "05_최종판정조건: 미확인 결정조건 존재 여부를 확인해 주세요."
+        questions = jd._questions_for([request], {
+            parent: "Y",
+            "별표 13 제2호 하루 최대 제조·취급량(kg)": "0",
+            "별표 13 제2호 최대 저장량(kg)": "0",
+        })
+        self.assertFalse(any(q.item.startswith("별표 13 제2호") for q in questions))
+
     def test_the_exemption_follow_up_offers_the_legal_types_and_the_engine_accepts_each_one(self):
         questions = jd._questions_for([ENGINE_REQUESTS[1]], {"법 제23조제1항 단서 해당 여부": "Y"})
         types = next(q for q in questions if q.item == "법적 예외 적용 유형")
@@ -213,4 +236,3 @@ class ProductQuantityPickerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -46,7 +46,10 @@ class StepTests(unittest.TestCase):
         self.assertIn("일부 PSM 수량", panel._after_save_flash(SimpleNamespace(
             status="REQUEST",
             questions=(SimpleNamespace(system="공정안전보고서", item="별표 13 제2호 최대 저장량(kg)"),),
-            messages=(),
+            messages=(panel.judgement.HOLDING_FACILITY_MARKER,),
+        )))
+        self.assertIn("시설 입력", panel._after_save_flash(SimpleNamespace(
+            status="REQUEST", questions=(), messages=(panel.judgement.HOLDING_FACILITY_MARKER,)
         )))
 
     def test_missing_ksic_routes_to_an_actionable_industry_choice(self):
