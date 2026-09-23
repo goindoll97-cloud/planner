@@ -45,6 +45,23 @@ def _is_psm_quantity_question(question) -> bool:
 def _stage2_questions(outcome) -> list:
     return [question for question in getattr(outcome, "questions", ()) if _is_psm_quantity_question(question)]
 
+
+def _after_save_flash(outcome) -> str:
+    """저장 직후 실제 다음 상태에 맞는 안내문을 만든다."""
+    status = getattr(outcome, "status", "")
+    if status in {"DECIDED", "NOT_REQUIRED"}:
+        return "판정 조건이 확정되었습니다. 최종 판정 결과를 확인해 주세요."
+    if status == "PENDING" or any(
+        judgement.HOLDING_FACILITY_MARKER in message
+        for message in getattr(outcome, "messages", ())
+    ):
+        return "입력이 저장되었습니다. 다음 최대보유량 정보를 확인해 주세요."
+    if status == "REQUEST":
+        if _stage2_questions(outcome):
+            return "일부 PSM 수량이 아직 확인되지 않았습니다. 필요한 수량을 입력해 주세요."
+        return "입력이 저장되었습니다. 추가 확인사항을 아래에서 확인해 주세요."
+    return "입력이 저장되었습니다. 아래 안내를 확인해 주세요."
+
 HELP_FLOW = ("판정은 판정정보 확인 → 최대보유량 확인 → 최종판정 순서로 진행합니다. 내부적으로 필요한 물질 성분과 판정 조건을 먼저 확인하고, "
              "더 필요한 정보가 있으면 그것만 물어봅니다. 별지 작성은 판정 전에도 미리 시작할 수 있습니다.")
 WHY_ASK = ("**왜 묻나요?** 입력하신 물질 목록만으로는 법정 대상인지 확정할 수 없어서, 판정 규칙이 사업장에 대해 추가로 확인을 요청한 항목입니다. "
@@ -396,14 +413,7 @@ def _ask(project, outcome) -> bool:
                 storage.save_project(project)
                 next_outcome = judgement.judge(project)
                 st.session_state[f"judge_out_{project.project_id}"] = next_outcome
-                if next_outcome.status in {"DECIDED", "NOT_REQUIRED"}:
-                    st.session_state[f"judge_flash_{project.project_id}"] = "판정 조건이 확정되었습니다. 최종 판정 결과를 확인해 주세요."
-                elif next_outcome.status == "PENDING" or any(
-                    judgement.HOLDING_FACILITY_MARKER in m for m in getattr(next_outcome, "messages", ())
-                ):
-                    st.session_state[f"judge_flash_{project.project_id}"] = "판정 조건이 확정되었습니다. 다음 단계에서 최대보유량을 확정해 주세요."
-                else:
-                    st.session_state[f"judge_flash_{project.project_id}"] = "입력한 조건을 저장했습니다. 추가로 필요한 확인 사항이 아래에 표시됩니다."
+                st.session_state[f"judge_flash_{project.project_id}"] = _after_save_flash(next_outcome)
             st.rerun()
         return True
 
@@ -450,10 +460,9 @@ def _holding_psm_questions(project, outcome) -> bool:
             storage.save_project(project)
             next_outcome = judgement.judge(project)
             st.session_state[f"judge_out_{project.project_id}"] = next_outcome
-            if next_outcome.status in {"DECIDED", "NOT_REQUIRED"}:
-                st.session_state[f"judge_flash_{project.project_id}"] = "PSM 수량이 확정되었습니다. 최종 판정 결과를 확인해 주세요."
-            else:
-                st.session_state[f"judge_flash_{project.project_id}"] = "PSM 수량이 확정되었습니다. 다음 최대보유량 정보를 확인해 주세요."
+            st.session_state[f"judge_flash_{project.project_id}"] = _after_save_flash(next_outcome).replace(
+                "입력이 저장되었습니다.", "PSM 수량이 저장되었습니다."
+            )
         st.rerun()
     return True
 
