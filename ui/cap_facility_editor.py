@@ -399,7 +399,7 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
             hide_index=True,
         )
 
-    if st.button("최대보유량 확인하기", type="primary", key=f"{prefix}_save_{pid}"):
+    if st.button("다음 단계로 이동", type="primary", key=f"{prefix}_save_{pid}"):
         saved = ws.save_facility_rows(project, [*untouched, *rows])
         if saved:
             st.session_state.pop(extra_key, None)
