@@ -153,15 +153,54 @@ class CAPWorkspaceTests(unittest.TestCase):
         )
         self.assertIn("수정된 염소탱크", text)
 
-    def test_compact_editor_locks_material_name_and_uses_explicit_add_buttons(self):
+    def test_compact_editor_locks_material_name_and_labels_facility_row_actions(self):
         from pathlib import Path
 
         text = (Path(__file__).resolve().parents[1] / "ui" / "cap_facility_editor.py").read_text(encoding="utf-8")
         self.assertIn('"취급물질": st.column_config.TextColumn(', text)
         self.assertIn('disabled=["취급물질"]', text)
-        self.assertIn('f"{name} 시설 추가"', text)
+        self.assertIn('f"{name} 시설 행 추가"', text)
+        self.assertIn('f"{material} 시설 {ordinal}행 삭제"', text)
         self.assertIn('num_rows="fixed"', text)
         self.assertNotIn('"취급물질": st.column_config.SelectboxColumn(', text)
+
+    def test_compact_editor_deletes_only_duplicate_material_rows(self):
+        from ui.cap_facility_editor import _without_extra_facility_row
+
+        rows = [
+            {"취급물질": "톨루엔", "시설유형": "저장탱크"},
+            {"취급물질": "메탄올", "시설유형": "보관시설"},
+            {"취급물질": "톨루엔", "시설유형": "제조·사용시설"},
+        ]
+        remaining = _without_extra_facility_row(rows, 2)
+        self.assertEqual([row["취급물질"] for row in remaining], ["톨루엔", "메탄올"])
+        self.assertIsNone(_without_extra_facility_row(remaining, 0))
+
+    def test_compact_editor_delete_button_persists_removal_of_extra_facility(self):
+        from streamlit.testing.v1 import AppTest
+
+        from ui import cap_facility_editor
+
+        project = _project()
+        rows = ws.facility_editor_rows(project)
+        rows.append({**rows[0], "설비번호": "V-302", "설비명": "두 번째 염소탱크"})
+        ws.save_facility_rows(project, rows)
+
+        def app():
+            cap_facility_editor.render(
+                project, prefix="delete_test", compact=True, focus_names=["염소"]
+            )
+
+        with patch("ui.cap_facility_editor.save_project"):
+            at = AppTest.from_function(app, default_timeout=60).run()
+            self.assertFalse(at.exception)
+            delete_button = next(b for b in at.button if "2행 삭제" in b.label)
+            delete_button.click().run()
+            self.assertFalse(at.exception)
+
+        saved = ws.facility_editor_rows(project)
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["취급물질"], "염소")
 
     def test_judgement_compact_frame_only_contains_calculation_core_columns(self):
         from ui import cap_facility_editor
