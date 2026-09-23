@@ -117,7 +117,10 @@ class InlineFacilityTests(unittest.TestCase):
             "project = st.session_state['project']\n"
             "ALL = REAL_REQUESTS + [ROW1_REQUEST]\n"
             "outcome = SimpleNamespace(status='REQUEST', messages=tuple(ALL[i] for i in %r), questions=())\n"
-            "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['염소']):\n"
+            # AppTest.from_string은 스크립트를 시스템 기본 인코딩(이 환경에서는 cp949)으로 임시
+            # 파일에 쓰지만 다시 읽을 때는 UTF-8을 가정하므로, 코드 문자열 안에 직접 한글을 넣으면
+            # UnicodeDecodeError로 스크립트 자체가 컴파일되지 않는다(한글은 모듈 임포트로만 전달한다).
+            "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['Chlorine']):\n"
             "    panel._ask(project, outcome)\n"
         ) % (str(ROOT), list(indexes))
         return AppTest.from_string(code, default_timeout=60).run()

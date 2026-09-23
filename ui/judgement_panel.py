@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """법정 대상 판정 화면 조각: 판정 전 사업장의 판정, 이미 판정한 사업장의 다시 판정, 판정에 필요한 질문."""
 
+import re
+
 import pandas as pd
 import streamlit as st
 
@@ -340,6 +342,12 @@ def _ask(project, outcome) -> bool:
             for question in questions:
                 given[question.item] = _question(project, question, {**merged_answers, **given})
 
+    # PSM 물질군 수량(하루 최대 제조·취급량/최대 저장량)은 숫자를 다시 타이핑하지 않고,
+    # 물질 목록에서 해당하는 제품을 고르면 자동으로 채운다.
+    psm_followups = [q for q in expanded if q.item not in base_items and _is_psm_quantity_question(q)]
+    if psm_followups:
+        _psm_product_pickers(project, psm_followups, given)
+
     all_table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
     facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
@@ -465,6 +473,68 @@ def _holding_psm_questions(project, outcome) -> bool:
             )
         st.rerun()
     return True
+
+
+def _product_quantity_kg(project, names: set[str]) -> dict[str, float]:
+    """고른 제품들의 하루 최대 제조·사용량/최대 저장량을 더해 kg로 돌려준다."""
+    from engine.stage2 import cap_chemical_workspace as chem
+
+    _, rows = chem._rows(project)
+    inputs = judgement.chemical_inputs(project)
+    inputs = inputs + [{}] * (len(rows) - len(inputs))
+    totals = {"mfg": 0.0, "storage": 0.0}
+    for index, row in enumerate(rows):
+        name = str(row.get("제품명") or row.get("물질명") or "").strip()
+        if name not in names:
+            continue
+        extra = inputs[index]
+        unit = str(row.get("수량 단위") or extra.get("단위") or "ton").strip().lower()
+        factor = 1000.0 if unit == "ton" else 1.0
+        for key, target in (("최대 제조·사용량", "mfg"), ("최대 저장량", "storage")):
+            raw = extra.get(key) or row.get(key)
+            try:
+                totals[target] += float(str(raw).replace(",", "").strip()) * factor
+            except (TypeError, ValueError):
+                continue
+    return totals
+
+
+def _psm_label_from_followup(question) -> str:
+    """'별표 13 제N호 하루 최대 제조·취급량(kg)' 같은 후속 질문에서 '인화성 액체' 같은 분류명을 얻는다.
+
+    후속 질문 자체에는 분류명이 없고, 이 질문을 열게 한 부모 질문('...해당 여부')의 item에만 있다.
+    """
+    parent = str(getattr(question, "follows", "") or "")
+    label = re.sub(r"^별표 13 제\d+호 ", "", parent)
+    return re.sub(r" 해당 여부$", "", label).strip() or parent
+
+
+def _psm_product_pickers(project, questions, given: dict[str, str]) -> None:
+    """PSM 물질군 수량은 직접 타이핑하지 않고, 물질 목록에서 해당하는 제품을 고르면 자동으로 합산한다.
+
+    같은 별표 13 호수(하루 최대 제조·취급량/최대 저장량)를 한 번의 제품 선택으로 함께 채운다.
+    """
+    from engine.stage2 import cap_chemical_workspace as chem
+
+    _, rows = chem._rows(project)
+    options = list(dict.fromkeys(str(r.get("제품명") or r.get("물질명") or "").strip() for r in rows if r))
+    options = [name for name in options if name]
+    by_no: dict[str, list] = {}
+    for question in questions:
+        match = re.search(r"제(\d+)호", question.item)
+        by_no.setdefault(match.group(1) if match else question.item, []).append(question)
+    for no, group in by_no.items():
+        label = _psm_label_from_followup(group[0])
+        picked = st.multiselect(
+            f"{label}에 해당하는 제품", options,
+            key=f"judge_psm_products_{project.project_id}_{no}",
+            help="물질 목록에 이미 적은 제품 중 이 분류에 해당하는 것을 고르면, 그 제품들의 하루 최대 제조·사용량과 "
+                 "최대 저장량을 더해 자동으로 채웁니다. 물질 목록에 없는 제품이면 물질 목록을 먼저 채우세요.",
+        )
+        totals = _product_quantity_kg(project, set(picked)) if picked else {"mfg": 0.0, "storage": 0.0}
+        for question in group:
+            target = "mfg" if "하루 최대 제조·취급량" in question.item else "storage"
+            given[question.item] = judgement._fmt(totals[target]) if picked else ""
 
 
 def _psm_quantity_suggestions(project, questions) -> dict[str, str]:

@@ -6,7 +6,7 @@ import unittest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
-JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "다음 단계로 이동", "최대보유량 확인하기", "최종판정하기"}
+JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "다음 단계로 이동", "최종판정하기"}
 
 
 class SingleJudgeButtonTests(unittest.TestCase):
@@ -31,8 +31,11 @@ class SingleJudgeButtonTests(unittest.TestCase):
             "elif kind == 'facility_only':\n"
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=(REAL_REQUESTS[4],), questions=())\n"
             "elif kind == 'decided':\n"
-            "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='DECIDED', messages=(), questions=(), cap_status='1군', psm_status='비대상', decision=SimpleNamespace(cap_explanation='', psm_explanation=''), cap_target=True, psm_target=False)\n"
-            "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['염소']):\n"
+            "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='DECIDED', messages=(), questions=(), cap_status='Group1', psm_status='NotApplicable', decision=SimpleNamespace(cap_explanation='', psm_explanation=''), cap_target=True, psm_target=False)\n"
+            # AppTest.from_string은 스크립트를 시스템 기본 인코딩(이 환경에서는 cp949)으로 임시
+            # 파일에 쓰지만 다시 읽을 때는 UTF-8을 가정하므로, 코드 문자열 안에 직접 한글을 넣으면
+            # UnicodeDecodeError로 스크립트 자체가 컴파일되지 않는다(한글은 모듈 임포트로만 전달한다).
+            "with patch('engine.stage2.storage.save_project'), patch('engine.stage2.cap_judgement.holding_target_names', return_value=['Chlorine']):\n"
             "    panel.render(project)\n"
         ) % (str(ROOT), kind)
         return AppTest.from_string(code, default_timeout=60).run()
@@ -53,7 +56,9 @@ class SingleJudgeButtonTests(unittest.TestCase):
     def test_facility_only_stage_shows_only_the_holding_confirmation_button(self):
         at = self._run("facility_only")
         self.assertFalse(at.exception)
-        self.assertEqual(self._judge_buttons(at), ["최대보유량 확인하기"])
+        # 시설 입력 화면(cap_facility_editor, compact 모드)은 PSM 수량 단계와 같은
+        # "다음 단계로 이동" 문구를 쓴다(둘 다 "2. 최대보유량 확인"의 하위 단계).
+        self.assertEqual(self._judge_buttons(at), ["다음 단계로 이동"])
 
     def test_final_stage_uses_final_judgement_button(self):
         at = self._run("decided")

@@ -41,12 +41,13 @@ class JudgementInputTests(unittest.TestCase):
         self.assertIn("별표 13 제1호 하루 최대 제조·취급량(kg)", after_yes)
         self.assertNotIn("별표 13 제2호 최대 저장량(kg)", after_yes)
 
-    def test_mixture_cas_display_is_not_a_concatenated_lookup_identifier(self):
+    def test_mixture_cas_display_shows_each_component_cas(self):
+        # cas_display()의 결과는 화면 표시에만 쓰인다(어디서도 조회 키로 쓰지 않는다).
+        # 혼합제품 자체는 CAS가 없으므로, 성분 CAS를 그대로 보여줘야 옆의 안내문구
+        # ("CAS 칸에 제품 MSDS 제3항에서 옮긴 성분 CAS를 보여 줍니다")와 어긋나지 않는다.
         row = {"제품명": "세정제 A", "혼합물 여부": "Y", "CAS No.": ""}
         shown = j.cas_display(row, 1, {1: [("67-64-1", "50"), ("108-88-3", "30"), ("67-63-0", "20")]})
-        self.assertIn("혼합물", shown)
-        self.assertIn("구성성분 3개", shown)
-        self.assertNotIn("67-64-1 · 108-88-3", shown)
+        self.assertEqual(shown, "67-64-1 · 108-88-3 · 67-63-0 (혼합물 성분)")
 
     def test_request_rows_reads_row_numbers_and_falls_back_to_all_rows(self):
         self.assertEqual(j.request_rows(REQUESTS, 12), [1, 2, 3, 10])

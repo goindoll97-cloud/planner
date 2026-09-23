@@ -19,8 +19,11 @@ class CAPImplementationSelfCheckTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.cwd = os.getcwd()
         os.chdir(self.tmp.name)
-        self.addCleanup(os.chdir, self.cwd)
+        # addCleanup은 등록한 순서의 역순(LIFO)으로 실행된다. cleanup을 먼저 등록해야
+        # chdir로 밖으로 나간 뒤에 삭제가 실행되어, 윈도우에서 "현재 작업 디렉터리인
+        # 폴더를 삭제할 수 없다"(PermissionError: WinError 32)는 오류를 피할 수 있다.
         self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(os.chdir, self.cwd)
 
     def _project(self, group="1군"):
         p = Stage2Project(

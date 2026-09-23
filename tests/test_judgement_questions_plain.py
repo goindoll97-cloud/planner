@@ -175,6 +175,42 @@ class AskScreenTests(unittest.TestCase):
         self.assertTrue(any("규정량 계산에서 뺄 가스의 양" in m.value for m in at.markdown))
 
 
+class ProductQuantityPickerTests(unittest.TestCase):
+    """multiselect가 실제로 고른 제품의 수량을 kg로 정확히 더하는지(위젯 존재만이 아니라)."""
+
+    def _project_with_products(self):
+        project = CAPForm1EngineTests()._project()
+        project.set_field(
+            "inventory.chemicals", "화학물질 목록",
+            [
+                {"물질명": "톨루엔", "제품명": "톨루엔", "CAS 번호": "108-88-3", "함량(%)": "99",
+                 "최대 제조·사용량": "2", "최대 저장량": "5", "수량 단위": "ton"},
+                {"물질명": "아세톤", "제품명": "아세톤", "CAS 번호": "67-64-1", "함량(%)": "99",
+                 "최대 제조·사용량": "500", "최대 저장량": "1000", "수량 단위": "kg"},
+            ],
+            "USER_CONFIRMED",
+        )
+        return project
+
+    def test_totals_are_summed_in_kg_only_for_the_selected_products(self):
+        from ui import judgement_panel as panel
+
+        project = self._project_with_products()
+        totals = panel._product_quantity_kg(project, {"톨루엔"})
+        self.assertEqual(totals, {"mfg": 2000.0, "storage": 5000.0})  # ton -> kg
+        both = panel._product_quantity_kg(project, {"톨루엔", "아세톤"})
+        self.assertEqual(both, {"mfg": 2500.0, "storage": 6000.0})
+        self.assertEqual(panel._product_quantity_kg(project, set()), {"mfg": 0.0, "storage": 0.0})
+
+    def test_label_is_read_from_the_parent_applicability_question(self):
+        from types import SimpleNamespace
+
+        from ui import judgement_panel as panel
+
+        q = SimpleNamespace(follows="별표 13 제2호 인화성 액체 해당 여부")
+        self.assertEqual(panel._psm_label_from_followup(q), "인화성 액체")
+
+
 if __name__ == "__main__":
     unittest.main()
 
