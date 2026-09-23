@@ -97,6 +97,16 @@ def _compact_source_rows(project, focus_names: list[str] | None) -> tuple[list[d
     return visible, untouched
 
 
+def _without_extra_facility_row(rows: list[dict], index: int) -> list[dict] | None:
+    """Remove one duplicate-material facility row, keeping one row for every material."""
+    if index < 0 or index >= len(rows):
+        return None
+    material = _norm(rows[index].get("취급물질"))
+    if not material or sum(_norm(row.get("취급물질")) == material for row in rows) <= 1:
+        return None
+    return [dict(row) for row_index, row in enumerate(rows) if row_index != index]
+
+
 def _compact_choice(label: str, options: list[str], value, key: str, help_text: str = "") -> str:
     choices = [""] + list(options)
     current = _clean(value)
@@ -259,9 +269,14 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
     """판정용 최소 시설 입력.
 
     대상 물질은 판정엔진이 정하고 화면에서 잠근다. 같은 물질의 시설이 여러 개일 때만
-    사용자가 '시설 추가' 버튼으로 그 물질의 행을 복제한다.
+    사용자가 '시설 행 추가' 버튼으로 그 물질의 행을 복제한다.
     """
     pid = project.project_id
+    reset_key = f"{prefix}_compact_reset_{pid}"
+    if st.session_state.pop(reset_key, False):
+        for key in list(st.session_state):
+            if key.startswith(f"{prefix}_compact_") and pid in key:
+                st.session_state.pop(key, None)
     names = []
     for name in (focus_names or []):
         clean = _clean(name)
@@ -279,12 +294,12 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
     # 동일 물질의 추가 시설은 사용자가 물질명을 다시 선택하지 않고 해당 물질 버튼으로 만든다.
     st.caption(
         "물질명은 판정 결과에서 자동으로 정해집니다. 시설이 하나면 그대로 입력하고, "
-        "같은 물질을 탱크·반응기 등 여러 시설에서 취급할 때만 해당 물질의 '시설 추가'를 누르세요."
+        "같은 물질을 탱크·반응기 등 여러 시설에서 취급할 때만 해당 물질의 '시설 행 추가'를 누르세요."
     )
     button_cols = st.columns(min(len(names), 3)) if names else []
     for idx, name in enumerate(names):
         col = button_cols[idx % len(button_cols)] if button_cols else st
-        if col.button(f"{name} 시설 추가", key=f"{prefix}_add_{pid}_{idx}"):
+        if col.button(f"{name} 시설 행 추가", key=f"{prefix}_add_{pid}_{idx}"):
             extra_counts[name] = int(extra_counts.get(name, 0)) + 1
             st.session_state[extra_key] = extra_counts
             st.rerun()
@@ -343,45 +358,63 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
         state = _clean(row.get("물질성상"))
         if not ftype:
             st.caption(f"• {material}: 시설 유형을 고르면 필요한 입력칸이 나타납니다.")
-            continue
-        if ftype in ws.EXCLUDED_TYPES:
+        elif ftype in ws.EXCLUDED_TYPES:
             st.info(f"{material}: '{ftype}'은 최대보유량 계산에서 제외되는 시설 유형입니다.")
-            continue
-        if not state:
+        elif not state:
             st.caption(f"• {material}: 물질 상태를 고르면 필요한 입력칸이 나타납니다.")
-            continue
+        else:
+            suffix = f"{material} · 시설 {sum(1 for r in rows[:index+1] if _norm(r.get('취급물질')) == _norm(material))}"
+            with st.expander(f"{suffix} — 계산에 필요한 정보", expanded=True):
+                if state == "기체·고압가스":
+                    _compact_gas(project, row, prefix, pid, index)
+                elif state == "복수성상":
+                    st.caption("액체·기체 등 여러 상태가 함께 존재하면 프로그램이 임의 계산하지 않습니다. 회사에서 확인한 최대보유량과 근거를 입력하세요.")
+                    _compact_direct_mass(row, prefix, pid, index)
+                elif ftype == "보관시설":
+                    row["보관계획도 최대량"] = _compact_text_number(
+                        "보관계획도에 적힌 최대량",
+                        row.get("보관계획도 최대량"),
+                        f"{prefix}_compact_plan_{pid}_{index}",
+                        "보관계획도 또는 창고 배치계획에서 허용하는 최대 보관량입니다.",
+                    )
+                    row["일일최대보관량"] = _compact_text_number(
+                        "하루 중 실제 최대 보관량",
+                        row.get("일일최대보관량"),
+                        f"{prefix}_compact_daily_{pid}_{index}",
+                        "하루 동안 실제로 보관될 수 있는 가장 큰 양입니다. 프로그램은 두 값 중 큰 값을 사용합니다.",
+                    )
+                    row["질량단위"] = _compact_choice(
+                        "수량 단위", ["kg", "ton"], row.get("질량단위"),
+                        f"{prefix}_compact_storage_unit_{pid}_{index}",
+                    )
+                elif ftype == "기타":
+                    st.caption("자동 계산 규칙을 적용하기 어려운 시설입니다. 회사에서 확인한 최대보유량을 입력하세요.")
+                    _compact_direct_mass(row, prefix, pid, index)
+                else:
+                    _compact_volume_density(project, row, prefix, pid, index, gravity_pool)
+                    if ftype == "제조·사용시설":
+                        _compact_process(row, prefix, pid, index)
 
-        suffix = f"{material} · 시설 {sum(1 for r in rows[:index+1] if _norm(r.get('취급물질')) == _norm(material))}"
-        with st.expander(f"{suffix} — 계산에 필요한 정보", expanded=True):
-            if state == "기체·고압가스":
-                _compact_gas(project, row, prefix, pid, index)
-            elif state == "복수성상":
-                st.caption("액체·기체 등 여러 상태가 함께 존재하면 프로그램이 임의 계산하지 않습니다. 회사에서 확인한 최대보유량과 근거를 입력하세요.")
-                _compact_direct_mass(row, prefix, pid, index)
-            elif ftype == "보관시설":
-                row["보관계획도 최대량"] = _compact_text_number(
-                    "보관계획도에 적힌 최대량",
-                    row.get("보관계획도 최대량"),
-                    f"{prefix}_compact_plan_{pid}_{index}",
-                    "보관계획도 또는 창고 배치계획에서 허용하는 최대 보관량입니다.",
-                )
-                row["일일최대보관량"] = _compact_text_number(
-                    "하루 중 실제 최대 보관량",
-                    row.get("일일최대보관량"),
-                    f"{prefix}_compact_daily_{pid}_{index}",
-                    "하루 동안 실제로 보관될 수 있는 가장 큰 양입니다. 프로그램은 두 값 중 큰 값을 사용합니다.",
-                )
-                row["질량단위"] = _compact_choice(
-                    "수량 단위", ["kg", "ton"], row.get("질량단위"),
-                    f"{prefix}_compact_storage_unit_{pid}_{index}",
-                )
-            elif ftype == "기타":
-                st.caption("자동 계산 규칙을 적용하기 어려운 시설입니다. 회사에서 확인한 최대보유량을 입력하세요.")
-                _compact_direct_mass(row, prefix, pid, index)
+        ordinal = sum(1 for r in rows[:index+1] if _norm(r.get("취급물질")) == _norm(material))
+        if ordinal > 1 and st.button(
+            f"{material} 시설 {ordinal}행 삭제", key=f"{prefix}_delete_{pid}_{index}"
+        ):
+            reduced_rows = _without_extra_facility_row(rows, index)
+            if reduced_rows is None:
+                st.warning("각 물질의 시설 행은 최소 한 행이 필요합니다.")
             else:
-                _compact_volume_density(project, row, prefix, pid, index, gravity_pool)
-                if ftype == "제조·사용시설":
-                    _compact_process(row, prefix, pid, index)
+                saved = ws.save_facility_rows(project, [*untouched, *reduced_rows])
+                if saved:
+                    # Reset widget state on the next run, before those widgets are instantiated.
+                    st.session_state[reset_key] = True
+                    save_project(project)
+                    if on_saved is not None:
+                        on_saved(saved)
+                    else:
+                        st.success(f"시설 행을 삭제했습니다. 남은 시설 {saved}건을 저장했습니다.")
+                        st.rerun()
+                else:
+                    st.warning("시설 행을 삭제하지 못했습니다. 기본 행은 물질별로 하나씩 유지해야 합니다.")
 
     live = ws.compute_holdings(project, rows) if rows else []
     if live:
