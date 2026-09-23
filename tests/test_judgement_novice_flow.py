@@ -49,6 +49,16 @@ class StepTests(unittest.TestCase):
             messages=(),
         )))
 
+    def test_missing_ksic_routes_to_an_actionable_industry_choice(self):
+        questions = jd._questions_for(
+            ["05_최종판정조건: PSM 법정 대상 업종 선택을 확인해 주세요."], {}
+        )
+        [question] = [q for q in questions if q.item == "PSM 법정 대상 업종 선택"]
+        self.assertEqual(question.system, "공정안전보고서")
+        self.assertIn("해당 없음", question.choices)
+        self.assertIn("모름", question.choices)
+        self.assertIn("석유화학계 기초화학물질 제조업", question.choices)
+
     def test_step_line_marks_only_the_current_step(self):
         line = panel.step_line(2)
         self.assertIn("**2. 최대보유량 확인**", line)
