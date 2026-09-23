@@ -28,7 +28,7 @@ from .inventory import (
     _map_sds_text_to_app1_keys,
     _norm_answer,
 )
-from .psm_engine import assess_psm
+from .psm_engine import PSM_TARGET_INDUSTRIES, assess_psm
 from .psm_followup import (
     PSMNote8Adjustment,
     PSMFollowupFacts,
