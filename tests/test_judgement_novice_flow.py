@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from engine.stage2 import cap_judgement as jd
 from ui import judgement_panel as panel
@@ -44,6 +45,27 @@ class StepTests(unittest.TestCase):
         self.assertIn("**2. 최대보유량 확인**", line)
         self.assertNotIn("**1.", line)
         self.assertEqual(panel.step_line(0).count("**"), 0)
+
+    def test_psm_quantity_suggestions_use_product_msds_and_keep_mixture_components_out(self):
+        questions = (
+            SimpleNamespace(item="별표 13 제2호 하루 최대 제조·취급량(kg)"),
+            SimpleNamespace(item="별표 13 제2호 최대 저장량(kg)"),
+        )
+        rows = [{"수량 단위": "ton"}, {"수량 단위": "ton"}]
+        inputs = [
+            {},
+            {
+                "최대 제조·사용량": "0.5",
+                "최대 저장량": "2",
+                "SDS 제2항 유해성·위험성 분류(선택 입력)": "인화성 액체 : 구분 2",
+            },
+        ]
+        with patch("engine.stage2.cap_chemical_workspace._rows", return_value=("inventory", rows)), \
+                patch.object(jd, "chemical_inputs", return_value=inputs):
+            suggested = panel._psm_quantity_suggestions(SimpleNamespace(), questions)
+
+        self.assertEqual(suggested[questions[0].item], "500")
+        self.assertEqual(suggested[questions[1].item], "2000")
 
 
 class WordingTests(unittest.TestCase):
