@@ -335,11 +335,22 @@ def _ask(project, outcome) -> bool:
                 f"KOSHA 후보로 채운 MSDS 분류 {len(used)}건은 참고자료입니다. 제품 MSDS 제2항과 대조해 확인했습니다.",
                 key=f"judge_kosha_ok_{project.project_id}")
         if st.session_state.get(f"judge_mixture_msds_missing_{project.project_id}", False):
-            st.error("혼합물 제품의 MSDS 제2항 분류를 입력해야 판정정보를 확인할 수 있습니다.")
+            st.error(
+                "혼합물 제품의 MSDS 제2항 분류가 비어 있습니다. "
+                "제품 공급자 MSDS 제2항의 분류를 입력한 뒤 판정정보를 확인하세요."
+            )
             confirmed = False
 
-        if st.button("판정정보 확인하기", type="primary",
+        missing_mixture_msds = st.session_state.get(f"judge_mixture_msds_missing_{project.project_id}", False)
+        confirm_label = (
+            "제품 MSDS 제2항 입력 후 판정정보 확인하기"
+            if missing_mixture_msds else "판정정보 확인하기"
+        )
+        if st.button(confirm_label, type="primary",
                      key=f"judge_answer_{project.project_id}", disabled=not confirmed):
+            if missing_mixture_msds:
+                st.error("제품 MSDS 제2항 분류를 입력하기 전에는 다음 단계로 진행할 수 없습니다.")
+                return True
             table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
             note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
             answer_changed = any(
