@@ -589,7 +589,7 @@ def cas_display(row: Mapping[str, Any], row_number: int, parts: Mapping[int, lis
         return cas
     listed = parts.get(row_number) or []
     if listed:
-        return " · ".join(c for c, _ in listed) + " (혼합물 성분)"
+        return f"혼합물 (구성성분 {len(listed)}개 — 개별 CAS는 참고표에서 확인)"
     return "(혼합물 — 성분 없음)" if _mixture_yes(row.get(MIXTURE_FLAG_COLUMN)) else ""
 
 
