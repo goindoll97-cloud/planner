@@ -440,9 +440,9 @@ def _holding_psm_questions(project, outcome) -> bool:
     for question in questions:
         given[question.item] = _question(project, question, {**suggested, **existing, **given})
 
-    if st.button("최대보유량 확인하기", type="primary", key=f"judge_psm_quantity_{project.project_id}"):
+    if st.button("다음 단계로 이동", type="primary", key=f"judge_psm_quantity_{project.project_id}"):
         if not any(value != existing.get(item, "") for item, value in given.items()):
-            if not all(str(existing.get(item, "")).strip() for item in (question.item for question in questions)):
+            if not all(str(given.get(question.item, "")).strip() for question in questions):
                 st.warning("PSM 수량을 입력하거나 물질목록의 수량을 먼저 확인해 주세요.")
                 return True
         with st.spinner("PSM 수량을 저장하고 다음 단계를 확인하는 중입니다."):
