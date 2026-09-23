@@ -40,6 +40,15 @@ class StepTests(unittest.TestCase):
         self.assertEqual(panel.current_step(SimpleNamespace(status="PENDING")), 2)
         self.assertEqual(panel.current_step(SimpleNamespace(status="DECIDED")), 3)
 
+    def test_after_save_flash_describes_the_actual_next_stage(self):
+        self.assertIn("최대보유량", panel._after_save_flash(SimpleNamespace(status="PENDING", messages=())))
+        self.assertIn("추가 확인사항", panel._after_save_flash(SimpleNamespace(status="REQUEST", questions=(), messages=())))
+        self.assertIn("일부 PSM 수량", panel._after_save_flash(SimpleNamespace(
+            status="REQUEST",
+            questions=(SimpleNamespace(system="공정안전보고서", item="별표 13 제2호 최대 저장량(kg)"),),
+            messages=(),
+        )))
+
     def test_step_line_marks_only_the_current_step(self):
         line = panel.step_line(2)
         self.assertIn("**2. 최대보유량 확인**", line)
