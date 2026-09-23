@@ -127,3 +127,37 @@ class AskScreenTests(unittest.TestCase):
         at.run()
         project = at.session_state["project"]
         self.assertEqual(jd.answers(project)[q.item], "1500")
+
+    def test_pending_after_stage2_uses_the_engines_own_holding_targets_not_a_dead_end(self):
+        # PSM 별표13 수량을 저장한 뒤 엔진이 PENDING을 돌려줄 때 missing_quantity가 비어 있으면,
+        # (REQUEST 단계의 facility_needed 분기가 이미 쓰는) holding_target_names로 대상을 찾아야
+        # 한다. 그러지 않으면 시설 입력 화면이 "물질을 특정하지 못했다"는 막다른 안내만 보여 주고
+        # 사용자는 '다음 최대보유량 정보를 확인해 주세요' 메시지만 본 채 더 나아가지 못한다.
+        from pathlib import Path
+
+        from streamlit.testing.v1 import AppTest
+
+        root = str(Path(__file__).resolve().parents[1])
+        code = (
+            "import sys; sys.path.insert(0, %r)\n"
+            "from types import SimpleNamespace\n"
+            "from unittest.mock import patch\n"
+            "import streamlit as st\n"
+            "from tests.test_stage2_cap_form1_engine import CAPForm1EngineTests\n"
+            "from ui import judgement_panel as panel\n"
+            "if 'project' not in st.session_state:\n"
+            "    st.session_state['project'] = CAPForm1EngineTests()._project()\n"
+            "project = st.session_state['project']\n"
+            "outcome = SimpleNamespace(status='PENDING', missing_quantity=(), messages=())\n"
+            "st.session_state['judge_out_' + project.project_id] = outcome\n"
+            "with patch('ui.judgement_panel.judgement.holding_target_names', return_value=['Chlorine']):\n"
+            "    panel.render(project)\n"
+        ) % root
+        at = AppTest.from_string(code, default_timeout=60).run()
+        self.assertFalse(at.exception)
+        self.assertFalse(any("특정하지 못했습니다" in w.value for w in at.warning))
+        self.assertTrue(any("Chlorine" in getattr(m, "value", "") for m in at.markdown))
+
+
+if __name__ == "__main__":
+    unittest.main()

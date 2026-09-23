@@ -873,9 +873,14 @@ def render(project) -> None:
                     st.write(f"• {judgement.display_request(message)}")
             elif outcome.status == "PENDING":
                 st.warning("최대보유량을 확인해야 최종판정을 진행할 수 있습니다.")
-                for name in outcome.missing_quantity:
+                # outcome.missing_quantity는 이번 판정에서 새로 빠진 물질만 담는다. PSM 수량처럼
+                # 다른 조건을 먼저 저장한 뒤라 이 목록이 비어 있어도, 시설 입력이 필요한 물질은
+                # 여전히 있을 수 있다(REQUEST 단계의 facility_needed 분기와 같은 방식으로 구한다).
+                # 비어 있는 채로 두면 시설 화면이 "물질을 특정하지 못했다"는 막다른 안내만 보여 준다.
+                holding_names = list(outcome.missing_quantity) or judgement.holding_target_names(project)
+                for name in holding_names:
                     st.write(f"• {name}")
-                _facilities(project, outcome, list(outcome.missing_quantity))
+                _facilities(project, outcome, holding_names)
                 has_own_button = True
             elif outcome.status == "SYSTEM":
                 st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
