@@ -7,6 +7,7 @@ import pandas as pd
 
 from engine.inventory import IntakeData
 from engine.psm_engine import PSMAssessment, PSMRatioLine
+from engine.stage1_workbook import _psm_facts_from_workbook
 from engine.psm_followup import (
     PSMFollowupFacts,
     PSMNote8Adjustment,
@@ -16,6 +17,30 @@ from engine.psm_followup import (
 
 
 class PSMFollowupIntegrationTests(unittest.TestCase):
+    def test_property_quantities_are_auto_summed_from_uploaded_inventory_rows(self):
+        intake = IntakeData(
+            business={},
+            chemicals=pd.DataFrame([
+                {"제품명": "톨루엔", "수량 단위": "ton", "최대 제조·사용량": 3.0, "최대 저장량": 5.0},
+                {"제품명": "아세톤", "수량 단위": "ton", "최대 제조·사용량": 2.5, "최대 저장량": 4.0},
+                {"제품명": "비인화성", "수량 단위": "ton", "최대 제조·사용량": 7.0, "최대 저장량": 9.0},
+            ]),
+            documents={},
+            final_conditions={
+                "별표 13 제2호 인화성 액체 해당 여부": "Y",
+                "별표 13 제2호 인화성 액체 해당 제품행": "1, 2",
+            },
+        )
+        requirements = type("Req", (), {"property_items": (2,), "special_items": ()})()
+        requests = []
+        with patch("engine.stage1_workbook.detect_followup_requirements", return_value=requirements):
+            facts = _psm_facts_from_workbook(intake, object(), requests)
+
+        answer = facts.property_answers[2]
+        self.assertEqual(answer.manufacture_handling_kg, 5500.0)
+        self.assertEqual(answer.storage_kg, 9000.0)
+        self.assertFalse(any("하루 최대 제조·취급량과 최대 저장량" in request for request in requests))
+
     def test_ksic_20202_property_trigger_stays_candidate_even_when_r_below_one(self):
         db = pd.DataFrame(
             [

@@ -41,6 +41,13 @@ class JudgementInputTests(unittest.TestCase):
         self.assertIn("별표 13 제1호 하루 최대 제조·취급량(kg)", after_yes)
         self.assertNotIn("별표 13 제2호 최대 저장량(kg)", after_yes)
 
+    def test_mixture_cas_display_is_not_a_concatenated_lookup_identifier(self):
+        row = {"제품명": "세정제 A", "혼합물 여부": "Y", "CAS No.": ""}
+        shown = j.cas_display(row, 1, {1: [("67-64-1", "50"), ("108-88-3", "30"), ("67-63-0", "20")]})
+        self.assertIn("혼합물", shown)
+        self.assertIn("구성성분 3개", shown)
+        self.assertNotIn("67-64-1 · 108-88-3", shown)
+
     def test_request_rows_reads_row_numbers_and_falls_back_to_all_rows(self):
         self.assertEqual(j.request_rows(REQUESTS, 12), [1, 2, 3, 10])
         generic = REQUESTS + ["02_화학물질목록: 농도·성상 등 규정수량 결정에 필요한 항목을 확인하여 작성해 주세요."]

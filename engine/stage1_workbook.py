@@ -164,6 +164,54 @@ def _known_psm_exclusion(value: object) -> bool:
     return raw in {re.sub(r"\s+", "", str(v)) for v in guide.what_to_check}
 
 
+def _property_selection_key(item_no: int) -> str:
+    label = "인화성 가스" if item_no == 1 else "인화성 액체"
+    return f"별표 13 제{item_no}호 {label} 해당 제품행"
+
+
+def _selected_property_rows(conditions: dict[str, Any], item_no: int, total: int) -> list[int]:
+    raw = _condition_value(conditions, _property_selection_key(item_no))
+    rows = []
+    for token in re.findall(r"\d+", _clean_text(raw)):
+        number = int(token)
+        if 1 <= number <= total and number not in rows:
+            rows.append(number)
+    return rows
+
+
+def _row_quantity_kg(row: pd.Series, column: str) -> float | None:
+    value = _num(row.get(column))
+    if value is None:
+        return None
+    unit = _clean_text(row.get("수량 단위")).lower().replace(" ", "")
+    if unit == "kg":
+        return value
+    if unit in {"ton", "t", "톤"}:
+        return value * 1000.0
+    return None
+
+
+def _sum_property_rows(intake: IntakeData, row_numbers: list[int]) -> tuple[float | None, float | None, list[int]]:
+    """사용자가 물성만 확인하면, 수량은 이미 업로드한 물질목록에서 자동 합산한다."""
+    if not row_numbers:
+        return None, None, []
+    mfg_total = 0.0
+    storage_total = 0.0
+    missing: list[int] = []
+    for number in row_numbers:
+        row = intake.chemicals.iloc[number - 1]
+        mfg = _row_quantity_kg(row, "최대 제조·사용량")
+        storage = _row_quantity_kg(row, "최대 저장량")
+        if mfg is None or storage is None:
+            missing.append(number)
+            continue
+        mfg_total += mfg
+        storage_total += storage
+    if missing:
+        return None, None, missing
+    return mfg_total, storage_total, []
+
+
 def _psm_facts_from_workbook(intake: IntakeData, base, requests: list[str]) -> PSMFollowupFacts:
     conditions = intake.final_conditions
     requirements = detect_followup_requirements(intake, base)
@@ -177,13 +225,24 @@ def _psm_facts_from_workbook(intake: IntakeData, base, requests: list[str]) -> P
         label, applicable_key, mfg_key, storage_key = property_meta[item_no]
         applicable_raw = _condition_value(conditions, applicable_key)
         applicable = _answer_bool(applicable_raw)
+
+        # 과거 파일에 합계값이 이미 있으면 그대로 호환한다. 새 UI에서는 제품만 고르고
+        # 제조·사용량/저장량은 최초 물질목록의 값을 자동 합산한다.
         mfg = _num(_condition_value(conditions, mfg_key))
         storage = _num(_condition_value(conditions, storage_key))
+        selected_rows = _selected_property_rows(conditions, item_no, len(intake.chemicals))
+        missing_rows: list[int] = []
+        if applicable is True and (mfg is None or storage is None) and selected_rows:
+            mfg, storage, missing_rows = _sum_property_rows(intake, selected_rows)
+
         facts.property_answers[item_no] = PSMPropertyAnswer(applicable, mfg, storage)
         if applicable is None:
             requests.append(_request("05_최종판정조건", f"근거: 「산업안전보건법」 제44조제1항 → 「산업안전보건법 시행령」 제43조제1항 및 별표 13 「유해·위험물질 규정량」 제{item_no}호({label}). 귀사의 취급물질·공정이 이 항목에 해당하는지 확인하여 Y/N으로 작성해 주세요."))
-        elif applicable and (mfg is None or storage is None):
-            requests.append(_request("05_최종판정조건", f"근거: 「산업안전보건법」 제44조제1항 → 「산업안전보건법 시행령」 제43조제1항 및 별표 13 「유해·위험물질 규정량」 제{item_no}호({label}). 해당으로 확인된 경우 하루 최대 제조·취급량과 최대 저장량을 각각 kg로 작성해 주세요. 사용하지 않는 구분은 0으로 입력합니다."))
+        elif applicable and missing_rows:
+            rows_text = ", ".join(map(str, missing_rows))
+            requests.append(_request("02_화학물질목록", f"{rows_text}행의 최대 제조·사용량과 최대 저장량을 확인해 주세요. 인화성 물질 수량은 업로드값을 자동 합산합니다."))
+        elif applicable and not selected_rows and (mfg is None or storage is None):
+            requests.append(_request("05_최종판정조건", f"별표 13 제{item_no}호({label})에 해당하는 제품을 선택해 주세요. 최대 제조·사용량과 최대 저장량은 처음 업로드한 물질목록에서 자동 합산합니다."))
 
     special_meta = {
         23: "별표 13 제23호 발연황산 삼산화황(SO3) 중량%",

@@ -25,9 +25,9 @@ def _status_line(project) -> str:
     return f"{CAP}: {decision.get('cap_status') or '확인 안 됨'} / {PSM}: {decision.get('psm_status') or '확인 안 됨'}"
 
 
-STEPS = ("물질 성분", "판정 조건", "최대보유량", "최종판정")
+STEPS = ("판정정보 확인", "최대보유량 확인", "최종판정")
 
-HELP_FLOW = ("판정은 물질 성분 확정 → 판정 조건 확정 → 최대보유량 확정 → 최종판정 순서로 진행합니다. 입력하신 물질 목록으로 법정 대상인지 먼저 확인하고, "
+HELP_FLOW = ("판정은 판정정보 확인 → 최대보유량 확인 → 최종판정 순서로 진행합니다. 내부적으로 필요한 물질 성분과 판정 조건을 먼저 확인하고, "
              "더 필요한 정보가 있으면 그것만 물어봅니다. 별지 작성은 판정 전에도 미리 시작할 수 있습니다.")
 WHY_ASK = ("**왜 묻나요?** 입력하신 물질 목록만으로는 법정 대상인지 확정할 수 없어서, 판정 규칙이 사업장에 대해 추가로 확인을 요청한 항목입니다. "
            "사업장 전체에 대한 질문이라 물질과 상관없이 한 번만 답하면 됩니다.\n\n"
@@ -47,22 +47,22 @@ FACILITY_HELP = (
     "**나중에는?** 여기서 입력한 계산값은 보고서 작성 화면에 그대로 이어지며, 그때 단위공장명·설비번호·정식 시설명 같은 식별정보만 보완합니다.\n\n"
     + HOLDING_HELP
 )
-KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 SDS 제2항 분류(인화성·독성 등)를 요청합니다. 제품 SDS를 일일이 찾는 대신 "
+KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 MSDS 제2항 분류(인화성·독성 등)를 요청합니다. 제품 MSDS를 일일이 찾는 대신 "
               "CAS 번호로 KOSHA(한국산업안전보건공단)에서 후보를 불러옵니다.\n\n"
-              "**주의** 조회 결과는 참고자료입니다. 판정 규칙이 요청한 물질의 표에 후보로 미리 채워지며, 제품 SDS와 대조해 확인해야 판정에 쓰입니다. "
+              "**주의** 조회 결과는 참고자료입니다. 판정 규칙이 요청한 물질의 표에 후보로 미리 채워지며, 제품 MSDS와 대조해 확인해야 판정에 쓰입니다. "
               "CAS 번호만 전송하고 회사·수량 정보는 보내지 않습니다.")
 
 
 def current_step(outcome) -> int:
-    """지금 화면이 어느 단계인지(1~4). 판정 규칙이 요청하는 내용에 따라 필요한 단계만 나타납니다."""
+    """지금 화면이 어느 단계인지(1~3). 내부 판정 상태를 사용자용 3단계로 묶어 표시합니다."""
     status = getattr(outcome, "status", "")
     if status == "COMPOSITION":
         return 1
     if status == "REQUEST":
-        return 2 if getattr(outcome, "questions", ()) else 3
+        return 1 if getattr(outcome, "questions", ()) else 2
     if status == "PENDING":
-        return 3
-    return 4
+        return 2
+    return 3
 
 
 def step_line(step: int) -> str:
@@ -100,7 +100,7 @@ def _composition_form(project, outcome) -> None:
         "#### 물질 성분 확인",
         help=(
             "**단일물질**은 CAS No. 하나로 확인합니다.\n\n"
-            "**혼합제품**은 제품명으로 추정하지 않고, 제품 SDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
+            "**혼합제품**은 제품명으로 추정하지 않고, 제품 MSDS 제3항의 구성성분 CAS No.와 함량(%)으로 판정합니다.\n\n"
             "혼합제품은 아래 '혼합물 구성성분' 두 번째 파일에 한 번만 입력합니다. "
             "파일 사용이 어려운 경우에만 '직접 입력'을 선택하세요."
         ),
@@ -151,7 +151,7 @@ def _composition_form(project, outcome) -> None:
                 COMPOSITION_OPTIONS,
                 horizontal=True,
                 key=f"judge_comp_kind_{pid}_{number}",
-                help="제품 SDS 제3항을 확인해 단일물질인지 혼합물인지 선택하세요.",
+                help="제품 MSDS 제3항을 확인해 단일물질인지 혼합물인지 선택하세요.",
                 label_visibility="collapsed",
             )
 
@@ -182,11 +182,11 @@ def _composition_form(project, outcome) -> None:
                 column_config={
                     "CAS No.": st.column_config.TextColumn(
                         "구성성분 CAS No.",
-                        help="제품 SDS 제3항에 적힌 구성성분 CAS No.를 그대로 입력합니다. 모든 성분 행에 필수입니다.",
+                        help="제품 MSDS 제3항에 적힌 구성성분 CAS No.를 그대로 입력합니다. 모든 성분 행에 필수입니다.",
                     ),
                     "함량(%)": st.column_config.NumberColumn(
                         "함량(%)", min_value=0.0, max_value=100.0,
-                        help="제품 SDS 제3항에 적힌 해당 구성성분 함량을 입력합니다.",
+                        help="제품 MSDS 제3항에 적힌 해당 구성성분 함량을 입력합니다.",
                     ),
                 },
             )
@@ -206,12 +206,12 @@ def _composition_form(project, outcome) -> None:
     confirmed = True
     if any_mixture:
         confirmed = st.checkbox(
-            "혼합물 구성성분의 CAS No.와 함량(%)을 제품 SDS 제3항과 대조해 확인했습니다.",
+            "혼합물 구성성분의 CAS No.와 함량(%)을 제품 MSDS 제3항과 대조해 확인했습니다.",
             key=f"judge_comp_sds_ok_{pid}",
         )
 
     if st.button(
-        "물질 성분 확정하기",
+        "판정정보 확인하기",
         type="primary",
         key=f"judge_comp_save_{pid}",
         disabled=any_mixture and not confirmed,
@@ -305,7 +305,7 @@ def _ask(project, outcome) -> bool:
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
     facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
     # 시설 산정 단계가 따로 필요한 경우, 최대보유량 직접입력 요청은 판정조건 표에 섞지 않는다.
-    # SDS 등 다른 물질별 판정조건만 먼저 확정하고, 최대보유량은 다음 단계에서 시설정보로 계산한다.
+    # MSDS 등 다른 물질별 판정조건만 먼저 확정하고, 최대보유량은 다음 단계에서 시설정보로 계산한다.
     table_messages = [
         m for m in all_table_messages
         if not (facility_needed and "법정 사업장 최대보유량" in judgement.display_request(m))
@@ -327,15 +327,18 @@ def _ask(project, outcome) -> bool:
     has_condition_inputs = bool(base_questions) or edited is not None or note8_rows is not None
     if has_condition_inputs:
         if facility_needed:
-            st.caption("판정 조건을 먼저 확정하면 다음 단계에서 최대보유량을 확인합니다.")
+            st.caption("판정정보를 먼저 확인하면 다음 단계에서 최대보유량을 확인합니다.")
 
         confirmed = True
         if used:
             confirmed = st.checkbox(
-                f"KOSHA 후보로 채운 SDS 분류 {len(used)}건은 참고자료입니다. 제품 SDS 제2항과 대조해 확인했습니다.",
+                f"KOSHA 후보로 채운 MSDS 분류 {len(used)}건은 참고자료입니다. 제품 MSDS 제2항과 대조해 확인했습니다.",
                 key=f"judge_kosha_ok_{project.project_id}")
+        if st.session_state.get(f"judge_mixture_msds_missing_{project.project_id}", False):
+            st.error("혼합물 제품의 MSDS 제2항 분류를 입력해야 판정정보를 확인할 수 있습니다.")
+            confirmed = False
 
-        if st.button("판정 조건 확정하기", type="primary",
+        if st.button("판정정보 확인하기", type="primary",
                      key=f"judge_answer_{project.project_id}", disabled=not confirmed):
             table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
             note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
@@ -450,16 +453,31 @@ def _chemical_table(project, outcome, table_messages):
     pid = project.project_id
     cand_key, gen_key, sds_col = f"judge_kosha_{pid}", f"judge_chem_gen_{pid}", "SDS 제2항 유해성·위험성 분류(선택 입력)"
     candidates: dict = st.session_state.get(cand_key, {})
+    kosha_targets = _kosha_targets(rows, wanted, parts)
+    if sds_col in shown:
+        candidates = _auto_lookup_kosha(project, kosha_targets, candidates, cand_key, gen_key)
     records = []
     for number in wanted:
         row, extra = rows[number - 1], stored[number - 1]
         cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
-        if not extra.get(sds_col) and candidates.get(cas) is not None and candidates[cas].usable:
+        component_cas = [component for component, _ in (parts.get(number) or []) if component]
+        # 단일물질만 KOSHA 후보를 MSDS 입력칸에 참고값으로 넣는다.
+        # 혼합물은 구성성분 후보를 제품 MSDS 제2항으로 오인하지 않도록 비워 둔다.
+        if (not component_cas and not extra.get(sds_col)
+                and candidates.get(cas) is not None and candidates[cas].usable):
             extra = {**extra, sds_col: candidates[cas].text}  # 비어 있는 칸에만 후보를 넣는다
+        if component_cas:
+            component_display = "; ".join(
+                f"{component} ({pct}%)" if str(pct).strip() else component
+                for component, pct in (parts.get(number) or [])
+            )
+            cas_display = f"구성성분: {component_display}"
+        else:
+            cas_display = cas
         record = {
             "행": number,
             "제품명": str(row.get("제품명") or row.get("물질명") or ""),
-            "CAS No.": judgement.cas_display(row, number, parts),  # 혼합제품은 성분 CAS를 보여 준다(빈칸이면 값이 빠진 것처럼 보인다)
+            "CAS No.": cas_display,
             "필요한 값": ", ".join(needs[number]),
         }
         if has_quantity:
@@ -468,7 +486,14 @@ def _chemical_table(project, outcome, table_messages):
         records.append(record)
     frame = pd.DataFrame(records)
     if sds_col in shown:
-        _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates)
+        _kosha_button(project, kosha_targets, cand_key, gen_key, candidates)
+        _mixture_kosha_reference(rows, wanted, parts, candidates)
+        if any(parts.get(number) for number in wanted):
+            st.warning(
+                "혼합물 제품의 MSDS 제2항 분류는 구성성분 KOSHA 후보를 합쳐서 자동 확정하지 않습니다. "
+                "제품 공급자가 발행한 MSDS의 제2항(유해성·위험성)을 확인해 입력하세요. "
+                "제품 MSDS가 없으면 해당 항목을 확인할 때까지 판정을 진행하지 마세요."
+            )
     text = lambda label, help_text=None: st.column_config.TextColumn(label, help=help_text)
     config = {
         "행": st.column_config.NumberColumn("행", disabled=True, width="small"),
@@ -489,8 +514,8 @@ def _chemical_table(project, outcome, table_messages):
             help="바로 왼쪽 '사업장 최대보유량'을 법에서 정한 방법으로 계산했으면 Y(예), 창고 재고 등 단순 추정이면 N(아니오)입니다. 잘 모르면 '모름'을 고르세요.",
             options=YES_NO_UNKNOWN),
         sds_col: text(
-            "SDS 제2항 분류",
-            "제품 SDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
+            "MSDS 제2항 분류",
+            "제품 MSDS(물질안전보건자료) 2번 항목 '유해성·위험성'에 적힌 분류를 그대로 옮겨 적습니다. 위 KOSHA 버튼으로 후보를 불러올 수 있습니다. 해당 분류가 없으면 '별표1 해당없음'."),
     }
     editor = st.data_editor(frame, column_config=config, hide_index=True, width="stretch", num_rows="fixed",
                             key=f"judge_chem_{pid}_{st.session_state.get(gen_key, 0)}")
@@ -503,24 +528,55 @@ def _chemical_table(project, outcome, table_messages):
             typed["단위"] = "ton" if pd.isna(values["단위"]) else str(values["단위"])
         # 표에 보이지 않는 열의 예전 값은 그대로 두고, 보이는 열만 바꾼다. 고른 단위는 ton으로 통일해 저장한다.
         result[number - 1] = {**result[number - 1], **judgement.rows_to_ton([typed])[0]}
-        cas = str(values["CAS No."]).strip()
-        cand = candidates.get(cas)
+        source_row = rows[number - 1]
+        parent_cas = str(source_row.get("CAS No.") or source_row.get("CAS 번호") or "").strip()
+        component_cas = [component for component, _ in (parts.get(number) or []) if component]
+        # 혼합물의 구성성분 후보는 참고표에서만 사용하고 제품 MSDS 입력값으로 기록하지 않는다.
+        cand = candidates.get(parent_cas) if not component_cas else None
         # 후보 문구를 그대로 둔 칸만 'KOSHA 후보 사용'으로 본다(고쳐 쓴 칸은 사용자가 직접 적은 값이다).
         if (sds_col in shown and cand is not None and cand.usable and result[number - 1].get(sds_col) == cand.text
                 and not stored[number - 1].get(sds_col)):
-            used[cas] = cand
+            used[parent_cas] = cand
+    mixture_msds_missing = any(
+        parts.get(number) and not str(result[number - 1].get(sds_col) or "").strip()
+        for number in wanted
+    ) if sds_col in shown else False
+    st.session_state[f"judge_mixture_msds_missing_{pid}"] = mixture_msds_missing
     return result, used
 
 
-def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, candidates) -> None:
-    asked = []
+def _kosha_targets(rows, wanted, parts) -> list[str]:
+    """판정조건 화면에서 KOSHA 참고조회할 CAS를 구성성분 단위로 만든다.
+
+    혼합물은 제품행의 CAS가 없으므로 구성성분 CAS를 각각 조회한다. 이 목록은
+    참고조회용이며 혼합물 제품의 MSDS 제2항 분류를 대신하지 않는다.
+    """
+    targets: list[str] = []
     for number in wanted:
-        cas = str(rows[number - 1].get("CAS No.") or rows[number - 1].get("CAS 번호") or "").strip()
-        if cas and not stored[number - 1].get(sds_col):
-            asked.append(cas)
-    empty = kosha_candidates.pending_cas(asked, candidates)  # 처음이거나 네트워크 오류로 실패한 것만
+        row = rows[number - 1]
+        parent_cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
+        component_cas = [cas for cas, _ in (parts.get(number) or []) if cas]
+        targets.extend(component_cas or ([parent_cas] if parent_cas else []))
+    return list(dict.fromkeys(targets))
+
+
+def _auto_lookup_kosha(project, targets, candidates, cand_key, gen_key) -> dict:
+    """화면 진입 시 아직 조회하지 않은 CAS의 KOSHA 후보를 한 번 자동조회한다."""
+    missing = [cas for cas in targets if cas not in candidates]
+    if not missing:
+        return candidates
+    with st.spinner(f"KOSHA에서 MSDS 참고분류 {len(missing)}건을 자동조회하는 중입니다."):
+        found = kosha_candidates.fetch(missing)
+    merged = {**candidates, **found}
+    st.session_state[cand_key] = merged
+    st.session_state[gen_key] = st.session_state.get(gen_key, 0) + 1
+    return merged
+
+
+def _kosha_button(project, targets, cand_key, gen_key, candidates) -> None:
+    empty = kosha_candidates.pending_cas(targets, candidates)  # 네트워크 오류 등은 수동 재조회 허용
     help_text = KOSHA_HELP
-    if st.button("KOSHA에서 SDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
+    if st.button("KOSHA에서 MSDS 분류 후보 불러오기", key=f"judge_kosha_go_{project.project_id}", disabled=not empty,
                  help=help_text):
         with st.spinner(f"KOSHA에서 {len(set(empty))}개 CAS를 조회하는 중입니다."):
             found = kosha_candidates.fetch(empty)
@@ -534,6 +590,93 @@ def _kosha_button(project, rows, wanted, stored, sds_col, cand_key, gen_key, can
         st.caption(f"KOSHA 후보 {got}건을 채웠습니다. 채우지 못한 {len(misses)}건은 직접 적어 주세요.{detail}")
 
 
+def _mixture_kosha_reference(rows, wanted, parts, candidates) -> None:
+    """혼합물 구성성분별 KOSHA 결과를 참고자료로만 표시한다."""
+    reference = []
+    for number in wanted:
+        row = rows[number - 1]
+        for cas, pct in parts.get(number) or []:
+            candidate = candidates.get(cas)
+            if candidate is None:
+                continue
+            reference.append({
+                "제품명": str(row.get("제품명") or row.get("물질명") or f"{number}행"),
+                "구성성분 CAS No.": cas,
+                "함량(%)": pct,
+                "KOSHA 참고분류": candidate.text or f"({candidate.message or candidate.status})",
+            })
+    if reference:
+        st.caption("혼합물 구성성분별 KOSHA 조회 결과는 참고자료입니다. 제품 MSDS 제2항 분류는 제품 MSDS를 확인해 입력하세요.")
+        st.dataframe(pd.DataFrame(reference), hide_index=True, width="stretch")
+
+
+def _decision_basis_table(rows, kind: str) -> None:
+    """판정엔진이 반환한 비교자료를 사용자용 표로 보여준다."""
+    if not rows:
+        return
+    if kind == "CAP":
+        columns = (
+            ("물질", "product_name"),
+            ("CAS No.", "cas"),
+            ("최대보유량(ton)", "calculated_max_holding_ton"),
+            ("하위 규정수량(ton)", "lower_quantity_ton"),
+            ("상위 규정수량(ton)", "upper_quantity_ton"),
+            ("비교결과", "decision_level"),
+        )
+    else:
+        columns = (
+            ("법정 항목", "legal_item_no"),
+            ("물질", "legal_substance"),
+            ("CAS No.", "cas_values"),
+            ("제조·취급량(kg)", "manufacture_handling_kg"),
+            ("저장량(kg)", "storage_kg"),
+            ("비교 기준", "controlling_basis"),
+            ("비교비율", "controlling_ratio"),
+        )
+    visible = []
+    for row in rows:
+        item = {}
+        for label, key in columns:
+            value = row.get(key, "")
+            if value is None:
+                value = ""
+            item[label] = value
+        visible.append(item)
+    st.dataframe(pd.DataFrame(visible), hide_index=True, width="stretch")
+
+
+def _decision_basis(outcome) -> None:
+    """최종 결과와 함께 엔진의 설명·수치·법적 근거를 표시한다."""
+    decision = getattr(outcome, "decision", None)
+    if decision is None:
+        return
+    cap_explanation = str(getattr(decision, "cap_explanation", "") or "").strip()
+    psm_explanation = str(getattr(decision, "psm_explanation", "") or "").strip()
+    cap_basis = [str(value) for value in (getattr(decision, "cap_legal_basis", ()) or ()) if str(value).strip()]
+    psm_basis = [str(value) for value in (getattr(decision, "psm_legal_basis", ()) or ()) if str(value).strip()]
+    cap_rows = list(getattr(decision, "cap_quantity_rows", ()) or ())
+    psm_rows = list(getattr(decision, "psm_ratio_rows", ()) or ())
+    r_value = getattr(decision, "psm_r_value", None)
+
+    if not any((cap_explanation, psm_explanation, cap_basis, psm_basis, cap_rows, psm_rows)):
+        return
+    with st.expander("판정 이유 및 법적 근거", expanded=True):
+        st.caption("아래 내용은 승인 규정 DB와 판정엔진이 사용한 입력값·비교결과를 요약한 것입니다.")
+        st.markdown(f"**{CAP} 판정 이유**")
+        st.write(cap_explanation or "판정 설명이 제공되지 않았습니다.")
+        _decision_basis_table(cap_rows, "CAP")
+        if cap_basis:
+            st.caption("법적 근거: " + " / ".join(cap_basis))
+
+        st.markdown(f"**{PSM} 판정 이유**")
+        st.write(psm_explanation or "판정 설명이 제공되지 않았습니다.")
+        if r_value is not None:
+            st.caption(f"별표 13 비고 제7호 합산한 값(R): {r_value}")
+        _decision_basis_table(psm_rows, "PSM")
+        if psm_basis:
+            st.caption("법적 근거: " + " / ".join(psm_basis))
+
+
 
 
 def _decided(project, outcome) -> None:
@@ -544,6 +687,7 @@ def _decided(project, outcome) -> None:
     st.write(f"**{PSM}:** {outcome.psm_status or '확인 안 됨'}")
     if getattr(outcome.decision, "psm_explanation", ""):
         st.caption(str(outcome.decision.psm_explanation))
+    _decision_basis(outcome)
     if outcome.status == "NOT_REQUIRED":
         st.info("두 문서 모두 작성·제출 대상이 아닙니다. 대상이 아니면 별지 작성을 시작하지 않습니다.")
         if st.button("최종판정하기", key=f"judge_confirm_{project.project_id}"):
@@ -568,7 +712,7 @@ def _decided(project, outcome) -> None:
 
 
 def render(project) -> None:
-    """법정 대상 판정. 사용자는 물질 성분 → 판정 조건 → 최대보유량 → 최종판정 순서의 단계 버튼만 본다."""
+    """법정 대상 판정. 사용자는 판정정보 확인 → 최대보유량 확인 → 최종판정 순서만 본다."""
     from ui.cap_start_panel import _gate_hold
 
     pending = judgement.undecided(project)
@@ -613,3 +757,4 @@ def render(project) -> None:
                         return
                     st.session_state[key] = judgement.judge(project)
                 st.rerun()
+

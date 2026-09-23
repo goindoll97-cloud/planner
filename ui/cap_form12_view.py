@@ -59,7 +59,7 @@ def render(project) -> None:
             rw.LEAK_PIPE_COLUMN: st.column_config.TextColumn(
                 rw.LEAK_PIPE_COLUMN, help="설비 외면에서 누출지점까지의 배관 길이입니다. 0.1m 미만이면 비평형 유출이라 이 식을 쓰지 않습니다."),
             rw.HEAT_COLUMN: st.column_config.TextColumn(
-                "연소열(kJ/kg)", help="화재·폭발 시나리오에 필요합니다. 제품 SDS 제9항이나 물성표의 연소열(kJ/kg)입니다."),
+                "연소열(kJ/kg)", help="화재·폭발 시나리오에 필요합니다. 제품 MSDS 제9항이나 물성표의 연소열(kJ/kg)입니다."),
             rw.BOILING_COLUMN: st.column_config.TextColumn(
                 "비점(℃)", help="액체 풀 화재의 연소속도 계산에만 필요합니다."),
             rw.LIQUID_CP_KJ_COLUMN: st.column_config.TextColumn(

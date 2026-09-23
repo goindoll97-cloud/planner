@@ -36,5 +36,5 @@ def render(project, key_prefix: str) -> None:
         if st.button("후보를 확인했습니다 — 물성 칸에 반영", type="primary", key=f"{key_prefix}_apply_{project.project_id}"):
             written = chem_ws.apply_candidates(project, sorted({c.cas for c in found}))
             save_project(project)
-            st.success(f"{written}개 칸을 반영했습니다. 제품 SDS와 다르면 SDS 값으로 고쳐 주세요.")
+            st.success(f"{written}개 칸을 반영했습니다. 제품 MSDS와 다르면 MSDS 값으로 고쳐 주세요.")
             st.rerun()

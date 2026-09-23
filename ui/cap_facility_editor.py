@@ -168,10 +168,10 @@ def _compact_volume_density(project, row: dict, prefix: str, pid: str, index: in
             row["비중"] = matches[labels.index(picked) - 1]["비중"]
 
     row["비중"] = _compact_text_number(
-        "비중/밀도 (SDS 제9항)",
+        "비중/밀도 (MSDS 제9항)",
         row.get("비중"),
         f"{prefix}_compact_gravity_{pid}_{index}",
-        "상온에서의 비중 또는 밀도입니다. 보통 제품 SDS 제9항 '물리화학적 특성'에서 확인합니다. "
+        "상온에서의 비중 또는 밀도입니다. 보통 제품 MSDS 제9항 '물리화학적 특성'에서 확인합니다. "
         "m3를 쓸 때 kg/L 값은 ton/m3와 같은 숫자로 계산됩니다.",
         placeholder="예: 0.87",
     )
@@ -196,7 +196,7 @@ def _compact_process(row: dict, prefix: str, pid: str, index: int) -> None:
             "함량 확인 자료",
             value=_clean(row.get("함량근거")),
             key=f"{prefix}_compact_pct_basis_{pid}_{index}",
-            help="예: 공정 배합표, 제품 SDS. 계산에 사용한 함량의 출처입니다.",
+        help="예: 공정 배합표, 제품 MSDS. 계산에 사용한 함량의 출처입니다.",
             placeholder="예: 공정 배합표",
         ).strip()
 
@@ -246,7 +246,7 @@ def _compact_gas(project, row: dict, prefix: str, pid: str, index: int) -> None:
         "분자량(g/mol, 알면 입력)",
         row.get("분자량"),
         f"{prefix}_compact_mw_{pid}_{index}",
-        "화학물질 목록에 분자량이 있으면 프로그램이 그 값을 사용할 수 있습니다. 없으면 SDS 제9항 등에서 확인해 적습니다.",
+        "화학물질 목록에 분자량이 있으면 프로그램이 그 값을 사용할 수 있습니다. 없으면 MSDS 제9항 등에서 확인해 적습니다.",
         placeholder="예: 98.9",
     )
     # 계산 방식을 고른 경우 예전에 저장한 직접확인값이 우선하지 않도록 지운다.
@@ -399,7 +399,7 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
             hide_index=True,
         )
 
-    if st.button("최대보유량 확정하기", type="primary", key=f"{prefix}_save_{pid}"):
+    if st.button("최대보유량 확인하기", type="primary", key=f"{prefix}_save_{pid}"):
         saved = ws.save_facility_rows(project, [*untouched, *rows])
         if saved:
             st.session_state.pop(extra_key, None)
