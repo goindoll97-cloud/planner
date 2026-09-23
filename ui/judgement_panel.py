@@ -2,8 +2,6 @@ from __future__ import annotations
 
 """법정 대상 판정 화면 조각: 판정 전 사업장의 판정, 이미 판정한 사업장의 다시 판정, 판정에 필요한 질문."""
 
-import re
-
 import pandas as pd
 import streamlit as st
 
@@ -255,74 +253,6 @@ def _question(project, question, existing: dict) -> str:
                          placeholder="숫자만" if question.numeric else "")
 
 
-def _property_products(project, item_no: int, existing: dict) -> tuple[str, float, float]:
-    """인화성 가스/액체는 해당 제품만 고르게 하고, 수량은 최초 업로드값을 자동 합산한다."""
-    from engine.stage2 import cap_chemical_workspace as chem
-
-    label = "인화성 가스" if item_no == 1 else "인화성 액체"
-    answer_key = f"별표 13 제{item_no}호 {label} 해당 제품행"
-    _, rows = chem._rows(project)
-    options = []
-    by_label = {}
-    for number, row in enumerate(rows, start=1):
-        name = str(row.get("제품명") or row.get("물질명") or f"{number}행").strip()
-        cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
-        display = f"{number}행 · {name}" + (f" · {cas}" if cas else " · 혼합물")
-        options.append(display)
-        by_label[display] = number
-
-    stored_rows = {int(v) for v in re.findall(r"\d+", str(existing.get(answer_key, "")))}
-    default = [label_text for label_text, number in by_label.items() if number in stored_rows]
-    picked = st.multiselect(
-        f"{label}에 해당하는 제품을 선택하세요",
-        options,
-        default=default,
-        key=f"judge_property_rows_{project.project_id}_{item_no}",
-        help=(
-            "제품의 물성만 확인해 선택하세요. 최대 제조·사용량과 최대 저장량은 처음 업로드한 물질목록의 값을 "
-            "프로그램이 자동으로 합산하므로 다시 입력하지 않습니다."
-        ),
-    )
-    selected = [by_label[value] for value in picked]
-
-    def _ton(row, column):
-        try:
-            return float(str(row.get(column) or "").replace(",", ""))
-        except ValueError:
-            return None
-
-    mfg_ton = 0.0
-    storage_ton = 0.0
-    complete = True
-    for number in selected:
-        row = rows[number - 1]
-        mfg = _ton(row, "최대 제조·사용량")
-        storage = _ton(row, "최대 저장량")
-        if mfg is None or storage is None:
-            complete = False
-            continue
-        mfg_ton += mfg
-        storage_ton += storage
-    if selected:
-        if complete:
-            st.caption(
-                f"업로드값 자동 합계: 하루 최대 제조·사용량 {mfg_ton * 1000:g} kg · "
-                f"최대 저장량 {storage_ton * 1000:g} kg"
-            )
-        else:
-            st.warning("선택한 제품 중 최초 물질목록의 최대 제조·사용량 또는 최대 저장량이 비어 있는 행이 있습니다.")
-    return ", ".join(str(v) for v in selected), mfg_ton, storage_ton
-
-
-def _is_property_quantity_question(question) -> bool:
-    return question.item in {
-        "별표 13 제1호 하루 최대 제조·취급량(kg)",
-        "별표 13 제1호 최대 저장량(kg)",
-        "별표 13 제2호 하루 최대 제조·취급량(kg)",
-        "별표 13 제2호 최대 저장량(kg)",
-    }
-
-
 def _note8_table(project):
     """'가스 전문 저장·판매시설'이라고 답했을 때, 규정량 계산에서 뺄 가스의 양을 받는 표. 바뀐 표(저장 형식)를 돌려준다."""
     st.markdown("**규정량 계산에서 뺄 가스의 양**")
@@ -356,8 +286,6 @@ def _ask(project, outcome) -> bool:
         if len([g for g in groups.values() if g]) > 1:
             st.markdown(f"**{name}**")
         for question in questions:
-            if _is_property_quantity_question(question):
-                continue
             given[question.item] = _question(project, question, {**existing, **given})
 
     # 2) 현재 화면에서 '예'를 고르면 필요한 후속 질문을 즉시 같은 화면에 펼친다.
@@ -371,20 +299,7 @@ def _ask(project, outcome) -> bool:
             if not questions:
                 continue
             for question in questions:
-                if _is_property_quantity_question(question):
-                    continue
                 given[question.item] = _question(project, question, {**merged_answers, **given})
-
-    # 인화성 가스/액체는 수량을 다시 적지 않는다. 해당 제품만 고르면 최초 업로드 수량을 엔진이 자동 합산한다.
-    property_required: dict[int, str] = {}
-    for item_no, label in ((1, "인화성 가스"), (2, "인화성 액체")):
-        parent_key = f"별표 13 제{item_no}호 {label} 해당 여부"
-        answer = given.get(parent_key) or existing.get(parent_key, "")
-        if str(answer).upper().startswith(("Y", "예", "해당")):
-            selected_rows, _, _ = _property_products(project, item_no, {**existing, **given})
-            selection_key = f"별표 13 제{item_no}호 {label} 해당 제품행"
-            given[selection_key] = selected_rows
-            property_required[item_no] = selected_rows
 
     all_table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
@@ -419,14 +334,12 @@ def _ask(project, outcome) -> bool:
             confirmed = st.checkbox(
                 f"KOSHA 후보로 채운 MSDS 분류 {len(used)}건은 참고자료입니다. 제품 MSDS 제2항과 대조해 확인했습니다.",
                 key=f"judge_kosha_ok_{project.project_id}")
+        if st.session_state.get(f"judge_mixture_msds_missing_{project.project_id}", False):
+            st.error("혼합물 제품의 MSDS 제2항 분류를 입력해야 판정정보를 확인할 수 있습니다.")
+            confirmed = False
 
         if st.button("판정정보 확인하기", type="primary",
                      key=f"judge_answer_{project.project_id}", disabled=not confirmed):
-            missing_property_rows = [item_no for item_no, selected in property_required.items() if not selected]
-            if missing_property_rows:
-                labels = ", ".join("인화성 가스" if n == 1 else "인화성 액체" for n in missing_property_rows)
-                st.warning(f"{labels}에 해당하는 제품을 하나 이상 선택해 주세요. 수량은 업로드값을 자동 사용합니다.")
-                return True
             table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
             note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
             answer_changed = any(
@@ -547,12 +460,24 @@ def _chemical_table(project, outcome, table_messages):
     for number in wanted:
         row, extra = rows[number - 1], stored[number - 1]
         cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
-        if not extra.get(sds_col) and candidates.get(cas) is not None and candidates[cas].usable:
+        component_cas = [component for component, _ in (parts.get(number) or []) if component]
+        # 단일물질만 KOSHA 후보를 MSDS 입력칸에 참고값으로 넣는다.
+        # 혼합물은 구성성분 후보를 제품 MSDS 제2항으로 오인하지 않도록 비워 둔다.
+        if (not component_cas and not extra.get(sds_col)
+                and candidates.get(cas) is not None and candidates[cas].usable):
             extra = {**extra, sds_col: candidates[cas].text}  # 비어 있는 칸에만 후보를 넣는다
+        if component_cas:
+            component_display = "; ".join(
+                f"{component} ({pct}%)" if str(pct).strip() else component
+                for component, pct in (parts.get(number) or [])
+            )
+            cas_display = f"구성성분: {component_display}"
+        else:
+            cas_display = cas
         record = {
             "행": number,
             "제품명": str(row.get("제품명") or row.get("물질명") or ""),
-            "CAS No.": judgement.cas_display(row, number, parts),  # 혼합제품은 성분 CAS를 보여 준다(빈칸이면 값이 빠진 것처럼 보인다)
+            "CAS No.": cas_display,
             "필요한 값": ", ".join(needs[number]),
         }
         if has_quantity:
@@ -563,6 +488,12 @@ def _chemical_table(project, outcome, table_messages):
     if sds_col in shown:
         _kosha_button(project, kosha_targets, cand_key, gen_key, candidates)
         _mixture_kosha_reference(rows, wanted, parts, candidates)
+        if any(parts.get(number) for number in wanted):
+            st.warning(
+                "혼합물 제품의 MSDS 제2항 분류는 구성성분 KOSHA 후보를 합쳐서 자동 확정하지 않습니다. "
+                "제품 공급자가 발행한 MSDS의 제2항(유해성·위험성)을 확인해 입력하세요. "
+                "제품 MSDS가 없으면 해당 항목을 확인할 때까지 판정을 진행하지 마세요."
+            )
     text = lambda label, help_text=None: st.column_config.TextColumn(label, help=help_text)
     config = {
         "행": st.column_config.NumberColumn("행", disabled=True, width="small"),
@@ -597,12 +528,20 @@ def _chemical_table(project, outcome, table_messages):
             typed["단위"] = "ton" if pd.isna(values["단위"]) else str(values["단위"])
         # 표에 보이지 않는 열의 예전 값은 그대로 두고, 보이는 열만 바꾼다. 고른 단위는 ton으로 통일해 저장한다.
         result[number - 1] = {**result[number - 1], **judgement.rows_to_ton([typed])[0]}
-        cas = str(values["CAS No."]).strip()
-        cand = candidates.get(cas)
+        source_row = rows[number - 1]
+        parent_cas = str(source_row.get("CAS No.") or source_row.get("CAS 번호") or "").strip()
+        component_cas = [component for component, _ in (parts.get(number) or []) if component]
+        # 혼합물의 구성성분 후보는 참고표에서만 사용하고 제품 MSDS 입력값으로 기록하지 않는다.
+        cand = candidates.get(parent_cas) if not component_cas else None
         # 후보 문구를 그대로 둔 칸만 'KOSHA 후보 사용'으로 본다(고쳐 쓴 칸은 사용자가 직접 적은 값이다).
         if (sds_col in shown and cand is not None and cand.usable and result[number - 1].get(sds_col) == cand.text
                 and not stored[number - 1].get(sds_col)):
-            used[cas] = cand
+            used[parent_cas] = cand
+    mixture_msds_missing = any(
+        parts.get(number) and not str(result[number - 1].get(sds_col) or "").strip()
+        for number in wanted
+    ) if sds_col in shown else False
+    st.session_state[f"judge_mixture_msds_missing_{pid}"] = mixture_msds_missing
     return result, used
 
 
@@ -671,6 +610,73 @@ def _mixture_kosha_reference(rows, wanted, parts, candidates) -> None:
         st.dataframe(pd.DataFrame(reference), hide_index=True, width="stretch")
 
 
+def _decision_basis_table(rows, kind: str) -> None:
+    """판정엔진이 반환한 비교자료를 사용자용 표로 보여준다."""
+    if not rows:
+        return
+    if kind == "CAP":
+        columns = (
+            ("물질", "product_name"),
+            ("CAS No.", "cas"),
+            ("최대보유량(ton)", "calculated_max_holding_ton"),
+            ("하위 규정수량(ton)", "lower_quantity_ton"),
+            ("상위 규정수량(ton)", "upper_quantity_ton"),
+            ("비교결과", "decision_level"),
+        )
+    else:
+        columns = (
+            ("법정 항목", "legal_item_no"),
+            ("물질", "legal_substance"),
+            ("CAS No.", "cas_values"),
+            ("제조·취급량(kg)", "manufacture_handling_kg"),
+            ("저장량(kg)", "storage_kg"),
+            ("비교 기준", "controlling_basis"),
+            ("비교비율", "controlling_ratio"),
+        )
+    visible = []
+    for row in rows:
+        item = {}
+        for label, key in columns:
+            value = row.get(key, "")
+            if value is None:
+                value = ""
+            item[label] = value
+        visible.append(item)
+    st.dataframe(pd.DataFrame(visible), hide_index=True, width="stretch")
+
+
+def _decision_basis(outcome) -> None:
+    """최종 결과와 함께 엔진의 설명·수치·법적 근거를 표시한다."""
+    decision = getattr(outcome, "decision", None)
+    if decision is None:
+        return
+    cap_explanation = str(getattr(decision, "cap_explanation", "") or "").strip()
+    psm_explanation = str(getattr(decision, "psm_explanation", "") or "").strip()
+    cap_basis = [str(value) for value in (getattr(decision, "cap_legal_basis", ()) or ()) if str(value).strip()]
+    psm_basis = [str(value) for value in (getattr(decision, "psm_legal_basis", ()) or ()) if str(value).strip()]
+    cap_rows = list(getattr(decision, "cap_quantity_rows", ()) or ())
+    psm_rows = list(getattr(decision, "psm_ratio_rows", ()) or ())
+    r_value = getattr(decision, "psm_r_value", None)
+
+    if not any((cap_explanation, psm_explanation, cap_basis, psm_basis, cap_rows, psm_rows)):
+        return
+    with st.expander("판정 이유 및 법적 근거", expanded=True):
+        st.caption("아래 내용은 승인 규정 DB와 판정엔진이 사용한 입력값·비교결과를 요약한 것입니다.")
+        st.markdown(f"**{CAP} 판정 이유**")
+        st.write(cap_explanation or "판정 설명이 제공되지 않았습니다.")
+        _decision_basis_table(cap_rows, "CAP")
+        if cap_basis:
+            st.caption("법적 근거: " + " / ".join(cap_basis))
+
+        st.markdown(f"**{PSM} 판정 이유**")
+        st.write(psm_explanation or "판정 설명이 제공되지 않았습니다.")
+        if r_value is not None:
+            st.caption(f"별표 13 비고 제7호 합산한 값(R): {r_value}")
+        _decision_basis_table(psm_rows, "PSM")
+        if psm_basis:
+            st.caption("법적 근거: " + " / ".join(psm_basis))
+
+
 
 
 def _decided(project, outcome) -> None:
@@ -681,6 +687,7 @@ def _decided(project, outcome) -> None:
     st.write(f"**{PSM}:** {outcome.psm_status or '확인 안 됨'}")
     if getattr(outcome.decision, "psm_explanation", ""):
         st.caption(str(outcome.decision.psm_explanation))
+    _decision_basis(outcome)
     if outcome.status == "NOT_REQUIRED":
         st.info("두 문서 모두 작성·제출 대상이 아닙니다. 대상이 아니면 별지 작성을 시작하지 않습니다.")
         if st.button("최종판정하기", key=f"judge_confirm_{project.project_id}"):
@@ -750,3 +757,4 @@ def render(project) -> None:
                         return
                     st.session_state[key] = judgement.judge(project)
                 st.rerun()
+
