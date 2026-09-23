@@ -241,11 +241,40 @@ def _compact_direct_mass(row: dict, prefix: str, pid: str, index: int) -> None:
 
 
 def _compact_volume_density(project, row: dict, prefix: str, pid: str, index: int, gravity_pool: list[dict]) -> None:
+    capacity_key = f"{prefix}_compact_capacity_{pid}_{index}"
+    if (
+        _clean(row.get("시설유형")) in {"저장탱크", "제조·사용시설"}
+        and _clean(row.get("물질성상")) not in {"기체·고압가스", "복수성상"}
+    ):
+        with st.expander("설계용량을 모르면 치수로 계산"):
+            st.caption("이 시설의 치수로 대략적인 내부 부피를 계산합니다. 계산한 값을 아래 설계용량 칸에 넣어 사용할 수 있습니다.")
+            shape_key = f"{prefix}_compact_shape_{pid}_{index}"
+            shape = st.selectbox(
+                "형태", list(SHAPES), format_func=lambda key: SHAPES[key], key=shape_key
+            )
+            dims = {}
+            dim_cols = st.columns(len(SHAPE_DIMENSIONS[shape]))
+            for column, name in zip(dim_cols, SHAPE_DIMENSIONS[shape]):
+                dims[name] = column.number_input(
+                    DIM_LABELS[name], min_value=0.0, value=0.0,
+                    key=f"{prefix}_compact_dim_{pid}_{index}_{shape}_{name}",
+                )
+            volume = ws.volume_from_dimensions(shape, **dims)
+            if volume is None:
+                st.caption("필요한 치수를 모두 0보다 크게 입력하면 부피가 계산됩니다.")
+            else:
+                st.metric("계산된 설계용량", f"{volume:g} m³")
+                if st.button(
+                    "계산한 용량을 이 시설에 적용",
+                    key=f"{prefix}_compact_apply_volume_{pid}_{index}",
+                ):
+                    st.session_state[capacity_key] = f"{volume:g}"
+
     left, right = st.columns([2, 1])
     row["용량"] = left.text_input(
         "설계용량",
         value=_clean(row.get("용량")),
-        key=f"{prefix}_compact_capacity_{pid}_{index}",
+        key=capacity_key,
         help="설비 명판이나 설계도서에 적힌 최대 설계용량입니다.",
         placeholder="예: 10",
     ).strip()
@@ -544,21 +573,6 @@ def _render_compact(project, prefix: str, on_saved=None, focus_names: list[str] 
                 st.success(f"시설 {saved}건을 저장했습니다.")
         else:
             st.warning("저장할 시설 정보가 없습니다.")
-
-    if any(_clean(row.get("시설유형")) in {"저장탱크", "제조·사용시설"} and
-           _clean(row.get("물질성상")) not in {"기체·고압가스", "복수성상"} for row in rows):
-        with st.expander("설계용량을 모르면 치수로 계산"):
-            st.caption("설비 치수로 대략적인 내부 부피를 계산합니다. 설계도서의 설계용량이 있으면 그 값을 우선 사용하세요.")
-            shape = st.selectbox("형태", list(SHAPES), format_func=lambda key: SHAPES[key], key=f"{prefix}_compact_shape")
-            dims = {}
-            dim_cols = st.columns(len(SHAPE_DIMENSIONS[shape]))
-            for column, name in zip(dim_cols, SHAPE_DIMENSIONS[shape]):
-                dims[name] = column.number_input(DIM_LABELS[name], min_value=0.0, value=0.0,
-                                                 key=f"{prefix}_compact_dim_{shape}_{name}")
-            volume = ws.volume_from_dimensions(shape, **dims)
-            if volume is not None:
-                st.metric("계산된 설계용량", f"{volume:g} m³")
-
 
 def _render_full(project, prefix: str, on_saved=None) -> None:
     """별지 제1호 작성용 전체 시설표."""

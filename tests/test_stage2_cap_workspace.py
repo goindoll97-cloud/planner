@@ -194,6 +194,28 @@ class CAPWorkspaceTests(unittest.TestCase):
         )
         self.assertIsNone(_kosha_gravity_candidate(project, "7782-50-5"))
 
+    def test_compact_dimension_calculator_applies_volume_to_its_facility(self):
+        from streamlit.testing.v1 import AppTest
+
+        from ui import cap_facility_editor
+
+        project = _project()
+        rows = ws.facility_editor_rows(project)
+        rows[0].update({"시설유형": "저장탱크", "물질성상": "액체", "용량": "", "비중": 1.4})
+        ws.save_facility_rows(project, rows)
+
+        def app():
+            cap_facility_editor.render(project, prefix="dimension_test", compact=True, focus_names=["염소"])
+
+        with patch("ui.cap_facility_editor.save_project"):
+            at = AppTest.from_function(app, default_timeout=60).run()
+            at.number_input(key=f"dimension_test_compact_dim_{project.project_id}_0_vertical_cylinder_diameter_m").set_value(2).run()
+            at.number_input(key=f"dimension_test_compact_dim_{project.project_id}_0_vertical_cylinder_height_m").set_value(3).run()
+            at.button(key=f"dimension_test_compact_apply_volume_{project.project_id}_0").click().run()
+            capacity = at.text_input(key=f"dimension_test_compact_capacity_{project.project_id}_0").value
+
+        self.assertAlmostEqual(float(capacity), 3.141592653589793 * 3, places=6)
+
     def test_compact_editor_delete_button_persists_removal_of_extra_facility(self):
         from streamlit.testing.v1 import AppTest
 
