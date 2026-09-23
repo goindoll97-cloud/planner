@@ -62,12 +62,13 @@ if __name__ == "__main__":
 
 
 class AskScreenTests(unittest.TestCase):
-    def test_a_kg_question_lets_the_user_pick_ton_and_stores_kg(self):
+    def test_psm_kg_question_is_in_the_maximum_holding_step_and_stores_kg(self):
         from pathlib import Path
 
         from streamlit.testing.v1 import AppTest
 
         root = str(Path(__file__).resolve().parents[1])
+        q = next(x for x in jd.QUESTIONS if x.item.endswith("(kg)") and panel._is_psm_quantity_question(x))
         code = (
             "import sys; sys.path.insert(0, %r)\n"
             "from types import SimpleNamespace\n"
@@ -79,18 +80,19 @@ class AskScreenTests(unittest.TestCase):
             "if 'project' not in st.session_state:\n"
             "    st.session_state['project'] = CAPForm1EngineTests()._project()\n"
             "project = st.session_state['project']\n"
-            "q = [x for x in jd.QUESTIONS if x.item.endswith('(kg)')][0]\n"
+            "q = next(x for x in jd.QUESTIONS if x.item.endswith('(kg)') and panel._is_psm_quantity_question(x))\n"
             "outcome = SimpleNamespace(status='REQUEST', questions=(q,), messages=())\n"
+            "st.session_state['judge_out_' + project.project_id] = outcome\n"
             "with patch('engine.stage2.storage.save_project'), patch('ui.judgement_panel.judgement.judge', return_value=SimpleNamespace(status='REQUEST', questions=(q,), messages=())):\n"
-            "    panel._ask(project, outcome)\n"
+            "    panel.render(project)\n"
         ) % root
         at = AppTest.from_string(code, default_timeout=60).run()
         self.assertFalse(at.exception)
+        self.assertTrue(any(b.label == "최대보유량 확인하기" for b in at.button))
         key = next(t.key for t in at.text_input if t.key and t.key.endswith("(kg)"))
         at.text_input(key=key).set_value("1.5")
         at.selectbox(key=key + "_unit").select("ton")
-        next(b for b in at.button if b.label == "판정정보 확인하기").click()
+        next(b for b in at.button if b.label == "최대보유량 확인하기").click()
         at.run()
         project = at.session_state["project"]
-        self.assertEqual(jd.answers(project)[[q for q in jd.QUESTIONS if q.item.endswith("(kg)")][0].item], "1500")
-
+        self.assertEqual(jd.answers(project)[q.item], "1500")
