@@ -6,7 +6,7 @@ import unittest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
-JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "최대보유량 확인하기", "최종판정하기"}
+JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "다음 단계로 이동", "최대보유량 확인하기", "최종판정하기"}
 
 
 class SingleJudgeButtonTests(unittest.TestCase):
@@ -73,4 +73,3 @@ class SingleJudgeButtonTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
