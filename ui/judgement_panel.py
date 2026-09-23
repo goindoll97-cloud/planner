@@ -253,6 +253,74 @@ def _question(project, question, existing: dict) -> str:
                          placeholder="숫자만" if question.numeric else "")
 
 
+def _property_products(project, item_no: int, existing: dict) -> tuple[str, float, float]:
+    """인화성 가스/액체는 해당 제품만 고르게 하고, 수량은 최초 업로드값을 자동 합산한다."""
+    from engine.stage2 import cap_chemical_workspace as chem
+
+    label = "인화성 가스" if item_no == 1 else "인화성 액체"
+    answer_key = f"별표 13 제{item_no}호 {label} 해당 제품행"
+    _, rows = chem._rows(project)
+    options = []
+    by_label = {}
+    for number, row in enumerate(rows, start=1):
+        name = str(row.get("제품명") or row.get("물질명") or f"{number}행").strip()
+        cas = str(row.get("CAS No.") or row.get("CAS 번호") or "").strip()
+        display = f"{number}행 · {name}" + (f" · {cas}" if cas else " · 혼합물")
+        options.append(display)
+        by_label[display] = number
+
+    stored_rows = {int(v) for v in re.findall(r"\d+", str(existing.get(answer_key, "")))}
+    default = [label_text for label_text, number in by_label.items() if number in stored_rows]
+    picked = st.multiselect(
+        f"{label}에 해당하는 제품을 선택하세요",
+        options,
+        default=default,
+        key=f"judge_property_rows_{project.project_id}_{item_no}",
+        help=(
+            "제품의 물성만 확인해 선택하세요. 최대 제조·사용량과 최대 저장량은 처음 업로드한 물질목록의 값을 "
+            "프로그램이 자동으로 합산하므로 다시 입력하지 않습니다."
+        ),
+    )
+    selected = [by_label[value] for value in picked]
+
+    def _ton(row, column):
+        try:
+            return float(str(row.get(column) or "").replace(",", ""))
+        except ValueError:
+            return None
+
+    mfg_ton = 0.0
+    storage_ton = 0.0
+    complete = True
+    for number in selected:
+        row = rows[number - 1]
+        mfg = _ton(row, "최대 제조·사용량")
+        storage = _ton(row, "최대 저장량")
+        if mfg is None or storage is None:
+            complete = False
+            continue
+        mfg_ton += mfg
+        storage_ton += storage
+    if selected:
+        if complete:
+            st.caption(
+                f"업로드값 자동 합계: 하루 최대 제조·사용량 {mfg_ton * 1000:g} kg · "
+                f"최대 저장량 {storage_ton * 1000:g} kg"
+            )
+        else:
+            st.warning("선택한 제품 중 최초 물질목록의 최대 제조·사용량 또는 최대 저장량이 비어 있는 행이 있습니다.")
+    return ", ".join(str(v) for v in selected), mfg_ton, storage_ton
+
+
+def _is_property_quantity_question(question) -> bool:
+    return question.item in {
+        "별표 13 제1호 하루 최대 제조·취급량(kg)",
+        "별표 13 제1호 최대 저장량(kg)",
+        "별표 13 제2호 하루 최대 제조·취급량(kg)",
+        "별표 13 제2호 최대 저장량(kg)",
+    }
+
+
 def _note8_table(project):
     """'가스 전문 저장·판매시설'이라고 답했을 때, 규정량 계산에서 뺄 가스의 양을 받는 표. 바뀐 표(저장 형식)를 돌려준다."""
     st.markdown("**규정량 계산에서 뺄 가스의 양**")
@@ -286,6 +354,8 @@ def _ask(project, outcome) -> bool:
         if len([g for g in groups.values() if g]) > 1:
             st.markdown(f"**{name}**")
         for question in questions:
+            if _is_property_quantity_question(question):
+                continue
             given[question.item] = _question(project, question, {**existing, **given})
 
     # 2) 현재 화면에서 '예'를 고르면 필요한 후속 질문을 즉시 같은 화면에 펼친다.
@@ -299,7 +369,20 @@ def _ask(project, outcome) -> bool:
             if not questions:
                 continue
             for question in questions:
+                if _is_property_quantity_question(question):
+                    continue
                 given[question.item] = _question(project, question, {**merged_answers, **given})
+
+    # 인화성 가스/액체는 수량을 다시 적지 않는다. 해당 제품만 고르면 최초 업로드 수량을 엔진이 자동 합산한다.
+    property_required: dict[int, str] = {}
+    for item_no, label in ((1, "인화성 가스"), (2, "인화성 액체")):
+        parent_key = f"별표 13 제{item_no}호 {label} 해당 여부"
+        answer = given.get(parent_key) or existing.get(parent_key, "")
+        if str(answer).upper().startswith(("Y", "예", "해당")):
+            selected_rows, _, _ = _property_products(project, item_no, {**existing, **given})
+            selection_key = f"별표 13 제{item_no}호 {label} 해당 제품행"
+            given[selection_key] = selected_rows
+            property_required[item_no] = selected_rows
 
     all_table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
@@ -337,6 +420,11 @@ def _ask(project, outcome) -> bool:
 
         if st.button("판정정보 확인하기", type="primary",
                      key=f"judge_answer_{project.project_id}", disabled=not confirmed):
+            missing_property_rows = [item_no for item_no, selected in property_required.items() if not selected]
+            if missing_property_rows:
+                labels = ", ".join("인화성 가스" if n == 1 else "인화성 액체" for n in missing_property_rows)
+                st.warning(f"{labels}에 해당하는 제품을 하나 이상 선택해 주세요. 수량은 업로드값을 자동 사용합니다.")
+                return True
             table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
             note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
             answer_changed = any(
