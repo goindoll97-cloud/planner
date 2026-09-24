@@ -412,6 +412,10 @@ def _ask(project, outcome) -> bool:
                 for item, value in given.items()
             )
             if not answer_changed and not table_changed and not note8_changed:
+                if facility_needed and given and all(str(value).strip() for value in given.values()):
+                    st.session_state[f"judge_continue_to_facilities_{project.project_id}"] = True
+                    st.rerun()
+                    return True
                 st.warning("새로 입력하거나 변경한 판정 조건이 없습니다.")
                 return True
 
@@ -938,7 +942,15 @@ def render(project) -> None:
         outcome = st.session_state.get(key)
         has_own_button = False
         if outcome is not None:
-            st.markdown("진행: " + step_line(current_step(outcome)))
+            continue_key = f"judge_continue_to_facilities_{project.project_id}"
+            has_facility_request = any(
+                judgement.HOLDING_FACILITY_MARKER in message
+                for message in getattr(outcome, "messages", ())
+            )
+            continue_to_facilities = bool(st.session_state.get(continue_key) and has_facility_request)
+            if st.session_state.get(continue_key) and not has_facility_request:
+                st.session_state.pop(continue_key, None)
+            st.markdown("진행: " + step_line(2 if continue_to_facilities else current_step(outcome)))
             if outcome.status == "COMPOSITION":
                 _composition_form(project, outcome)
                 has_own_button = True
@@ -962,7 +974,14 @@ def render(project) -> None:
                 for message in outcome.messages:
                     st.write(f"• {judgement.display_request(message)}")
             elif outcome.status == "REQUEST":
-                if _stage2_questions(outcome) and not any(
+                if continue_to_facilities:
+                    st.info(
+                        "판정정보는 이미 저장되어 있습니다. 저장된 답변에 '모름'이 있으면 최종 판정 전에 확인해야 하지만, "
+                        "먼저 최대보유량을 입력할 수 있습니다."
+                    )
+                    _facilities(project, outcome, judgement.holding_target_names(project))
+                    has_own_button = True
+                elif _stage2_questions(outcome) and not any(
                     not _is_psm_quantity_question(question) for question in outcome.questions
                 ):
                     has_own_button = _holding_psm_questions(project, outcome)
