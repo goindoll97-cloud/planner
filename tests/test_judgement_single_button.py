@@ -57,6 +57,13 @@ class SingleJudgeButtonTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(self._judge_buttons(at), ["판정정보 확인하기"])
 
+    def test_unanswered_radio_question_has_no_selectable_placeholder(self):
+        at = self._run("asking")
+        self.assertFalse(at.exception)
+        radio = next(widget for widget in at.radio if widget.label.startswith("상위 규정수량 이상을 취급하는 개별 주요취급시설"))
+        self.assertNotIn("선택하세요", radio.options)
+        self.assertIsNone(radio.value)
+
     def test_facility_only_stage_shows_only_the_holding_confirmation_button(self):
         at = self._run("facility_only")
         self.assertFalse(at.exception)
