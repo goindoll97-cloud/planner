@@ -6,7 +6,7 @@ import unittest
 from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).resolve().parents[1]
-JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "다음 단계로 이동", "최종판정하기"}
+JUDGE_LABELS = {"판정 시작하기", "판정 다시 시작하기", "판정정보 확인하기", "다음 단계로 이동", "최대보유량 먼저 입력", "최종판정하기"}
 
 
 class SingleJudgeButtonTests(unittest.TestCase):
@@ -30,6 +30,10 @@ class SingleJudgeButtonTests(unittest.TestCase):
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=tuple(msgs), questions=jd._questions_for(msgs, {}))\n"
             "elif kind == 'facility_only':\n"
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=(REAL_REQUESTS[4],), questions=())\n"
+            "elif kind == 'saved_unknown':\n"
+            "    question = jd.QUESTIONS[0]\n"
+            "    jd.save_answers(project, {question.item: question.options[-1]})\n"
+            "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='REQUEST', messages=(question.trigger,), questions=(question,))\n"
             "elif kind == 'decided':\n"
             "    st.session_state['judge_out_' + project.project_id] = SimpleNamespace(status='DECIDED', messages=(), questions=(), cap_status='Group1', psm_status='NotApplicable', decision=SimpleNamespace(cap_explanation='', psm_explanation=''), cap_target=True, psm_target=False)\n"
             # AppTest.from_string은 스크립트를 시스템 기본 인코딩(이 환경에서는 cp949)으로 임시
@@ -59,6 +63,25 @@ class SingleJudgeButtonTests(unittest.TestCase):
         # 시설 입력 화면(cap_facility_editor, compact 모드)은 PSM 수량 단계와 같은
         # "다음 단계로 이동" 문구를 쓴다(둘 다 "2. 최대보유량 확인"의 하위 단계).
         self.assertEqual(self._judge_buttons(at), ["다음 단계로 이동"])
+
+    def test_saved_unknown_stays_on_questions_until_the_holding_action_is_explicit(self):
+        at = self._run("saved_unknown")
+        self.assertFalse(at.exception)
+        self.assertIn("판정정보 확인하기", self._judge_buttons(at))
+        self.assertIn("최대보유량 먼저 입력", self._judge_buttons(at))
+        self.assertFalse(any(m.value.startswith("**시설 입력") for m in at.markdown))
+
+        pid = at.session_state["project"].project_id
+        at.button(key=f"judge_answer_{pid}").click().run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any("최종 판정은 보류 중입니다" in warning.value for warning in at.warning))
+        self.assertFalse(any(m.value.startswith("**시설 입력") for m in at.markdown))
+
+        self.assertIn("최대보유량 먼저 입력", self._judge_buttons(at))
+        at.button(key=f"judge_open_holding_{pid}").click().run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any(m.value.startswith("**시설 입력") for m in at.markdown))
+        self.assertTrue(any("최종 판정 전에 확인해야 합니다" in info.value for info in at.info))
 
     def test_final_stage_uses_final_judgement_button(self):
         at = self._run("decided")
