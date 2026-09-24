@@ -72,6 +72,20 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual(found, [])
         self.assertIn("직접 입력", message)
 
+    def test_http_auth_failure_explains_which_kakao_setting_to_check(self):
+        response = lookup.requests.Response()
+        response.status_code = 401
+
+        def unauthorized(url, params, headers):
+            raise lookup.requests.HTTPError(response=response)
+
+        with patch.dict(os.environ, {lookup.ENV_KEY: "invalid-key"}):
+            found, message = lookup.find_candidates("울산", get=unauthorized)
+        self.assertEqual(found, [])
+        self.assertIn("HTTP 401", message)
+        self.assertIn("REST API 키", message)
+        self.assertIn("직접 입력", message)
+
     def test_confirmed_list_derives_checkboxes_and_reaches_the_docx(self):
         project = _project()
         with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
