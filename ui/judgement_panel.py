@@ -411,15 +411,20 @@ def _ask(project, outcome) -> bool:
                 value and value != existing.get(item, "")
                 for item, value in given.items()
             )
+            holding_names = judgement.holding_target_names(project)
+            unknown_answered = any(str(value).strip() == "모름" for value in given.values())
+            can_continue_to_facilities = unknown_answered and bool(holding_names)
+            if can_continue_to_facilities:
+                st.session_state[f"judge_continue_to_facilities_{project.project_id}"] = True
+
             if not answer_changed and not table_changed and not note8_changed:
-                if facility_needed and given and all(str(value).strip() for value in given.values()):
-                    st.session_state[f"judge_continue_to_facilities_{project.project_id}"] = True
+                if can_continue_to_facilities:
                     st.rerun()
                     return True
                 st.warning("새로 입력하거나 변경한 판정 조건이 없습니다.")
                 return True
 
-            with st.spinner("판정 조건을 확정하고 다음 단계를 확인하는 중입니다."):
+            with st.spinner("판정 조건을 저장하고 다음 단계를 확인하는 중입니다."):
                 if given:
                     judgement.save_answers(project, given)
                 if table_changed:
@@ -430,7 +435,10 @@ def _ask(project, outcome) -> bool:
                 storage.save_project(project)
                 next_outcome = judgement.judge(project)
                 st.session_state[f"judge_out_{project.project_id}"] = next_outcome
-                st.session_state[f"judge_flash_{project.project_id}"] = _after_save_flash(next_outcome)
+                st.session_state[f"judge_flash_{project.project_id}"] = (
+                    "‘모름’으로 답한 판정 조건은 최종 판정 전에 확인해야 합니다. 최대보유량 확인을 먼저進めます。"
+                    if can_continue_to_facilities else _after_save_flash(next_outcome)
+                )
             st.rerun()
         return True
 
@@ -947,8 +955,9 @@ def render(project) -> None:
                 judgement.HOLDING_FACILITY_MARKER in message
                 for message in getattr(outcome, "messages", ())
             )
-            continue_to_facilities = bool(st.session_state.get(continue_key) and has_facility_request)
-            if st.session_state.get(continue_key) and not has_facility_request:
+            holding_names = judgement.holding_target_names(project) if st.session_state.get(continue_key) else []
+            continue_to_facilities = bool(st.session_state.get(continue_key) and (has_facility_request or holding_names))
+            if st.session_state.get(continue_key) and not continue_to_facilities:
                 st.session_state.pop(continue_key, None)
             st.markdown("진행: " + step_line(2 if continue_to_facilities else current_step(outcome)))
             if outcome.status == "COMPOSITION":
@@ -979,7 +988,7 @@ def render(project) -> None:
                         "판정정보는 이미 저장되어 있습니다. 저장된 답변에 '모름'이 있으면 최종 판정 전에 확인해야 하지만, "
                         "먼저 최대보유량을 입력할 수 있습니다."
                     )
-                    _facilities(project, outcome, judgement.holding_target_names(project))
+                    _facilities(project, outcome, holding_names or judgement.holding_target_names(project))
                     has_own_button = True
                 elif _stage2_questions(outcome) and not any(
                     not _is_psm_quantity_question(question) for question in outcome.questions
