@@ -61,6 +61,23 @@ def _default_get(url: str, params: dict[str, Any], headers: dict[str, str]) -> d
     return response.json()
 
 
+def _http_error_hint(exc: requests.HTTPError) -> str:
+    """Explain common Kakao Local API HTTP failures without exposing request headers or keys."""
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    hints = {
+        400: "요청 형식이나 검색 조건을 확인해 주세요.",
+        401: "KAKAO_REST_API_KEY가 유효한 REST API 키인지, 키가 바뀌지 않았는지 확인해 주세요.",
+        403: "카카오 디벨로퍼스 앱에서 로컬 API 사용 권한과 앱 설정을 확인해 주세요.",
+        429: "카카오 API 호출 한도에 도달했을 수 있습니다. 잠시 뒤 다시 시도해 주세요.",
+    }
+    if status in hints:
+        return f"카카오 API가 HTTP {status}로 요청을 거부했습니다. {hints[status]}"
+    if status is not None:
+        return f"카카오 API가 HTTP {status} 오류를 반환했습니다."
+    return "카카오 API가 요청을 거부했습니다."
+
+
 def geocode(address: str, *, get: Callable = _default_get) -> tuple[str, str] | None:
     """(x, y) of the address, or None. Only the address is sent."""
     key = api_key()
@@ -101,6 +118,8 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
                     distance_m=float(distance) if str(distance or "").strip() else None,
                     source="카카오 로컬 API 검색",
                 )
+    except requests.HTTPError as exc:
+        return [], f"주변 검색에 실패했습니다. {_http_error_hint(exc)} 보호대상을 직접 입력하세요."
     except (requests.RequestException, KeyError, ValueError) as exc:
         return [], f"주변 검색에 실패했습니다({type(exc).__name__}). 보호대상을 직접 입력하세요."
     ordered = sorted(found.values(), key=lambda c: (c.distance_m is None, c.distance_m or 0.0))
