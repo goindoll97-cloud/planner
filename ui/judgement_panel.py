@@ -106,7 +106,7 @@ def unit_help() -> str:
     return "칸마다 kg 또는 ton을 고를 수 있습니다. 저장할 때 자동으로 ton으로 바꿔 줍니다."
 
 
-COMPOSITION_OPTIONS = ["선택하세요", "단일물질", "혼합물"]
+COMPOSITION_OPTIONS = ["단일물질", "혼합물"]
 
 
 def _composition_form(project, outcome) -> None:
@@ -182,6 +182,7 @@ def _composition_form(project, outcome) -> None:
             choice = st.radio(
                 f"{product}의 구분",
                 COMPOSITION_OPTIONS,
+                index=None,
                 horizontal=True,
                 key=f"judge_comp_kind_{pid}_{number}",
                 help="제품 MSDS 제3항을 확인해 단일물질인지 혼합물인지 선택하세요.",
@@ -268,15 +269,16 @@ def _question(project, question, existing: dict) -> str:
     key = f"judge_q_{project.project_id}_{question.item}"
     current = existing.get(question.item, "")
     if question.choices:
-        options = [PLACEHOLDER, *question.choices]
-        picked = st.selectbox(question.text, options, index=options.index(current) if current in options else 0,
-                              key=key, help=question.help)
-        return "" if picked == PLACEHOLDER else picked
+        options = list(question.choices)
+        picked = st.selectbox(question.text, options,
+                              index=options.index(current) if current in options else None,
+                              placeholder=PLACEHOLDER, key=key, help=question.help)
+        return picked or ""
     if question.options:
-        options = [PLACEHOLDER, *question.options]
-        picked = st.radio(question.text, options, index=options.index(current) if current in options else 0,
+        options = list(question.options)
+        picked = st.radio(question.text, options, index=options.index(current) if current in options else None,
                           horizontal=True, key=key, help=question.help, format_func=lambda v: ANSWER_LABELS.get(v, v))
-        return "" if picked == PLACEHOLDER else picked
+        return picked or ""
     if question.item.endswith("(kg)"):
         value_col, unit_col = st.columns([3, 1])
         typed = value_col.text_input(question.text, value=current, key=key, help=question.help, placeholder="숫자만")
