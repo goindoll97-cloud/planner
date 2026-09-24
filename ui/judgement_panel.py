@@ -436,7 +436,7 @@ def _ask(project, outcome) -> bool:
                 next_outcome = judgement.judge(project)
                 st.session_state[f"judge_out_{project.project_id}"] = next_outcome
                 st.session_state[f"judge_flash_{project.project_id}"] = (
-                    "‘모름’으로 답한 판정 조건은 최종 판정 전에 확인해야 합니다. 최대보유량 확인을 먼저進めます。"
+                    "‘모름’으로 답한 판정 조건은 최종 판정 전에 확인해야 합니다. 최대보유량 확인을 먼저 진행합니다."
                     if can_continue_to_facilities else _after_save_flash(next_outcome)
                 )
             st.rerun()
