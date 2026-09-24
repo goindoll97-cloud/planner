@@ -10,6 +10,7 @@ import streamlit as st
 from engine.stage2 import cap_judgement as judgement
 from engine.stage2 import kosha_candidates
 from engine.stage2 import storage
+from ui import judgement_workflow as workflow
 
 CAP = "화학사고예방관리계획서"
 PSM = "공정안전보고서"
@@ -36,12 +37,7 @@ def _is_psm_quantity_question(question) -> bool:
     질문의 생성·판정·저장 형식은 엔진에 맡기고, 사용자 화면에서만 단계 위치를
     바꾼다. 따라서 규정수량이나 PSM 판정식은 이 함수의 영향을 받지 않는다.
     """
-    item = str(getattr(question, "item", "") or "")
-    return (
-        getattr(question, "system", "") == PSM
-        and item.startswith("별표 13 제")
-        and ("하루 최대 제조·취급량(kg)" in item or "최대 저장량(kg)" in item)
-    )
+    return workflow.is_psm_quantity_question(question)
 
 
 def _stage2_questions(outcome) -> list:
@@ -96,18 +92,10 @@ KOSHA_HELP = ("**왜 하나요?** 판정 규칙이 일부 물질의 MSDS 제2항
 
 
 def current_step(outcome) -> int:
-    """지금 화면이 어느 단계인지(1~3). 내부 판정 상태를 사용자용 3단계로 묶어 표시합니다."""
-    status = getattr(outcome, "status", "")
-    if status == "COMPOSITION":
-        return 1
-    if status == "REQUEST":
-        questions = tuple(getattr(outcome, "questions", ()) or ())
-        if questions and all(_is_psm_quantity_question(question) for question in questions):
-            return 2
-        return 1 if questions else 2
-    if status == "PENDING":
+    """호환용 단계 조회. 화면 렌더링은 resolve() 결과를 직접 사용합니다."""
+    if getattr(outcome, "status", "") == "REQUEST" and not getattr(outcome, "questions", ()):
         return 2
-    return 3
+    return workflow.resolve(outcome).step
 
 
 def step_line(step: int) -> str:
@@ -353,6 +341,10 @@ def _ask(project, outcome) -> bool:
     if psm_followups:
         _psm_product_pickers(project, psm_followups, given)
 
+    pid = project.project_id
+    unknown_answered = any(str(value).strip() == "모름" for value in given.values())
+    holding_names = judgement.holding_target_names(project) if unknown_answered else []
+
     all_table_messages = [m for m in outcome.messages if _for_table(m)]
     note8_needed = any(judgement.NOTE8_TABLE_MARKER in m for m in outcome.messages)
     facility_needed = any(judgement.HOLDING_FACILITY_MARKER in m for m in outcome.messages)
@@ -400,31 +392,59 @@ def _ask(project, outcome) -> bool:
             "제품 MSDS 제2항 입력 후 판정정보 확인하기"
             if missing_mixture_msds else "판정정보 확인하기"
         )
+        table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
+        note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
+        answer_changed = any(
+            value and value != existing.get(item, "")
+            for item, value in given.items()
+        )
         if st.button(confirm_label, type="primary",
                      key=f"judge_answer_{project.project_id}", disabled=not confirmed):
             if missing_mixture_msds:
                 st.error("제품 MSDS 제2항 분류를 입력하기 전에는 다음 단계로 진행할 수 없습니다.")
                 return True
-            table_changed = edited is not None and _filled(edited) != _filled(judgement.chemical_inputs(project))
-            note8_changed = note8_rows is not None and _filled(note8_rows) != _filled(judgement.note8_rows(project))
-            answer_changed = any(
-                value and value != existing.get(item, "")
-                for item, value in given.items()
-            )
-            holding_names = judgement.holding_target_names(project)
-            unknown_answered = any(str(value).strip() == "모름" for value in given.values())
-            can_continue_to_facilities = unknown_answered and bool(holding_names)
-            if can_continue_to_facilities:
-                st.session_state[f"judge_continue_to_facilities_{project.project_id}"] = True
-
             if not answer_changed and not table_changed and not note8_changed:
-                if can_continue_to_facilities:
-                    st.rerun()
+                if unknown_answered:
+                    st.warning(
+                        "‘모름’ 답변이 남아 있어 최종 판정은 보류 중입니다. "
+                        + ("아래 ‘최대보유량 먼저 입력’을 선택해 시설 정보를 입력할 수 있습니다." if holding_names
+                           else "해당 내용을 확인한 뒤 예 또는 아니오로 답해 주세요.")
+                    )
+                else:
+                    st.warning("새로 입력하거나 변경한 판정 조건이 없습니다.")
                     return True
-                st.warning("새로 입력하거나 변경한 판정 조건이 없습니다.")
-                return True
+            else:
+                with st.spinner("판정 조건을 저장하고 다음 단계를 확인하는 중입니다."):
+                    if given:
+                        judgement.save_answers(project, given)
+                    if table_changed:
+                        judgement.save_chemical_inputs(project, edited)
+                        kosha_candidates.record_use(project, used)
+                    if note8_changed:
+                        judgement.save_note8_rows(project, note8_rows)
+                    storage.save_project(project)
+                    next_outcome = judgement.judge(project)
+                    st.session_state[f"judge_out_{project.project_id}"] = next_outcome
+                    st.session_state[f"judge_flash_{project.project_id}"] = (
+                        "답변을 저장했습니다. ‘모름’으로 남은 항목은 최종 판정 전에 확인해야 합니다."
+                        if unknown_answered else _after_save_flash(next_outcome)
+                    )
+                st.rerun()
 
-            with st.spinner("판정 조건을 저장하고 다음 단계를 확인하는 중입니다."):
+        can_enter_holding = workflow.may_enter_holding(
+            has_holding_targets=bool(holding_names),
+            has_unknown_answer=unknown_answered,
+            all_required_answers_present=bool(given) and all(str(value).strip() for value in given.values()),
+            inputs_confirmed=confirmed and not st.session_state.get(f"judge_mixture_msds_missing_{pid}", False),
+        )
+        if holding_names and unknown_answered:
+            st.info("‘모름’ 항목은 최종 판정 전에 확인해야 합니다. 시설 대상 물질이 확인되어 최대보유량 입력을 먼저 할 수 있습니다.")
+            if st.button(
+                "최대보유량 먼저 입력",
+                key=f"judge_open_holding_{pid}",
+                disabled=not can_enter_holding,
+                help="현재 판정 질문에 답하거나 ‘모름’으로 보류한 뒤 시설 계산을 먼저 입력합니다. 최종 판정은 미확인 답변을 해결한 다음 진행합니다.",
+            ):
                 if given:
                     judgement.save_answers(project, given)
                 if table_changed:
@@ -432,14 +452,10 @@ def _ask(project, outcome) -> bool:
                     kosha_candidates.record_use(project, used)
                 if note8_changed:
                     judgement.save_note8_rows(project, note8_rows)
-                storage.save_project(project)
-                next_outcome = judgement.judge(project)
-                st.session_state[f"judge_out_{project.project_id}"] = next_outcome
-                st.session_state[f"judge_flash_{project.project_id}"] = (
-                    "‘모름’으로 답한 판정 조건은 최종 판정 전에 확인해야 합니다. 최대보유량 확인을 먼저 진행합니다."
-                    if can_continue_to_facilities else _after_save_flash(next_outcome)
-                )
-            st.rerun()
+                if answer_changed or table_changed or note8_changed:
+                    storage.save_project(project)
+                st.session_state[f"judge_workflow_stage_{pid}"] = workflow.HOLDING_STAGE
+                st.rerun()
         return True
 
     # 판정 조건 입력이 더 없고 시설정보만 필요할 때에만 최대보유량 단계를 표시한다.
@@ -948,61 +964,93 @@ def render(project) -> None:
         if flash:
             st.success(flash)
         outcome = st.session_state.get(key)
-        has_own_button = False
+        stage_key = f"judge_workflow_stage_{project.project_id}"
+        legacy_continue_key = f"judge_continue_to_facilities_{project.project_id}"
+        if st.session_state.pop(legacy_continue_key, False):
+            st.session_state[stage_key] = workflow.HOLDING_STAGE
+        if outcome is None:
+            st.session_state.pop(stage_key, None)
+
+        messages = tuple(getattr(outcome, "messages", ()) or ()) if outcome is not None else ()
+        has_facility_request = any(judgement.HOLDING_FACILITY_MARKER in message for message in messages)
+        has_other_requests = any(judgement.HOLDING_FACILITY_MARKER not in message for message in messages)
+        has_condition_inputs = any(
+            _for_table(message)
+            and "법정 사업장 최대보유량" not in judgement.display_request(message)
+            for message in messages
+        ) or any(judgement.NOTE8_TABLE_MARKER in message for message in messages)
+        holding_names: list[str] = []
+        if outcome is not None and outcome.status == "PENDING":
+            holding_names = list(getattr(outcome, "missing_quantity", ()) or ())
+            if not holding_names:
+                holding_names = judgement.holding_target_names(project)
+        elif (
+            outcome is not None
+            and outcome.status == "REQUEST"
+            and (st.session_state.get(stage_key) == workflow.HOLDING_STAGE or has_facility_request)
+        ):
+            holding_names = judgement.holding_target_names(project)
+        state = workflow.resolve(
+            outcome,
+            selected_stage=st.session_state.get(stage_key, ""),
+            has_holding_targets=bool(holding_names),
+            has_facility_request=has_facility_request,
+            has_condition_inputs=has_condition_inputs,
+            has_other_requests=has_other_requests,
+            has_unknown_answer=any(value == "모름" for value in judgement.answers(project).values()),
+        )
+
         if outcome is not None:
-            continue_key = f"judge_continue_to_facilities_{project.project_id}"
-            has_facility_request = any(
-                judgement.HOLDING_FACILITY_MARKER in message
-                for message in getattr(outcome, "messages", ())
-            )
-            holding_names = judgement.holding_target_names(project) if st.session_state.get(continue_key) else []
-            continue_to_facilities = bool(st.session_state.get(continue_key) and (has_facility_request or holding_names))
-            if st.session_state.get(continue_key) and not continue_to_facilities:
-                st.session_state.pop(continue_key, None)
-            st.markdown("진행: " + step_line(2 if continue_to_facilities else current_step(outcome)))
-            if outcome.status == "COMPOSITION":
-                _composition_form(project, outcome)
-                has_own_button = True
-            elif outcome.status == "INVALID":
-                st.warning("입력을 확인해 주세요.")
-                for message in outcome.messages:
-                    st.write(f"• {judgement.display_request(message)}")
-            elif outcome.status == "PENDING":
+            st.markdown("진행: " + step_line(state.step))
+
+        if state.screen == "composition":
+            _composition_form(project, outcome)
+        elif state.screen == "questions":
+            _ask(project, outcome)
+        elif state.screen == "psm_quantity":
+            _holding_psm_questions(project, outcome)
+        elif state.screen == "holding":
+            if outcome.status == "PENDING":
                 st.warning("최대보유량을 확인해야 최종판정을 진행할 수 있습니다.")
-                # outcome.missing_quantity는 이번 판정에서 새로 빠진 물질만 담는다. PSM 수량처럼
-                # 다른 조건을 먼저 저장한 뒤라 이 목록이 비어 있어도, 시설 입력이 필요한 물질은
-                # 여전히 있을 수 있다(REQUEST 단계의 facility_needed 분기와 같은 방식으로 구한다).
-                # 비어 있는 채로 두면 시설 화면이 "물질을 특정하지 못했다"는 막다른 안내만 보여 준다.
-                holding_names = list(outcome.missing_quantity) or judgement.holding_target_names(project)
-                for name in holding_names:
-                    st.write(f"• {name}")
-                _facilities(project, outcome, holding_names)
-                has_own_button = True
-            elif outcome.status == "SYSTEM":
-                st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
-                for message in outcome.messages:
-                    st.write(f"• {judgement.display_request(message)}")
-            elif outcome.status == "REQUEST":
-                if continue_to_facilities:
-                    st.info(
-                        "판정정보는 이미 저장되어 있습니다. 저장된 답변에 '모름'이 있으면 최종 판정 전에 확인해야 하지만, "
-                        "먼저 최대보유량을 입력할 수 있습니다."
-                    )
-                    _facilities(project, outcome, holding_names or judgement.holding_target_names(project))
-                    has_own_button = True
-                elif _stage2_questions(outcome) and not any(
-                    not _is_psm_quantity_question(question) for question in outcome.questions
+            elif any(value == "모름" for value in judgement.answers(project).values()):
+                st.info("‘모름’으로 남은 판정 조건은 최종 판정 전에 확인해야 합니다. 확인 전에는 판정 결과가 확정되지 않습니다.")
+                if outcome.status == "REQUEST" and outcome.questions and st.button(
+                    "판정정보 확인으로 돌아가기", key=f"judge_back_to_conditions_{project.project_id}"
                 ):
-                    has_own_button = _holding_psm_questions(project, outcome)
-                else:
-                    has_own_button = _ask(project, outcome)
-            else:
-                _decided(project, outcome)
-                has_own_button = True
-        if not has_own_button:
+                    st.session_state.pop(stage_key, None)
+                    st.rerun()
+            for name in holding_names:
+                st.write(f"• {name}")
+            _facilities(project, outcome, holding_names)
+        elif state.screen == "holding_unavailable":
+            st.warning("최대보유량 입력이 필요하지만 계산 대상 물질을 특정하지 못했습니다. 물질 정보와 MSDS 분류를 확인한 뒤 판정을 다시 실행해 주세요.")
+            for message in messages:
+                st.write(f"• {judgement.plain_request(message)}")
+            if outcome.status == "REQUEST" and outcome.questions and st.button(
+                "판정정보 확인으로 돌아가기", key=f"judge_back_from_unavailable_{project.project_id}"
+            ):
+                st.session_state.pop(stage_key, None)
+                st.rerun()
+        elif state.screen == "invalid":
+            st.warning("입력을 확인해 주세요.")
+            for message in messages:
+                st.write(f"• {judgement.display_request(message)}")
+        elif state.screen == "system":
+            st.error("회사 입력 문제가 아니라 규정 DB 준비상태를 관리자가 확인해야 합니다.")
+            for message in messages:
+                st.write(f"• {judgement.display_request(message)}")
+        elif state.screen == "final":
+            _decided(project, outcome)
+        elif state.screen == "unmapped":
+            st.error("판정엔진이 추가 확인을 요청했지만 화면에서 입력 항목을 찾지 못했습니다. 요청 내용을 확인하거나 판정을 다시 실행해 주세요.")
+            for message in messages:
+                st.write(f"• {judgement.plain_request(message)}")
+
+        if state.screen == "start":
             if st.button("판정 시작하기" if pending else "판정 다시 시작하기", key=f"judge_run_{project.project_id}"):
                 with st.spinner("법정 대상 여부를 판정하는 중입니다. 물질·시설이 많으면 시간이 걸릴 수 있습니다."):
                     if _gate_hold():
                         return
+                    st.session_state.pop(stage_key, None)
                     st.session_state[key] = judgement.judge(project)
                 st.rerun()
