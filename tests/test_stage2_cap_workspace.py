@@ -197,42 +197,43 @@ class CAPWorkspaceTests(unittest.TestCase):
     def test_compact_dimension_calculator_applies_volume_to_its_facility(self):
         from streamlit.testing.v1 import AppTest
 
-        from ui import cap_facility_editor
-
         project = _project()
         rows = ws.facility_editor_rows(project)
         rows[0].update({"시설유형": "저장탱크", "물질성상": "액체", "용량": "", "비중": 1.4})
         ws.save_facility_rows(project, rows)
 
-        def app():
-            cap_facility_editor.render(project, prefix="dimension_test", compact=True, focus_names=["염소"])
+        # AppTest.from_function copies only the function body into a standalone script, so it
+        # must import what it uses and receive the project through args (not a closure).
+        def app(project, focus_names):
+            from ui import cap_facility_editor
+
+            cap_facility_editor.render(project, prefix="dimension_test", compact=True, focus_names=focus_names)
 
         with patch("ui.cap_facility_editor.save_project"):
-            at = AppTest.from_function(app, default_timeout=60).run()
+            at = AppTest.from_function(app, args=(project, ["염소"]), default_timeout=60).run()
             at.number_input(key=f"dimension_test_compact_dim_{project.project_id}_0_vertical_cylinder_diameter_m").set_value(2).run()
             at.number_input(key=f"dimension_test_compact_dim_{project.project_id}_0_vertical_cylinder_height_m").set_value(3).run()
             at.button(key=f"dimension_test_compact_apply_volume_{project.project_id}_0").click().run()
             capacity = at.text_input(key=f"dimension_test_compact_capacity_{project.project_id}_0").value
 
-        self.assertAlmostEqual(float(capacity), 3.141592653589793 * 3, places=6)
+        # volume_from_dimensions rounds to 4 decimals for entry into the facility grid.
+        self.assertAlmostEqual(float(capacity), round(3.141592653589793 * 3, 4), places=4)
 
     def test_compact_editor_delete_button_persists_removal_of_extra_facility(self):
         from streamlit.testing.v1 import AppTest
-
-        from ui import cap_facility_editor
 
         project = _project()
         rows = ws.facility_editor_rows(project)
         rows.append({**rows[0], "설비번호": "V-302", "설비명": "두 번째 염소탱크"})
         ws.save_facility_rows(project, rows)
 
-        def app():
-            cap_facility_editor.render(
-                project, prefix="delete_test", compact=True, focus_names=["염소"]
-            )
+        def app(project, focus_names):
+            from ui import cap_facility_editor
+
+            cap_facility_editor.render(project, prefix="delete_test", compact=True, focus_names=focus_names)
 
         with patch("ui.cap_facility_editor.save_project"):
-            at = AppTest.from_function(app, default_timeout=60).run()
+            at = AppTest.from_function(app, args=(project, ["염소"]), default_timeout=60).run()
             self.assertFalse(at.exception)
             delete_button = next(b for b in at.button if "2행 삭제" in b.label)
             delete_button.click().run()
