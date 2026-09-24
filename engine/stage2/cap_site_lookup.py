@@ -65,6 +65,18 @@ def _http_error_hint(exc: requests.HTTPError) -> str:
     """Explain common Kakao Local API HTTP failures without exposing request headers or keys."""
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
+    try:
+        kakao_code = (response.json() or {}).get("code")
+        kakao_code = int(kakao_code) if kakao_code is not None else None
+    except (AttributeError, TypeError, ValueError, requests.RequestException):
+        kakao_code = None
+    code_hints = {
+        -3: "앱 설정에서 이 API의 사용 또는 호출 허용이 활성화되어 있는지 확인해 주세요.",
+        -5: "이 앱에 해당 API를 호출할 권한이 있는지 카카오 디벨로퍼스에서 확인해 주세요.",
+        -12: "카카오 디벨로퍼스 앱 또는 개발자 계정의 이용 제한 여부를 확인해 주세요.",
+    }
+    if kakao_code in code_hints:
+        return f"카카오 오류 코드 {kakao_code}: {code_hints[kakao_code]}"
     hints = {
         400: "요청 형식이나 검색 조건을 확인해 주세요.",
         401: "KAKAO_REST_API_KEY가 유효한 REST API 키인지, 키가 바뀌지 않았는지 확인해 주세요.",
@@ -74,7 +86,7 @@ def _http_error_hint(exc: requests.HTTPError) -> str:
     if status in hints:
         return f"카카오 API가 HTTP {status}로 요청을 거부했습니다. {hints[status]}"
     if status is not None:
-        return f"카카오 API가 HTTP {status} 오류를 반환했습니다."
+        return f"카카오 API가 HTTP {status} 오류를 반환했습니다. 응답 세부 코드를 확인할 수 없었습니다."
     return "카카오 API가 요청을 거부했습니다."
 
 
