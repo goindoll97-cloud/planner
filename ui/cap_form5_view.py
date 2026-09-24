@@ -50,7 +50,16 @@ def render(project) -> None:
         current = f5.overview(project)
         if draft and not current:
             st.caption("단위공장 구성은 이 단위공장의 시설로 만든 초안입니다. 맞게 고쳐 저장하세요.")
-        text = st.text_area("단위공장 구성", value=current or draft, key=f"cap_form05_ov_{project.project_id}")
+        text = st.text_area(
+            "단위공장 구성",
+            value=current or draft,
+            key=f"cap_form05_ov_{project.project_id}",
+            help=(
+                "해당 단위공장에 있는 시설의 종류와 수량을 간단히 적습니다. "
+                "예: ‘제조1공정의 취급시설은 저장탱크 2기, 반응기 1기, 여과기 1기로 구성된다.’ "
+                "공정의 작업 순서는 별지 제4호의 공정개요에 적습니다."
+            ),
+        )
         if st.button("저장", type="primary", key=f"cap_form05_save_{project.project_id}"):
             f5.save_overview(project, text)
             save_project(project)
