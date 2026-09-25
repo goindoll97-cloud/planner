@@ -35,9 +35,29 @@ class CAPForm2WorkspaceTests(unittest.TestCase):
         columns = ws.section(2, "change_log")["columns"]
         self.assertEqual([c["id"] for c in columns], list(f2.LOG_COLUMNS))
         self.assertTrue(all(c.get("help") for c in columns))
-        for symbol in "㈎㈏㈐㈑㈒㈓㈔㈕":
-            self.assertTrue(any(symbol in option for option in f2.CHANGE_TYPES))
-            self.assertIn(symbol, guide.form_guidelines()[2].notes[2])
+        change_kind = next(column for column in columns if column["id"] == "변경의 종류")
+        follow_up = next(column for column in columns if column["id"] == "후속조치")
+        self.assertEqual(tuple(change_kind["options"]), f2.CHANGE_TYPES)
+        self.assertEqual(tuple(follow_up["options"]), f2.FOLLOW_UPS)
+        self.assertEqual(len(f2.CHANGE_TYPES), 7)
+        self.assertIn("변경 전과 변경 후", next(c["help"] for c in columns if c["id"].startswith("변경 내용")))
+        item_help = next(c["help"] for c in columns if c["id"] == "변경항목")
+        self.assertIn("「화학물질관리법 시행규칙」 별표 4", item_help)
+
+    def test_change_log_accepts_multiple_legal_categories_as_text(self):
+        project = _project()
+        row = LOG[0] | {
+            "변경항목": "장치·설비 목록 및 명세 / 설비배치도",
+            "변경의 종류": "㈎ 시설규모 변경 / ㈏ 시설위치 변경",
+            "후속조치": "㈎ 변경제출 / ㈑ 변경허가",
+        }
+        f2.save_change_log(project, [row])
+        saved = f2.change_log_rows(project)[0]
+        self.assertEqual(saved["변경의 종류"], "㈎ 시설규모 변경 / ㈏ 시설위치 변경")
+        self.assertEqual(saved["후속조치"], "㈎ 변경제출 / ㈑ 변경허가")
+
+    def test_choice_values_are_cleaned_for_plain_text_workbook_cells(self):
+        self.assertEqual(f2._clean(["㈎ 변경제출", "㈑ 변경허가"]), "㈎ 변경제출 / ㈑ 변경허가")
 
     def test_new_first_submission_does_not_need_form2(self):
         project = _project()
