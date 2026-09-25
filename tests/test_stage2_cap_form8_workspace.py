@@ -63,6 +63,24 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual((found[0].category, found[0].subtype), ("갑종", "교육·연구시설"))
         self.assertEqual(found[1].category, "환경수용체")
 
+    def test_candidate_distance_is_reference_only_until_boundary_distance_is_entered(self):
+        with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
+            found, _ = lookup.find_candidates("울산광역시 남구 산업로 1", get=_fake_get)
+        row = f8.candidate_row(found[0])
+        self.assertEqual(row["사업장 경계와 거리(m)"], "")
+        self.assertEqual(row["검색결과 거리(주소점 기준, 참고)"], 310)
+        self.assertEqual(row["GIS/현장 근거"], "")
+        self.assertFalse(row["500m 범위 전체 확인"])
+
+    def test_added_search_candidate_is_proposed_not_confirmed(self):
+        project = _project()
+        with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
+            found, _ = lookup.find_candidates("울산광역시 남구 산업로 1", get=_fake_get)
+        f8.save(project, [f8.candidate_row(found[0])], no_target=False, status="PROPOSED")
+        record = project.get_field(f8.SITE_KEY)
+        self.assertEqual(record.status, "PROPOSED")
+        self.assertTrue(f8.needs(project))
+
     def test_lookup_failure_falls_back_to_manual_entry(self):
         def boom(url, params, headers):
             raise lookup.requests.ConnectionError("down")
@@ -101,8 +119,10 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
             found, _ = lookup.find_candidates("주소", get=_fake_get)
         rows = [f8.candidate_row(c) for c in found]
         rows[0]["사업장 경계와 거리(m)"] = 320
+        rows[0]["GIS/현장 근거"] = "공식 지도에서 경계부터 측정, 2026-09-25"
         rows[1]["사업장 경계와 거리(m)"] = 430
-        self.assertEqual(f8.save(project, rows, no_target=False), 2)
+        rows[1]["GIS/현장 근거"] = "현장 확인 및 지도 측정, 2026-09-25"
+        self.assertEqual(f8.save(project, rows, no_target=False, scope_reviewed=True), 2)
         chosen = f8.selected_options(project)
         self.assertEqual(chosen["갑종"], {"교육·연구시설"})
         self.assertEqual(chosen["환경수용체"], {"하천"})
@@ -118,10 +138,10 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
 
     def test_no_target_declaration_needs_evidence(self):
         project = _project()
-        f8.save(project, [], no_target=True, evidence="")
+        f8.save(project, [], no_target=True, evidence="", scope_reviewed=True)
         self.assertTrue(f8.declared_no_target(project))
         self.assertTrue(f8.needs(project))
-        f8.save(project, [], no_target=True, evidence="지도 확인 2026-09-19")
+        f8.save(project, [], no_target=True, evidence="지도 확인 2026-09-19", scope_reviewed=True)
         self.assertEqual(f8.needs(project), [])
 
     def test_page_is_wired(self):

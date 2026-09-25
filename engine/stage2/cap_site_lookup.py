@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """Address-based protected-target *candidates* for 별지 제8호 (Kakao Local API).
 
-This only proposes. A candidate becomes a confirmed row when the user accepts
-it; 별표 4 has size/occupancy conditions (예: 300명 이상) that a map search cannot
-verify, and distances here are measured from the geocoded address point, not
-from the site boundary. Without KAKAO_REST_API_KEY nothing is looked up and the
-user enters the receptors manually.
+This only proposes candidates. Selecting one does not establish that it is a
+legal protected target or that the site has no omitted targets. 별표 4 has
+size/occupancy conditions that a map search cannot verify, and distances here
+are measured from the geocoded address point, not from the site boundary.
+Without KAKAO_REST_API_KEY nothing is looked up and the user enters candidates
+manually.
 """
 
 from dataclasses import dataclass
@@ -135,7 +136,11 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
     except (requests.RequestException, KeyError, ValueError) as exc:
         return [], f"주변 검색에 실패했습니다({type(exc).__name__}). 보호대상을 직접 입력하세요."
     ordered = sorted(found.values(), key=lambda c: (c.distance_m is None, c.distance_m or 0.0))
-    return ordered, f"{len(ordered)}건을 찾았습니다. 규모 조건(별표 4)과 사업장 경계 기준 거리는 확인이 필요합니다."
+    return ordered, (
+        f"후보 {len(ordered)}건을 반환했습니다. 이는 전체 조사 결과나 법정 판정이 아닙니다. "
+        "별표 4 해당 여부, 검색 누락, 실제 사업장 경계 기준 거리를 별도로 확인하세요. "
+        "후보가 0건이어도 보호대상 없음이 확인된 것은 아닙니다."
+    )
 
 
 def env_diagnosis() -> list[str]:

@@ -384,8 +384,8 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         READY if form8.ready else EXTERNAL_ANALYSIS,
         "회사/GIS/현장 확인자료 + 검증엔진",
         ("cap.site.surrounding_environment",),
-        "보호대상 없음 여부 또는 보호대상 명칭·구분·세부유형·위치·경계거리·GIS/현장 근거",
-        "500m 초과값, 분류 불명, 근거 없는 위치·거리는 자동확정하지 않음",
+        "보호대상 없음 여부 또는 보호대상 명칭·구분·세부유형·위치·경계거리·검색 출처·GIS/현장 근거·500m 전체 검토 확인",
+        "검색 후보만으로 법정 거리·별표 4 분류·대상 누락 여부를 확정하지 않음; 500m 초과값·근거 없는 위치/거리는 보류",
     ))
 
     # 별지 제9호

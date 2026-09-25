@@ -100,6 +100,9 @@ def build_cap_form8_data(project: Stage2Project) -> CAPForm8Data:
     for index, raw in enumerate(source_rows, start=1):
         none_state = _yes_no(_row_value(raw, "보호대상 없음 여부", "500m 내 보호대상 없음 여부"))
         evidence = _clean(_row_value(raw, "GIS/현장 근거", "GIS 근거", "근거자료", "확인근거"))
+        scope_checked = _yes_no(_row_value(raw, "500m 범위 전체 확인")) is True
+        if not scope_checked:
+            blockers.append(f"{index}행: 사업장 경계 바깥 500m 범위 전체를 지도/GIS/현장 자료로 검토했는지 확인해 주세요.")
         if none_state is True:
             explicit_no_target = True
             if not evidence:
@@ -112,6 +115,7 @@ def build_cap_form8_data(project: Stage2Project) -> CAPForm8Data:
         address = _clean(_row_value(raw, "주소·위치", "주소", "위치"))
         coordinate = _clean(_row_value(raw, "좌표", "보호대상 좌표"))
         distance = _num(_row_value(raw, "사업장 경계와 거리(m)", "거리(m)", "거리"))
+        search_distance = _num(_row_value(raw, "검색결과 거리(주소점 기준, 참고)"))
 
         label = name or f"{index}행"
         if not name:
@@ -145,6 +149,8 @@ def build_cap_form8_data(project: Stage2Project) -> CAPForm8Data:
             "주소·위치": address,
             "좌표": coordinate,
             "사업장 경계와 거리(m)": "" if distance is None else distance,
+            "검색결과 거리(주소점 기준, 참고)": "" if search_distance is None else search_distance,
+            "검색 출처·검색일": _clean(_row_value(raw, "검색 출처·검색일")),
             "500m 이내 여부": "예" if distance is not None and 0 <= distance <= 500 else "",
             "GIS/현장 근거": evidence,
         })

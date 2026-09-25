@@ -129,6 +129,7 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
                 "좌표": "35.0010,129.0010",
                 "사업장 경계와 거리(m)": 420,
                 "GIS/현장 근거": "GIS-SITE-01",
+                "500m 범위 전체 확인": True,
             }],
             "USER_CONFIRMED",
         )
