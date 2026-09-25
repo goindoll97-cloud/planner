@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 from . import cap_guideline
 from .cap_form2_engine import NOT_APPLICABLE, CAPForm2Readiness, build_cap_form2_readiness
+from .cap_rule29_followup import FollowUpSuggestion, suggest_rule29_followup
 from .project import Stage2Project
 
 SUBMISSION_TYPE_KEY = "cap.business.submission_type"
@@ -142,6 +143,11 @@ def resolve_form2(project: Stage2Project) -> Form2State:
     if readiness.status == "REVIEW_REQUIRED":
         return Form2State(None, readiness, "제출구분을 입력하면 이 서식이 필요한지 알려 드립니다.")
     return Form2State(True, readiness, "변경·재제출 자료이므로 변경내역 관리대장을 작성합니다.")
+
+
+def rule29_followup_suggestion(facts: Mapping[str, Any]) -> FollowUpSuggestion:
+    """시행규칙 제29조에 따라 변경신고·변경허가 후보를 fail-closed로 제안합니다."""
+    return suggest_rule29_followup(facts)
 
 
 def form_title(form_no: int) -> str:
