@@ -4,7 +4,7 @@ from __future__ import annotations
 
 사람은 보호대상 목록(또는 '없음')만 확인한다. 500m 입지 현황의 갑종·을종·
 환경수용체 체크박스는 그 목록에서 파생되고, 주소 기반 주변 검색은 후보만
-제안한다(확정은 사용자). 별표 4의 규모 조건은 도움말로 함께 보여 준다.
+제안한다(확정은 사용자). 「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4의 규모 조건은 도움말로 함께 보여 준다.
 """
 
 from datetime import date
@@ -42,7 +42,7 @@ def address(project: Stage2Project) -> str:
 
 
 def type_hint(category: str, subtype: str) -> str:
-    """별표 4 wording (including size conditions) for a 세부유형, if it matches."""
+    """화학사고예방관리계획서 작성 등에 관한 규정 별표 4의 세부유형·규모 조건."""
     rules = cap_guideline.protected_target_rules().get(category, {})
     for name, text in rules.items():
         key = _norm(name)

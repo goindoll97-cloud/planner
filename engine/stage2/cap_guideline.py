@@ -104,7 +104,7 @@ def annex_rules() -> dict[int, tuple[str, ...]]:
 
 @lru_cache(maxsize=1)
 def protected_target_rules() -> dict[str, dict[str, str]]:
-    """별표 4: 구분(갑종·을종·환경수용체) -> {종류: 보호대상의 종류 설명(규모 조건 포함)}."""
+    """작성 규정 별표 4 「보호대상」: 구분별 세부유형 및 규모 조건."""
     doc = Document(str(ANNEX_RULES))
     in_annex4 = False
     tables: list[tuple[tuple[str, ...], ...]] = []
