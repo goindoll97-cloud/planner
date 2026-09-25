@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from engine.law_attachment_archive import approved_source_archive_rows, approved_source_files
+from engine.law_attachment_archive import approved_source_library
 from engine.legal_archive import evidence_rows, open_archive_folder
 from engine.stage2.guidance import all_requirement_specs_for_library, requirement_library_search_text
 from engine.stage2.intake import extract_form_references
@@ -24,6 +24,58 @@ st.caption(
     "작성항목을 검색하면 그 항목에 현재 구조화되어 연결된 법적 근거, 세부 작성기준, 작성 참고자료를 먼저 보여줍니다. "
     "승인 근거와 법제처에서 내려받은 현행 PDF·HWP·HWPX 원본은 아래 전체 자료 보관영역에서 확인할 수 있습니다."
 )
+
+
+def _render_source_library() -> None:
+    st.markdown("### 법령 분류에서 원문 찾기")
+    st.caption("작성 체계 → 법령·고시 → 별표·별지 등 첨부 → 파일 순서로 찾아 내려받을 수 있습니다.")
+    programs = ("화학사고예방관리계획서", "공정안전보고서")
+    tabs = st.tabs(list(programs))
+    entries = approved_source_library()
+    for tab, program in zip(tabs, programs):
+        with tab:
+            sources = [row for row in entries if row.get("regime") == program]
+            if not sources:
+                st.info("등록된 법령·규정이 없습니다.")
+                continue
+            for source in sources:
+                kind = "법령" if source.get("target") == "law" else "행정규칙·고시"
+                title = str(source.get("title") or source.get("key"))
+                files = source.get("files") or []
+                heading = f"{kind} · {title}  |  {source.get('status', '상태 미확인')}"
+                with st.expander(heading, expanded=False):
+                    st.caption(
+                        f"시행일 {source.get('effective_date') or '미등록'} · "
+                        f"발령번호 {source.get('issue_number') or '미등록'} · "
+                        f"분류 키 {source.get('key')}"
+                    )
+                    if not files:
+                        st.info("승인된 로컬 원문 첨부파일이 없습니다. 현재 이 라이브러리에서 내려받을 파일이 등록되지 않았습니다.")
+                        continue
+
+                    grouped: dict[str, list[dict]] = {}
+                    for file in files:
+                        grouped.setdefault(str(file.get("item_id") or "첨부자료"), []).append(file)
+                    for item_id, item_files in grouped.items():
+                        st.markdown(f"**{item_id}**")
+                        cols = st.columns(min(3, len(item_files)))
+                        for idx, file in enumerate(item_files):
+                            path = Path(str(file["path"]))
+                            suffix = path.suffix.lower()
+                            mime = {
+                                ".pdf": "application/pdf",
+                                ".hwp": "application/x-hwp",
+                                ".hwpx": "application/vnd.hancom.hwpx",
+                            }.get(suffix, "application/octet-stream")
+                            cols[idx % len(cols)].download_button(
+                                f"{str(file.get('format') or suffix.lstrip('.')).upper()} 받기",
+                                data=path.read_bytes(),
+                                file_name=path.name,
+                                mime=mime,
+                                key=f"law_library_{source.get('key')}_{idx}_{path.name}",
+                                width="stretch",
+                            )
+                            cols[idx % len(cols)].caption(str(file.get("path") or ""))
 
 
 def _program_label(system: str) -> str:
@@ -105,6 +157,9 @@ focus_key = str(st.session_state.get(LEGAL_FOCUS_KEY) or "")
 focus_spec = next((spec for spec in specs if spec.key == focus_key), None)
 default_query = focus_spec.label if focus_spec is not None else ""
 
+_render_source_library()
+st.divider()
+
 st.markdown("### 작성항목 근거 검색")
 query = st.text_input(
     "찾고 싶은 작성항목을 입력하세요",
@@ -127,40 +182,6 @@ else:
     st.info("작성항목명을 검색하면 해당 항목과 직접 연결된 근거부터 확인할 수 있습니다.")
 
 st.divider()
-
-source_archive = pd.DataFrame(approved_source_archive_rows())
-with st.expander("법제처 현행 법령·별표·별지 원본 로컬 보관현황", expanded=False):
-    st.caption(
-        "법제처 Open API에서 확인한 공식 첨부파일을 PDF와 HWP/HWPX 원본까지 내려받아 SHA-256으로 비교합니다. "
-        "개정이 감지된 새 파일은 바로 사용하지 않고 검토·승인된 버전만 이 보관소에 남습니다. 이전 승인 버전은 삭제하지 않습니다."
-    )
-    if source_archive.empty:
-        st.info("아직 승인되어 버전 보관된 법령 첨부원본이 없습니다. 최신 법령 확인 후 기준선을 검토·승인해 주세요.")
-    else:
-        st.dataframe(source_archive, width="stretch", hide_index=True)
-        for _, item in source_archive.iterrows():
-            key = str(item.get("key", ""))
-            title = str(item.get("법령·규정", ""))
-            files = approved_source_files(key)
-            if not files:
-                continue
-            st.write(f"**{title or key}**")
-            cols = st.columns(min(3, len(files)))
-            for idx, path in enumerate(files):
-                suffix = path.suffix.lower()
-                mime = {
-                    ".pdf": "application/pdf",
-                    ".hwp": "application/x-hwp",
-                    ".hwpx": "application/vnd.hancom.hwpx",
-                }.get(suffix, "application/octet-stream")
-                cols[idx % len(cols)].download_button(
-                    f"{suffix.lstrip('.').upper()} 원본",
-                    data=path.read_bytes(),
-                    file_name=path.name,
-                    mime=mime,
-                    key=f"law_source_file_{key}_{idx}",
-                    width="stretch",
-                )
 
 rows = evidence_rows()
 for row in rows:
