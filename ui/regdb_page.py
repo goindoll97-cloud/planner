@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from engine.law_attachment_archive import approved_source_archive_rows, approved_source_is_current
+from engine.law_attachment_archive import (
+    approved_source_archive_rows,
+    approved_source_files,
+    approved_source_is_current,
+)
 from engine.law_monitor import OBSERVED_FILE
 from engine.legal_archive import evidence_rows, open_archive_folder
 from engine.legal_update_pipeline import latest_update_report, refresh_all_legal_assets
@@ -67,11 +72,9 @@ def _row_is_current(row: dict[str, object]) -> bool:
     if str(row.get("monitor_status") or "") == "CURRENT":
         return True
     key = str(row.get("key") or "")
-    return bool(key and row.get("observation_valid") and approved_source_is_current(key))
-
-
-def _law_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
+    return bool(key and rowdef _law_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
     out: list[dict[str, object]] = []
+    project_root = Path(__file__).resolve().parents[1]
     for row in rows:
         files = row.get("attachment_files") or []
         formats = sorted(
@@ -81,16 +84,40 @@ def _law_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
                 if isinstance(item, dict) and item.get("format")
             }
         )
+        key = str(row.get("key") or "")
+        local_paths = [str(path.relative_to(project_root)) for path in approved_source_files(key)]
+        if not local_paths:
+            for item in files:
+                if not isinstance(item, dict):
+                    continue
+                pending = str(item.get("pending_file") or "").strip()
+                candidate = project_root / pending if pending else None
+                if candidate is not None and candidate.is_file():
+                    local_paths.append(pending)
         current = _row_is_current(row)
         out.append(
             {
-                "구분": _human(row.get("regime")),
                 "법령·규정": row.get("title", ""),
+                "법령 종류": "법령" if row.get("target") == "law" else "행정규칙",
+                "파일 형식": ", ".join(formats) or "-",
                 "시행일": row.get("effective_date", ""),
-                "발령번호": row.get("issue_number", ""),
                 "상태": "최신" if current else row.get("monitor_status_ko", row.get("monitor_status", "확인 필요")),
-                "원본형식": ", ".join(formats) or "-",
-                "확인사항": " / ".join(str(v) for v in (row.get("change_reason") or []) if str(v).strip()),
+                "로컬 파일 경로": "\n".join(dict.fromkeys(local_paths)) or "-",
+            }
+        )
+    return pd.DataFrame(out)
+
+
+def _render_law_group(rows: list[dict[str, object]], regime: str) -> None:
+    subset = [row for row in rows if _human(row.get("regime")) == regime]
+    st.markdown(f"#### {regime}")
+    if subset:
+        _table(_law_frame(subset), 40)
+    else:
+        st.caption("표시할 법령·규정이 없습니다.")
+
+
+strip()),
             }
         )
     return pd.DataFrame(out)
@@ -186,7 +213,8 @@ with st.expander("고급 관리·감사정보", expanded=False):
     )
 
     st.markdown("### 법령·첨부원본 상태")
-    _table(_law_frame(rows), 40)
+    _render_law_group(rows, "화학사고예방관리계획서")
+    _render_law_group(rows, "공정안전보고서")
 
     st.markdown("### 판정용 규정 DB 상태")
     status_df = approved_db_status().copy()
