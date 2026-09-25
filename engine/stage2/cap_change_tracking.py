@@ -171,19 +171,14 @@ def summarize_changes(project: Stage2Project, base_version_id: str) -> CAPChange
 
 
 def _change_type(key: str) -> str:
-    if key.startswith(("cap.workspace.facilities", "cap.workspace.equipment_specs", "inventory.facilities", "cap.facility.")):
-        return "㈎ 취급시설 변경"
     if key.startswith(("inventory.chemicals", "cap.chemical.")):
-        return "㈏ 취급물질 변경"
-    if key.startswith(("cap.safety.", "cap.emergency.")):
-        return "㈐ 안전장치 및 방재장비·물품 변경"
-    if key.startswith(("process.", "cap.process.", "cap.procedure.")):
-        return "㈑ 공정운전절차 변경"
-    if key.startswith(("business.", "cap.business.writer", "cap.business.contact")):
-        return "㈒ 운전 책임자 및 작업자 변경"
+        return "㈑ 취급물질 변경"
     if key.startswith(("cap.notification.", "cap.community.")):
-        return "㈓ 지역사회 고지 계획 변경"
-    return "㈔ 정보 현행화"
+        return "㈒ 고지계획 변경"
+    # Facility, safety, process, staffing, and other data diffs do not reveal
+    # whether the legal class is size, location, material, update, or other.
+    # Leave the category for the operator to confirm against the actual change.
+    return ""
 
 
 def _short(value: Any, limit: int = 180) -> str:
@@ -206,7 +201,9 @@ def proposed_form2_rows(
             "변경항목": change.label or change.key,
             "변경의 종류": _change_type(change.key),
             "변경 내용(변경전 → 변경후)": arrow,
-            "후속조치": "㈎ 변경제출",
+            # The field diff cannot decide Article 11 CAP submission, permit
+            # change-report, or prior-permission applicability. Keep it blank.
+            "후속조치": "",
             "담당자": person,
         })
     return rows
