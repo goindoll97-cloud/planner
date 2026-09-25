@@ -297,3 +297,48 @@ def approved_source_archive_rows() -> list[dict[str, Any]]:
             "로컬보관폴더": archive.get("archive_folder", "") if isinstance(archive, dict) else "",
         })
     return rows
+
+
+def approved_source_library() -> list[dict[str, Any]]:
+    """Return the registry hierarchy, enriched with approved, locally available files."""
+    registry_path = PROJECT_ROOT / "data" / "law_registry.json"
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        registry = []
+    if not isinstance(registry, list):
+        return []
+
+    approved_sources = _load_approved_monitor().get("sources") or {}
+    result: list[dict[str, Any]] = []
+    for entry in registry:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("key") or "")
+        source = approved_sources.get(key, {}) if isinstance(approved_sources, dict) else {}
+        source = source if isinstance(source, dict) else {}
+        archive = source.get("approved_archive") or {}
+        archived = archive.get("files") or [] if isinstance(archive, dict) else []
+        files: list[dict[str, Any]] = []
+        for meta in archived:
+            if not isinstance(meta, dict):
+                continue
+            relative = str(meta.get("archived_file") or "")
+            path = PROJECT_ROOT / relative if relative else None
+            if path is None or not path.is_file():
+                continue
+            files.append({
+                "item_id": str(meta.get("item_id") or path.stem),
+                "format": str(meta.get("format") or path.suffix.lstrip(".")).upper(),
+                "path": relative,
+                "file_name": str(meta.get("file_name") or path.name),
+                "sha256": str(meta.get("sha256") or ""),
+            })
+        result.append({
+            **entry,
+            "effective_date": str(source.get("effective_date") or ""),
+            "issue_number": str(source.get("issue_number") or ""),
+            "status": "최신 확인" if approved_source_is_current(key) else ("확인 필요" if source else "승인 원본 없음"),
+            "files": files,
+        })
+    return result
