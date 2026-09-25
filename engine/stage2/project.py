@@ -14,6 +14,7 @@ EVIDENCE_STATUSES = (
     "USER_CONFIRMED",
     "CALCULATED",
     "AI_DRAFT",
+    "PROPOSED",
     "HOLD",
 )
 
