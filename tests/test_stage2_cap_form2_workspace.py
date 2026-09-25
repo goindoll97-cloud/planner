@@ -59,6 +59,15 @@ class CAPForm2WorkspaceTests(unittest.TestCase):
     def test_choice_values_are_cleaned_for_plain_text_workbook_cells(self):
         self.assertEqual(f2._clean(["㈎ 변경제출", "㈑ 변경허가"]), "㈎ 변경제출 / ㈑ 변경허가")
 
+    def test_follow_up_actions_format_like_statutory_example(self):
+        self.assertEqual(
+            f2.format_follow_up_actions(
+                ["㈎ 변경제출", "㈑ 변경허가"],
+                {"㈎ 변경제출": "2020. 3. 7.", "㈑ 변경허가": "2020. 4. 20."},
+            ),
+            "변경제출(2020. 3. 7.) / 변경허가(2020. 4. 20.)",
+        )
+
     def test_new_first_submission_does_not_need_form2(self):
         project = _project()
         f2.save_submission(project, "신규제출", "최초", "염소 공장")
