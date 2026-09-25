@@ -48,8 +48,6 @@ def _render_methodology() -> None:
             f"코드에 등록된 {len(lookup.SEARCHES)}개 카테고리·키워드 검색을 좌표 반경 "
             f"{lookup.SEARCH_RADIUS_M}m에서 실행합니다. 각 검색은 최대 15건을 요청하고 거리순 후보를 보여 줍니다."
         )
-        with st.expander("현재 검색 코드에 등록된 분류·검색어 보기"):
-            st.write(" · ".join(f"{mode}: {query} → {subtype}" for mode, query, _cat, subtype in lookup.SEARCHES))
         st.error(
             "검색 반경은 사업장 주소 좌표 기준이며 법정 500m 경계 기준 측정값이 아닙니다. "
             "검색 분류·키워드에서 빠진 대상, 별표 기준의 세부 규모 조건, 실제 사업장 경계와 거리, "
