@@ -46,51 +46,50 @@ def _render_structured_change_entry(project) -> bool:
     added = False
     with st.expander("변경내역을 항목별로 입력해 행 추가", expanded=True):
         st.caption("입력한 값은 법정 서식의 각 열에 배치됩니다. 자동으로 문장을 해석하거나 법적 후속조치를 판정하지 않습니다.")
-        with st.form(f"cap_form02_add_form_{key_suffix}"):
-            date_value = st.text_input("① 변경일", placeholder="예: 2020. 1. 2.", key=f"cap_form02_add_date_{key_suffix}")
-            selected_items = st.multiselect(
-                "② 변경항목", f2.CHANGE_ITEM_SUGGESTIONS,
-                key=f"cap_form02_add_items_{key_suffix}",
-                help="자주 쓰는 계획서 세부 항목입니다. 여러 항목을 고를 수 있고, 목록에 없으면 아래 칸에 입력하세요.",
-            )
-            custom_item = st.text_input(
-                "목록에 없는 변경항목 (선택)", key=f"cap_form02_add_item_custom_{key_suffix}"
+        date_value = st.text_input("① 변경일", placeholder="예: 2020. 1. 2.", key=f"cap_form02_add_date_{key_suffix}")
+        selected_items = st.multiselect(
+            "② 변경항목", f2.CHANGE_ITEM_SUGGESTIONS,
+            key=f"cap_form02_add_items_{key_suffix}",
+            help="자주 쓰는 계획서 세부 항목입니다. 여러 항목을 고를 수 있고, 목록에 없으면 아래 칸에 입력하세요.",
+        )
+        custom_item = st.text_input(
+            "목록에 없는 변경항목 (선택)", key=f"cap_form02_add_item_custom_{key_suffix}"
+        ).strip()
+        item_value = " / ".join([*selected_items, *([custom_item] if custom_item else [])])
+        change_types = st.multiselect(
+            "③ 변경의 종류", f2.CHANGE_TYPES, key=f"cap_form02_add_types_{key_suffix}"
+        )
+        content_mode = st.radio(
+            "④ 변경 내용 입력 방식", ["변경 전·후 비교", "문장으로 작성"], horizontal=True,
+            key=f"cap_form02_add_mode_{key_suffix}",
+        )
+        if content_mode == "변경 전·후 비교":
+            before_col, after_col = st.columns(2)
+            before = before_col.text_input("변경 전", key=f"cap_form02_add_before_{key_suffix}")
+            after = after_col.text_input("변경 후", key=f"cap_form02_add_after_{key_suffix}")
+            content = f"{before.strip()} → {after.strip()}" if before.strip() and after.strip() else ""
+        else:
+            content = st.text_area(
+                "변경 내용", placeholder="예: TK-101을 철거하고 TK-201을 설치함.",
+                key=f"cap_form02_add_narrative_{key_suffix}",
             ).strip()
-            item_value = " / ".join([*selected_items, *([custom_item] if custom_item else [])])
-            change_types = st.multiselect(
-                "③ 변경의 종류", f2.CHANGE_TYPES, key=f"cap_form02_add_types_{key_suffix}"
-            )
-            content_mode = st.radio(
-                "④ 변경 내용 입력 방식", ["변경 전·후 비교", "문장으로 작성"], horizontal=True,
-                key=f"cap_form02_add_mode_{key_suffix}",
-            )
-            if content_mode == "변경 전·후 비교":
-                before_col, after_col = st.columns(2)
-                before = before_col.text_input("변경 전", key=f"cap_form02_add_before_{key_suffix}")
-                after = after_col.text_input("변경 후", key=f"cap_form02_add_after_{key_suffix}")
-                content = f"{before.strip()} → {after.strip()}" if before.strip() and after.strip() else ""
-            else:
-                content = st.text_area(
-                    "변경 내용", placeholder="예: TK-101을 철거하고 TK-201을 설치함.",
-                    key=f"cap_form02_add_narrative_{key_suffix}",
-                ).strip()
 
-            actions = st.multiselect(
-                "⑤ 후속조치", f2.FOLLOW_UPS, key=f"cap_form02_add_actions_{key_suffix}",
-                help="계획서 조치와 영업허가 조치가 함께 해당할 수 있습니다. 해당없음은 다른 조치와 함께 선택하지 마세요. 아직 판단 중이면 비워 두고, 제출 전에는 확인해 입력하세요.",
-            )
-            action_dates = {}
-            dated_actions = [action for action in actions if action != "해당없음"]
-            if dated_actions:
-                st.caption("실제로 조치한 날짜를 입력하세요. 아직 조치하지 않았거나 날짜를 확인 중이면 비워 둘 수 있습니다.")
-                for action in dated_actions:
-                    action_dates[action] = st.text_input(
-                        f"{action.split(' ', 1)[-1]} 일자 (선택)",
-                        placeholder="예: 2020. 3. 7.",
-                        key=f"cap_form02_add_action_date_{key_suffix}_{action}",
-                    )
-            person = st.text_input("⑥ 담당자", key=f"cap_form02_add_person_{key_suffix}")
-            submitted = st.form_submit_button("변경내역 행 추가", type="primary")
+        actions = st.multiselect(
+            "⑤ 후속조치", f2.FOLLOW_UPS, key=f"cap_form02_add_actions_{key_suffix}",
+            help="계획서 조치와 영업허가 조치가 함께 해당할 수 있습니다. 해당없음은 다른 조치와 함께 선택하지 마세요. 아직 판단 중이면 비워 두고, 제출 전에는 확인해 입력하세요.",
+        )
+        action_dates = {}
+        dated_actions = [action for action in actions if action != "해당없음"]
+        if dated_actions:
+            st.caption("실제로 조치한 날짜를 입력하세요. 아직 조치하지 않았거나 날짜를 확인 중이면 비워 둘 수 있습니다.")
+            for action in dated_actions:
+                action_dates[action] = st.text_input(
+                    f"{action.split(' ', 1)[-1]} 일자 (선택)",
+                    placeholder="예: 2020. 3. 7.",
+                    key=f"cap_form02_add_action_date_{key_suffix}_{action}",
+                )
+        person = st.text_input("⑥ 담당자", key=f"cap_form02_add_person_{key_suffix}")
+        submitted = st.button("변경내역 행 추가", type="primary", key=f"cap_form02_add_button_{key_suffix}")
 
         if submitted:
             errors = []
