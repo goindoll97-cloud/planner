@@ -67,7 +67,10 @@ class CAPChangeTrackingTests(unittest.TestCase):
             self.assertTrue(rows)
             self.assertTrue(all(row["일자"] == "2026-09-21" for row in rows))
             self.assertTrue(all(row["담당자"] == "김안전" for row in rows))
-            self.assertTrue(all(row["후속조치"] == "㈎ 변경제출" for row in rows))
+            self.assertTrue(all(row["후속조치"] == "" for row in rows))
+            self.assertNotIn("㈎ 변경제출", [row["후속조치"] for row in rows])
+            self.assertIn("㈑ 취급물질 변경", [row["변경의 종류"] for row in rows])
+            self.assertIn("", [row["변경의 종류"] for row in rows])
         finally:
             versioning.load_version_fields = original_load
             versioning.diff_versions = original_diff
