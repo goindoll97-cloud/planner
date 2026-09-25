@@ -44,6 +44,44 @@ def _stage2_questions(outcome) -> list:
     return [question for question in getattr(outcome, "questions", ()) if _is_psm_quantity_question(question)]
 
 
+def _covered_by_psm_quantity_questions(message: str, questions) -> bool:
+    """Hide an engine quantity request when its input questions are already shown."""
+    text = judgement.display_request(message)
+    item_numbers = {
+        int(match.group(1))
+        for match in re.finditer(r"별표\s*13\s*제(\d+)호", text)
+    }
+    if not item_numbers:
+        return False
+
+    asked: dict[int, set[str]] = {}
+    for question in questions:
+        if not _is_psm_quantity_question(question):
+            continue
+        match = re.match(r"별표\s*13\s*제(\d+)호\s*(.*)", str(question.item))
+        if not match:
+            continue
+        category = match.group(2)
+        if "하루 최대 제조·취급량" in category:
+            kind = "manufacture"
+        elif "최대 저장량" in category:
+            kind = "storage"
+        else:
+            continue
+        asked.setdefault(int(match.group(1)), set()).add(kind)
+
+    requested_kinds = set()
+    if "하루 최대 제조·취급량" in text:
+        requested_kinds.add("manufacture")
+    if "최대 저장량" in text:
+        requested_kinds.add("storage")
+    relevant_items = [item_no for item_no in item_numbers if f"제{item_no}호" in text]
+    return bool(requested_kinds and relevant_items) and all(
+        requested_kinds.issubset(asked.get(item_no, set()))
+        for item_no in relevant_items
+    )
+
+
 def _after_save_flash(outcome) -> str:
     """저장 직후 실제 다음 상태에 맞는 안내문을 만든다."""
     status = getattr(outcome, "status", "")
@@ -361,6 +399,7 @@ def _ask(project, outcome) -> bool:
     covered = [m for m in outcome.messages
                if m in all_table_messages or any(q.trigger and q.trigger in m for q in expanded)
                or any(item and item in judgement.display_request(m) for item in deferred_items)
+               or _covered_by_psm_quantity_questions(m, expanded)
                or judgement.NOTE8_TABLE_MARKER in m or judgement.HOLDING_FACILITY_MARKER in m]
     others = [m for m in outcome.messages if m not in covered]
     if others:

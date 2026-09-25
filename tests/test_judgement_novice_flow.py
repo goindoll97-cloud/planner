@@ -52,6 +52,23 @@ class StepTests(unittest.TestCase):
             status="REQUEST", questions=(), messages=(panel.judgement.HOLDING_FACILITY_MARKER,)
         )))
 
+    def test_psm_quantity_request_is_hidden_only_when_matching_inputs_are_shown(self):
+        message = (
+            "05_최종판정조건: 별표 13 제2호(인화성 액체). 해당으로 확인된 경우 "
+            "하루 최대 제조·취급량과 최대 저장량을 각각 kg로 작성해 주세요."
+        )
+        both_questions = (
+            SimpleNamespace(system="공정안전보고서", item="별표 13 제2호 하루 최대 제조·취급량(kg)"),
+            SimpleNamespace(system="공정안전보고서", item="별표 13 제2호 최대 저장량(kg)"),
+        )
+
+        self.assertTrue(panel._covered_by_psm_quantity_questions(message, both_questions))
+        self.assertFalse(panel._covered_by_psm_quantity_questions(message, both_questions[:1]))
+        self.assertFalse(panel._covered_by_psm_quantity_questions(
+            message,
+            (SimpleNamespace(system="공정안전보고서", item="별표 13 제1호 하루 최대 제조·취급량(kg)"),),
+        ))
+
     def test_missing_ksic_routes_to_an_actionable_industry_choice(self):
         questions = jd._questions_for(
             ["05_최종판정조건: PSM 법정 대상 업종 선택을 확인해 주세요."], {}
