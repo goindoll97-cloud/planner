@@ -19,6 +19,7 @@ FORM8_SOURCE_URL = (
     "%EC%A3%BC%EB%B3%80+%ED%99%98%EA%B2%BD+%EC%A0%95%EB%B3%B4&flSeq=164152315"
 )
 RULES_SOURCE_URL = "https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000278102&chrClsCd=010201"
+SAFETY_DISTANCE_NOTICE_URL = "https://www.law.go.kr/admRulInfoP.do?admRulSeq=2100000266498"
 
 
 def _render_methodology() -> None:
@@ -28,10 +29,11 @@ def _render_methodology() -> None:
     with st.expander("작성 기준과 검색 방법·근거", expanded=True):
         st.markdown(
             "**법정 서식 기준**  "
-            "별지 제8호는 사업장 경계선 바깥 500m 범위의 입지 현황, 별표 4에 따른 "
-            "보호대상 종류, 사업장 경계선부터 대상까지의 거리와 대상 위치를 일련번호로 표시한 지도를 요구합니다. "
-            "원문: [국가법령정보센터 규정·별표 4](" + RULES_SOURCE_URL + ") · "
-            "[별지 제8호 서식](" + FORM8_SOURCE_URL + ")."
+            "별지 제8호는 사업장 경계선 바깥 500m 범위의 입지 현황, 보호대상 종류, "
+            "사업장 경계선부터 대상까지의 거리와 대상 위치를 일련번호로 표시한 지도를 요구합니다. "
+            "종류별 구분·세부 기준은 [「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」](" + RULES_SOURCE_URL + ")와 "
+            "별지 주석이 인용하는 [「유해화학물질 취급시설 외벽으로부터 보호대상까지의 안전거리 고시」 별표 2·3](" + SAFETY_DISTANCE_NOTICE_URL + ")에서 확인합니다. "
+            "서식 원문: [별지 제8호 「사업장 주변 환경 정보」](" + FORM8_SOURCE_URL + ")."
         )
         st.markdown(
             f"**저장소가 반영한 기준본**  {legal['title']} · {legal['notice']} · "
@@ -50,11 +52,11 @@ def _render_methodology() -> None:
             st.write(" · ".join(f"{mode}: {query} → {subtype}" for mode, query, _cat, subtype in lookup.SEARCHES))
         st.error(
             "검색 반경은 사업장 주소 좌표 기준이며 법정 500m 경계 기준 측정값이 아닙니다. "
-            "검색 분류·키워드에서 빠진 대상, 별표 4의 세부 규모 조건, 실제 사업장 경계와 거리, "
+            "검색 분류·키워드에서 빠진 대상, 별표 기준의 세부 규모 조건, 실제 사업장 경계와 거리, "
             "검색 누락을 확인하지 않습니다. 검색 결과가 없다는 것은 보호대상이 없다는 뜻이 아닙니다."
         )
         st.caption(
-            "자동검색은 후보 수집 보조입니다. 이 프로그램은 별표 4 대상 여부, 지도 전체의 누락 여부, "
+            "자동검색은 후보 수집 보조입니다. 이 프로그램은 별표 4 및 안전거리 고시 별표 2·3에 따른 대상 여부, 지도 전체의 누락 여부, "
             "거리 산정의 적정성 또는 제출 적합성을 독립적으로 판정하거나 보증하지 않습니다. "
             "별지의 지도상 일련번호 위치 표기도 자동 생성하지 않으므로 지도는 별도로 작성·첨부해야 합니다. "
             "확인 자료와 방법을 GIS/현장 근거에 남기고 담당자가 원문 기준과 대조하세요."
@@ -112,7 +114,7 @@ def render(project) -> None:
         evidence = ""
         edited_rows: list[dict] = []
         scope_reviewed = st.checkbox(
-            "지도/GIS 또는 현장 자료로 사업장 경계 바깥 500m 전체를 확인했고, 별표 4 해당 대상의 누락 여부를 검토했습니다.",
+            "지도/GIS 또는 현장 자료로 사업장 경계 바깥 500m 전체를 확인했고, 「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」 및 안전거리 고시 별표 2·3 해당 대상의 누락 여부를 검토했습니다.",
             value=f8.scope_reviewed(project), key=f"cap_form08_scope_reviewed_{project.project_id}",
         )
         if no_target:
@@ -122,10 +124,10 @@ def render(project) -> None:
             frame = pd.DataFrame(rows_source, columns=list(f8.COLUMNS))
             config = {
                 "보호대상 구분": st.column_config.SelectboxColumn("구분", options=list(f8.CATEGORIES),
-                                                               help="갑종·을종·환경수용체(별표 4)"),
+                                                               help="「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」에 따른 구분입니다. 갑종·을종은 「유해화학물질 취급시설 외벽으로부터 보호대상까지의 안전거리 고시」 별표 2·3도 함께 확인하세요."),
                 "세부유형": st.column_config.SelectboxColumn(
                     "세부유형", options=[o for opts in f8.SUBTYPES.values() for o in opts],
-                    help="별표 4의 종류입니다. 규모 조건(예시: 300명 이상)이 있는 항목은 아래 도움말을 확인하세요."),
+                    help="「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」의 분류입니다. 갑종·을종 세부 기준은 안전거리 고시 별표 2·3 원문과 함께 대조하세요."),
                 "사업장 경계와 거리(m)": st.column_config.NumberColumn(
                     "사업장 경계 기준 실제 거리(m)", min_value=0,
                     help="법정 서식에 작성할 값입니다. 지도/GIS에서 사업장 경계부터 대상까지 확인해 입력하세요."),
@@ -145,7 +147,7 @@ def render(project) -> None:
                      for r in edited_rows}
             for label, hint in hints.items():
                 if hint:
-                    st.caption(f"별표 4 · {hint}")
+                    st.caption(f"「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」 · {hint}")
         if not scope_reviewed:
             st.info("전체 500m 범위를 확인했다고 표시해야 저장할 수 있습니다. 자동검색 결과만으로는 이 확인을 대신할 수 없습니다.")
         can_save = scope_reviewed and (not no_target or bool(evidence.strip()))
