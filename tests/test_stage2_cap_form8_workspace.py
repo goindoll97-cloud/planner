@@ -90,6 +90,29 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual(found, [])
         self.assertIn("직접 입력", message)
 
+    def test_http_auth_failure_explains_which_kakao_setting_to_check(self):
+        response = lookup.requests.Response()
+        response.status_code = 401
+
+        def unauthorized(url, params, headers):
+            raise lookup.requests.HTTPError(response=response)
+
+        with patch.dict(os.environ, {lookup.ENV_KEY: "invalid-key"}):
+            found, message = lookup.find_candidates("울산", get=unauthorized)
+        self.assertEqual(found, [])
+        self.assertIn("HTTP 401", message)
+        self.assertIn("REST API 키", message)
+        self.assertIn("직접 입력", message)
+
+    def test_http_403_uses_kakao_error_code_to_give_specific_guidance(self):
+        response = lookup.requests.Response()
+        response.status_code = 403
+        response._content = b'{"code":-3,"msg":"API is not allowed"}'
+        error = lookup.requests.HTTPError(response=response)
+        hint = lookup._http_error_hint(error)
+        self.assertIn("오류 코드 -3", hint)
+        self.assertIn("사용 또는 호출 허용", hint)
+
     def test_confirmed_list_derives_checkboxes_and_reaches_the_docx(self):
         project = _project()
         with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
