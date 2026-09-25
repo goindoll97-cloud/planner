@@ -72,9 +72,11 @@ def _row_is_current(row: dict[str, object]) -> bool:
     if str(row.get("monitor_status") or "") == "CURRENT":
         return True
     key = str(row.get("key") or "")
-    return bool(key and rowdef _law_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
+    return bool(key and row.get("observation_valid") and approved_source_is_current(key))
+
+
+def _law_frame(rows: list[dict[str, object]]) -> pd.DataFrame:
     out: list[dict[str, object]] = []
-    project_root = Path(__file__).resolve().parents[1]
     for row in rows:
         files = row.get("attachment_files") or []
         formats = sorted(
@@ -85,13 +87,16 @@ def _row_is_current(row: dict[str, object]) -> bool:
             }
         )
         key = str(row.get("key") or "")
-        local_paths = [str(path.relative_to(project_root)) for path in approved_source_files(key)]
+        local_paths = [
+            str(path.relative_to(Path(__file__).resolve().parents[1]))
+            for path in approved_source_files(key)
+        ]
         if not local_paths:
             for item in files:
                 if not isinstance(item, dict):
                     continue
                 pending = str(item.get("pending_file") or "").strip()
-                candidate = project_root / pending if pending else None
+                candidate = Path(__file__).resolve().parents[1] / pending if pending else None
                 if candidate is not None and candidate.is_file():
                     local_paths.append(pending)
         current = _row_is_current(row)
@@ -115,12 +120,6 @@ def _render_law_group(rows: list[dict[str, object]], regime: str) -> None:
         _table(_law_frame(subset), 40)
     else:
         st.caption("표시할 법령·규정이 없습니다.")
-
-
-strip()),
-            }
-        )
-    return pd.DataFrame(out)
 
 
 def _show_last_result(report: dict[str, object]) -> None:
