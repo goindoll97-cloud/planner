@@ -42,6 +42,7 @@ class CAPForm8EngineTests(unittest.TestCase):
                 "좌표": "35.0,129.0",
                 "사업장 경계와 거리(m)": 420,
                 "GIS/현장 근거": "GIS-SITE-01",
+                "500m 범위 전체 확인": True,
             }],
             "USER_CONFIRMED",
         )
@@ -66,6 +67,7 @@ class CAPForm8EngineTests(unittest.TestCase):
                 "주소·위치": "○○시 원거리로 1",
                 "사업장 경계와 거리(m)": 620,
                 "GIS/현장 근거": "GIS-SITE-02",
+                "500m 범위 전체 확인": True,
             }],
             "USER_CONFIRMED",
         )
@@ -80,7 +82,7 @@ class CAPForm8EngineTests(unittest.TestCase):
         project.set_field(
             "cap.site.surrounding_environment",
             "사업장 주변 환경정보",
-            [{"보호대상 없음 여부": "예", "GIS/현장 근거": "GIS-NONE-01"}],
+            [{"보호대상 없음 여부": "예", "GIS/현장 근거": "GIS-NONE-01", "500m 범위 전체 확인": True}],
             "USER_CONFIRMED",
         )
 
@@ -95,7 +97,7 @@ class CAPForm8EngineTests(unittest.TestCase):
         project.set_field(
             "cap.site.surrounding_environment",
             "사업장 주변 환경정보",
-            [{"보호대상 없음 여부": "예"}],
+            [{"보호대상 없음 여부": "예", "500m 범위 전체 확인": True}],
             "USER_CONFIRMED",
         )
 
@@ -103,6 +105,27 @@ class CAPForm8EngineTests(unittest.TestCase):
 
         self.assertFalse(result.ready)
         self.assertTrue(any("GIS/현장 근거" in item for item in result.blockers))
+
+    def test_unreviewed_candidate_cannot_become_ready(self):
+        project = self._project()
+        project.set_field(
+            "cap.site.surrounding_environment",
+            "사업장 주변 환경정보",
+            [{
+                "보호대상 없음 여부": "아니오", "보호대상 명칭": "검색후보 학교",
+                "보호대상 구분": "갑종", "세부유형": "교육·연구시설",
+                "주소·위치": "○○시 ○○로", "검색결과 거리(주소점 기준, 참고)": 100,
+                "GIS/현장 근거": "카카오 API 검색 결과", "500m 범위 전체 확인": False,
+            }],
+            "USER_CONFIRMED",
+        )
+
+        result = build_cap_form8_data(project)
+
+        self.assertFalse(result.ready)
+        self.assertEqual(result.rows[0]["사업장 경계와 거리(m)"], "")
+        self.assertTrue(any("500m 범위 전체" in item for item in result.blockers))
+        self.assertTrue(any("거리(m)" in item for item in result.blockers))
 
     def test_integrated_workbook_contains_structured_form8_sheet(self):
         project = self._project()
@@ -118,6 +141,9 @@ class CAPForm8EngineTests(unittest.TestCase):
         self.assertIn("보호대상 구분", headers)
         self.assertIn("사업장 경계와 거리(m)", headers)
         self.assertIn("GIS/현장 근거", headers)
+        self.assertIn("검색결과 거리(주소점 기준, 참고)", headers)
+        self.assertIn("500m 범위 전체 확인", headers)
+        self.assertIn("검색 출처·검색일", headers)
 
     @patch("engine.stage2.cap_chemical_legal.build_cap_form1_data")
     @patch("engine.stage2.cap_chemical_legal.load_approved_scope_tables")
@@ -176,6 +202,7 @@ class CAPForm8EngineTests(unittest.TestCase):
                 "주소·위치": "○○시 ○○로 10",
                 "사업장 경계와 거리(m)": 420,
                 "GIS/현장 근거": "GIS-SITE-01",
+                "500m 범위 전체 확인": True,
             }],
             "USER_CONFIRMED",
         )
