@@ -33,7 +33,7 @@ def _render_change_guide() -> None:
         st.markdown("**⑤ 후속조치는 서로 다른 절차를 함께 기록할 수 있습니다.** 예를 들어 계획서 변경제출과 영업허가 변경허가가 동시에 필요할 수 있습니다. 항목을 하나 이상 적고, 여러 개면 ` / `로 구분하세요.")
         for label, explanation in f2.FOLLOW_UP_GUIDANCE.items():
             st.markdown(f"- **{label}**: {explanation}")
-        st.warning("현행 작성 규정 제11조는 총괄영향범위 확대 등 법정 요건에 해당하는 경우, 작성수준이 2군에서 1군으로 바뀌는 경우, 또는 화학물질안전원장이 주민소산계획 보완을 통지한 경우 등에 변경된 계획서 제출을 요구합니다. 통상 변경제출은 변경 완료 30일 전까지이며, 주민소산계획 보완 통지를 받은 경우는 통지일부터 60일 이내입니다. 해당 요건과 예외를 공식 규정으로 확인하세요. 변경신고·변경허가는 유해화학물질 영업허가 보유 여부와 시행규칙 제29조의 요건을 별도로 확인해야 합니다. 한 번의 변경에 계획서 제출과 영업허가 변경조치가 함께 적용될 수도 있습니다. 프로그램은 제출·허가 대상을 자동 판정하지 않습니다.")
+        st.warning("현행 작성 규정 제11조는 총괄영향범위 확대 등 법정 요건에 해당하는 경우, 작성수준이 2군에서 1군으로 바뀌는 경우, 또는 화학물질안전원장이 주민소산계획 보완을 통지한 경우 등에 변경된 계획서 제출을 요구합니다. 통상 변경제출은 변경 완료 30일 전까지이며, 주민소산계획 보완 통지를 받은 경우는 통지일부터 60일 이내입니다. 해당 요건과 예외를 공식 규정으로 확인하세요. 변경신고·변경허가는 유해화학물질 영업허가 보유 여부와 시행규칙 제29조의 요건을 별도로 확인해야 합니다. 한 번의 변경에 계획서 제출과 영업허가 변경조치가 함께 적용될 수도 있습니다. 프로그램은 시행규칙 제29조의 확인된 조건으로 변경신고·변경허가 후보를 제안하되, 미확인 조건은 HOLD로 남기고 담당자가 최종 확인합니다.")
         st.markdown(
             "공식 기준: [작성 등에 관한 규정 제11조(변경 제출)](https://www.law.go.kr/DRF/lawService.do?ID=2100000278102&OC=me_pr&mobileYn=Y&target=admrul&type=HTML) · "
             "[화학물질관리법 시행규칙 제29조](https://www.law.go.kr/LSW//lsSideInfoP.do?docCls=jo&joBrNo=00&joNo=0029&lsiSeq=279031&urlMode=lsScJoRltInfoR)"
@@ -45,7 +45,7 @@ def _render_structured_change_entry(project) -> bool:
     key_suffix = f"{project.project_id}_{existing_count}"
     added = False
     with st.expander("변경내역을 항목별로 입력해 행 추가", expanded=True):
-        st.caption("입력한 값은 법정 서식의 각 열에 배치됩니다. 자동으로 문장을 해석하거나 법적 후속조치를 판정하지 않습니다.")
+        st.caption("입력한 값은 법정 서식의 각 열에 배치됩니다. 변경신고·변경허가는 시행규칙 제29조의 확인된 조건으로 후보만 제안하며, 담당자가 최종 확인합니다.")
         date_value = st.text_input("① 변경일", placeholder="예: 2020. 1. 2.", key=f"cap_form02_add_date_{key_suffix}")
         selected_items = st.multiselect(
             "② 변경항목", f2.CHANGE_ITEM_SUGGESTIONS,
@@ -74,9 +74,114 @@ def _render_structured_change_entry(project) -> bool:
                 key=f"cap_form02_add_narrative_{key_suffix}",
             ).strip()
 
+        with st.expander("⑤ 후속조치 법령 검토 — 시행규칙 제29조", expanded=False):
+            st.caption(
+                "변경신고·변경허가는 「화학물질관리법 시행규칙」 제29조의 결정조건을 확인해 후보만 제안합니다. "
+                "미확인 조건은 임의로 추정하지 않습니다."
+            )
+            business_status = st.selectbox(
+                "유해화학물질 영업 상태", ["미확인", "영업허가", "영업신고"],
+                key=f"cap_form02_rule29_status_{key_suffix}",
+            )
+            yn = ["미확인", "예", "아니오"]
+            name_change = st.selectbox(
+                "사업장 명칭·대표자·사무실 소재지가 변경되었나요?", yn,
+                key=f"cap_form02_rule29_name_{key_suffix}",
+            )
+            site_change = st.selectbox(
+                "사업장 소재지(사무실 제외)가 변경되었나요?", yn,
+                key=f"cap_form02_rule29_site_{key_suffix}",
+            )
+            facility_change = st.selectbox(
+                "취급시설 신설·증설·위치 변경 또는 취급물질 변경이 있나요?", yn,
+                key=f"cap_form02_rule29_facility_{key_suffix}",
+            )
+            chemical_change = st.selectbox(
+                "유해화학물질 추가 또는 취급량 증가가 있나요?", yn,
+                key=f"cap_form02_rule29_chemical_{key_suffix}",
+            )
+            quantity_band = st.selectbox(
+                "추가·증가 후 규정수량 구간",
+                ["미확인", "최하위 미만", "최하위 이상·하위 미만", "하위 이상"],
+                key=f"cap_form02_rule29_band_{key_suffix}",
+            )
+            scenario_qty = st.selectbox(
+                "변경 후 취급량이 사고시나리오 규정량 이상인가요?", yn,
+                key=f"cap_form02_rule29_scenario_{key_suffix}",
+            )
+            impact_expanded = st.selectbox(
+                "총괄영향범위가 확대되나요?", yn,
+                key=f"cap_form02_rule29_impact_{key_suffix}",
+            )
+            cap_change_required = st.selectbox(
+                "변경된 화학사고예방관리계획서를 제출해야 하나요?", yn,
+                key=f"cap_form02_rule29_capchange_{key_suffix}",
+            )
+            capacity_increase = st.selectbox(
+                "보관·저장시설 총용량 또는 운반시설 용량이 증가했나요?", yn,
+                key=f"cap_form02_rule29_capacity_{key_suffix}",
+            )
+            capacity_50 = st.selectbox(
+                "해당 용량 증가가 기준 시점 이후 누적 50% 이상인가요?", yn,
+                key=f"cap_form02_rule29_capacity50_{key_suffix}",
+            )
+            holding_increase = st.selectbox(
+                "사업장의 유해화학물질별 최대보유량 합계가 증가했나요?", yn,
+                key=f"cap_form02_rule29_holding_{key_suffix}",
+            )
+            holding_50 = st.selectbox(
+                "해당 최대보유량 합계 증가가 기준 시점 이후 누적 50% 이상인가요?", yn,
+                key=f"cap_form02_rule29_holding50_{key_suffix}",
+            )
+            vehicle_change = st.selectbox(
+                "운반차량 종류 변경·대수 증가·용량 증가가 있나요?", yn,
+                key=f"cap_form02_rule29_vehicle_{key_suffix}",
+            )
+            technical_change = st.selectbox(
+                "법 제28조제2항의 기술인력이 변경되었나요?", yn,
+                key=f"cap_form02_rule29_technical_{key_suffix}",
+            )
+            pilot = st.selectbox(
+                "시장출시와 직접 관계없는 60일 이내 시범생산 변경인가요?", yn,
+                key=f"cap_form02_rule29_pilot_{key_suffix}",
+            )
+            transport_business = st.selectbox(
+                "법 제27조제4호의 운반업인가요?", yn,
+                key=f"cap_form02_rule29_transport_{key_suffix}",
+            )
+            suggestion = f2.rule29_followup_suggestion({
+                "business_status": business_status,
+                "name_representative_office_changed": name_change,
+                "site_address_changed": site_change,
+                "facility_or_material_changed": facility_change,
+                "chemical_added_or_amount_increased": chemical_change,
+                "quantity_band": quantity_band,
+                "scenario_quantity_or_more": scenario_qty,
+                "overall_impact_expanded": impact_expanded,
+                "cap_change_submission_required": cap_change_required,
+                "storage_or_transport_capacity_increased": capacity_increase,
+                "cumulative_capacity_increase_50pct": capacity_50,
+                "max_holding_sum_increased": holding_increase,
+                "cumulative_holding_increase_50pct": holding_50,
+                "transport_vehicle_changed": vehicle_change,
+                "technical_personnel_changed": technical_change,
+                "pilot_production_60d": pilot,
+                "transport_business": transport_business,
+            })
+            if suggestion.actions:
+                st.success("후속조치 후보: " + " / ".join(suggestion.actions))
+                for reason, legal in zip(suggestion.reasons, suggestion.legal_basis):
+                    st.caption(f"{reason} — {legal}")
+            if suggestion.questions:
+                st.warning("추가 확인이 필요합니다.")
+                for question in suggestion.questions:
+                    st.write(f"• {question}")
+
         actions = st.multiselect(
-            "⑤ 후속조치", f2.FOLLOW_UPS, key=f"cap_form02_add_actions_{key_suffix}",
-            help="계획서 조치와 영업허가 조치가 함께 해당할 수 있습니다. 해당없음은 다른 조치와 함께 선택하지 마세요. 아직 판단 중이면 비워 두고, 제출 전에는 확인해 입력하세요.",
+            "⑤ 후속조치", f2.FOLLOW_UPS,
+            default=list(suggestion.actions) if "suggestion" in locals() else [],
+            key=f"cap_form02_add_actions_{key_suffix}",
+            help="위 법령 검토 결과는 후보입니다. 담당자가 실제 허가·신고 요건을 확인해 최종 선택하세요. 해당없음은 다른 조치와 함께 선택하지 마세요.",
         )
         action_dates = {}
         dated_actions = [action for action in actions if action != "해당없음"]

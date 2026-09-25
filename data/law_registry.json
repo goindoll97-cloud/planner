@@ -26,7 +26,9 @@
     "title": "화학사고예방관리계획서 작성 등에 관한 규정",
     "target": "admrul",
     "attachment_required": true,
-    "attachment_selector": {"mode": "all"}
+    "attachment_selector": {
+      "mode": "all"
+    }
   },
   {
     "key": "CAP_REVIEW",
@@ -34,7 +36,9 @@
     "title": "화학사고예방관리계획서 검토 등에 관한 규정",
     "target": "admrul",
     "attachment_required": true,
-    "attachment_selector": {"mode": "all"}
+    "attachment_selector": {
+      "mode": "all"
+    }
   },
   {
     "key": "CAP_QTY",
@@ -42,7 +46,9 @@
     "title": "유해화학물질의 규정수량에 관한 규정",
     "target": "admrul",
     "attachment_required": true,
-    "attachment_selector": {"mode": "all"}
+    "attachment_selector": {
+      "mode": "all"
+    }
   },
   {
     "key": "CAP_IMPL",
@@ -50,7 +56,19 @@
     "title": "화학사고예방관리계획서 이행 등에 관한 규정",
     "target": "admrul",
     "attachment_required": true,
-    "attachment_selector": {"mode": "all"}
+    "attachment_selector": {
+      "mode": "all"
+    }
+  },
+  {
+    "key": "CAP_BUSINESS_LICENSE",
+    "regime": "화학사고예방관리계획서",
+    "title": "유해화학물질의 영업허가 등에 관한 규정",
+    "target": "admrul",
+    "attachment_required": true,
+    "attachment_selector": {
+      "mode": "all"
+    }
   },
   {
     "key": "PSM_ACT",
@@ -84,6 +102,8 @@
     "title": "공정안전보고서의 제출·심사·확인 및 이행상태평가 등에 관한 규정",
     "target": "admrul",
     "attachment_required": true,
-    "attachment_selector": {"mode": "all"}
+    "attachment_selector": {
+      "mode": "all"
+    }
   }
 ]

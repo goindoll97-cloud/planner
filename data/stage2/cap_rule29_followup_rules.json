@@ -1,0 +1,38 @@
+{
+  "schema_version": "cap-rule29-followup-v1",
+  "source": {
+    "title": "화학물질관리법 시행규칙",
+    "article": "제29조(유해화학물질 영업허가의 변경허가 및 변경신고 등)",
+    "effective_date": "2025-10-01",
+    "verified_date": "2026-09-26",
+    "official_url": "https://www.law.go.kr/LSW/lsLawLinkInfo.do?chrClsCd=010202&lsId=007845&lsJoLnkSeq=900787626&print=print"
+  },
+  "permission_change": [
+    {"id":"1가","action":"변경허가","condition":"영업구분별 보관·저장시설 총용량 또는 운반시설 용량 증가","extra":"허가 또는 변경허가 후 누적 증가량 50% 이상"},
+    {"id":"1나","action":"변경허가","condition":"사업장의 유해화학물질별 최대보유량 합계 증가","extra":"허가 또는 변경허가 후 누적 증가량 50% 이상"},
+    {"id":"1다","action":"변경허가","condition":"유해화학물질 추가 또는 취급량 증가","extra":"취급량이 하위 규정수량 이상. 운반업 및 제2호나목 제외"},
+    {"id":"1라","action":"변경허가","condition":"동일 사업장 내 취급시설 신설·증설·위치 변경 또는 취급물질 변경","extra":"변경된 화학사고예방관리계획서를 제출해야 하는 경우"},
+    {"id":"1마","action":"변경허가","condition":"사업장 소재지 변경","extra":"사무실 소재지 제외"}
+  ],
+  "permission_report": [
+    {"id":"2가","action":"변경신고","condition":"사업장 명칭·대표자 또는 사무실 소재지 변경"},
+    {"id":"2나","action":"변경신고","condition":"시장출시와 직접 관계없는 60일 이내 시범생산으로 취급 유해화학물질 일시 변경","extra":"변경 후 취급량이 사고시나리오 규정량 이상"},
+    {"id":"2다","action":"변경신고","condition":"동일 사업장 내 취급시설 신설·증설·부지 경계로의 위치 변경 또는 취급물질 변경","extra":"변경 후 취급량이 사고시나리오 규정량 이상이고 총괄영향범위가 확대되지 않는 경우"},
+    {"id":"2라","action":"변경신고","condition":"유해화학물질 운반차량 종류 변경, 대수 또는 용량 증가","extra":"제1호가목 변경허가에 해당하는 경우 제외"},
+    {"id":"2마","action":"변경신고","condition":"법 제28조제2항에 따른 기술인력 변경"},
+    {"id":"2바","action":"변경신고","condition":"유해화학물질 추가 또는 취급량 증가","extra":"취급량이 최하위 규정수량 이상 하위 규정수량 미만. 운반업 제외"}
+  ],
+  "declaration_report": [
+    {"id":"3가","action":"변경신고","condition":"사업장 명칭·대표자·소재지(사무실 포함) 변경"},
+    {"id":"3나","action":"변경신고","condition":"영업구분별 보관·저장시설 총용량 증가","extra":"신고 또는 변경신고 후 누적 증가량 50% 이상"},
+    {"id":"3다","action":"변경신고","condition":"사업장의 유해화학물질별 최대보유량 합계 증가","extra":"신고 또는 변경신고 후 누적 증가량 50% 이상"},
+    {"id":"3라","action":"변경신고","condition":"유해화학물질 추가 또는 양 증가","extra":"최대보유량이 최하위 규정수량 이상 하위 규정수량 미만"}
+  ],
+  "timing": {
+    "change_permission": "변경 전",
+    "change_report_default": "변경된 날부터 30일 이내",
+    "change_report_representative_or_technical_personnel": "변경된 날부터 60일 이내",
+    "pre_report_cases": "제1항제2호나목 및 제3호가목 중 사업장 소재지(사무실 제외) 변경은 변경 전"
+  },
+  "principle": "프로그램은 확인된 회사 사실만으로 후속조치 후보를 제안한다. 법정 결정조건이 미확인인 경우 확정하지 않고 확인 필요로 남긴다."
+}
