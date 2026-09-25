@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "law_key": "CAP_RULE",
+  "serial": "279031",
+  "effective_date": "20251001",
+  "article": "제29조",
+  "source_url": "https://www.law.go.kr/LSW/lsSideInfoP.do?docCls=jo&joBrNo=00&joNo=0029&lsiSeq=279031&urlMode=lsScJoRltInfoR",
+  "rules": [
+    {
+      "status": "영업허가",
+      "event": "storage_capacity",
+      "clause": "제29조제1항제1호가목",
+      "action": "변경허가",
+      "reason": "허가 또는 최근 변경허가 이후 보관·저장시설 총용량 또는 운반시설 용량 누적 증가 50% 이상",
+      "conditions": {
+        "storage_ratio": {
+          "gte": 0.5
+        }
+      },
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "holding_total",
+      "clause": "제29조제1항제1호나목",
+      "action": "변경허가",
+      "reason": "허가 또는 최근 변경허가 이후 물질별 최대보유량 합계 누적 증가 50% 이상",
+      "conditions": {
+        "holding_ratio": {
+          "gte": 0.5
+        }
+      },
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "material",
+      "clause": "제29조제1항제1호다목",
+      "action": "변경허가",
+      "reason": "물질 추가·취급량 증가 후 하위 규정수량 이상(운반업·제2호나목 제외)",
+      "conditions": {
+        "transport": false,
+        "trial": false,
+        "quantity_band": "lower_or_above"
+      },
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "facility",
+      "clause": "제29조제1항제1호라목",
+      "action": "변경허가",
+      "reason": "동일 사업장 취급시설 신설·증설·위치 또는 취급물질 변경 및 변경된 계획서 제출 대상",
+      "conditions": {
+        "same_site": true,
+        "cap_submission": true
+      },
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "site",
+      "clause": "제29조제1항제1호마목",
+      "action": "변경허가",
+      "reason": "사업장 소재지 변경(사무실 제외)",
+      "conditions": {},
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "name",
+      "clause": "제29조제1항제2호가목",
+      "action": "변경신고",
+      "reason": "사업장 명칭 변경",
+      "conditions": {},
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업허가",
+      "event": "representative",
+      "clause": "제29조제1항제2호가목",
+      "action": "변경신고",
+      "reason": "대표자 변경",
+      "conditions": {},
+      "due": "변경일부터 60일 이내"
+    },
+    {
+      "status": "영업허가",
+      "event": "office",
+      "clause": "제29조제1항제2호가목",
+      "action": "변경신고",
+      "reason": "사무실 소재지 변경",
+      "conditions": {},
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업허가",
+      "event": "trial",
+      "clause": "제29조제1항제2호나목",
+      "action": "변경신고",
+      "reason": "시장출시와 무관한 60일 이내 시범생산·일시적인 취급물질 변경 및 변경 후 사고시나리오 규정량 이상",
+      "conditions": {
+        "market_unrelated": true,
+        "trial_days": {
+          "lte": 60
+        },
+        "temporary_material": true,
+        "scenario_amount": true
+      },
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "facility",
+      "clause": "제29조제1항제2호다목",
+      "action": "변경신고",
+      "reason": "동일 사업장 취급시설 신설·증설·부지 경계로 위치 변경 또는 물질 변경, 변경 후 사고시나리오 규정량 이상, 총괄영향범위 미확대",
+      "conditions": {
+        "same_site": true,
+        "cap_submission": false,
+        "boundary_or_other": true,
+        "scenario_amount": true,
+        "impact_expanded": false
+      },
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업허가",
+      "event": "vehicle",
+      "clause": "제29조제1항제1호가목",
+      "action": "변경허가",
+      "reason": "운반시설 용량이 최초 허가 또는 최근 변경허가 이후 누적 50% 이상 증가",
+      "conditions": {
+        "capacity_threshold_applies": true
+      },
+      "due": "변경 전"
+    },
+    {
+      "status": "영업허가",
+      "event": "vehicle",
+      "clause": "제29조제1항제2호라목",
+      "action": "변경신고",
+      "reason": "운반차량 종류 변경 또는 대수·용량 증가(제1호가목 제외)",
+      "conditions": {
+        "capacity_threshold_applies": false
+      },
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업허가",
+      "event": "technician",
+      "clause": "제29조제1항제2호마목",
+      "action": "변경신고",
+      "reason": "영업허가 기술인력 변경",
+      "conditions": {},
+      "due": "변경일부터 60일 이내"
+    },
+    {
+      "status": "영업허가",
+      "event": "material",
+      "clause": "제29조제1항제2호바목",
+      "action": "변경신고",
+      "reason": "물질 추가·취급량 증가 후 최하위 이상 하위 미만(운반업 제외)",
+      "conditions": {
+        "transport": false,
+        "quantity_band": "minimum_to_lower"
+      },
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업신고",
+      "event": "name",
+      "clause": "제29조제1항제3호가목",
+      "action": "변경신고",
+      "reason": "사업장 명칭 변경",
+      "conditions": {},
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업신고",
+      "event": "representative",
+      "clause": "제29조제1항제3호가목",
+      "action": "변경신고",
+      "reason": "대표자 변경",
+      "conditions": {},
+      "due": "변경일부터 60일 이내"
+    },
+    {
+      "status": "영업신고",
+      "event": "office",
+      "clause": "제29조제1항제3호가목",
+      "action": "변경신고",
+      "reason": "사무실 소재지 변경",
+      "conditions": {},
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업신고",
+      "event": "site",
+      "clause": "제29조제1항제3호가목",
+      "action": "변경신고",
+      "reason": "사업장 소재지 변경",
+      "conditions": {},
+      "due": "변경 전"
+    },
+    {
+      "status": "영업신고",
+      "event": "storage_capacity",
+      "clause": "제29조제1항제3호나목",
+      "action": "변경신고",
+      "reason": "신고 또는 최근 변경신고 이후 보관·저장시설 총용량 누적 증가 50% 이상",
+      "conditions": {
+        "storage_ratio": {
+          "gte": 0.5
+        },
+        "storage_kind": "storage"
+      },
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업신고",
+      "event": "holding_total",
+      "clause": "제29조제1항제3호다목",
+      "action": "변경신고",
+      "reason": "신고 또는 최근 변경신고 이후 물질별 최대보유량 합계 누적 증가 50% 이상",
+      "conditions": {
+        "holding_ratio": {
+          "gte": 0.5
+        }
+      },
+      "due": "변경일부터 30일 이내"
+    },
+    {
+      "status": "영업신고",
+      "event": "material",
+      "clause": "제29조제1항제3호라목",
+      "action": "변경신고",
+      "reason": "물질 추가·취급량 증가 후 최대보유량이 최하위 이상 하위 미만",
+      "conditions": {
+        "holding_band": "minimum_to_lower"
+      },
+      "due": "변경일부터 30일 이내"
+    }
+  ]
+}
