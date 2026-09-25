@@ -158,6 +158,18 @@ class CAPBaselineDocxTests(unittest.TestCase):
         self.assertIn("TK-101 → TK-101A", text)
         self.assertIn("관련 도면 및 명세 갱신", text)
 
+    def test_form2_site_name_label_and_value_are_ten_point(self):
+        project = _project()
+        out = build_cap_baseline_draft(project)
+        doc = Document(BytesIO(out))
+        context_table = doc.tables[FORM_TABLE_INDEX["2"][0]]
+        site_name_cells = context_table.rows[0].cells[:2]
+        runs = [run for cell in site_name_cells for paragraph in cell.paragraphs for run in paragraph.runs]
+
+        self.assertTrue(any("1. 사업장명" in run.text for run in runs))
+        self.assertTrue(any(project.company_name in run.text for run in runs))
+        self.assertTrue(all(run.font.size is not None and run.font.size.pt == 10 for run in runs))
+
     def test_form6_does_not_use_kosha_reference_in_company_sds_only_mode(self):
         project = _project()
         _set(project, "inventory.chemicals", [
