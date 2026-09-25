@@ -206,6 +206,12 @@ def _append_value(cell, value: object) -> None:
     _write_cell(cell, (label + " " + text).strip())
 
 
+def _set_cell_run_font_size(cell, size: float) -> None:
+    for paragraph in cell.paragraphs:
+        for run in paragraph.runs:
+            run.font.size = base.Pt(size)
+
+
 def _row_text(row) -> str:
     return " ".join(cell.text.strip() for cell in _unique_cells(row)).strip()
 
@@ -373,6 +379,10 @@ def _fill_form2(tables, project: Stage2Project) -> None:
     context_table, log_table = tables
     context_cells = _unique_cells(context_table.rows[0])
     _append_value(context_cells[1], project.company_name)
+    # This label and its answer have occasionally inherited a 5pt template
+    # style in generated downloads. Keep the complete 사업장명 field legible.
+    for cell in context_cells[:2]:
+        _set_cell_run_font_size(cell, 10)
     unit_plant = base._text(project, "cap.business.unit_plant_name", default=project.site_name or "")
     if unit_plant:
         _append_value(context_cells[3], unit_plant)
