@@ -244,7 +244,11 @@ def render(project) -> None:
                 width="stretch",
                 key=f"cap32_log_candidates_{project.project_id}",
             )
-            st.caption("자동분류는 후보입니다. 변경종류·후속조치·문구를 담당자가 확인·수정한 뒤 저장하세요.")
+            st.caption(
+                "자동 비교는 저장된 값의 차이만 찾습니다. 변경종류는 물질·고지계획처럼 데이터만으로 분류가 분명한 경우에만 후보를 표시하고, "
+                "시설 규모·위치·재질과 후속조치(변경제출·변경관리·영업허가 변경)는 자동 판단하지 않습니다. "
+                "빈칸은 법령 기준과 실제 변경 내용을 확인한 뒤 입력하세요."
+            )
         else:
             edited_candidates = pd.DataFrame(columns=form2.LOG_COLUMNS)
 
