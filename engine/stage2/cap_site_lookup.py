@@ -2,11 +2,12 @@ from __future__ import annotations
 
 """Address-based protected-target *candidates* for 별지 제8호 (Kakao Local API).
 
-This only proposes. A candidate becomes a confirmed row when the user accepts
-it; 별표 4 has size/occupancy conditions (예: 300명 이상) that a map search cannot
-verify, and distances here are measured from the geocoded address point, not
-from the site boundary. Without KAKAO_REST_API_KEY nothing is looked up and the
-user enters the receptors manually.
+This only proposes candidates. Selecting one does not establish that it is a
+legal protected target or that the site has no omitted targets. 별표 4 has
+size/occupancy conditions that a map search cannot verify, and distances here
+are measured from the geocoded address point, not from the site boundary.
+Without KAKAO_REST_API_KEY nothing is looked up and the user enters candidates
+manually.
 """
 
 from dataclasses import dataclass
@@ -61,35 +62,6 @@ def _default_get(url: str, params: dict[str, Any], headers: dict[str, str]) -> d
     return response.json()
 
 
-def _http_error_hint(exc: requests.HTTPError) -> str:
-    """Explain common Kakao Local API HTTP failures without exposing request headers or keys."""
-    response = getattr(exc, "response", None)
-    status = getattr(response, "status_code", None)
-    try:
-        kakao_code = (response.json() or {}).get("code")
-        kakao_code = int(kakao_code) if kakao_code is not None else None
-    except (AttributeError, TypeError, ValueError, requests.RequestException):
-        kakao_code = None
-    code_hints = {
-        -3: "앱 설정에서 이 API의 사용 또는 호출 허용이 활성화되어 있는지 확인해 주세요.",
-        -5: "이 앱에 해당 API를 호출할 권한이 있는지 카카오 디벨로퍼스에서 확인해 주세요.",
-        -12: "카카오 디벨로퍼스 앱 또는 개발자 계정의 이용 제한 여부를 확인해 주세요.",
-    }
-    if kakao_code in code_hints:
-        return f"카카오 오류 코드 {kakao_code}: {code_hints[kakao_code]}"
-    hints = {
-        400: "요청 형식이나 검색 조건을 확인해 주세요.",
-        401: "KAKAO_REST_API_KEY가 유효한 REST API 키인지, 키가 바뀌지 않았는지 확인해 주세요.",
-        403: "카카오 디벨로퍼스 앱에서 로컬 API 사용 권한과 앱 설정을 확인해 주세요.",
-        429: "카카오 API 호출 한도에 도달했을 수 있습니다. 잠시 뒤 다시 시도해 주세요.",
-    }
-    if status in hints:
-        return f"카카오 API가 HTTP {status}로 요청을 거부했습니다. {hints[status]}"
-    if status is not None:
-        return f"카카오 API가 HTTP {status} 오류를 반환했습니다. 응답 세부 코드를 확인할 수 없었습니다."
-    return "카카오 API가 요청을 거부했습니다."
-
-
 def geocode(address: str, *, get: Callable = _default_get) -> tuple[str, str] | None:
     """(x, y) of the address, or None. Only the address is sent."""
     key = api_key()
@@ -130,12 +102,14 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
                     distance_m=float(distance) if str(distance or "").strip() else None,
                     source="카카오 로컬 API 검색",
                 )
-    except requests.HTTPError as exc:
-        return [], f"주변 검색에 실패했습니다. {_http_error_hint(exc)} 보호대상을 직접 입력하세요."
     except (requests.RequestException, KeyError, ValueError) as exc:
         return [], f"주변 검색에 실패했습니다({type(exc).__name__}). 보호대상을 직접 입력하세요."
     ordered = sorted(found.values(), key=lambda c: (c.distance_m is None, c.distance_m or 0.0))
-    return ordered, f"{len(ordered)}건을 찾았습니다. 규모 조건(별표 4)과 사업장 경계 기준 거리는 확인이 필요합니다."
+    return ordered, (
+        f"후보 {len(ordered)}건을 반환했습니다. 이는 전체 조사 결과나 법정 판정이 아닙니다. "
+        "별표 4 해당 여부, 검색 누락, 실제 사업장 경계 기준 거리를 별도로 확인하세요. "
+        "후보가 0건이어도 보호대상 없음이 확인된 것은 아닙니다."
+    )
 
 
 def env_diagnosis() -> list[str]:
