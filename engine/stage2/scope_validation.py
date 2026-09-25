@@ -464,7 +464,7 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
                     system="CAP",
                     section="기본정보",
                     legal_item="별지 제8호 사업장 주변 환경 정보",
-                    message="500m 내 보호대상 명세 또는 보호대상 없음 확인과 GIS/현장 근거를 확인했습니다.",
+                    message="500m 전체 범위 검토 확인, 보호대상 명세 또는 없음 근거, 거리·분류의 사용자 입력을 확인했습니다.",
                     field_keys=("cap.site.surrounding_environment",),
                     legal_basis="화학사고예방관리계획서 작성 등에 관한 규정 별지 제8호서식",
                 )
