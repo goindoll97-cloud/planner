@@ -69,6 +69,23 @@ def _clean(value: object) -> str:
     return str(value).strip()
 
 
+def format_follow_up_actions(actions: list[str], dates: Mapping[str, str] | None = None) -> str:
+    """Format selected follow-up actions as the statutory form's cell text."""
+    dates = dates or {}
+    parts = []
+    for action in actions:
+        label = _clean(action)
+        if not label:
+            continue
+        if label == "해당없음":
+            parts.append(label)
+            continue
+        name = label.split(" ", 1)[1] if label.startswith(("㈎ ", "㈏ ", "㈐ ", "㈑ ", "㈒ ")) else label
+        action_date = _clean(dates.get(label))
+        parts.append(f"{name}({action_date})" if action_date else name)
+    return " / ".join(parts)
+
+
 def submission(project: Stage2Project) -> dict[str, str]:
     def value(key: str) -> str:
         record = project.get_field(key)
