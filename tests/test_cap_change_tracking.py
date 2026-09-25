@@ -75,6 +75,33 @@ class CAPChangeTrackingTests(unittest.TestCase):
             versioning.load_version_fields = original_load
             versioning.diff_versions = original_diff
 
+    def test_form2_candidates_require_confirmed_comparable_facts_and_no_legal_action(self):
+        p = self._project()
+        p.set_field("cap.workspace.facilities", "시설", [
+            {"설비번호": "TK-101", "설비명": "탱크", "용량": "10", "용량단위": "m3", "최대보유량(kg)": 10000},
+        ], "USER_CONFIRMED")
+        versioning.freeze_version(p, "CAP", "신규제출", root=self.root)
+        p.set_field("inventory.chemicals", "화학물질", [
+            {"물질명": "톨루엔", "CAS 번호": "108-88-3"},
+            {"물질명": "염소", "CAS 번호": "7782-50-5"},
+        ], "USER_CONFIRMED")
+        p.set_field("cap.workspace.facilities", "시설", [
+            {"설비번호": "TK-101", "설비명": "탱크", "용량": "15", "용량단위": "m3", "최대보유량(kg)": 15000},
+            {"설비번호": "V-201", "설비명": "염소용기", "용량": "1", "용량단위": "m3"},
+        ], "USER_CONFIRMED")
+        original_load = versioning.load_version_fields
+        try:
+            versioning.load_version_fields = lambda project_id, version_id: original_load(project_id, version_id, self.root)
+            candidates = tracking.form2_change_candidates(p, "CAP-v1.0")
+            self.assertEqual({c["제목"] for c in candidates}, {
+                "유해화학물질 추가", "신규 시설 확인", "시설 설계용량 증가", "시설별 최대보유량 증가",
+            })
+            self.assertTrue(all("후속조치" not in row for row in candidates))
+            p.set_field("cap.workspace.facilities", "시설", [{"설비번호": "V-202"}], "AI_DRAFT")
+            self.assertEqual([c["제목"] for c in tracking.form2_change_candidates(p, "CAP-v1.0")], ["유해화학물질 추가"])
+        finally:
+            versioning.load_version_fields = original_load
+
 
 if __name__ == "__main__":
     unittest.main()

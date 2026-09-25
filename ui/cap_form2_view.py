@@ -7,6 +7,8 @@ from ui import cap_frames as frames
 
 from engine.stage2 import cap_form2_workspace as f2
 from engine.stage2 import cap_article29 as article29
+from engine.stage2 import cap_change_tracking as change_tracking
+from engine.stage2 import versioning
 from engine.regulatory_tables import observed_source
 from engine.law_attachment_archive import approved_source_is_current
 from engine.stage2 import cap_workspace as ws
@@ -25,22 +27,29 @@ def _column_config(columns: list[dict]) -> dict:
 
 
 def _render_change_guide() -> None:
-    with st.expander("변경항목·변경종류·후속조치 작성 가이드"):
-        st.markdown("**② 변경항목은 계획서에서 바뀐 세부 작성항목**을 적습니다. 법정 서식은 「화학물질관리법 시행규칙」 별표 4 「화학사고예방관리계획서의 작성 내용 및 방법」의 소분류를 쓰도록 하고 있습니다. 여러 항목이면 ` / `로 구분하세요.")
-        st.caption("자주 쓰는 예: 장치·설비 목록 및 명세, 설비배치도, 유해화학물질 목록 및 명세, 공정배관계장도(P&ID), 고정식 유해감지시설 명세 및 배치도. 목록은 참고용이므로 정확한 소분류가 없으면 계획서 항목명을 직접 입력합니다.")
-        st.markdown("**③ 변경의 종류는 현행 별지 제2호의 분류**입니다. 해당하는 항목을 하나 이상 적고, 여러 개면 ` / `로 구분합니다.")
+    st.info("**왜 이 서식을 작성하나요?** 제출한 화학사고예방관리계획서와 실제 사업장 상태가 달라지면, 무엇이 바뀌었고 어떤 조치를 했는지 이 관리대장에 계속 기록합니다. 저장탱크, 물질, 공정, 안전설비, 주변환경 정보 등의 변경을 나중에 추적할 수 있게 하는 자료입니다.")
+    st.caption("변경을 기록하는 것과 변경제출·변경신고·변경허가 대상인 것은 별개의 판단입니다. 모든 변경을 곧바로 제출·신고하는 것은 아닙니다.")
+    with st.expander("이 서식을 처음 작성한다면: 작성 순서와 입력 예시", expanded=True):
+        st.markdown("**작성 순서**: ① 실제 변경 확인 → ② 이전 제출본과 현재 자료 비교 → ③ 바뀐 계획서 항목·변경의 종류 기록 → ④ 계획서 변경제출과 영업 변경절차를 각각 검토 → ⑤ 수행한 조치·담당자를 대장에 기록합니다.")
+        st.markdown("**변경항목은 ‘어느 부분’, 변경의 종류는 ‘어떤 성격’입니다.** 예를 들어 탱크의 용량이 10 m³에서 15 m³로 커졌다면 변경항목은 ‘장치·설비 목록 및 명세’, 종류는 ‘시설규모 변경’입니다.")
+        st.markdown("변경항목 예시: 사업장 일반정보, 취급시설 개요, 유해화학물질 목록 및 명세, 설비배치도, 공정흐름도, 공정배관계장도(P&ID), 장치·설비 목록 및 명세, 고정식 유해감지시설, 주변환경정보, 지역사회 고지계획. **실제로 바뀐 계획서 작성항목을 확인해 선택하세요.**")
+        st.markdown("**변경내용에는 전후 차이를 남기세요.** ‘탱크 변경’ 대신 ‘TK-101 저장용량을 10 m³에서 15 m³로 증설함’처럼 설비번호·용량·물질명·CAS 번호·수량·도면번호 등 확인 가능한 정보를 적습니다. 문장과 전후 비교 중 편한 방식을 사용해도 됩니다.")
+    with st.expander("변경의 종류별 뜻 보기"):
         for label, explanation in f2.CHANGE_TYPE_GUIDANCE.items():
             st.markdown(f"- **{label}**: {explanation}")
-        st.markdown("**④ 변경 내용은 변경 전과 변경 후가 분명하면 문장으로 적어도 됩니다.** 서식의 ‘변경전 → 변경후’는 비교할 내용을 쓰라는 뜻이며, 화살표 기호만 사용하라는 뜻은 아닙니다.")
-        st.code("TK-101(용량 20 m³)을 철거하고 TK-201(용량 15 m³)을 설치함. 설비배치도 도면번호 P-101도 개정함.", language=None)
-        st.markdown("**⑤ 후속조치는 서로 다른 절차를 함께 기록할 수 있습니다.** 예를 들어 계획서 변경제출과 영업허가 변경허가가 동시에 필요할 수 있습니다. 항목을 하나 이상 적고, 여러 개면 ` / `로 구분하세요.")
+        st.caption("시설위치 변경: 탱크를 사업장 경계 쪽으로 옮김. 취급물질 변경: 기존 A물질 외에 B물질을 추가함.")
+    with st.expander("후속조치가 헷갈린다면: 제출·관리·신고·허가"):
+        st.markdown("**후속조치란?** 바뀐 사실에 대해 실제로 수행했거나 수행해야 할 조치를 기록하는 칸입니다. 계획서 변경제출과 유해화학물질 영업 절차가 함께 해당할 수도 있습니다.")
         for label, explanation in f2.FOLLOW_UP_GUIDANCE.items():
             st.markdown(f"- **{label}**: {explanation}")
-        st.warning("현행 작성 규정 제11조는 총괄영향범위 확대 등 법정 요건에 해당하는 경우, 작성수준이 2군에서 1군으로 바뀌는 경우, 또는 화학물질안전원장이 주민소산계획 보완을 통지한 경우 등에 변경된 계획서 제출을 요구합니다. 통상 변경제출은 변경 완료 30일 전까지이며, 주민소산계획 보완 통지를 받은 경우는 통지일부터 60일 이내입니다. 해당 요건과 예외를 공식 규정으로 확인하세요. 변경신고·변경허가는 유해화학물질 영업허가 보유 여부와 시행규칙 제29조의 요건을 별도로 확인해야 합니다. 한 번의 변경에 계획서 제출과 영업허가 변경조치가 함께 적용될 수도 있습니다. 프로그램은 제29조의 확인된 조건에 대해 후보만 제안합니다. 담당자가 법적 후속조치를 최종 확인해야 합니다.")
-        st.markdown(
-            "공식 기준: [작성 등에 관한 규정 제11조(변경 제출)](https://www.law.go.kr/DRF/lawService.do?ID=2100000278102&OC=me_pr&mobileYn=Y&target=admrul&type=HTML) · "
-            "[화학물질관리법 시행규칙 제29조](https://www.law.go.kr/LSW//lsSideInfoP.do?docCls=jo&joBrNo=00&joNo=0029&lsiSeq=279031&urlMode=lsScJoRltInfoR)"
-        )
+        st.markdown("**변경신고란?** 영업허가 또는 영업신고 사업자가 법에서 정한 변경사항을 **관할 지방환경관서**에 알리는 절차입니다. 법적 근거: 「화학물질관리법 시행규칙」 제29조제1항제2호(허가 사업자) 및 제3호(신고 사업자).")
+        st.markdown("**변경허가란?** 영업허가 사업자가 법정 변경허가 대상에 해당할 때 **변경 전에 관할 지방환경관서의 허가를 받는 절차**입니다. 법적 근거: 「화학물질관리법 시행규칙」 제29조제1항제1호.")
+        st.caption("‘지방관서’는 관할 지방환경관서를 뜻합니다. 계획서 변경제출을 받는 화학물질안전원과 구별하세요. ‘기재사항 변경’은 영업허가·신고 서류의 기재 내용 관련 조치로, 적용 여부는 서류와 관할 기관에 확인하세요.")
+        st.warning("물질 추가·취급량 증가 시 규정수량 구간을, 시설 변경 시 변경된 계획서 제출 필요 여부·사고시나리오 규정량·총괄영향범위 변화를 확인해야 할 수 있습니다. 사실이 확인되지 않으면 아래 제29조 검토에서 ‘확인 필요’로 남깁니다.")
+        st.markdown("법적 근거: [작성 등에 관한 규정 제11조](https://www.law.go.kr/DRF/lawService.do?ID=2100000278102&OC=me_pr&mobileYn=Y&target=admrul&type=HTML) · [화학물질관리법 시행규칙 제29조](https://www.law.go.kr/LSW/lsSideInfoP.do?docCls=jo&joBrNo=00&joNo=0029&lsiSeq=279031&urlMode=lsScJoRltInfoR)")
+    with st.expander("어디서 확인하나요? 변경 사례와 확인자료"):
+        st.markdown("| 변경 사례 | 먼저 확인할 자료·조건 |\n|---|---|\n| 저장탱크 용량 증가 | 설비목록·P&ID·설비배치도, 이전 용량과 현재 용량, 누적 증가량·영향범위 |\n| 새 유해화학물질 추가 | 회사 물질목록·공급자 SDS, 별지 제1호·규정수량 구간·취급량 |\n| 취급시설 위치 변경 | 이전·현재 설비배치도, 부지 경계, 사고시나리오·KORA/GIS 검토결과 |\n| 대표자 변경 | 사업자등록증·영업허가증 또는 영업신고 서류 |\n| 설비명·도면번호 최신화 | 변경 전후 설비목록·도면, 실제 시설 변경 여부 |")
+        st.caption("사례는 이해를 돕기 위한 것입니다. 실제 후속조치는 「화학물질관리법 시행규칙」 제29조와 「화학사고예방관리계획서 작성 등에 관한 규정」 제11조의 조건을 확인한 뒤 정합니다.")
 
 
 
@@ -57,6 +66,50 @@ ARTICLE29_EVENTS = {
     "representative": "대표자 변경",
     "technician": "기술인력 변경",
 }
+
+
+def _render_version_change_candidates(project) -> None:
+    """Offer only confirmed fact differences; never copy a legal conclusion."""
+    versions = versioning.list_versions(project.project_id, "CAP")
+    with st.expander("이전 CAP 저장본과 비교해 변경내역 후보 찾기"):
+        if not versions:
+            st.caption("비교할 이전 CAP 버전이 없습니다. 기존 제출본의 내용을 확인해 변경내역을 직접 작성하세요.")
+            return
+        ids = [meta.version_id for meta in versions]
+        base_record = project.get_field("cap.submission.base_version_id")
+        default = str(base_record.value) if base_record and base_record.value in ids else ids[-1]
+        selected_version = st.selectbox(
+            "비교 기준(이전 제출·적합본 확인)", ids, index=ids.index(default),
+            key=f"cap_form02_compare_version_{project.project_id}",
+        )
+        st.caption("선택한 버전이 실제 이전 제출·적합본인지 확인하세요. 저장된 CAP 버전과 현재 확인된 입력값 중 비교 가능한 물질·시설만 비교합니다.")
+        try:
+            candidates = change_tracking.form2_change_candidates(project, selected_version)
+        except (OSError, ValueError, KeyError) as exc:
+            st.warning(f"버전 비교를 완료하지 못했습니다: {type(exc).__name__}. 이전 버전을 확인하세요.")
+            return
+        if not candidates:
+            st.caption("비교 가능한 자료에서 물질 추가·시설 추가·시설용량·최대보유량 증가 후보를 찾지 못했습니다. 위치·대표자·도면 변경 등은 직접 확인하세요.")
+            return
+        selected_index = st.selectbox(
+            "확인할 변경내역 후보", range(len(candidates)),
+            format_func=lambda idx: f"{candidates[idx]['제목']}: {candidates[idx]['변경 후']}",
+            key=f"cap_form02_compare_candidate_{project.project_id}_{selected_version}",
+        )
+        candidate = candidates[selected_index]
+        st.write(f"**변경 전:** {candidate['변경 전']}  **변경 후:** {candidate['변경 후']}")
+        st.caption("확인자료: " + candidate["확인자료"])
+        st.warning("비교 결과는 변경사실의 후보일 뿐입니다. 날짜·변경항목·종류·후속조치는 담당자가 실제 자료로 확인하고 작성하세요.")
+        if st.button("확인한 후보를 아래 입력란으로 가져오기", key=f"cap_form02_compare_apply_{project.project_id}"):
+            suffix = f"{project.project_id}_{len(f2.change_log_rows(project))}"
+            item = candidate["변경항목"]
+            st.session_state[f"cap_form02_add_items_{suffix}"] = [item] if item in f2.CHANGE_ITEM_SUGGESTIONS else []
+            st.session_state[f"cap_form02_add_item_custom_{suffix}"] = "" if item in f2.CHANGE_ITEM_SUGGESTIONS else item
+            st.session_state[f"cap_form02_add_types_{suffix}"] = [candidate["변경의 종류"]] if candidate["변경의 종류"] else []
+            st.session_state[f"cap_form02_add_mode_{suffix}"] = "변경 전·후 비교"
+            st.session_state[f"cap_form02_add_before_{suffix}"] = candidate["변경 전"]
+            st.session_state[f"cap_form02_add_after_{suffix}"] = candidate["변경 후"]
+            st.success("입력란으로 가져왔습니다. 변경일·변경의 종류·후속조치·담당자를 확인한 다음 행을 추가하세요.")
 
 
 def _render_article29_review(key_suffix: str, action_key: str) -> None:
@@ -204,6 +257,7 @@ def _render_structured_change_entry(project) -> bool:
                     key=f"cap_form02_add_action_date_{key_suffix}_{action}",
                 )
         person = st.text_input("⑥ 담당자", key=f"cap_form02_add_person_{key_suffix}")
+        st.caption("저장 전 확인: 이 대장은 변경사실과 조치를 함께 기록합니다. 계획서 변경제출, 내부 변경관리, 영업 변경신고·변경허가는 별도로 검토하세요. 프로그램 제안은 확인된 입력자료의 후보이며 미확인 사항은 추정하지 않습니다. 실제 인허가 상태와 변경내용을 확인한 담당자가 최종 결정합니다.")
         submitted = st.button("변경내역 행 추가", type="primary", key=f"cap_form02_add_button_{key_suffix}")
 
         if submitted:
@@ -284,6 +338,7 @@ def render(project) -> None:
         notice_key = f"cap_form02_added_notice_{project.project_id}"
         if st.session_state.pop(notice_key, None):
             st.success("변경내역을 법정 서식 표에 추가했습니다.")
+        _render_version_change_candidates(project)
         if _render_structured_change_entry(project):
             st.rerun()
         st.subheader("등록된 변경내역")
@@ -295,6 +350,7 @@ def render(project) -> None:
             frame, column_config=_column_config(columns), num_rows="dynamic", width="stretch",
             key=f"cap_form02_log_{project.project_id}",
         )
+        st.caption("저장 전 확인: 표에서 직접 수정한 후속조치도 회사의 실제 인허가 상태·변경내용과 대조한 뒤 담당자가 확정하세요.")
         if st.button("변경내역 저장", type="primary", key=f"cap_form02_save_log_{project.project_id}"):
             rows = []
             for record in edited.to_dict("records"):

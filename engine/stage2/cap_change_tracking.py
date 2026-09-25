@@ -13,7 +13,7 @@ import math
 import re
 from typing import Any, Mapping
 
-from .project import FieldRecord, Stage2Project
+from .project import CONFIRMED_STATUSES, FieldRecord, Stage2Project
 from . import versioning
 
 
@@ -207,3 +207,85 @@ def proposed_form2_rows(
             "담당자": person,
         })
     return rows
+
+
+def form2_change_candidates(project: Stage2Project, base_version_id: str) -> list[dict[str, str]]:
+    """Compare supported, confirmed CAP facts; never infer a legal follow-up.
+
+    A missing source in either version cannot prove an addition or increase.
+    Facility design capacity and maximum holding are separate facts and units
+    must match before a numeric comparison is made.
+    """
+    before = versioning.load_version_fields(project.project_id, base_version_id)
+    after = project.fields
+    candidates: list[dict[str, str]] = []
+
+    def paired_rows(*keys: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+        for key in keys:
+            old, new = before.get(key), after.get(key)
+            if (old and new and old.status in CONFIRMED_STATUSES and new.status in CONFIRMED_STATUSES
+                    and isinstance(old.value, list) and isinstance(new.value, list)):
+                return _rows(before, key), _rows(after, key)
+        return None
+
+    chemicals = paired_rows("inventory.chemicals", "cap.chemical.details")
+    if chemicals:
+        old_rows, new_rows = chemicals
+        old_keys = {_chemical_key(row) for row in old_rows}
+        for row in new_rows:
+            key = _chemical_key(row)
+            if key and key not in old_keys:
+                candidates.append({
+                    "제목": "유해화학물질 추가",
+                    "변경항목": "유해화학물질 목록 및 명세",
+                    "변경의 종류": "㈑ 취급물질 변경",
+                    "변경 전": "기존 목록에 없음",
+                    "변경 후": _chemical_label(row),
+                    "확인자료": "이전 제출본·현재 물질목록·공급자 SDS",
+                })
+
+    facilities = paired_rows("cap.workspace.facilities", "inventory.facilities", "cap.facility.equipment_specs")
+    if facilities:
+        old_rows, new_rows = facilities
+        old_by_key = {_facility_key(row): row for row in old_rows if _facility_key(row)}
+        for row in new_rows:
+            key = _facility_key(row)
+            if not key:
+                continue
+            label = _facility_label(row)
+            if key not in old_by_key:
+                candidates.append({
+                    "제목": "신규 시설 확인",
+                    "변경항목": "장치·설비 목록 및 명세",
+                    "변경의 종류": "",  # 신설만으로 규모·위치 변경을 단정하지 않는다.
+                    "변경 전": "기존 목록에 없음",
+                    "변경 후": label,
+                    "확인자료": "이전 제출본·현재 설비목록·설비배치도",
+                })
+                continue
+            old_row = old_by_key[key]
+            old_capacity = _number(_row_value(old_row, "용량", "설계용량"))
+            new_capacity = _number(_row_value(row, "용량", "설계용량"))
+            old_unit = _norm(_row_value(old_row, "용량단위", "설계용량 단위"))
+            new_unit = _norm(_row_value(row, "용량단위", "설계용량 단위"))
+            if (old_capacity is not None and new_capacity is not None and old_capacity >= 0
+                    and old_unit and old_unit == new_unit and new_capacity > old_capacity):
+                candidates.append({
+                    "제목": "시설 설계용량 증가",
+                    "변경항목": "장치·설비 목록 및 명세",
+                    "변경의 종류": "㈎ 시설규모 변경",
+                    "변경 전": f"{label}: {old_capacity:g} {_row_value(old_row, '용량단위', '설계용량 단위')}",
+                    "변경 후": f"{label}: {new_capacity:g} {_row_value(row, '용량단위', '설계용량 단위')}",
+                    "확인자료": "이전 제출본·설비목록·P&ID·설비배치도",
+                })
+            old_holding, new_holding = _amount_kg(old_row), _amount_kg(row)
+            if old_holding is not None and new_holding is not None and new_holding > old_holding:
+                candidates.append({
+                    "제목": "시설별 최대보유량 증가",
+                    "변경항목": "취급시설 개요",
+                    "변경의 종류": "",  # 보유량 증가만으로 용량 증가를 단정하지 않는다.
+                    "변경 전": f"{label}: {_fmt_kg(old_holding)}",
+                    "변경 후": f"{label}: {_fmt_kg(new_holding)}",
+                    "확인자료": "별지 제1호·설비별 보유량 산출자료·이전 제출본",
+                })
+    return candidates
