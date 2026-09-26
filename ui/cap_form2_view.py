@@ -86,9 +86,9 @@ ARTICLE29_EVENTS = {
 def _render_version_change_candidates(project) -> None:
     """Offer only confirmed fact differences; never copy a legal conclusion."""
     versions = versioning.list_versions(project.project_id, "CAP")
-    with st.expander("이전 CAP 저장본과 비교해 변경내역 후보 찾기"):
+    with st.expander("이전에 저장한 화학사고예방관리계획서와 비교해 변경내역 후보 찾기"):
         if not versions:
-            st.caption("비교할 이전 CAP 버전이 없습니다. 기존 제출본의 내용을 확인해 변경내역을 직접 작성하세요.")
+            st.caption("비교할 이전 화학사고예방관리계획서 저장본이 없습니다. 기존 제출본의 내용을 확인해 변경내역을 직접 작성하세요.")
             return
         ids = [meta.version_id for meta in versions]
         base_record = project.get_field("cap.submission.base_version_id")
@@ -97,7 +97,7 @@ def _render_version_change_candidates(project) -> None:
             "비교 기준(이전 제출·적합본 확인)", ids, index=ids.index(default),
             key=f"cap_form02_compare_version_{project.project_id}",
         )
-        st.caption("선택한 버전이 실제 이전 제출·적합본인지 확인하세요. 저장된 CAP 버전과 현재 확인된 입력값 중 비교 가능한 물질·시설만 비교합니다.")
+        st.caption("선택한 저장본이 실제 이전에 제출해 적합통보를 받은 계획서인지 확인하세요. 저장된 계획서와 현재 입력한 정보 중 비교 가능한 물질·시설만 비교합니다.")
         try:
             candidates = change_tracking.form2_change_candidates(project, selected_version)
         except (OSError, ValueError, KeyError) as exc:
