@@ -8,6 +8,7 @@ from ui import cap_frames as frames
 from engine.stage2 import cap_form4_workspace as f4
 from engine.stage2 import cap_form5_workspace as f5
 from engine.stage2 import cap_workspace as ws
+from engine.stage2.cap_shared_facts import UNIT_COLUMN, unit_plant_names, workspace_facility_rows
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.storage import save_project
 
@@ -27,8 +28,13 @@ def render(project) -> None:
     unit = f5.active_unit(project)
     st.markdown(f"**작성 대상 단위공장:** {unit or '(별지 제2호에서 단위공장명을 입력하세요)'}")
     others = f5.other_units(project)
+    names = unit_plant_names(project)
     if others:
-        st.info("시설 표에 다른 단위공장도 있습니다: " + ", ".join(others) + ". 이 서식에는 위 단위공장 시설만 들어갑니다.")
+        st.info("별지 제1호 시설 표의 다른 단위공장: " + ", ".join(others) + ". 위 작성 대상 단위공장명과 일치하는 시설을 집계합니다.")
+    if names and all("".join(name.split()).lower() != "".join(unit.split()).lower() for name in names):
+        st.warning("작성 대상 단위공장명과 일치하는 시설이 없습니다. 현재는 사업장 전체 시설이 집계되므로 별지 제1호의 단위공장명과 별지 제2호의 작성 대상 단위공장명을 맞춰 주세요.")
+    elif len(names) > 1 and any(not str(row.get(UNIT_COLUMN) or "").strip() for row in workspace_facility_rows(project)):
+        st.warning("소속 단위공장명이 빈 시설은 현재 단위공장의 수량에도 포함됩니다. 여러 단위공장을 구분하려면 별지 제1호의 각 시설에 소속 단위공장명을 입력해 주세요.")
 
     if step["id"] == "auto":
         counts = f5.unit_counts(project)
