@@ -238,6 +238,40 @@ def fetch_source_payload(search_result: dict[str, Any], target: str, timeout: in
     return response.json()
 
 
+def fetch_source_body_html(search_result: dict[str, Any], title: str, timeout: int = 90) -> bytes:
+    """Download the exact official administrative-rule HTML body from law.go.kr.
+
+    A law has no appendix file when its text is entirely in the body. Validate
+    the response before it can enter the approved local source archive.
+    """
+    if search_result.get("api_status") != "FOUND":
+        raise ValueError("공식 현행 판 확인이 필요합니다.")
+    credential, _ = get_api_credential()
+    if not credential:
+        raise RuntimeError("LAW_OC가 설정되어 있지 않습니다.")
+    serial = _clean(search_result.get("serial"))
+    if not serial:
+        raise ValueError("행정규칙 일련번호가 없습니다.")
+    response = requests.get(
+        SERVICE_URL,
+        params={"OC": credential, "target": "admrul", "type": "HTML", "ID": serial},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    raw = response.content
+    if len(raw) < 500:
+        raise ValueError("공식 본문 응답이 비어 있거나 너무 짧습니다.")
+    expected = re.sub(r"\s+", "", title)
+    for encoding in ("utf-8", "euc-kr", "cp949"):
+        try:
+            decoded = raw.decode(encoding)
+        except UnicodeError:
+            continue
+        if expected in re.sub(r"\s+", "", decoded) and "제1조" in decoded and "<" in decoded:
+            return raw  # preserve official response bytes; no regenerated content
+    raise ValueError("공식 본문의 법령명·조문을 확인할 수 없습니다.")
+
+
 def extract_attachments(payload: Any) -> list[dict[str, str]]:
     """Extract active official appendix/form links from law/admrul JSON payloads.
 
