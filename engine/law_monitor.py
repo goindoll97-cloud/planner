@@ -13,6 +13,7 @@ from .law_api import (
     credential_status,
     download_binary,
     extract_attachments,
+    fetch_source_body_html,
     fetch_source_payload,
     search_current_source,
 )
@@ -49,6 +50,7 @@ class LawSource:
     target: str
     attachment_required: bool = False
     attachment_selector: dict[str, str] | None = None
+    body_required: bool = False
 
 
 def bytes_sha256(content: bytes) -> str:
@@ -91,6 +93,7 @@ def load_registry(path: Path = REGISTRY_FILE) -> tuple[LawSource, ...]:
                 target=str(row.get("target", "")).strip(),
                 attachment_required=bool(row.get("attachment_required", False)),
                 attachment_selector=row.get("attachment_selector") if isinstance(row.get("attachment_selector"), dict) else None,
+                body_required=bool(row.get("body_required", False)),
             )
         )
     return tuple(source for source in sources if source.key and source.title and source.target)
@@ -343,10 +346,31 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
                     hash_key = f"{hash_key}::{declared_kind.upper()}"
                 row["attachment_hashes"][hash_key] = meta["sha256"]
 
+        if source.body_required:
+            try:
+                if source.target != "admrul":
+                    raise ValueError("본문 HTML 보관은 행정규칙만 지원합니다.")
+                html = fetch_source_body_html(found, source.title, timeout=max(timeout, 60))
+                body_meta = save_pending_attachment(
+                    source_key=source.key,
+                    item_id=f"{source.title} 본문",
+                    declared_kind="html",
+                    url=f"https://www.law.go.kr/DRF/lawService.do?target=admrul&type=HTML&ID={found.get('serial', '')}",
+                    content=html,
+                )
+                if body_meta["format"] != "HTML":
+                    raise ValueError("공식 본문의 파일 형식을 확인할 수 없습니다.")
+                row["attachment_files"].append(body_meta)
+                row["pending_attachment_files"].append(body_meta["pending_file"])
+                row["attachment_hashes"]["본문::HTML"] = body_meta["sha256"]
+            except Exception as exc:
+                attachment_problem = True
+                row["change_reason"].append(f"공식 본문 HTML 확인·보관 실패: {type(exc).__name__}: {exc}")
+
         row["attachment_file_count"] = len(row["attachment_files"])
         if attachment_problem:
             row["monitor_status"] = "UNVERIFIED"
-            row["monitor_status_ko"] = "별표·별지 원본 확인 필요"
+            row["monitor_status_ko"] = "본문·별표·별지 원본 확인 필요" if source.body_required else "별표·별지 원본 확인 필요"
             rows.append(row)
             continue
 
