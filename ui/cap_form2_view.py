@@ -40,7 +40,8 @@ def _render_change_guide() -> None:
             st.markdown(f"- **{label}**: {explanation}")
         st.caption("같은 변경 건이면 여러 종류를 한 행에 함께 기록할 수 있습니다. 서로 다른 설비·변경일자·변경사유·후속조치라면 별도 행으로 나누어 기록하는 것이 좋습니다.")
     with st.expander("후속조치가 헷갈린다면: 제출·관리·신고·허가"):
-        st.markdown("**후속조치란?** 바뀐 사실에 대해 실제로 수행했거나 수행해야 할 조치를 기록하는 칸입니다. 계획서 변경제출과 유해화학물질 영업 절차가 함께 해당할 수도 있습니다.")
+        st.markdown("**후속조치는 바로 위 ④ 변경내용에 적은 ‘그 변경’에 대해 무엇을 했는지 기록하는 칸입니다.** ④에는 무엇이 어떻게 바뀌었는지, ⑤에는 그 변경을 검토한 뒤 계획서를 다시 제출했는지, 회사 내부에서 관리했는지, 영업 관련 신고·허가를 진행했는지를 적습니다. 같은 변경으로 둘 이상의 절차가 필요할 수도 있습니다.")
+        st.caption("예: ④ ‘TK-101 용량 10 m³에서 15 m³로 증설’ → ⑤ 담당자가 변경제출·영업 변경허가 또는 내부 변경관리 해당 여부를 검토한 결과를 기록. 용량이 늘었다는 사실만으로 특정 조치를 확정하지 않습니다.")
         for label, explanation in f2.FOLLOW_UP_GUIDANCE.items():
             st.markdown(f"- **{label}**: {explanation}")
         st.markdown("**변경신고란?** 영업허가 또는 영업신고 사업자가 법에서 정한 변경사항을 **관할 지방환경관서**에 알리는 절차입니다. 법적 근거: 「화학물질관리법 시행규칙」 제29조제1항제2호(허가 사업자) 및 제3호(신고 사업자).")
@@ -115,7 +116,8 @@ def _render_version_change_candidates(project) -> None:
 
 def _render_article29_review(key_suffix: str, action_key: str) -> None:
     with st.container(border=True):
-        st.markdown("**시행규칙 제29조 후속조치 검토**")
+        st.markdown("**④에 적은 변경의 영업 관련 후속조치 검토 (시행규칙 제29조)**")
+        st.caption("④에 기록한 바로 그 변경이 영업 변경신고·변경허가 대상인지 확인하는 질문입니다. 계획서 자체의 변경제출 여부는 별도로 검토합니다. 답이 확인되지 않으면 ‘확인 전’으로 두세요.")
         data = article29.load_rules()
         observed = observed_source(data["law_key"])
         current = article29.law_ready(data, observed, approved_source_is_current(data["law_key"]))
@@ -124,7 +126,12 @@ def _render_article29_review(key_suffix: str, action_key: str) -> None:
             st.link_button("제29조 원문", data["source_url"])
             return
         prefix = f"cap_f2_a29_{key_suffix}_"
-        status = st.selectbox("유해화학물질 영업 상태", ["미확인", "영업허가", "영업신고"], key=prefix + "status")
+        status = st.selectbox(
+            "우리 사업장의 유해화학물질 영업 상태", ["미확인", "영업허가", "영업신고"],
+            key=prefix + "status",
+            help="유해화학물질 영업허가증 또는 영업신고증으로 확인하세요. 화학사고예방관리계획서 제출 여부와는 다른 정보입니다.",
+        )
+        st.caption("영업허가증·영업신고증을 확인해 선택합니다. 영업 형태가 미확인이면 변경신고·변경허가 후보를 제시하지 않습니다.")
         labels = st.multiselect("변경사항(해당하는 항목 모두 선택)", list(ARTICLE29_EVENTS.values()), key=prefix + "events")
         events = [key for key, label in ARTICLE29_EVENTS.items() if label in labels]
         facts = {}
@@ -155,14 +162,21 @@ def _render_article29_review(key_suffix: str, action_key: str) -> None:
                 yes_no("scenario_amount", "변경 후 취급량이 사고시나리오 규정량 이상인가요?")
                 yes_no("impact_expanded", "총괄영향범위가 확대되나요?")
         if "material" in events:
+            st.markdown("**물질을 추가하거나 취급량을 늘린 경우**")
+            st.caption("변경된 물질의 이름·CAS 번호와 변경 후 수량을 먼저 회사 물질목록, 공급자 SDS, 시설별 수량 자료에서 확인하세요. 아래 질문은 그 물질과 ④에 기록한 변경에 관한 것입니다.")
             if status == "영업허가":
-                yes_no("transport", "운반업(법 제27조제4호)인가요?")
-                yes_no("trial", "제29조제1항제2호나목 시범생산인가요?")
-                value = st.selectbox("변경 후 물질별 취급량 구간", ["확인 전", "최하위 미만", "최하위 이상·하위 미만", "하위 이상"], key=prefix + "quantity_band")
+                yes_no("transport", "허가증의 영업구분이 ‘유해화학물질 운반업’인가요?")
+                st.caption("운반업은 운반 자체를 영업으로 하는 법정 영업구분입니다(「화학물질관리법」 제27조제4호). 탱크로리를 이용한다는 사실만으로 ‘예’를 고르지 말고 허가증의 영업구분을 확인하세요.")
+                yes_no("trial", "이번 물질 변경이 시장출시와 직접 관계없는 60일 이내의 일시적인 시범생산인가요?")
+                st.caption("시범생산은 시험 목적으로 일시적으로 취급물질을 바꾸는 경우를 말합니다. 생산계획서에서 목적·기간·변경 물질을 확인하세요. 일반 생산이나 기간을 모르면 ‘예’를 추정하지 마세요.")
+                st.caption("‘최하위·하위 규정수량’은 해당 물질에 정해진 서로 다른 기준량입니다. 규정수량 표에서 두 값을 확인하고 **변경 후 취급량**과 같은 단위로 비교하세요. 예를 들어 가상의 최하위 100 kg·하위 1,000 kg에 변경 후 500 kg이라면 가운데 구간입니다. 실제 기준량은 물질마다 다릅니다.")
+                value = st.selectbox("변경 후 이 물질의 취급량은 어느 구간인가요?", ["확인 전", "최하위 미만", "최하위 이상·하위 미만", "하위 이상"], key=prefix + "quantity_band", help="최하위 미만: 최하위 기준보다 적음 / 최하위 이상·하위 미만: 두 기준 사이 / 하위 이상: 하위 기준에 도달하거나 초과. 정확한 기준량과 단위는 해당 물질의 규정수량 표에서 확인하세요.")
                 facts["quantity_band"] = {"최하위 미만": "below_minimum", "최하위 이상·하위 미만": "minimum_to_lower", "하위 이상": "lower_or_above"}.get(value)
             elif status == "영업신고":
-                value = st.selectbox("변경 후 물질별 최대보유량 구간", ["확인 전", "최하위 미만", "최하위 이상·하위 미만", "하위 이상"], key=prefix + "holding_band")
+                st.caption("영업신고 사업자는 해당 물질의 **변경 후 최대보유량**을 최하위·하위 규정수량과 비교합니다. 취급량 입력값을 그대로 사용하지 말고 별지 제1호와 시설별 최대보유량 자료를 확인하세요.")
+                value = st.selectbox("변경 후 이 물질의 최대보유량은 어느 구간인가요?", ["확인 전", "최하위 미만", "최하위 이상·하위 미만", "하위 이상"], key=prefix + "holding_band", help="규정수량 표에서 해당 물질의 최하위·하위 기준량을 확인하세요. 비교할 수 없다면 ‘확인 전’을 유지하세요.")
                 facts["holding_band"] = {"최하위 미만": "below_minimum", "최하위 이상·하위 미만": "minimum_to_lower", "하위 이상": "lower_or_above"}.get(value)
+            st.page_link("ui/legal_evidence_page.py", label="규정수량 원문을 법령·근거 라이브러리에서 확인", icon="📚")
         if "storage_capacity" in events and status == "영업신고":
             kind = st.selectbox("증가한 시설 종류", ["확인 전", "보관·저장시설", "운반시설"], key=prefix + "storage_kind")
             facts["storage_kind"] = {"보관·저장시설": "storage", "운반시설": "transport"}.get(kind)
@@ -243,6 +257,8 @@ def _render_structured_change_entry(project) -> bool:
 
         action_key = f"cap_form02_add_actions_{key_suffix}"
         _render_article29_review(key_suffix, action_key)
+        st.markdown("**⑤ 후속조치 = ④에 적은 변경에 대해 실제로 한 일**")
+        st.caption("예: ④에 ‘TK-101 용량을 10 m³에서 15 m³로 변경’이라고 썼다면, ⑤에는 그 변경과 관련해 확인·수행한 계획서 변경제출, 내부 변경관리, 영업 변경신고·변경허가 등을 기록합니다. 제29조 검토의 후보는 선택해 반영하기 전까지 확정된 조치가 아닙니다. 아직 판단하지 못했다면 비워 두고 제출 전에 확인하세요.")
         actions = st.multiselect(
             "⑤ 후속조치", f2.FOLLOW_UPS, key=action_key,
             help="계획서 조치와 영업허가 조치가 함께 해당할 수 있습니다. 해당없음은 다른 조치와 함께 선택하지 마세요. 아직 판단 중이면 비워 두고, 제출 전에는 확인해 입력하세요.",
