@@ -53,13 +53,15 @@ def _looks_like_hwpx(content: bytes) -> bool:
 
 
 def detect_official_attachment_format(content: bytes, url: str = "", declared_kind: str = "") -> str:
-    """Return pdf/hwpx/hwp/bin from bytes, never from a filename alone."""
+    """Recognize official PDF/HWP/HWPX files or a requested HTML body from bytes."""
     if content.startswith(b"%PDF"):
         return "pdf"
     if _looks_like_hwpx(content):
         return "hwpx"
     if content.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
         return "hwp"
+    if declared_kind.lower() == "html" and b"<" in content[:300]:
+        return "html"
 
     suffix = Path(urlparse(str(url or "")).path).suffix.lower().lstrip(".")
     if suffix in {"pdf", "hwp", "hwpx"}:
@@ -334,11 +336,13 @@ def approved_source_library() -> list[dict[str, Any]]:
                 "file_name": str(meta.get("file_name") or path.name),
                 "sha256": str(meta.get("sha256") or ""),
             })
+        current = approved_source_is_current(key)
         result.append({
             **entry,
             "effective_date": str(source.get("effective_date") or ""),
             "issue_number": str(source.get("issue_number") or ""),
-            "status": "최신 확인" if approved_source_is_current(key) else ("확인 필요" if source else "승인 원본 없음"),
+            "status": ("최신 확인" if files or not entry.get("body_required") else "최신 확인 · 원문 보관 필요")
+            if current else ("확인 필요" if source else "승인 원본 없음"),
             "files": files,
         })
     return result
