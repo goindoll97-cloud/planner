@@ -27,7 +27,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from .law_monitor import approve_latest_observation, run_law_monitor
+from .law_monitor import APPROVED_FILE, approve_latest_observation, run_law_monitor
 from .legal_archive import EVIDENCE_CONFIG, evidence_for_key, sync_approved_evidence
 from .readiness import decision_readiness_gate
 from .regulatory_admin import approve_candidate
@@ -205,6 +205,19 @@ def _requires_rule_mapping_review(row: dict[str, Any]) -> bool:
     reasons = [str(value).strip() for value in (row.get("change_reason") or []) if str(value).strip()]
     if any(reason.startswith(LEGAL_METADATA_CHANGE_PREFIXES) for reason in reasons):
         return True
+    # Previous CAP_BUSINESS_NOTICE baselines tracked only the regulation version.
+    # Adding the exact body of that *same* version is an archive migration, not
+    # a legal amendment. Every subsequent body/metadata change still requires
+    # human review before it can drive the Article 29 rules.
+    if str(row.get("key") or "") == "CAP_BUSINESS_NOTICE":
+        old = (_read_json(APPROVED_FILE).get("sources") or {}).get("CAP_BUSINESS_NOTICE") or {}
+        old_hashes = old.get("attachment_hashes") or {}
+        new_hashes = row.get("attachment_hashes") or {}
+        if (old and "본문::HTML" not in old_hashes
+                and new_hashes.get("본문::HTML")
+                and {k: v for k, v in new_hashes.items() if k != "본문::HTML"} == old_hashes
+                and reasons == ["첨부파일 추가: 본문::HTML"]):
+            return False
     # An attachment-only update is auto-promotable only where dedicated current-
     # PDF parsers provide downstream structural/anchor validation.
     return str(row.get("key") or "") not in AUTO_ATTACHMENT_REFRESH_KEYS
@@ -250,7 +263,7 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
     }
 
     try:
-        _emit(progress, "law", "법제처에서 최신 법령과 PDF·HWP/HWPX 원본을 확인하고 있습니다.")
+        _emit(progress, "law", "법제처에서 최신 법령과 공식 본문 HTML·PDF·HWP/HWPX 원본을 확인하고 있습니다.")
         rows = run_law_monitor()
         base["law_rows"] = _law_summary(rows)
 

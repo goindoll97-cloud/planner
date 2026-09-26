@@ -25,7 +25,8 @@
     "regime": "화학사고예방관리계획서",
     "title": "유해화학물질의 영업허가 등에 관한 규정",
     "target": "admrul",
-    "attachment_required": false
+    "attachment_required": false,
+    "body_required": true
   },
   {
     "key": "CAP_DRAFT",
