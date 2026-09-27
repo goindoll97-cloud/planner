@@ -44,14 +44,14 @@ def _render_methodology() -> None:
         st.write(
             "사업장 주소를 카카오 주소 API로 좌표로 바꾸고(카카오 키가 없거나 주소 검색에 실패하면 브이월드 주소 API 사용), "
             f"그 좌표에서 반경 {lookup.SEARCH_RADIUS_M}m의 후보를 찾습니다. "
-            "카카오는 시설·장소를 한 검색당 최대 45건 조회합니다. 브이월드 2D 데이터 API는 하천망, "
-            "습지·자연공원·산림·상수원 보호구역과 생태계경관보전지역의 공간정보를 조회합니다. "
-            "OpenStreetMap의 하천·산림·농경지·물·습지 지도 정보도 환경 후보로 더합니다. "
-            "후보마다 검색 출처를 표시하며 법정 대상 분류는 사람이 확인합니다."
+            "카카오는 등록된 장소 검색을 한 검색당 최대 45건 조회합니다. 브이월드 2D 데이터 API는 도로명주소 건물과 하천망, "
+            "습지·자연공원·산림·상수원 보호구역 등의 공간정보를 조회합니다. "
+            "OpenStreetMap의 시설·상점·관광지·자연환경 지도 객체도 더합니다. "
+            "검색된 정보는 분류하지 않고 출처와 주소점 기준 거리를 함께 보여 줍니다."
         )
         st.warning(
             "화면의 검색거리는 주소 좌표 기준 참고값입니다. 사업장 경계부터의 실제 거리, "
-            "보호대상 해당 여부, 검색 누락과 500m 전체 범위는 프로그램이 확인하지 못합니다. "
+            "보호대상 해당 여부, 원천 데이터에 없는 시설과 페이지 제한에 따른 검색 누락은 프로그램이 확인하지 못합니다. "
             "검색되지 않은 곳도 지도·GIS 또는 현장 자료로 확인하세요."
         )
 
@@ -109,7 +109,7 @@ def render(project) -> None:
         if (lookup.api_key() or vworld.api_key()) and st.button("주소로 주변 시설·환경 후보 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
             with st.spinner("주변 시설과 환경 지도 자료를 조회하는 중입니다..."):
                 found, message = lookup.find_combined_candidates(addr)
-            st.session_state[candidate_key] = [f8.candidate_row(c) for c in found]
+            st.session_state[candidate_key] = [f8.candidate_row(c, unclassified=True) for c in found]
             st.session_state[candidate_key + "_msg"] = message
             st.session_state[candidate_key + "_address"] = addr
         same_address = st.session_state.get(candidate_key + "_address") == addr
@@ -119,20 +119,24 @@ def render(project) -> None:
             st.info("사업장 주소가 변경되었습니다. 주변 장소 후보를 다시 검색해 주세요.")
         candidates = (st.session_state.get(candidate_key) or []) if same_address else []
         if candidates:
-            st.caption("구분과 세부유형은 검토 후보입니다. 실제 용도와 법정 조건을 확인하세요. 환경 공간정보의 보호구역 명칭만으로 별지의 법정 분류가 확정되지 않습니다.")
+            st.caption(f"검색된 공간정보 {len(candidates)}건입니다. 갑종·을종·환경수용체 구분 없이 표시합니다. 법정 대상에 해당하는 정보만 선택해 목록 단계에서 분류하세요.")
+            page_size = 100
+            page_count = (len(candidates) + page_size - 1) // page_size
+            page = st.number_input("후보 목록 페이지", min_value=1, max_value=page_count, value=1,
+                                   key=f"cap_form08_page_{project.project_id}") if page_count > 1 else 1
+            start = (page - 1) * page_size
+            page_rows = candidates[start:start + page_size]
             frame = pd.DataFrame([{
                 "목록에 추가": False,
                 "장소명": row["보호대상 명칭"],
                 "주소·위치": row["주소·위치"],
                 "주소점 거리(m)": row["검색결과 거리(주소점 기준, 참고)"],
-                "구분 후보": row["보호대상 구분"],
-                "유형 후보": row["세부유형"],
                 "검색 출처": row["검색 출처·검색일"],
-            } for row in candidates])
-            edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"cap_form08_cand_{project.project_id}",
+            } for row in page_rows])
+            edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"cap_form08_cand_{project.project_id}_{page}",
                                     disabled=[c for c in frame.columns if c != "목록에 추가"])
             if st.button("선택한 후보를 목록에 추가", key=f"cap_form08_add_{project.project_id}"):
-                chosen = [candidates[i] for i, selected in enumerate(edited["목록에 추가"]) if selected]
+                chosen = [page_rows[i] for i, selected in enumerate(edited["목록에 추가"]) if selected]
                 f8.save(project, f8.saved_rows(project) + chosen, no_target=False, status="HOLD")
                 st.session_state[f"cap_form08_scope_reviewed_{project.project_id}"] = False
                 save_project(project)
