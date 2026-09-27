@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from ui import cap_frames as frames
+from ui import cap_kosha_panel
 
 from engine.stage2 import cap_form6_workspace as f6
 from engine.stage2 import cap_form7_workspace as f7
@@ -36,6 +37,8 @@ def render(project) -> None:
     saved = {r.get("CAS 번호"): r for r in f7.saved_rows(project)}
 
     if step["id"] == "select":
+        with st.expander("KOSHA 물질 정보 조회 (참고 후보)"):
+            cap_kosha_panel.render(project, "cap_form07")
         if suggestions:
             frames.show(
                 pd.DataFrame([{"물질": s.name, "CAS": s.cas, "구분": " · ".join(s.kinds), "제안 사유": s.reason}
