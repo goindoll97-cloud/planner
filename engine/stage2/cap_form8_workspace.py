@@ -91,10 +91,37 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], no_target: bool,
 
 
 def candidate_row(candidate: Candidate, *, unclassified: bool = False) -> dict[str, Any]:
+    # A provider's search term is not proof of the legal classification.
+    # Only suggest readily recognisable types; occupancy and designation cases
+    # (housing, worship, waterways, etc.) remain blank for human review.
+    source = candidate.source
+    kakao_code = source.rsplit("분류 ", 1)[-1] if "카카오 로컬 API · 분류 " in source else ""
+    safe_kakao = {"SC4", "HP8", "OL7", "MT1", "SW8"}
+    suggested = kakao_code in safe_kakao
+    if "카카오 로컬 API · 검색어 " in source:
+        suggested = source.rsplit("검색어 ", 1)[-1] in {"공장", "근린생활시설", "국립공원", "도립공원", "군립공원", "생태경관보전지역"}
+    if "브이월드 2D 데이터 API" in source:
+        suggested = any(label in source for label in ("습지보호지역", "습지보호구역", "국립자연공원", "산림보호구역", "상수원보호구역", "생태계경관보전지역"))
+    category = candidate.category if suggested and not unclassified else ""
+    subtype = candidate.subtype if suggested and not unclassified else ""
+    if suggested and "브이월드 2D 데이터 API" in source:
+        mapping = {"습지보호지역": "습지보호지역", "습지보호구역": "습지보호지역",
+                   "국립자연공원": "자연공원", "산림보호구역": "산림지 및 유적지",
+                   "상수원보호구역": "상수원 및 취수원", "생태계경관보전지역": "생태·경관보호지역"}
+        category = "환경수용체"
+        subtype = next((value for label, value in mapping.items() if label in source), "")
+    if not unclassified and "OpenStreetMap/Overpass 지도 객체" in source:
+        osm_types = {"amenity=school": ("갑종", "교육·연구시설"),
+                     "amenity=university": ("갑종", "교육·연구시설"),
+                     "amenity=hospital": ("갑종", "의료시설"),
+                     "amenity=clinic": ("갑종", "의료시설"),
+                     "landuse=industrial": ("을종", "공업시설")}
+        tag = candidate.address.split("지도 분류: ", 1)[-1].split(" · ", 1)[0]
+        category, subtype = osm_types.get(tag, ("", ""))
     return {
         "보호대상 명칭": candidate.name,
-        "보호대상 구분": "" if unclassified else candidate.category,
-        "세부유형": "" if unclassified else candidate.subtype,
+        "보호대상 구분": category,
+        "세부유형": subtype,
         "주소·위치": candidate.address,
         "사업장 경계와 거리(m)": "",
         "검색결과 거리(주소점 기준, 참고)": "" if candidate.distance_m is None else candidate.distance_m,
