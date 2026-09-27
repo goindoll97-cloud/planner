@@ -7,6 +7,8 @@ import unittest
 from docx import Document
 
 from engine.stage2 import cap_chemical_workspace as chem
+from engine.stage2 import cap_form7_workspace as f7
+from engine.stage2 import statutory_report as report
 from engine.stage2 import cap_form6_workspace as f6
 from engine.stage2 import cap_guideline as guide
 from engine.stage2 import cap_workspace as ws
@@ -37,6 +39,7 @@ class CAPForm6WorkspaceTests(unittest.TestCase):
         rows = f6.property_rows(project)
         self.assertEqual(rows[0]["물질상태"], "액체")
         rows[0]["증기압"] = "28.4"
+        rows[0]["폭발한계 하한"] = "1.1"
         rows[0]["부식성"] = "무"
         self.assertGreater(f6.save_properties(project, rows), 0)
         _, after = f6.legal_rows(project)
@@ -48,6 +51,8 @@ class CAPForm6WorkspaceTests(unittest.TestCase):
         text = "\n".join(c.text for r in table.rows for c in r.cells)
         for expected in ("액체", "28.4", "무"):
             self.assertIn(expected, text)
+        self.assertEqual(report._psm_form13_rows(project)[0][3], "1.1")
+        self.assertEqual(f7.suggest_representatives(project)[0].cas, "108-88-3")
 
     def test_dropdown_choices_preserve_saved_variants(self):
         self.assertEqual(

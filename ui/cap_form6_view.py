@@ -39,14 +39,32 @@ def render(project) -> None:
                 width="stretch", hide_index=True,
             )
         else:
-            st.warning("화학물질 목록이 없습니다. 아래 '엑셀·CSV로 물질 목록 올리기'로 넣거나, 새 사업장으로 시작하기에서 물질을 입력하세요.")
+            st.warning("화학물질 목록이 없습니다. 아래에서 단일물질을 직접 추가하거나 엑셀·CSV로 물질 목록을 올려 주세요.")
 
 
         def add_uploaded(good, file_name, sha256):
             added, skipped = chem_upload.add_to_project(project, good, file_name=file_name, sha256=sha256, sds_confirmed=True)
             save_project(project)
-            return (f"{file_name}에서 물질 {added}건을 추가했습니다(건너뜀 {skipped}건). 물질을 추가하면 법정 작성 대상 판정이 "
-                    "달라질 수 있습니다. 시작하기의 판정은 처음 입력한 물질 기준입니다.")
+            return f"{file_name}에서 물질 {added}건을 추가했습니다(건너뜀 {skipped}건). 별지 제1·6·7호에서 함께 사용합니다."
+
+        st.markdown("**물질 직접 추가 (단일물질)**")
+        with st.form(f"cap_form06_add_{project.project_id}"):
+            name = st.text_input("물질명 또는 제품명")
+            cas = st.text_input("CAS 번호", help="제품 MSDS에 기재된 단일물질의 CAS 번호를 적으세요.")
+            content = st.text_input("함량(%, 알면 입력)", help="MSDS에 함량이 없으면 비워 두고 나중에 확인할 수 있습니다.")
+            submitted = st.form_submit_button("물질 추가")
+        if submitted:
+            raw = {"제품명": name, "CAS No.": cas, "혼합물 여부": "N", "함량(%)": content}
+            checked = chem_upload.check_rows([raw], *chem_upload.existing_keys(project))
+            if not checked.rows or not checked.rows[0]["_ok"]:
+                st.warning(checked.rows[0]["확인"] if checked.rows else "물질명과 CAS 번호를 확인해 주세요.")
+            else:
+                added, _ = chem_upload.add_to_project(
+                    project, [raw], file_name="화면 직접 입력", sha256="",
+                )
+                if added:
+                    save_project(project)
+                    st.rerun()
 
         chemical_upload_panel.render("cap_form06_upload", existing=chem_upload.existing_keys(project), add_rows=add_uploaded)
     elif step["id"] == "properties":

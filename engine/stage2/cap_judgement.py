@@ -230,7 +230,9 @@ def is_pending(project: Stage2Project) -> bool:
 
 
 def undecided(project: Stage2Project) -> bool:
-    """법정 대상 판정을 아직 하지 않은 사업장(판정을 미룬 경우, 또는 판정 결과가 없는 경우)."""
+    """Direct authoring scope does not constitute a legal applicability decision."""
+    if project.stage1_snapshot.get("entry_mode") == "STAGE2_DIRECT_WORKBOOK":
+        return not bool(project.stage1_snapshot.get("decision"))
     return is_pending(project) or (not project.scope_confirmed and not project.stage1_snapshot.get("decision"))
 
 
@@ -836,6 +838,7 @@ def apply(project: Stage2Project, outcome: Outcome, *, write_psm: bool | None = 
     project.cap_required = outcome.cap_target if outcome.status == "DECIDED" else False
     project.cap_group = outcome.cap_group
     project.stage1_snapshot["decision"] = asdict(decision) if is_dataclass(decision) else dict(vars(decision))
+    project.stage1_snapshot["legal_applicability_confirmed"] = True
     project.stage1_snapshot.pop(PENDING_KEY, None)
     if outcome.status == "DECIDED":
         psm = outcome.psm_target if write_psm is None else bool(write_psm and outcome.psm_target)

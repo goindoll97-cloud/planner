@@ -66,3 +66,41 @@ def create_direct_entry_template_project(
         )
 
     return project
+
+def create_direct_cap_project(
+    company_name: str,
+    *,
+    address: str = "",
+    cap_group: str = "",
+) -> Stage2Project:
+    """Create an authoring project without claiming a legal applicability decision."""
+    name = str(company_name or "").strip()
+    if not name:
+        raise ValueError("사업장명을 입력하세요.")
+    if cap_group not in {"", "1군", "2군"}:
+        raise ValueError("작성수준은 1군 또는 2군 중에서 선택하세요.")
+    pid = f"S2-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+    project = Stage2Project(
+        project_id=pid,
+        company_name=name,
+        cap_required=True,  # direct-entry authoring scope only, not a Stage 1 decision
+        cap_group=cap_group,
+        scope_confirmed=True,
+        cap_selected=True,
+        stage1_snapshot={
+            "entry_mode": DIRECT_ENTRY_MODE,
+            "legal_applicability_confirmed": False,
+            "decision": {},
+            "business": {},
+            "documents": {},
+            "chemicals": [],
+            "facilities": [],
+        },
+        notes=["사업장 판정 없이 화학사고예방관리계획서 작성자료를 직접 입력한 프로젝트입니다."],
+    )
+    project.set_field("business.company_name", "사업장명", name, "USER_CONFIRMED")
+    if address.strip():
+        project.set_field("business.address", "사업장 주소", address.strip(), "USER_CONFIRMED")
+    if cap_group:
+        project.set_field("cap.business.writing_level", "작성수준", f"{cap_group} 사업장", "USER_CONFIRMED")
+    return project

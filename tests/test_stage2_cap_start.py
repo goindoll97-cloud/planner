@@ -136,9 +136,13 @@ class CapStartTests(unittest.TestCase):
         self.assertIn(outcome.status, ("SYSTEM", "REQUEST", "NOT_REQUIRED", "STARTED"))
         self.assertNotEqual(outcome.status, "STARTED")
 
-    def test_page_offers_the_start_panel_and_the_legal_gate(self):
-        page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+    def test_judgement_page_offers_the_legal_start_and_cap_writing_starts_directly(self):
+        page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
         self.assertIn("cap_start_panel.render", page)
+        writing = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        self.assertIn("create_direct_cap_project", writing)
+        self.assertNotIn("cap_start_panel.render", writing)
+        self.assertNotIn("judgement_panel.render", writing)
         panel = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
         self.assertIn("decision_readiness_gate", panel)
         self.assertIn("cap_start.start(", panel)

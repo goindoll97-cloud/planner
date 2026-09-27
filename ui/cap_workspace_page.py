@@ -19,13 +19,34 @@ DIM_LABELS = {
 }
 
 
-def _project_selector() -> str | None:
-    from ui import cap_start_panel
+def _direct_start(expanded: bool) -> None:
+    from engine.stage2.direct_template import create_direct_cap_project
 
+    with st.expander("판정 없이 화사계 작성 시작", expanded=expanded):
+        st.caption("이미 작성 대상인지 확인한 사업장은 여기서 바로 시작할 수 있습니다. 작성수준은 알 때만 선택하고, 별지 제1호의 최대보유량과 작성수준은 제출 전 확인하세요.")
+        with st.form("cap_direct_start"):
+            name = st.text_input("사업장명", key="cap_direct_name")
+            address = st.text_input("사업장 주소", key="cap_direct_address")
+            group = st.selectbox("작성수준 (알면 선택)", ["확인 전", "1군", "2군"], key="cap_direct_group")
+            submitted = st.form_submit_button("화사계 작성 시작")
+        if submitted:
+            try:
+                project = create_direct_cap_project(
+                    name, address=address, cap_group="" if group == "확인 전" else group,
+                )
+            except ValueError as exc:
+                st.warning(str(exc))
+                return
+            save_project(project)
+            st.session_state[ACTIVE_PROJECT_KEY] = project.project_id
+            st.rerun()
+
+
+def _project_selector() -> str | None:
     projects = list_projects()
     if not projects:
-        st.info("작성할 사업장이 아직 없습니다. 아래에서 사업장과 취급 물질을 적고 시작하세요.")
-        cap_start_panel.render(expanded=True)
+        st.info("작성할 사업장이 아직 없습니다. 사업장 정보를 적고 바로 별지 작성을 시작하세요.")
+        _direct_start(expanded=True)
         return None
     labels = {row["project_id"]: f"{row['company_name']} · {row['project_id']}" for row in projects}
     ids = list(labels)
@@ -35,7 +56,7 @@ def _project_selector() -> str | None:
         format_func=lambda pid: labels[pid],
     )
     st.session_state[ACTIVE_PROJECT_KEY] = selected
-    cap_start_panel.render(expanded=False)
+    _direct_start(expanded=False)
     return selected
 
 
@@ -69,19 +90,32 @@ if not project_id:
     st.stop()
 project = load_project(project_id)
 from engine.stage2 import cap_judgement
-from ui import judgement_panel
+from engine.stage2.standalone_entry import is_standalone_stage2_project
 
-_notice = st.session_state.pop("cap_start_notice", None)
-if _notice:
-    st.info(_notice)
-judgement_panel.render(project)
+if is_standalone_stage2_project(project) and not project.stage1_snapshot.get("legal_applicability_confirmed"):
+    st.info("판정 없이 시작한 작성 프로젝트입니다. 법정 제출 대상 여부는 별도 ‘사업장 판정하기’에서 확인할 수 있습니다.")
+    with st.expander("작성수준 확인 (별지 제1호)", expanded=not project.cap_group):
+        chosen = st.selectbox(
+            "회사가 확인한 작성수준", ["확인 전", "1군", "2군"],
+            index={"": 0, "1군": 1, "2군": 2}.get(project.cap_group, 0),
+            key=f"cap_direct_level_{project.project_id}",
+        )
+        if st.button("작성수준 저장", key=f"cap_direct_level_save_{project.project_id}"):
+            project.cap_group = "" if chosen == "확인 전" else chosen
+            if project.cap_group:
+                project.set_field("cap.business.writing_level", "작성수준", f"{project.cap_group} 사업장",
+                                  "USER_CONFIRMED", note="회사 확인값, 대상 판정 수행하지 않음")
+            else:
+                project.fields.pop("cap.business.writing_level", None)
+            save_project(project)
+            st.rerun()
 if not project.cap_in_scope and not cap_judgement.undecided(project):
     if project.psm_in_scope:
         st.info("이 사업장은 공정안전보고서 작성 대상입니다. 화학사고예방관리계획서 대상은 아닙니다.")
         st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성으로 이동", icon="🏭")
         st.stop()
     st.warning("이 사업장은 화학사고예방관리계획서 작성·제출 대상으로 확인되지 않았습니다. 위에서 다른 사업장을 고르거나 "
-               "'새 사업장으로 시작하기'에서 다시 판정하세요.")
+               "'사업장 판정하기'에서 확인하세요.")
     st.stop()
 
 from ui import version_panel
@@ -144,8 +178,12 @@ def _render_form1(project) -> None:
                 width="stretch", hide_index=True,
             )
         else:
-            st.warning("확정된 화학물질 목록이 없습니다. 1. 판정진단에서 물질 목록을 먼저 입력하세요.")
-        st.caption("물질 물성(상태·비중·폭발한계 등)은 별지 제6호에서 KOSHA 조회로 채웁니다.")
+            st.warning("물질 목록이 없습니다. 별지 제6호에서 물질을 직접 추가하거나 엑셀·CSV로 올려 주세요.")
+        st.caption("별지 제6호에서도 같은 물질 정보를 사용합니다. 단일물질은 아래에서 KOSHA 후보를 조회할 수 있습니다.")
+        from ui import cap_kosha_panel
+
+        with st.expander("KOSHA 물질 정보 조회 (참고 후보)"):
+            cap_kosha_panel.render(project, "cap_form01")
 
 
         cap_facility_editor.render(project, "cap_form01")
@@ -163,10 +201,10 @@ def _render_form1(project) -> None:
         hint_label, hint_reason = ws.level_hint(list(form.chemical_rows), form.writing_level)
         st.metric(
             "사업장 작성수준", form.writing_level or "미확정",
-            help="판정진단에서 승계된 값입니다. 바꾸려면 판정진단을 다시 수행합니다.",
+            help="사업장 판정하기에서 승계했거나 회사가 직접 확인해 입력한 작성수준입니다.",
         )
         st.info(f"이 서식의 물질별 최대보유량으로 본 결과: **{hint_label}** — {hint_reason}")
-        st.caption("1군은 주요취급시설(규칙 제19조제8항)을 운영하는 경우에 해당합니다. 그 여부는 판정진단에서 확인한 값을 따릅니다.")
+        st.caption("직접 시작한 프로젝트는 제출 전 작성수준과 최대보유량을 확인하세요. 별도 사업장 판정 결과가 있는 프로젝트는 해당 결과를 따릅니다.")
 
     else:
         form = ws.resolve_form1(project)
