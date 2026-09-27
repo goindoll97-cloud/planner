@@ -34,7 +34,27 @@ SEARCHES: tuple[tuple[str, str, str, str], ...] = (
     ("keyword", "교회", "갑종", "종교시설"),
     ("keyword", "성당", "갑종", "종교시설"),
     ("keyword", "아파트", "갑종", "주택"),
+    ("keyword", "사찰", "갑종", "종교시설"),
+    ("keyword", "단독주택", "갑종", "주택"),
+    ("keyword", "빌라", "갑종", "주택"),
+    ("keyword", "오피스텔", "을종", "주택·업무시설"),
+    ("keyword", "요양원", "갑종", "노유자시설"),
+    ("keyword", "연구소", "갑종", "교육·연구시설"),
+    ("keyword", "청소년수련원", "갑종", "수련시설"),
+    ("keyword", "영화관", "갑종", "문화·집회시설"),
+    ("keyword", "공장", "을종", "공업시설"),
+    ("keyword", "근린생활시설", "을종", "근린 생활시설"),
     ("keyword", "하천", "환경수용체", "하천"),
+    ("keyword", "국립공원", "환경수용체", "자연공원"),
+    ("keyword", "도립공원", "환경수용체", "자연공원"),
+    ("keyword", "군립공원", "환경수용체", "자연공원"),
+    ("keyword", "산림", "환경수용체", "산림지 및 유적지"),
+    ("keyword", "숲", "환경수용체", "산림지 및 유적지"),
+    ("keyword", "습지", "환경수용체", "습지보호지역"),
+    ("keyword", "저수지", "환경수용체", "기타 환경수용체"),
+    ("keyword", "취수장", "환경수용체", "상수원 및 취수원"),
+    ("keyword", "농경지", "환경수용체", "농경지"),
+    ("keyword", "생태경관보전지역", "환경수용체", "생태·경관보호지역"),
 )
 
 
@@ -111,7 +131,7 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
         if point is None:
             return [], "주소로 위치를 찾지 못했습니다. 별지 제3호의 주소를 도로명주소로 확인하세요."
         headers = {"Authorization": f"KakaoAK {key}"}
-        found: dict[tuple[str, str], Candidate] = {}
+        found: dict[str, Candidate] = {}
         for mode, value, category, subtype in SEARCHES:
             params: dict[str, Any] = {"x": point[0], "y": point[1], "radius": SEARCH_RADIUS_M, "size": 15, "sort": "distance"}
             if mode == "category":
@@ -120,24 +140,34 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
             else:
                 params["query"] = value
                 url = f"{BASE}/search/keyword.json"
-            for doc in get(url, params, headers).get("documents", []):
-                name = str(doc.get("place_name") or "").strip()
-                if not name or (name, subtype) in found:
-                    continue
-                distance = doc.get("distance")
-                found[(name, subtype)] = Candidate(
-                    name=name, category=category, subtype=subtype,
-                    address=str(doc.get("road_address_name") or doc.get("address_name") or ""),
-                    distance_m=float(distance) if str(distance or "").strip() else None,
-                    source="카카오 로컬 API 검색",
-                )
+            # Kakao exposes up to 45 places per query; a single request returns at most 15.
+            for page in range(1, 4):
+                data = get(url, {**params, "page": page}, headers)
+                for doc in data.get("documents", []):
+                    name = str(doc.get("place_name") or "").strip()
+                    address = str(doc.get("road_address_name") or doc.get("address_name") or "")
+                    if not name:
+                        continue
+                    place_id = str(doc.get("id") or "").strip()
+                    identity = f"id:{place_id}" if place_id else f"name:{name}|{address}"
+                    if identity in found:
+                        continue
+                    distance = doc.get("distance")
+                    found[identity] = Candidate(
+                        name=name, category=category, subtype=subtype, address=address,
+                        distance_m=float(distance) if str(distance or "").strip() else None,
+                        source=f"카카오 로컬 API · {'분류' if mode == 'category' else '검색어'} {value}",
+                    )
+                # Older mocked responses without meta represent one complete page.
+                if data.get("meta", {}).get("is_end", True) or not data.get("documents"):
+                    break
     except requests.HTTPError as exc:
         return [], f"주변 검색에 실패했습니다. {_http_error_hint(exc)} 보호대상을 직접 입력하세요."
     except (requests.RequestException, KeyError, ValueError) as exc:
         return [], f"주변 검색에 실패했습니다({type(exc).__name__}). 보호대상을 직접 입력하세요."
     ordered = sorted(found.values(), key=lambda c: (c.distance_m is None, c.distance_m or 0.0))
     return ordered, (
-        f"후보 {len(ordered)}건을 반환했습니다. 이는 전체 조사 결과나 법정 판정이 아닙니다. "
+        f"주소점 주변 장소 후보 {len(ordered)}건을 반환했습니다. 이는 전체 조사 결과나 법정 판정이 아닙니다. "
         "별표 4 해당 여부, 검색 누락, 실제 사업장 경계 기준 거리를 별도로 확인하세요. "
         "후보가 0건이어도 보호대상 없음이 확인된 것은 아닙니다."
     )
