@@ -78,7 +78,7 @@ NOTE8_TABLE_MARKER = "전문 가스 저장·판매시설에 해당하는 가스"
 
 QUESTIONS: tuple[Question, ...] = (
     Question("상위 규정수량 이상을 취급하는 개별 주요취급시설 존재 여부", "화학사고예방관리계획서",
-             "상위 규정수량 이상을 취급하는 개별 주요취급시설이 있나요?",
+             "상위 규정수량 이상의 유해화학물질을 취급하는 개별 시설(주요취급시설)이 있나요?",
              _help("사업장 전체가 아니라 탱크·반응기 같은 시설 하나가, 한 가지 유해화학물질을 상위 규정수량 이상 취급하는 경우입니다. "
                    "이런 시설이 있으면 1군, 없으면 2군으로 나뉩니다.",
                    example="사업장 전체에 1.6 ton이 있어도 두 탱크에 0.8 ton씩 나뉘어 있으면 개별 시설은 상위 규정수량 미만일 수 있습니다.",
@@ -230,7 +230,9 @@ def is_pending(project: Stage2Project) -> bool:
 
 
 def undecided(project: Stage2Project) -> bool:
-    """법정 대상 판정을 아직 하지 않은 사업장(판정을 미룬 경우, 또는 판정 결과가 없는 경우)."""
+    """Direct authoring scope does not constitute a legal applicability decision."""
+    if project.stage1_snapshot.get("entry_mode") == "STAGE2_DIRECT_WORKBOOK":
+        return not bool(project.stage1_snapshot.get("decision"))
     return is_pending(project) or (not project.scope_confirmed and not project.stage1_snapshot.get("decision"))
 
 
@@ -836,6 +838,7 @@ def apply(project: Stage2Project, outcome: Outcome, *, write_psm: bool | None = 
     project.cap_required = outcome.cap_target if outcome.status == "DECIDED" else False
     project.cap_group = outcome.cap_group
     project.stage1_snapshot["decision"] = asdict(decision) if is_dataclass(decision) else dict(vars(decision))
+    project.stage1_snapshot["legal_applicability_confirmed"] = True
     project.stage1_snapshot.pop(PENDING_KEY, None)
     if outcome.status == "DECIDED":
         psm = outcome.psm_target if write_psm is None else bool(write_psm and outcome.psm_target)
