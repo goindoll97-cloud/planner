@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from typing import Any, Callable
 
 import requests
@@ -32,6 +33,10 @@ LAYERS = (
 )
 PAGE_SIZE = 100
 MAX_PAGES = 30  # Surface truncation explicitly if the provider still has more.
+
+
+class VWorldResponseError(ValueError):
+    """Safe diagnostic containing only validated server status and error code."""
 
 
 def api_key() -> str:
@@ -122,14 +127,22 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                 })
                 body = payload.get("response") or {}
                 if body.get("status") != "OK":
-                    # Never include the server message: it may echo a query/key.
-                    raise ValueError("브이월드 응답 상태가 OK가 아닙니다")
+                    # Server text may echo the API key: show only short status/code tokens.
+                    error = body.get("error") or {}
+                    status = body.get("status")
+                    code = error.get("code") if isinstance(error, dict) else None
+                    status = status if isinstance(status, str) and re.fullmatch(r"[A-Z_]{1,32}", status) else "UNKNOWN"
+                    code = code if isinstance(code, str) and re.fullmatch(r"[A-Z_]{1,40}", code) else ""
+                    if status == "NOT_FOUND" and not code:
+                        break  # This layer has no features at this address.
+                    raise VWorldResponseError(f"응답 상태 {status}" + (f", 코드 {code}" if code else ""))
                 collection = (body.get("result") or {}).get("featureCollection") or {}
                 features = collection.get("features")
                 if not isinstance(features, list):
                     raise ValueError("브이월드 지형정보 응답 형식이 예상과 다릅니다")
             except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
-                notices.append(f"브이월드 {title} 조회 실패({type(exc).__name__}); 해당 레이어는 직접 확인하세요.")
+                detail = str(exc) if isinstance(exc, VWorldResponseError) else type(exc).__name__
+                notices.append(f"브이월드 {title} 조회 실패({detail}); 해당 레이어는 직접 확인하세요.")
                 break
             fingerprints = tuple(str(item.get("id") or (item.get("properties") or {}).get("gid") or "")
                                  for item in features if isinstance(item, dict))

@@ -207,6 +207,36 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual(row["GIS/현장 근거"], "")
         self.assertFalse(row["500m 범위 전체 확인"])
 
+    def test_only_supported_search_types_are_suggested_and_unknowns_stay_blank(self):
+        with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
+            school, river = lookup.find_candidates("울산", get=_fake_get)[0][0:2]
+        self.assertEqual(f8.candidate_row(school)["보호대상 구분"], "갑종")
+        self.assertEqual(f8.candidate_row(school)["세부유형"], "교육·연구시설")
+        self.assertEqual(f8.candidate_row(river)["보호대상 구분"], "")
+        apartment = lookup.Candidate("아파트", "갑종", "주택", "울산", 300, "카카오 로컬 API · 검색어 아파트")
+        self.assertEqual(f8.candidate_row(apartment)["보호대상 구분"], "")
+        mapped = lookup.Candidate("학교", "", "", "지도 분류: amenity=school · OSM node/1", 20,
+                                  "OpenStreetMap/Overpass 지도 객체 (법정 분류 미확인)")
+        self.assertEqual(f8.candidate_row(mapped)["보호대상 구분"], "갑종")
+        unknown = lookup.Candidate("건물", "", "", "지도 분류: building=yes · OSM way/2", 20,
+                                   "OpenStreetMap/Overpass 지도 객체 (법정 분류 미확인)")
+        self.assertEqual(f8.candidate_row(unknown)["보호대상 구분"], "")
+
+    def test_vworld_status_is_visible_without_exposing_server_text(self):
+        from engine.stage2 import cap_vworld_lookup as vworld
+
+        def data(params):
+            if params["data"] == "LT_C_SPBD":
+                return {"response": {"status": "ERROR", "error": {"code": "INVALID_KEY", "text": "secret"}}}
+            return {"response": {"status": "NOT_FOUND"}}
+
+        with patch.dict(os.environ, {vworld.ENV_KEY: "secret"}):
+            found, notices = vworld.search(35.5, 129.3, get=data)
+        self.assertEqual(found, [])
+        self.assertEqual(len(notices), 1)
+        self.assertIn("INVALID_KEY", notices[0])
+        self.assertNotIn("secret", notices[0])
+
     def test_added_search_candidate_is_proposed_not_confirmed(self):
         project = _project()
         with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
@@ -256,6 +286,8 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         rows[0]["사업장 경계와 거리(m)"] = 320
         rows[0]["GIS/현장 근거"] = "공식 지도에서 경계부터 측정, 2026-09-25"
         rows[1]["사업장 경계와 거리(m)"] = 430
+        rows[1]["보호대상 구분"] = "환경수용체"  # reviewer confirmed designated river
+        rows[1]["세부유형"] = "하천"
         rows[1]["GIS/현장 근거"] = "현장 확인 및 지도 측정, 2026-09-25"
         self.assertEqual(f8.save(project, rows, no_target=False, scope_reviewed=True), 2)
         chosen = f8.selected_options(project)

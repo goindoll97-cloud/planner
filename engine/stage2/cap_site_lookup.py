@@ -229,7 +229,10 @@ def find_combined_candidates(address: str, *, get: Callable = _default_get,
         places.extend(nature)
         notes.append(f"OpenStreetMap 지도 객체 {len(nature)}건을 추가했습니다(법정 분류 미확인).")
     except (requests.RequestException, ValueError, TypeError) as exc:
-        notes.append(f"OpenStreetMap 환경 지도 조회 실패({type(exc).__name__}).")
+        response = getattr(exc, "response", None)
+        status = getattr(response, "status_code", None)
+        detail = f"HTTP {status}" if isinstance(status, int) else type(exc).__name__
+        notes.append(f"OpenStreetMap 환경 지도 조회 실패({detail}); 해당 지도 자료는 이번 검색에 포함되지 않았습니다.")
     return sorted(places, key=lambda c: (c.distance_m is None, c.distance_m or 0.0)), " ".join(notes)
 
 

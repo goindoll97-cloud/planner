@@ -79,6 +79,29 @@ def _render_methodology() -> None:
         )
 
 
+def _render_classification_guide() -> None:
+    with st.expander("검색 결과를 갑종·을종·환경수용체로 어떻게 구분하나요?", expanded=True):
+        st.write(
+            "먼저 지도에서 무엇인지 확인한 뒤 아래 순서대로 보세요. 검색된 이름만으로 결정할 수 없으면 "
+            "해당 시설의 용도·규모 또는 법정 지정 여부를 확인하고 나서 목록에 입력합니다."
+        )
+        st.markdown(
+            "| 확인 순서 | 알아볼 것 | 예와 추가 확인 사항 |\n"
+            "| --- | --- | --- |\n"
+            "| 1. 자연·토지인가요? | 환경수용체 해당 여부 | 하천은 **국가하천·지방하천인지**, 농지는 농지법상 농지인지, 산지는 산지관리법상 산지인지 확인합니다. 지도에 그려진 물길이나 녹지만으로 확정하지 않습니다. |\n"
+            "| 2. 사람이 이용하는 건물·시설인가요? | 갑종 유형과 조건부터 확인 | 학교·도서관·연구소, 병원·의원은 별표 4의 해당 유형을 확인합니다. 교회는 **300명 이상 수용** 여부, 어린이집·노인복지시설 등은 **20명 이상 수용** 여부를 확인합니다. |\n"
+            "| 3. 갑종으로 확인되지 않나요? | 을종 유형과 조건 확인 | 단독주택·일정 규모 미만 공동주택, 근린생활시설, 주유소·가스충전소 등은 별표 4의 을종 항목과 대조합니다. 공동주택의 **300명 이상 수용** 여부 등 갑종과 겹치는 조건을 먼저 확인합니다. |\n"
+            "| 4. 확인할 정보가 모자라나요? | 보류하고 자료 확인 | 예: '아파트'라는 지도 이름만으로 수용 인원을 알 수 없습니다. 실제 용도·수용 인원·면적 또는 지정 현황을 확인한 다음 구분합니다. |"
+        )
+        st.caption(
+            "예시는 분류 방법을 설명합니다. 별지 제8호의 환경수용체 체크항목에는 자연공원·습지보호지역 등도 있지만, "
+            "「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4의 환경수용체 표에는 "
+            "생태·경관보호지역, 국가하천·지방하천, 농지·산지가 명시되어 있습니다. "
+            "서식 항목 이름과 별표 4의 법정 정의를 함께 대조하세요."
+        )
+        st.markdown("[「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」 원문](https://www.law.go.kr/flDownload.do?bylClsCd=200201&flNm=%5B%EB%B3%84%ED%91%9C+4%5D+%EB%B3%B4%ED%98%B8%EB%8C%80%EC%83%81%28%EC%A0%9C2%EC%A1%B0+%EB%B0%8F+%EC%A0%9C24%EC%A1%B0+%EA%B4%80%EB%A0%A8%29&flSeq=164152403)")
+
+
 def render(project) -> None:
     schema = ws.load_form_schema(8)
     steps = schema["steps"]
@@ -109,7 +132,7 @@ def render(project) -> None:
         if (lookup.api_key() or vworld.api_key()) and st.button("주소로 주변 시설·환경 후보 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
             with st.spinner("주변 시설과 환경 지도 자료를 조회하는 중입니다..."):
                 found, message = lookup.find_combined_candidates(addr)
-            st.session_state[candidate_key] = [f8.candidate_row(c, unclassified=True) for c in found]
+            st.session_state[candidate_key] = [f8.candidate_row(c) for c in found]
             st.session_state[candidate_key + "_msg"] = message
             st.session_state[candidate_key + "_address"] = addr
         same_address = st.session_state.get(candidate_key + "_address") == addr
@@ -119,7 +142,7 @@ def render(project) -> None:
             st.info("사업장 주소가 변경되었습니다. 주변 장소 후보를 다시 검색해 주세요.")
         candidates = (st.session_state.get(candidate_key) or []) if same_address else []
         if candidates:
-            st.caption(f"검색된 공간정보 {len(candidates)}건입니다. 갑종·을종·환경수용체 구분 없이 표시합니다. 법정 대상에 해당하는 정보만 선택해 목록 단계에서 분류하세요.")
+            st.caption(f"검색된 공간정보 {len(candidates)}건입니다. 구분·유형 후보는 검색 자료로 추정할 수 있을 때만 표시하며 확정 판정이 아닙니다. 빈칸은 확인 후 목록 단계에서 분류하세요.")
             page_size = 100
             page_count = (len(candidates) + page_size - 1) // page_size
             page = st.number_input("후보 목록 페이지", min_value=1, max_value=page_count, value=1,
@@ -129,6 +152,8 @@ def render(project) -> None:
             frame = pd.DataFrame([{
                 "목록에 추가": False,
                 "장소명": row["보호대상 명칭"],
+                "구분 후보": row["보호대상 구분"],
+                "유형 후보": row["세부유형"],
                 "주소·위치": row["주소·위치"],
                 "주소점 거리(m)": row["검색결과 거리(주소점 기준, 참고)"],
                 "검색 출처": row["검색 출처·검색일"],
@@ -145,6 +170,7 @@ def render(project) -> None:
                     "사업장 경계 기준 거리는 비워 두었습니다. 목록 단계에서 확인 후 입력하세요."
                 )
     elif step["id"] == "list":
+        _render_classification_guide()
         no_target = st.checkbox("사업장 경계 500m 안에 보호대상이 없습니다", value=f8.declared_no_target(project),
                                 key=f"cap_form08_none_{project.project_id}")
         rows_source = f8.saved_rows(project)
