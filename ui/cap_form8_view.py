@@ -43,7 +43,7 @@ def _render_methodology() -> None:
         st.write(
             "사업장 주소를 카카오 주소 API로 좌표로 바꾼 뒤, 등록된 시설 분류와 검색어로 "
             f"그 좌표에서 반경 {lookup.SEARCH_RADIUS_M}m의 장소 후보를 찾습니다. "
-            "각 검색은 최대 15건을 요청하며 거리순 후보를 보여 줍니다."
+            "각 검색은 한 번에 최대 15건씩, 최대 3쪽(45건)까지 받아 거리순 후보를 보여 줍니다."
         )
         st.warning(
             "화면의 검색거리는 주소 좌표 기준 참고값입니다. 사업장 경계부터의 실제 거리, "
@@ -89,6 +89,7 @@ def render(project) -> None:
             st.write(item["text"])
 
     if step["id"] == "search":
+        candidate_key = f"{CAND_KEY}_{project.project_id}"
         addr = f8.address(project)
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
         if not lookup.api_key():
@@ -98,21 +99,32 @@ def render(project) -> None:
                 for line in lookup.env_diagnosis():
                     st.write("• " + line)
                 st.caption(".env 파일을 고쳤다면 프로그램을 완전히 껐다가 다시 실행해야 새 값을 읽습니다.")
-        elif st.button("주변 보호대상 후보 검색", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
+        elif st.button("주소로 주변 장소 후보 자동 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
             found, message = lookup.find_candidates(addr)
-            st.session_state[CAND_KEY] = [f8.candidate_row(c) for c in found]
-            st.session_state[CAND_KEY + "_msg"] = message
-        if st.session_state.get(CAND_KEY + "_msg"):
-            st.caption(st.session_state[CAND_KEY + "_msg"])
-        candidates = st.session_state.get(CAND_KEY) or []
+            st.session_state[candidate_key] = [f8.candidate_row(c) for c in found]
+            st.session_state[candidate_key + "_msg"] = message
+            st.session_state[candidate_key + "_address"] = addr
+        same_address = st.session_state.get(candidate_key + "_address") == addr
+        if same_address and st.session_state.get(candidate_key + "_msg"):
+            st.caption(st.session_state[candidate_key + "_msg"])
+        if not same_address and st.session_state.get(candidate_key):
+            st.info("사업장 주소가 변경되었습니다. 주변 장소 후보를 다시 검색해 주세요.")
+        candidates = (st.session_state.get(candidate_key) or []) if same_address else []
         if candidates:
-            frame = pd.DataFrame(candidates)
-            frame.insert(0, "목록에 추가", False)
+            st.caption("갑종·을종·환경수용체와 세부유형은 검색어로 제안한 분류입니다. 실제 시설 용도와 법정 조건을 확인한 뒤 선택하세요. 하천·산림 등은 장소 검색에 누락될 수 있습니다.")
+            frame = pd.DataFrame([{
+                "목록에 추가": False,
+                "장소명": row["보호대상 명칭"],
+                "주소·위치": row["주소·위치"],
+                "주소점 거리(m)": row["검색결과 거리(주소점 기준, 참고)"],
+                "구분 후보": row["보호대상 구분"],
+                "유형 후보": row["세부유형"],
+            } for row in candidates])
             edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"cap_form08_cand_{project.project_id}",
                                     disabled=[c for c in frame.columns if c != "목록에 추가"])
             if st.button("선택한 후보를 목록에 추가", key=f"cap_form08_add_{project.project_id}"):
-                chosen = [r for r in edited.to_dict("records") if r.pop("목록에 추가")]
-                f8.save(project, f8.saved_rows(project) + chosen, no_target=False, status="PROPOSED")
+                chosen = [candidates[i] for i, selected in enumerate(edited["목록에 추가"]) if selected]
+                f8.save(project, f8.saved_rows(project) + chosen, no_target=False, status="HOLD")
                 st.session_state[f"cap_form08_scope_reviewed_{project.project_id}"] = False
                 save_project(project)
                 st.success(

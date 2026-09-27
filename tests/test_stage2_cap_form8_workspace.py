@@ -63,6 +63,35 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual((found[0].category, found[0].subtype), ("갑종", "교육·연구시설"))
         self.assertEqual(found[1].category, "환경수용체")
 
+    def test_paged_places_are_deduplicated_by_place_id_and_nature_is_suggested(self):
+        calls = []
+
+        def get(url, params, headers):
+            if url.endswith("address.json"):
+                return {"documents": [{"x": "129.3", "y": "35.5"}]}
+            if params.get("query") == "산림":
+                calls.append(params["page"])
+                if params["page"] == 1:
+                    return {"documents": [{"id": "forest-1", "place_name": "근처 숲",
+                                            "address_name": "울산", "distance": "420"}],
+                            "meta": {"is_end": False}}
+                return {"documents": [{"id": "forest-2", "place_name": "다른 숲",
+                                        "address_name": "울산", "distance": "550"}],
+                        "meta": {"is_end": True}}
+            if params.get("query") == "숲":
+                return {"documents": [{"id": "forest-1", "place_name": "근처 숲",
+                                        "address_name": "울산", "distance": "420"}],
+                        "meta": {"is_end": True}}
+            return {"documents": [], "meta": {"is_end": True}}
+
+        with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
+            found, _ = lookup.find_candidates("울산", get=get)
+        self.assertEqual(calls, [1, 2])
+        self.assertEqual([c.name for c in found], ["근처 숲", "다른 숲"])
+        self.assertEqual((found[0].category, found[0].subtype),
+                         ("환경수용체", "산림지 및 유적지"))
+        self.assertTrue(all(c.distance_m is not None for c in found))
+
     def test_candidate_distance_is_reference_only_until_boundary_distance_is_entered(self):
         with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
             found, _ = lookup.find_candidates("울산광역시 남구 산업로 1", get=_fake_get)
@@ -76,9 +105,9 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         project = _project()
         with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
             found, _ = lookup.find_candidates("울산광역시 남구 산업로 1", get=_fake_get)
-        f8.save(project, [f8.candidate_row(found[0])], no_target=False, status="PROPOSED")
+        f8.save(project, [f8.candidate_row(found[0])], no_target=False, status="HOLD")
         record = project.get_field(f8.SITE_KEY)
-        self.assertEqual(record.status, "PROPOSED")
+        self.assertEqual(record.status, "HOLD")
         self.assertTrue(f8.needs(project))
 
     def test_lookup_failure_falls_back_to_manual_entry(self):
