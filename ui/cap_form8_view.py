@@ -23,41 +23,55 @@ SAFETY_DISTANCE_NOTICE_URL = "https://www.law.go.kr/admRulInfoP.do?admRulSeq=210
 
 
 def _render_methodology() -> None:
-    manifest_path = Path(__file__).resolve().parents[1] / "data/stage2/cap_authoritative_sources.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    legal = manifest["legal_structure"]
-    with st.expander("작성 기준과 검색 방법·근거", expanded=True):
+    st.info(
+        "**왜 작성하나요?** 사업장 가까이에 사람이 이용하는 시설과 환경수용체가 무엇이 있는지 확인하고, "
+        "사고 시 영향을 검토할 수 있도록 위치와 거리를 기록하는 서식입니다."
+    )
+    with st.expander("이 서식을 처음 작성한다면: 작성 순서와 예시", expanded=True):
         st.markdown(
-            "**법정 서식 기준**  "
-            "별지 제8호는 사업장 경계선 바깥 500m 범위의 입지 현황, 보호대상 종류, "
-            "사업장 경계선부터 대상까지의 거리와 대상 위치를 일련번호로 표시한 지도를 요구합니다. "
-            "종류별 구분·세부 기준은 [「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」](" + RULES_SOURCE_URL + ")와 "
-            "별지 주석이 인용하는 [「유해화학물질 취급시설 외벽으로부터 보호대상까지의 안전거리 고시」 별표 2·3](" + SAFETY_DISTANCE_NOTICE_URL + ")에서 확인합니다. "
-            "서식 원문: [별지 제8호 「사업장 주변 환경 정보」](" + FORM8_SOURCE_URL + ")."
-        )
-        st.markdown(
-            f"**저장소가 반영한 기준본**  {legal['title']} · {legal['notice']} · "
-            f"시행 기준일 {legal['effective_date']} · 매뉴얼 {manifest['writing_guidance']['document_code']} p.47–48"
-        )
-        st.warning(
-            "이 날짜는 저장소에 고정된 기준본의 시행일입니다. 이후 개정이 반영됐는지 제출 전에 "
-            "국가법령정보센터와 최신 화학물질안전원 매뉴얼에서 확인하세요."
-        )
-        st.markdown(
-            "**프로그램의 검색 방법**  사업장 주소를 카카오 주소 API로 좌표 변환한 뒤, "
-            f"코드에 등록된 {len(lookup.SEARCHES)}개 카테고리·키워드 검색을 좌표 반경 "
-            f"{lookup.SEARCH_RADIUS_M}m에서 실행합니다. 각 검색은 최대 15건을 요청하고 거리순 후보를 보여 줍니다."
-        )
-        st.error(
-            "검색 반경은 사업장 주소 좌표 기준이며 법정 500m 경계 기준 측정값이 아닙니다. "
-            "검색 분류·키워드에서 빠진 대상, 별표 기준의 세부 규모 조건, 실제 사업장 경계와 거리, "
-            "검색 누락을 확인하지 않습니다. 검색 결과가 없다는 것은 보호대상이 없다는 뜻이 아닙니다."
+            "1. **사업장 경계부터 500m 범위를 확인합니다.** 사업장 주소 한 점이 아니라 실제 부지 경계를 기준으로 지도나 GIS에서 살펴보세요.\n"
+            "2. **후보를 찾습니다.** 화면의 자동검색은 출발점입니다. 지도·GIS와 필요하면 현장 자료로 학교, 병원, 주택, 하천 등 빠진 곳을 확인하세요.\n"
+            "3. **대상별로 분류하고 거리를 적습니다.** 예를 들어 학교가 검색되면 실제 위치와 해당 분류를 확인하고, 사업장 경계에서 학교까지의 거리를 측정해 목록에 적습니다. 주소점에서 나온 검색거리는 그대로 옮기지 않습니다.\n"
+            "4. **지도와 목록을 대조합니다.** 목록의 일련번호를 지도에도 표시하고, 사용한 지도·확인일·측정 방법을 기록한 뒤 500m 전체를 다시 확인하세요."
         )
         st.caption(
-            "자동검색은 후보 수집 보조입니다. 이 프로그램은 별표 4 및 안전거리 고시 별표 2·3에 따른 대상 여부, 지도 전체의 누락 여부, "
-            "거리 산정의 적정성 또는 제출 적합성을 독립적으로 판정하거나 보증하지 않습니다. "
-            "별지의 지도상 일련번호 위치 표기도 자동 생성하지 않으므로 지도는 별도로 작성·첨부해야 합니다. "
-            "확인 자료와 방법을 GIS/현장 근거에 남기고 담당자가 원문 기준과 대조하세요."
+            "검색 결과가 없거나 모두 500m 밖에 있어도 '보호대상 없음'으로 바로 확정할 수 없습니다. "
+            "경계 기준 500m 전체를 확인하고 근거를 남겨야 합니다."
+        )
+
+    with st.expander("자동검색은 어떻게 작동하나요?"):
+        st.write(
+            "사업장 주소를 카카오 주소 API로 좌표로 바꾼 뒤, 등록된 시설 분류와 검색어로 "
+            f"그 좌표에서 반경 {lookup.SEARCH_RADIUS_M}m의 장소 후보를 찾습니다. "
+            "각 검색은 최대 15건을 요청하며 거리순 후보를 보여 줍니다."
+        )
+        st.warning(
+            "화면의 검색거리는 주소 좌표 기준 참고값입니다. 사업장 경계부터의 실제 거리, "
+            "보호대상 해당 여부, 검색 누락과 500m 전체 범위는 프로그램이 확인하지 못합니다. "
+            "검색되지 않은 곳도 지도·GIS 또는 현장 자료로 확인하세요."
+        )
+
+    with st.expander("법정 서식과 분류 기준 원문 확인"):
+        manifest_path = Path(__file__).resolve().parents[1] / "data/stage2/cap_authoritative_sources.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        legal = manifest["legal_structure"]
+        st.markdown(
+            "- [「화학사고예방관리계획서 작성 등에 관한 규정」 별지 제8호 「사업장 주변 환경 정보」]("
+            + FORM8_SOURCE_URL + "): 사업장 경계선 기준 500m 입지 현황, 보호대상 목록, 거리와 지도 일련번호.\n"
+            "- [같은 규정 별표 4 「보호대상」](" + RULES_SOURCE_URL
+            + "): 갑종·을종 보호대상 및 환경수용체의 세부 분류.\n"
+            "- [「유해화학물질 취급시설 외벽으로부터 보호대상까지의 안전거리 고시」 별표 2·3]("
+            + SAFETY_DISTANCE_NOTICE_URL + "): 해당하는 보호대상의 세부 기준을 확인할 때 함께 대조할 자료."
+        )
+        st.caption(
+            f"프로그램이 반영한 기준본: {legal['title']} · {legal['notice']} · "
+            f"시행 기준일 {legal['effective_date']} · 작성 매뉴얼 "
+            f"{manifest['writing_guidance']['document_code']} p.47–48. "
+            "제출 전 최신 법령과 매뉴얼을 다시 확인하세요."
+        )
+        st.caption(
+            "별지의 지도상 일련번호 표기는 자동 생성되지 않습니다. 지도를 별도로 작성·첨부하고 "
+            "목록·거리·확인 근거와 맞는지 검토하세요."
         )
 
 
@@ -66,13 +80,13 @@ def render(project) -> None:
     steps = schema["steps"]
     titles = [step["title"] for step in steps]
     st.header(schema["title"])
+    _render_methodology()
     choice = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form08_step")
     step = steps[titles.index(choice)]
     st.caption(step["summary"])
     for item in step["explain"]:
         with st.expander(item["term"]):
             st.write(item["text"])
-    _render_methodology()
 
     if step["id"] == "search":
         addr = f8.address(project)
@@ -112,8 +126,9 @@ def render(project) -> None:
         evidence = ""
         edited_rows: list[dict] = []
         scope_reviewed = st.checkbox(
-            "지도/GIS 또는 현장 자료로 사업장 경계 바깥 500m 전체를 확인했고, 「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」 및 안전거리 고시 별표 2·3 해당 대상의 누락 여부를 검토했습니다.",
+            "지도·GIS 또는 현장 자료로 사업장 경계선 기준 500m 전체를 살펴보고 보호대상 누락 여부를 검토했습니다.",
             value=f8.scope_reviewed(project), key=f"cap_form08_scope_reviewed_{project.project_id}",
+            help="분류는 「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4를 확인하세요. 해당 시설의 세부 기준은 안전거리 고시 별표 2·3도 대조하세요.",
         )
         if no_target:
             evidence = st.text_input("확인 근거", key=f"cap_form08_evidence_{project.project_id}",
