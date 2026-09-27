@@ -90,9 +90,11 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], no_target: bool,
     return 0 if no_target else len(stored)
 
 
-def candidate_row(candidate: Candidate) -> dict[str, Any]:
+def candidate_row(candidate: Candidate, *, unclassified: bool = False) -> dict[str, Any]:
     return {
-        "보호대상 명칭": candidate.name, "보호대상 구분": candidate.category, "세부유형": candidate.subtype,
+        "보호대상 명칭": candidate.name,
+        "보호대상 구분": "" if unclassified else candidate.category,
+        "세부유형": "" if unclassified else candidate.subtype,
         "주소·위치": candidate.address,
         "사업장 경계와 거리(m)": "",
         "검색결과 거리(주소점 기준, 참고)": "" if candidate.distance_m is None else candidate.distance_m,

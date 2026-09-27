@@ -135,7 +135,53 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
                     environment_search=lambda lat, lon: [],
                 )
         self.assertEqual([c.name for c in found], ["태화강"])
-        self.assertIn("브이월드 환경 후보 1건", message)
+        self.assertIn("브이월드 공간정보 1건", message)
+
+    def test_building_map_records_and_unclassified_selection(self):
+        from engine.stage2 import cap_vworld_lookup as vworld
+
+        def data(params):
+            features = []
+            if params["data"] == "LT_C_SPBD":
+                features = [{"id": "building-1", "properties": {"bd_nm": "비어 있는 건물"},
+                             "geometry": {"type": "Polygon", "coordinates": [[
+                                 [129.299, 35.499], [129.301, 35.499],
+                                 [129.301, 35.501], [129.299, 35.501], [129.299, 35.499]]]}}]
+            return {"response": {"status": "OK", "result": {"featureCollection": {"features": features}}}}
+
+        with patch.dict(os.environ, {vworld.ENV_KEY: "test-key"}):
+            found, notices = vworld.search(35.5, 129.3, get=data)
+        self.assertEqual(notices, [])
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].distance_m, 0)
+        raw = f8.candidate_row(found[0], unclassified=True)
+        self.assertEqual(raw["보호대상 구분"], "")
+        self.assertEqual(raw["세부유형"], "")
+        project = _project()
+        f8.save(project, [raw], no_target=False, status="HOLD")
+        self.assertTrue(f8.needs(project))
+
+    def test_named_and_unnamed_osm_features_are_visible_without_legal_classification(self):
+        from engine.stage2 import cap_environment_lookup as osm
+
+        class Response:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"elements": [
+                    {"id": 1, "type": "node", "lat": 35.5, "lon": 129.3,
+                     "tags": {"amenity": "school", "name": "학교"}},
+                    {"id": 2, "type": "way", "tags": {"building": "yes"}, "geometry": [
+                        {"lat": 35.499, "lon": 129.299}, {"lat": 35.499, "lon": 129.301},
+                        {"lat": 35.501, "lon": 129.301}, {"lat": 35.501, "lon": 129.299},
+                        {"lat": 35.499, "lon": 129.299}]},
+                ]}
+
+        found = osm.search(35.5, 129.3, post=lambda *args, **kwargs: Response())
+        self.assertEqual({c.name for c in found}, {"학교", "이름 없는 building=yes"})
+        self.assertTrue(all(c.category == "" and c.subtype == "" for c in found))
+        self.assertEqual(found[0].distance_m, 0)
 
     def test_existing_vworld_environment_variable_is_accepted(self):
         from engine.stage2 import cap_vworld_lookup as vworld

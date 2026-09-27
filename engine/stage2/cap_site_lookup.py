@@ -132,6 +132,7 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
             return [], "주소로 위치를 찾지 못했습니다. 별지 제3호의 주소를 도로명주소로 확인하세요."
         headers = {"Authorization": f"KakaoAK {key}"}
         found: dict[str, Candidate] = {}
+        limited_searches = 0
         for mode, value, category, subtype in SEARCHES:
             params: dict[str, Any] = {"x": point[0], "y": point[1], "radius": SEARCH_RADIUS_M, "size": 15, "sort": "distance"}
             if mode == "category":
@@ -161,6 +162,8 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
                 # Older mocked responses without meta represent one complete page.
                 if data.get("meta", {}).get("is_end", True) or not data.get("documents"):
                     break
+            else:
+                limited_searches += 1
     except requests.HTTPError as exc:
         return [], f"주변 검색에 실패했습니다. {_http_error_hint(exc)} 보호대상을 직접 입력하세요."
     except (requests.RequestException, KeyError, ValueError) as exc:
@@ -168,6 +171,8 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
     ordered = sorted(found.values(), key=lambda c: (c.distance_m is None, c.distance_m or 0.0))
     return ordered, (
         f"주소점 주변 장소 후보 {len(ordered)}건을 반환했습니다. 이는 전체 조사 결과나 법정 판정이 아닙니다. "
+        + (f"{limited_searches}개 카카오 검색에서 API의 45건 한도에 도달해 더 많은 결과가 있을 수 있습니다. "
+           if limited_searches else "") +
         "별표 4 해당 여부, 검색 누락, 실제 사업장 경계 기준 거리를 별도로 확인하세요. "
         "후보가 0건이어도 보호대상 없음이 확인된 것은 아닙니다."
     )
@@ -210,7 +215,7 @@ def find_combined_candidates(address: str, *, get: Callable = _default_get,
                 vworld_search = vworld.search
             official, warnings = vworld_search(lat, lon)
             places.extend(official)
-            notes.append(f"브이월드 환경 후보 {len(official)}건을 추가했습니다(법정 분류 미확인).")
+            notes.append(f"브이월드 공간정보 {len(official)}건을 추가했습니다(법정 분류 미확인).")
             notes.extend(warnings)
         except (requests.RequestException, ValueError, TypeError) as exc:
             notes.append(f"브이월드 환경 레이어 조회 실패({type(exc).__name__}); 별도로 확인하세요.")
@@ -220,10 +225,9 @@ def find_combined_candidates(address: str, *, get: Callable = _default_get,
         from .cap_environment_lookup import search as environment_search
     try:
         nature = environment_search(lat, lon)
-        names = {(c.name, c.subtype) for c in places}
-        added = [c for c in nature if (c.name, c.subtype) not in names]
-        places.extend(added)
-        notes.append(f"OpenStreetMap 환경 후보 {len(added)}건을 추가했습니다(법정 분류 미확인).")
+        # Preserve distinct records (including matching names from different sources).
+        places.extend(nature)
+        notes.append(f"OpenStreetMap 지도 객체 {len(nature)}건을 추가했습니다(법정 분류 미확인).")
     except (requests.RequestException, ValueError, TypeError) as exc:
         notes.append(f"OpenStreetMap 환경 지도 조회 실패({type(exc).__name__}).")
     return sorted(places, key=lambda c: (c.distance_m is None, c.distance_m or 0.0)), " ".join(notes)

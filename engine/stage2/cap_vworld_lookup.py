@@ -21,6 +21,7 @@ ADDRESS_ENDPOINT = "https://api.vworld.kr/req/address"
 # Published VWorld 2D Data API service IDs. A designation is not proof of
 # protection under the CAP annex, and the river network is a mapped line.
 LAYERS = (
+    ("LT_C_SPBD", "도로명주소 건물", ("bd_nm", "bld_nm", "name")),
     ("LT_C_WKMSTRM", "하천망", ("riv_nm", "riv_name")),
     ("LT_C_UM901", "습지보호지역", ("name", "nm")),
     ("LT_C_WGISARWET", "습지보호구역", ("name", "nm")),
@@ -30,7 +31,7 @@ LAYERS = (
     ("LT_C_WGISARECO", "생태계경관보전지역", ("name", "nm")),
 )
 PAGE_SIZE = 100
-MAX_PAGES = 3
+MAX_PAGES = 30  # Surface truncation explicitly if the provider still has more.
 
 
 def api_key() -> str:
@@ -110,6 +111,7 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
     found: dict[tuple[str, str], Candidate] = {}
     notices: list[str] = []
     for layer, title, name_fields in LAYERS:
+        seen_pages: set[tuple[str, ...]] = set()
         for page in range(1, MAX_PAGES + 1):
             try:
                 payload = get({
@@ -129,6 +131,12 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
             except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
                 notices.append(f"브이월드 {title} 조회 실패({type(exc).__name__}); 해당 레이어는 직접 확인하세요.")
                 break
+            fingerprints = tuple(str(item.get("id") or (item.get("properties") or {}).get("gid") or "")
+                                 for item in features if isinstance(item, dict))
+            if fingerprints and fingerprints in seen_pages:
+                notices.append(f"브이월드 {title}에서 같은 결과 페이지가 반복되어 조회를 중단했습니다. 누락 여부를 확인하세요.")
+                break
+            seen_pages.add(fingerprints)
             for feature in features:
                 try:
                     props = feature.get("properties") or {}
@@ -136,12 +144,12 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                     distance = _geometry_distance(lat, lon, geom)
                     if distance > SEARCH_RADIUS_M:
                         continue
-                    identifier = str(feature.get("id") or props.get("gid") or "").strip()
+                    identifier = str(feature.get("id") or props.get("gid") or props.get("bd_mgt_sn") or "").strip()
                     name = next((str(props[field]).strip() for field in name_fields if props.get(field)), "")
                     name = name or f"이름 없는 {title}"
                     identifier = identifier or f"{name}/{round(distance, 1)}"
                     found[(layer, identifier)] = Candidate(
-                        name=name, category="환경수용체", subtype="기타 환경수용체",
+                        name=name, category="", subtype="",
                         address=f"브이월드 {title} · {layer} · {identifier}",
                         distance_m=round(distance, 1),
                         source=f"브이월드 2D 데이터 API · {title} (법정 분류 미확인)",
