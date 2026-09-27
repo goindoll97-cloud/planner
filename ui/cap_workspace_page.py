@@ -223,6 +223,8 @@ def _render_form1(project) -> None:
 form_no = unsaved_guard.selector("작성할 서식(별지 순서대로)", [*registry.FORM_NUMBERS, *SPECIAL], key="cap_form_no",
                                  format_func=_option_label)
 try:
+    if form_no in registry.FORM_NUMBERS:
+        st.info("MSDS는 물질 정보를 확인할 때 참고하는 자료입니다. MSDS를 첨부하더라도 각 별지의 작성은 별개이며, 해당 별지에서 요구하는 항목을 서식에 맞게 작성해 주세요.")
     if form_no == "submission":
         from ui import cap_submission_forms_view
 
