@@ -92,6 +92,66 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
                          ("환경수용체", "산림지 및 유적지"))
         self.assertTrue(all(c.distance_m is not None for c in found))
 
+    def test_vworld_environment_layers_respect_buffer_and_keep_partial_results(self):
+        from engine.stage2 import cap_vworld_lookup as vworld
+
+        def data(params):
+            self.assertEqual(params["geomFilter"], "POINT(129.3 35.5)")
+            self.assertEqual(params["buffer"], 800)
+            if params["data"] == "LT_C_UM901":
+                return {"response": {"status": "ERROR"}}
+            features = {
+                "LT_C_WKMSTRM": [
+                    {"id": "river", "properties": {"riv_nm": "태화강"}, "geometry": {
+                        "type": "LineString", "coordinates": [[129.307, 35.5], [129.307, 35.501]]}},
+                    {"id": "far", "properties": {"riv_nm": "먼 하천"}, "geometry": {
+                        "type": "Point", "coordinates": [129.32, 35.5]}},
+                ],
+                "LT_C_WGISARWET": [{"id": "wetland", "properties": {}, "geometry": {
+                    "type": "Polygon", "coordinates": [[[129.299, 35.499], [129.301, 35.499],
+                                                   [129.301, 35.501], [129.299, 35.501],
+                                                   [129.299, 35.499]]]}}],
+            }.get(params["data"], [])
+            return {"response": {"status": "OK", "result": {"featureCollection": {"features": features}}}}
+
+        with patch.dict(os.environ, {vworld.ENV_KEY: "test-key"}):
+            found, warnings = vworld.search(35.5, 129.3, get=data)
+        self.assertEqual({c.name for c in found}, {"태화강", "이름 없는 습지보호구역"})
+        self.assertEqual(found[0].distance_m, 0)
+        self.assertIn("습지보호지역", " ".join(warnings))
+
+    def test_vworld_key_alone_can_geocode_and_find_environment(self):
+        from engine.stage2 import cap_vworld_lookup as vworld
+
+        original_geocode = vworld.geocode
+        def point(params):
+            return {"response": {"status": "OK", "result": {"point": {"x": "129.3", "y": "35.5"}}}}
+
+        with patch.dict(os.environ, {lookup.ENV_KEY: "", vworld.ENV_KEY: "test-key"}):
+            with patch.object(vworld, "geocode", side_effect=lambda addr: original_geocode(addr, get=point)):
+                found, message = lookup.find_combined_candidates(
+                    "울산 남구 사평로 119", vworld_search=lambda lat, lon: (
+                        [lookup.Candidate("태화강", "환경수용체", "기타 환경수용체", "브이월드", 430, "브이월드")], []),
+                    environment_search=lambda lat, lon: [],
+                )
+        self.assertEqual([c.name for c in found], ["태화강"])
+        self.assertIn("브이월드 환경 후보 1건", message)
+
+    def test_existing_vworld_environment_variable_is_accepted(self):
+        from engine.stage2 import cap_vworld_lookup as vworld
+
+        with patch.dict(os.environ, {vworld.ENV_KEY: "", "v_world_key": "existing-key"}):
+            self.assertEqual(vworld.api_key(), "existing-key")
+
+    def test_failure_of_environment_layer_preserves_kakao_facilities(self):
+        with patch.dict(os.environ, {lookup.ENV_KEY: "k", "VWORLD_API_KEY": ""}):
+            found, message = lookup.find_combined_candidates(
+                "울산", get=_fake_get,
+                environment_search=lambda lat, lon: (_ for _ in ()).throw(ValueError("server error")),
+            )
+        self.assertEqual([c.name for c in found], ["한빛초등학교", "태화강"])
+        self.assertIn("OpenStreetMap 환경 지도 조회 실패", message)
+
     def test_candidate_distance_is_reference_only_until_boundary_distance_is_entered(self):
         with patch.dict(os.environ, {lookup.ENV_KEY: "k"}):
             found, _ = lookup.find_candidates("울산광역시 남구 산업로 1", get=_fake_get)

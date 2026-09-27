@@ -173,6 +173,62 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
     )
 
 
+def find_combined_candidates(address: str, *, get: Callable = _default_get,
+                             environment_search: Callable | None = None,
+                             vworld_search: Callable | None = None) -> tuple[list[Candidate], str]:
+    """Collect facility and environmental candidates from independent sources."""
+    from . import cap_vworld_lookup as vworld
+
+    places: list[Candidate] = []
+    notes: list[str] = []
+    point = None
+    if api_key():
+        places, message = find_candidates(address, get=get)
+        notes.append(message.replace("보호대상을 직접 입력하세요.", "카카오 시설 후보를 직접 확인하세요."))
+        try:
+            point = geocode(address, get=get)
+        except (requests.RequestException, KeyError, ValueError, TypeError):
+            pass
+    else:
+        notes.append("카카오 키가 없어 시설·장소 후보는 검색하지 않았습니다.")
+    if point is None and vworld.api_key():
+        try:
+            point = vworld.geocode(address)
+            if point:
+                notes.append("주소는 브이월드 주소 API로 좌표를 찾았습니다.")
+        except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
+            notes.append(f"브이월드 주소 검색에 실패했습니다({type(exc).__name__}).")
+    if point is None:
+        return places, " ".join(notes + ["주소 좌표가 없어 환경 후보를 찾지 못했습니다. 직접 확인하세요."])
+    try:
+        lat, lon = float(point[1]), float(point[0])
+    except (ValueError, TypeError, IndexError):
+        return places, " ".join(notes + ["주소 좌표가 올바르지 않아 환경 후보를 찾지 못했습니다."])
+    if vworld.api_key():
+        try:
+            if vworld_search is None:
+                vworld_search = vworld.search
+            official, warnings = vworld_search(lat, lon)
+            places.extend(official)
+            notes.append(f"브이월드 환경 후보 {len(official)}건을 추가했습니다(법정 분류 미확인).")
+            notes.extend(warnings)
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            notes.append(f"브이월드 환경 레이어 조회 실패({type(exc).__name__}); 별도로 확인하세요.")
+    else:
+        notes.append("VWORLD_API_KEY가 없어 브이월드 환경 레이어는 검색하지 않았습니다.")
+    if environment_search is None:
+        from .cap_environment_lookup import search as environment_search
+    try:
+        nature = environment_search(lat, lon)
+        names = {(c.name, c.subtype) for c in places}
+        added = [c for c in nature if (c.name, c.subtype) not in names]
+        places.extend(added)
+        notes.append(f"OpenStreetMap 환경 후보 {len(added)}건을 추가했습니다(법정 분류 미확인).")
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        notes.append(f"OpenStreetMap 환경 지도 조회 실패({type(exc).__name__}).")
+    return sorted(places, key=lambda c: (c.distance_m is None, c.distance_m or 0.0)), " ".join(notes)
+
+
 def env_diagnosis() -> list[str]:
     """키를 못 찾을 때 원인을 사용자가 스스로 확인하도록, 프로그램이 어디를 어떻게 봤는지 알려 준다(키 값은 절대 내보내지 않는다)."""
     from pathlib import Path
