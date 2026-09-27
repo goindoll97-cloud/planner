@@ -116,8 +116,8 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
 
         with patch.dict(os.environ, {vworld.ENV_KEY: "test-key"}):
             found, warnings = vworld.search(35.5, 129.3, get=data)
-        self.assertEqual({c.name for c in found}, {"태화강", "이름 없는 습지보호구역"})
-        self.assertEqual(found[0].distance_m, 0)
+        self.assertEqual({c.name for c in found}, {"태화강"})
+        self.assertLess(found[0].distance_m, 800)
         self.assertIn("습지보호지역", " ".join(warnings))
 
     def test_vworld_key_alone_can_geocode_and_find_environment(self):
@@ -179,7 +179,7 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
                 ]}
 
         found = osm.search(35.5, 129.3, post=lambda *args, **kwargs: Response())
-        self.assertEqual({c.name for c in found}, {"학교", "이름 없는 building=yes"})
+        self.assertEqual({c.name for c in found}, {"학교"})
         self.assertTrue(all(c.category == "" and c.subtype == "" for c in found))
         self.assertEqual(found[0].distance_m, 0)
 
@@ -236,6 +236,21 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual(len(notices), 1)
         self.assertIn("INVALID_KEY", notices[0])
         self.assertNotIn("secret", notices[0])
+
+    def test_invalid_vworld_key_is_reported_once(self):
+        from engine.stage2 import cap_vworld_lookup as vworld
+        calls = []
+
+        def data(params):
+            calls.append(params["data"])
+            return {"response": {"status": "ERROR", "error": {"code": "INCORRECT_KEY"}}}
+
+        with patch.dict(os.environ, {vworld.ENV_KEY: "redacted"}):
+            found, notices = vworld.search(35.5, 129.3, get=data)
+        self.assertEqual(found, [])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(notices), 1)
+        self.assertIn("도메인", notices[0])
 
     def test_added_search_candidate_is_proposed_not_confirmed(self):
         project = _project()

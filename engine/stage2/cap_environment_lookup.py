@@ -92,7 +92,10 @@ def search(lat: float, lon: float, *, post: Callable = requests.post) -> list[Ca
                          ("waterway", "natural", "landuse", "amenity", "tourism", "leisure", "shop", "historic",
                           "building", "office", "healthcare", "craft", "emergency", "public_transport", "man_made")
                          if key in tags), "지도 객체")
-            name = str(tags.get("name:ko") or tags.get("name") or f"이름 없는 {kind}").strip()
+            # Anonymous map geometry is not actionable as a place-list entry.
+            name = str(tags.get("name:ko") or tags.get("name") or "").strip()
+            if not name:
+                continue
             found[identifier] = Candidate(
                 name=name, category="", subtype="",
                 address=f"지도 분류: {kind} · OSM {identifier}", distance_m=round(distance, 1),

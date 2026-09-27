@@ -142,6 +142,9 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                     raise ValueError("브이월드 지형정보 응답 형식이 예상과 다릅니다")
             except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
                 detail = str(exc) if isinstance(exc, VWorldResponseError) else type(exc).__name__
+                if isinstance(exc, VWorldResponseError) and "코드 INCORRECT_KEY" in detail:
+                    notices.append("브이월드 인증키 오류(INCORRECT_KEY): 프로젝트 .env의 VWORLD_API_KEY 또는 v_world_key 값과 브이월드 인증키 발급 시 등록한 도메인을 확인하세요. 브이월드 레이어는 조회되지 않았습니다.")
+                    return sorted(found.values(), key=lambda item: item.distance_m or 0), notices
                 notices.append(f"브이월드 {title} 조회 실패({detail}); 해당 레이어는 직접 확인하세요.")
                 break
             fingerprints = tuple(str(item.get("id") or (item.get("properties") or {}).get("gid") or "")
@@ -159,7 +162,8 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                         continue
                     identifier = str(feature.get("id") or props.get("gid") or props.get("bd_mgt_sn") or "").strip()
                     name = next((str(props[field]).strip() for field in name_fields if props.get(field)), "")
-                    name = name or f"이름 없는 {title}"
+                    if not name:
+                        continue
                     identifier = identifier or f"{name}/{round(distance, 1)}"
                     found[(layer, identifier)] = Candidate(
                         name=name, category="", subtype="",
