@@ -6,7 +6,10 @@ import unittest
 
 from openpyxl import Workbook, load_workbook
 
-from engine.stage2.direct_template import create_direct_entry_template_project
+from engine.stage2.direct_template import create_direct_cap_project, create_direct_entry_template_project
+from engine.stage2 import cap_judgement as judgement
+from engine.stage2 import cap_chemical_upload as chem_upload
+from engine.stage2 import cap_form6_workspace as f6
 from engine.stage2.integrated_workbook import build_integrated_authoring_workbook
 from engine.stage2.intake import selected_requirement_specs
 from engine.stage2.project import Stage2Project
@@ -49,6 +52,33 @@ class Stage2StandaloneEntryTests(unittest.TestCase):
             "VERIFIED",
         )
         return build_integrated_authoring_workbook(project)
+
+    def test_direct_cap_project_can_start_without_a_legal_decision_or_group(self):
+        project = create_direct_cap_project("직접작성화학", address="울산광역시 예시로 1")
+        self.assertTrue(project.cap_in_scope)
+        self.assertTrue(is_standalone_stage2_project(project))
+        self.assertEqual(project.cap_group, "")
+        self.assertEqual(project.stage1_snapshot["decision"], {})
+        self.assertFalse(project.stage1_snapshot["legal_applicability_confirmed"])
+        self.assertTrue(judgement.undecided(project))
+        self.assertEqual(project.get_field("business.address").value, "울산광역시 예시로 1")
+
+    def test_direct_form6_chemical_is_shared_with_other_forms(self):
+        project = create_direct_cap_project("직접작성화학")
+        added, skipped = chem_upload.add_to_project(
+            project, [{"제품명": "톨루엔", "CAS No.": "108-88-3",
+                       "혼합물 여부": "N", "함량(%)": "99"}],
+            file_name="화면 직접 입력", sha256="",
+        )
+        self.assertEqual((added, skipped), (1, 0))
+        self.assertEqual(f6.property_rows(project)[0]["CAS 번호"], "108-88-3")
+        self.assertEqual(project.get_field("inventory.chemicals").value[0]["물질명"], "톨루엔")
+
+    def test_direct_cap_project_preserves_company_selected_group(self):
+        project = create_direct_cap_project("직접작성화학", cap_group="2군")
+        self.assertEqual(project.get_field("cap.business.writing_level").value, "2군 사업장")
+        with self.assertRaisesRegex(ValueError, "사업장명"):
+            create_direct_cap_project("  ")
 
     def test_preview_reads_scope_company_and_group_without_stage1(self):
         preview = inspect_standalone_workbook(self._completed_workbook())
