@@ -57,7 +57,13 @@ def render(project) -> None:
         config = {"물질명": st.column_config.TextColumn("물질명", disabled=True),
                   "CAS 번호": st.column_config.TextColumn("CAS 번호", disabled=True)}
         for column, label, help_text in columns:
-            config[column] = st.column_config.TextColumn(label, help=help_text)
+            if column in f6.PROPERTY_SELECT_OPTIONS:
+                config[column] = st.column_config.SelectboxColumn(
+                    label, options=f6.property_choice_options(column, frame[column]),
+                    help=help_text, required=False,
+                )
+            else:
+                config[column] = st.column_config.TextColumn(label, help=help_text)
         edited = st.data_editor(frame, column_config=config, width="stretch", hide_index=True,
                                 key=f"cap_form06_props_{project.project_id}")
         if st.button("물성 저장", type="primary", key=f"cap_form06_save_{project.project_id}"):

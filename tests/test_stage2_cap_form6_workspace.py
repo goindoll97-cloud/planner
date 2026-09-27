@@ -49,6 +49,16 @@ class CAPForm6WorkspaceTests(unittest.TestCase):
         for expected in ("액체", "28.4", "무"):
             self.assertIn(expected, text)
 
+    def test_dropdown_choices_preserve_saved_variants(self):
+        self.assertEqual(
+            f6.property_choice_options("물질상태", ["액체", "고체(분말)"]),
+            ["", "기체", "액체", "고체", "자료 없음", "해당 없음", "고체(분말)"],
+        )
+        self.assertEqual(
+            f6.property_choice_options("부식성", ["예", "무", "예"]),
+            ["", "유", "무", "자료 없음", "해당 없음", "예"],
+        )
+
     def test_blank_cells_never_erase_saved_values(self):
         project = _project()
         rows = f6.property_rows(project)

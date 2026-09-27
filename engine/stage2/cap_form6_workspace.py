@@ -6,6 +6,7 @@ from __future__ import annotations
 자동으로 채우고, 물성 칸은 KOSHA 후보(단일물질) 확인 또는 직접 입력으로 채운다.
 """
 
+from collections.abc import Iterable
 from typing import Any, Mapping
 
 from .cap_sds_engine import build_cap_form6_sds_data
@@ -14,7 +15,7 @@ from .project import Stage2Project
 
 # (row column, form label, help). Row columns are the names the 별지 제6호 writer reads.
 PROPERTY_COLUMNS: tuple[tuple[str, str, str], ...] = (
-    ("물질상태", "물질 상태", "기체·액체·고체 중 하나입니다. 제품 MSDS 제9항의 물리적 상태를 옮깁니다."),
+    ("물질상태", "물질 상태", "제품 MSDS 제9항의 물리적 상태(기체·액체·고체)를 선택합니다. 확인할 수 없으면 '자료 없음'을 선택하세요."),
     ("비중", "비중", "제품 MSDS 제9항의 비중(상대밀도)입니다."),
     ("폭발한계 하한", "폭발한계 하한(%)", "제품 MSDS 제9항의 폭발(인화) 하한입니다. 해당 없으면 '해당 없음'이라고 적습니다."),
     ("폭발한계 상한", "폭발한계 상한(%)", "제품 MSDS 제9항의 폭발(인화) 상한입니다. 해당 없으면 '해당 없음'이라고 적습니다."),
@@ -23,11 +24,25 @@ PROPERTY_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("위험노출수준", "위험노출수준", "ERPG → AEGL → PAC → IDLH 순서로 값이 있는 첫 항목을 적습니다(매뉴얼 기준)."),
     ("허용농도값", "허용농도값", "MSDS 제8항의 노출기준(TWA)입니다."),
     ("증기압", "증기압(20℃, mmHg)", "20℃에서의 증기압(mmHg)입니다. 다른 단위면 mmHg로 환산해 적습니다."),
-    ("부식성", "부식성(유, 무)", "금속부식성이 있으면 '유', 없으면 '무'입니다."),
+    ("부식성", "부식성(유, 무)", "제품 MSDS에서 금속부식성이 확인되면 '유', 부식성이 없다고 확인되면 '무'를 선택합니다. 정보가 없으면 '자료 없음'을 선택하세요."),
     ("SDS 파일명", "근거 MSDS 파일명", "물성값의 출처를 확인할 수 있는 자료명입니다. KOSHA 참고자료를 반영한 값은 실제 제품의 제조·공급자 MSDS와 구분해 확인하세요."),
     ("SDS 개정일", "MSDS 개정일", "그 MSDS의 작성일 또는 개정일입니다."),
 )
 COLUMN_IDS = tuple(column for column, _, _ in PROPERTY_COLUMNS)
+PROPERTY_SELECT_OPTIONS: dict[str, tuple[str, ...]] = {
+    "물질상태": ("", "기체", "액체", "고체", "자료 없음", "해당 없음"),
+    "부식성": ("", "유", "무", "자료 없음", "해당 없음"),
+}
+
+
+def property_choice_options(column: str, current_values: Iterable[object]) -> list[str]:
+    """Offer standard choices and preserve values already saved from a company MSDS."""
+    options = list(PROPERTY_SELECT_OPTIONS[column])
+    for value in current_values:
+        saved = _clean(value)
+        if saved and saved not in options:
+            options.append(saved)
+    return options
 
 
 def _clean(value: object) -> str:
