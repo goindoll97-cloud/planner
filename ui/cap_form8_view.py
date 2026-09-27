@@ -8,6 +8,7 @@ import streamlit as st
 
 from engine.stage2 import cap_form8_workspace as f8
 from engine.stage2 import cap_site_lookup as lookup
+from engine.stage2 import cap_vworld_lookup as vworld
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.storage import save_project
@@ -41,9 +42,12 @@ def _render_methodology() -> None:
 
     with st.expander("자동검색은 어떻게 작동하나요?"):
         st.write(
-            "사업장 주소를 카카오 주소 API로 좌표로 바꾼 뒤, 등록된 시설 분류와 검색어로 "
-            f"그 좌표에서 반경 {lookup.SEARCH_RADIUS_M}m의 장소 후보를 찾습니다. "
-            "각 검색은 한 번에 최대 15건씩, 최대 3쪽(45건)까지 받아 거리순 후보를 보여 줍니다."
+            "사업장 주소를 카카오 주소 API로 좌표로 바꾸고(카카오 키가 없거나 주소 검색에 실패하면 브이월드 주소 API 사용), "
+            f"그 좌표에서 반경 {lookup.SEARCH_RADIUS_M}m의 후보를 찾습니다. "
+            "카카오는 시설·장소를 한 검색당 최대 45건 조회합니다. 브이월드 2D 데이터 API는 하천망, "
+            "습지·자연공원·산림·상수원 보호구역과 생태계경관보전지역의 공간정보를 조회합니다. "
+            "OpenStreetMap의 하천·산림·농경지·물·습지 지도 정보도 환경 후보로 더합니다. "
+            "후보마다 검색 출처를 표시하며 법정 대상 분류는 사람이 확인합니다."
         )
         st.warning(
             "화면의 검색거리는 주소 좌표 기준 참고값입니다. 사업장 경계부터의 실제 거리, "
@@ -92,15 +96,19 @@ def render(project) -> None:
         candidate_key = f"{CAND_KEY}_{project.project_id}"
         addr = f8.address(project)
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
-        if not lookup.api_key():
-            st.info(f"{lookup.ENV_KEY}가 없어 자동 검색을 쓸 수 없습니다. 다음 단계에서 보호대상을 직접 입력하세요.")
+        if not lookup.api_key() and not vworld.api_key():
+            st.info(f"{lookup.ENV_KEY} 또는 {vworld.ENV_KEY}가 없어 자동 검색을 쓸 수 없습니다. 다음 단계에서 보호대상을 직접 입력하세요.")
             with st.expander("키를 못 찾는 이유 확인하기"):
                 st.caption("프로그램이 키를 어디에서 찾았는지 보여 줍니다(키 값은 표시하지 않습니다).")
                 for line in lookup.env_diagnosis():
                     st.write("• " + line)
+                st.caption("브이월드 인증키는 프로젝트 .env 파일의 VWORLD_API_KEY 또는 기존 v_world_key로 읽습니다. 키 값은 화면에 표시하지 않습니다.")
                 st.caption(".env 파일을 고쳤다면 프로그램을 완전히 껐다가 다시 실행해야 새 값을 읽습니다.")
-        elif st.button("주소로 주변 장소 후보 자동 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
-            found, message = lookup.find_candidates(addr)
+        if vworld.api_key() and not lookup.api_key():
+            st.info("카카오 키가 없어 시설·장소 검색은 생략합니다. 브이월드와 OpenStreetMap 환경 후보는 조회할 수 있습니다.")
+        if (lookup.api_key() or vworld.api_key()) and st.button("주소로 주변 시설·환경 후보 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
+            with st.spinner("주변 시설과 환경 지도 자료를 조회하는 중입니다..."):
+                found, message = lookup.find_combined_candidates(addr)
             st.session_state[candidate_key] = [f8.candidate_row(c) for c in found]
             st.session_state[candidate_key + "_msg"] = message
             st.session_state[candidate_key + "_address"] = addr
@@ -111,7 +119,7 @@ def render(project) -> None:
             st.info("사업장 주소가 변경되었습니다. 주변 장소 후보를 다시 검색해 주세요.")
         candidates = (st.session_state.get(candidate_key) or []) if same_address else []
         if candidates:
-            st.caption("갑종·을종·환경수용체와 세부유형은 검색어로 제안한 분류입니다. 실제 시설 용도와 법정 조건을 확인한 뒤 선택하세요. 하천·산림 등은 장소 검색에 누락될 수 있습니다.")
+            st.caption("구분과 세부유형은 검토 후보입니다. 실제 용도와 법정 조건을 확인하세요. 환경 공간정보의 보호구역 명칭만으로 별지의 법정 분류가 확정되지 않습니다.")
             frame = pd.DataFrame([{
                 "목록에 추가": False,
                 "장소명": row["보호대상 명칭"],
@@ -119,6 +127,7 @@ def render(project) -> None:
                 "주소점 거리(m)": row["검색결과 거리(주소점 기준, 참고)"],
                 "구분 후보": row["보호대상 구분"],
                 "유형 후보": row["세부유형"],
+                "검색 출처": row["검색 출처·검색일"],
             } for row in candidates])
             edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"cap_form08_cand_{project.project_id}",
                                     disabled=[c for c in frame.columns if c != "목록에 추가"])
@@ -158,7 +167,7 @@ def render(project) -> None:
                     help="법정 서식에 작성할 값입니다. 지도/GIS에서 사업장 경계부터 대상까지 확인해 입력하세요."),
                 "검색결과 거리(주소점 기준, 참고)": st.column_config.NumberColumn(
                     "주소점 기준 검색거리(참고)", disabled=True,
-                    help="카카오 API가 사업장 주소 좌표에서 반환한 참고값입니다. 법정 거리로 사용할 수 없습니다."),
+                    help="카카오·브이월드·공개 지도가 사업장 주소 좌표에서 반환하거나 계산한 참고값입니다. 법정 거리로 사용할 수 없습니다."),
                 "검색 출처·검색일": st.column_config.TextColumn("검색 출처·검색일", disabled=True),
                 "500m 범위 전체 확인": st.column_config.CheckboxColumn("500m 범위 전체 확인", disabled=True),
                 "거주민수": st.column_config.NumberColumn(
