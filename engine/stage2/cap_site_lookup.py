@@ -180,9 +180,12 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
 
 def find_combined_candidates(address: str, *, get: Callable = _default_get,
                              environment_search: Callable | None = None,
-                             vworld_search: Callable | None = None) -> tuple[list[Candidate], str]:
+                             vworld_search: Callable | None = None,
+                             ngii_search: Callable | None = None,
+                             ngii_keyword: str = "") -> tuple[list[Candidate], str]:
     """Collect facility and environmental candidates from independent sources."""
     from . import cap_vworld_lookup as vworld
+    from . import cap_ngii_lookup as ngii
 
     places: list[Candidate] = []
     notes: list[str] = []
@@ -203,6 +206,17 @@ def find_combined_candidates(address: str, *, get: Callable = _default_get,
                 notes.append("주소는 브이월드 주소 API로 좌표를 찾았습니다.")
         except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
             notes.append(f"브이월드 주소 검색에 실패했습니다({type(exc).__name__}).")
+    if ngii.config()[0]:
+        if ngii_search is None:
+            ngii_search = ngii.search
+        terms = ([ngii_keyword.strip()] if ngii_keyword.strip() else [])
+        terms.extend(c.name for c in places if c.name not in terms)
+        try:
+            official_poi, ngii_notes = ngii_search(address, terms[:ngii.MAX_KEYWORDS])
+            places.extend(official_poi)
+            notes.extend(ngii_notes)
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            notes.append(f"국토정보플랫폼 POI 검색 실패({type(exc).__name__}); 다른 검색 결과만 표시합니다.")
     if point is None:
         return places, " ".join(notes + ["주소 좌표가 없어 환경 후보를 찾지 못했습니다. 직접 확인하세요."])
     try:

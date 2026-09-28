@@ -118,6 +118,15 @@ def candidate_row(candidate: Candidate, *, unclassified: bool = False) -> dict[s
                      "landuse=industrial": ("을종", "공업시설")}
         tag = candidate.address.split("지도 분류: ", 1)[-1].split(" · ", 1)[0]
         category, subtype = osm_types.get(tag, ("", ""))
+    if not unclassified and "국토정보플랫폼 검색 API" in source:
+        # Use the provider's type, never a substring of the place name (e.g.
+        # a bus stop named after a school is not itself a school).
+        type_path = candidate.address.split("지도 분류: ", 1)[-1] if "지도 분류: " in candidate.address else ""
+        leaves = {part.strip() for part in type_path.split(">")}
+        if leaves & {"초등학교", "중학교", "고등학교", "대학교", "대학", "학교"}:
+            category, subtype = "갑종", "교육·연구시설"
+        elif leaves & {"병원", "의원"}:
+            category, subtype = "갑종", "의료시설"
     return {
         "보호대상 명칭": candidate.name,
         "보호대상 구분": category,
