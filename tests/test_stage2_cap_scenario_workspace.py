@@ -5,9 +5,11 @@ import unittest
 
 from engine.stage2 import cap_chemical_workspace as chem
 from engine.stage2 import cap_guideline as guide
+from engine.stage2 import cap_release_workspace as rw
 from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.project import Stage2Project
+from ui.cap_form12_view import _scenario_editor_frame
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,6 +34,17 @@ def _facilities(project, *rows):
 
 
 class PreliminaryScenarioTests(unittest.TestCase):
+    def test_scenario_text_editors_accept_numeric_and_missing_source_values(self):
+        columns = [rw.HEAD_COLUMN, rw.BOUNDARY_COLUMN, rw.HEAT_COLUMN, "사고시나리오명"]
+        frame = _scenario_editor_frame([
+            {rw.HEAD_COLUMN: 1.5, rw.BOUNDARY_COLUMN: 30.0, rw.HEAT_COLUMN: None,
+             "사고시나리오명": "E-1 누출"},
+        ], columns)
+        self.assertEqual(frame.loc[0, rw.HEAD_COLUMN], "1.5")
+        self.assertEqual(frame.loc[0, rw.BOUNDARY_COLUMN], "30.0")
+        self.assertEqual(frame.loc[0, rw.HEAT_COLUMN], "")
+        self.assertTrue(all(str(frame[column].dtype).startswith("string") for column in columns[:-1]))
+
     def test_annex2_quantities_are_read_from_the_source_document(self):
         table = guide.preliminary_scenario_quantities()
         self.assertEqual(table[("액체", "유해성 구분 없음")], 400.0)

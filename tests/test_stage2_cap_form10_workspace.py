@@ -70,10 +70,22 @@ class CAPForm10WorkspaceTests(unittest.TestCase):
 
     def test_direct_required_capacity_overrides_the_ratio(self):
         project = _project()
-        f10.save(project, [_filled(project, **{"필요용량 직접입력(m3)": "3"})], ratio="110", basis="검토자료")
+        f10.save(project, [_filled(project, **{"필요용량 직접입력(m3)": "3",
+                                                "필요용량 근거": "TK-1 방류벽 검토서 2쪽"})],
+                 ratio="110", basis="다른 설비의 공통 기준")
         [row] = f10.edit_rows(project)
         self.assertEqual(row["필요용량 직접입력(m3)"], "3")
+        self.assertEqual(row["필요용량 근거"], "TK-1 방류벽 검토서 2쪽")
+        self.assertEqual(project.get_field(f10.DIKE_KEY).value[0]["필요용량 기준·근거"],
+                         "TK-1 방류벽 검토서 2쪽")
         self.assertEqual(f10.needs(project), [])
+
+    def test_direct_required_capacity_without_basis_is_not_silently_confirmed(self):
+        project = _project()
+        f10.save(project, [_filled(project, **{"필요용량 직접입력(m3)": "3"})],
+                 ratio="120", basis="다른 설비의 공통 기준")
+        self.assertEqual(project.get_field(f10.DIKE_KEY).value[0]["필요용량 기준·근거"], "")
+        self.assertTrue(any("근거" in problem for problem in f10.needs(project)))
 
     def test_not_applicable_facilities_are_recorded(self):
         project = _project()
