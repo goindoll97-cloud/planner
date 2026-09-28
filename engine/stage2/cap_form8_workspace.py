@@ -8,15 +8,17 @@ from __future__ import annotations
 """
 
 from datetime import date
+import math
 import re
 from typing import Any, Mapping
 
 from . import cap_guideline
 from .cap_form8_engine import build_cap_form8_data
 from .cap_site_lookup import Candidate
-from .project import Stage2Project
+from .project import EvidenceRef, Stage2Project
 
 SITE_KEY = "cap.site.surrounding_environment"
+REVIEW_KEY = "cap.workspace.form8_review"
 ADDRESS_KEY = "business.address"
 CATEGORIES = ("갑종", "을종", "환경수용체")
 SUBTYPES = {
@@ -30,6 +32,12 @@ COLUMNS = ("보호대상 명칭", "보호대상 구분", "세부유형", "주소
            "검색결과 거리(주소점 기준, 참고)", "검색 출처·검색일", "GIS/현장 근거", "거주민수", "근로자수",
            "500m 범위 전체 확인")
 NO_TARGET = "보호대상 없음 여부"
+REVIEW_ITEMS = (
+    ("boundary", "사업장 부지 경계와 검토 범위를 도면·지도에서 확인"),
+    ("facilities", "학교·병원·주택 등 주변 건물·시설을 확인"),
+    ("environment", "하천·산림·농경지·보호구역 등 자연환경을 확인"),
+    ("classification", "각 대상의 위치·거리·법정 분류를 근거자료와 대조"),
+)
 
 
 def _norm(value: object) -> str:
@@ -72,6 +80,112 @@ def scope_reviewed(project: Stage2Project) -> bool:
         return False
     return all(_norm(row.get("500m 범위 전체 확인")) in ("true", "예", "yes", "1")
                for row in record.value if isinstance(row, Mapping))
+
+
+def review(project: Stage2Project) -> dict[str, Any]:
+    record = project.get_field(REVIEW_KEY)
+    value = record.value if record is not None and isinstance(record.value, Mapping) else {}
+    return dict(value)
+
+
+def invalidate_review(project: Stage2Project) -> None:
+    """An edited candidate list must not inherit a previous completed review."""
+    project.set_field(REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {}, "HOLD")
+
+
+def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mapping[str, Any]] | None = None
+                        ) -> tuple[list[dict[str, Any]], list[str]]:
+    """Stage a company's old list for human review; never infer its legal category."""
+    aliases = {"명칭": "보호대상 명칭", "이름": "보호대상 명칭", "구분": "보호대상 구분",
+               "종류": "세부유형", "보호대상 종류": "세부유형", "주소": "주소·위치", "위치": "주소·위치",
+               "거리(m)": "사업장 경계와 거리(m)", "거리": "사업장 경계와 거리(m)",
+               "근거자료": "GIS/현장 근거", "확인근거": "GIS/현장 근거"}
+
+    def clean(value: Any) -> Any:
+        if value is None or (isinstance(value, float) and not math.isfinite(value)):
+            return ""
+        return value.strip() if isinstance(value, str) else value
+
+    def identity(row: Mapping[str, Any]) -> tuple[str, str]:
+        return _norm(row.get("보호대상 명칭")), _norm(row.get("주소·위치"))
+
+    seen = {identity(row) for row in existing or []}
+    imported: list[dict[str, Any]] = []
+    notices: list[str] = []
+    for line, raw in enumerate(raw_rows, start=2):
+        values = {aliases.get(str(k).strip(), str(k).strip()): clean(v) for k, v in raw.items()}
+        name = str(values.get("보호대상 명칭") or "").strip()
+        if not name:
+            notices.append(f"{line}행은 보호대상 명칭이 없어 건너뛰었습니다.")
+            continue
+        row = {column: values.get(column, "") for column in COLUMNS}
+        row["500m 범위 전체 확인"] = False
+        # Old search metadata is not evidence that the site was checked today.
+        row["검색 출처·검색일"] = ""
+        row["검색결과 거리(주소점 기준, 참고)"] = ""
+        key = identity(row)
+        if key in seen:
+            notices.append(f"{line}행 ‘{name}’은 같은 이름·위치가 목록에 있어 건너뛰었습니다.")
+            continue
+        seen.add(key)
+        imported.append(row)
+    return imported, notices
+
+
+def review_issues(rows: list[Mapping[str, Any]], no_target: bool, checks: Mapping[str, bool],
+                  source: str, method: str, map_numbers: str) -> list[str]:
+    issues = [f"‘{label}’ 항목을 확인해 주세요." for key, label in REVIEW_ITEMS if not checks.get(key)]
+    if not source.strip():
+        issues.append("확인한 지도·도면과 확인일을 적어 주세요.")
+    if not method.strip():
+        issues.append("사업장 경계와 거리의 확인 방법을 적어 주세요.")
+    if no_target:
+        return issues
+    names = [str(row.get("보호대상 명칭") or "").strip() for row in rows]
+    if not any(names):
+        issues.append("보호대상 목록을 입력하거나, 범위 전체 확인 후 ‘보호대상 없음’을 선택하세요.")
+        return issues
+    if any(not name for name in names):
+        issues.append("목록의 빈 행을 삭제하거나 보호대상 명칭을 입력해 주세요.")
+    seen: set[tuple[str, str]] = set()
+    for index, row in enumerate(rows, start=1):
+        name = names[index - 1] or f"{index}행"
+        category = str(row.get("보호대상 구분") or "").strip()
+        subtype = str(row.get("세부유형") or "").strip()
+        if category not in CATEGORIES or subtype not in SUBTYPES.get(category, ()):
+            issues.append(f"{name}: 보호대상 구분과 세부유형을 실제 자료로 확인해 주세요.")
+        if not str(row.get("주소·위치") or "").strip():
+            issues.append(f"{name}: 위치·주소를 확인해 주세요.")
+        try:
+            raw_distance = row.get("사업장 경계와 거리(m)")
+            distance = float(str("" if raw_distance is None else raw_distance).replace(",", ""))
+        except ValueError:
+            distance = math.nan
+        if not math.isfinite(distance) or distance < 0 or distance > 500:
+            issues.append(f"{name}: 사업장 경계에서의 거리를 0~500m로 확인해 주세요.")
+        if not str(row.get("GIS/현장 근거") or "").strip():
+            issues.append(f"{name}: 지도·현장에서 확인한 자료·날짜·방법을 적어 주세요.")
+        identity = (_norm(name), category)
+        if identity in seen:
+            issues.append(f"{name}: 목록에 같은 이름과 구분이 중복되어 있습니다.")
+        seen.add(identity)
+    if not map_numbers.strip():
+        issues.append("지도에 표시한 보호대상 일련번호를 적어 주세요.")
+    else:
+        numbers = [part.strip() for part in map_numbers.split(",")]
+        expected = set(range(1, len(names) + 1))
+        if not all(n.isdigit() for n in numbers) or len(numbers) != len(expected) or {int(n) for n in numbers} != expected:
+            issues.append(f"지도 번호와 목록 번호를 대조해 주세요. 목록에는 1~{len(names)}번이 있습니다.")
+    return issues
+
+
+def save_review(project: Stage2Project, checks: Mapping[str, bool], source: str,
+                method: str, map_numbers: str, evidence: list[EvidenceRef] | None = None) -> None:
+    project.set_field(REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {
+        "확인항목": {key: bool(checks.get(key)) for key, _ in REVIEW_ITEMS},
+        "사용자료·확인일": source.strip(), "경계·거리 확인방법": method.strip(),
+        "지도 번호": map_numbers.strip(),
+    }, "USER_CONFIRMED", evidence=evidence)
 
 
 def save(project: Stage2Project, rows: list[Mapping[str, Any]], no_target: bool, evidence: str = "",
