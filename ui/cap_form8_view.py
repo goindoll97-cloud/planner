@@ -9,6 +9,7 @@ import streamlit as st
 from engine.stage2 import cap_form8_workspace as f8
 from engine.stage2 import cap_site_lookup as lookup
 from engine.stage2 import cap_vworld_lookup as vworld
+from engine.stage2 import cap_ngii_lookup as ngii
 from engine.stage2 import cap_workspace as ws
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.storage import save_project
@@ -47,13 +48,16 @@ def _render_methodology() -> None:
             "카카오는 등록된 장소 검색을 한 검색당 최대 45건 조회합니다. 브이월드 2D 데이터 API는 도로명주소 건물과 하천망, "
             "습지·자연공원·산림·상수원 보호구역 등의 공간정보를 조회합니다. "
             "OpenStreetMap의 시설·상점·관광지·자연환경 지도 객체도 더합니다. "
-            "검색된 정보는 분류하지 않고 출처와 주소점 기준 거리를 함께 보여 줍니다."
+            "국토정보플랫폼 키가 있으면 등록된 장소명을 검색하고, 같은 기관의 주소 좌표에서 800m 이내 POI만 더합니다. "
+            "이 검색 API는 반경 전체를 직접 조회하지 못하므로 키워드에 걸리지 않은 장소는 빠질 수 있습니다. "
+            "검색된 정보에는 출처와 주소점 기준 거리를 함께 보여 줍니다."
         )
         st.warning(
             "화면의 검색거리는 주소 좌표 기준 참고값입니다. 사업장 경계부터의 실제 거리, "
             "보호대상 해당 여부, 원천 데이터에 없는 시설과 페이지 제한에 따른 검색 누락은 프로그램이 확인하지 못합니다. "
             "검색되지 않은 곳도 지도·GIS 또는 현장 자료로 확인하세요."
         )
+        st.markdown("[국토정보플랫폼 검색 API 활용안내](https://map.ngii.go.kr/mi/emapApi/searchApiGuid.do) · 국가관심지점정보(POI) 키워드 검색/지오코딩, EPSG:5179")
 
     with st.expander("법정 서식과 분류 기준 원문 확인"):
         manifest_path = Path(__file__).resolve().parents[1] / "data/stage2/cap_authoritative_sources.json"
@@ -119,19 +123,25 @@ def render(project) -> None:
         candidate_key = f"{CAND_KEY}_{project.project_id}"
         addr = f8.address(project)
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
-        if not lookup.api_key() and not vworld.api_key():
-            st.info(f"{lookup.ENV_KEY} 또는 {vworld.ENV_KEY}가 없어 자동 검색을 쓸 수 없습니다. 다음 단계에서 보호대상을 직접 입력하세요.")
+        if not lookup.api_key() and not vworld.api_key() and not ngii.config()[0]:
+            st.info(f"{lookup.ENV_KEY}, {vworld.ENV_KEY}, {ngii.ENV_KEY} 중 설정된 키가 없어 자동 검색을 쓸 수 없습니다. 다음 단계에서 보호대상을 직접 입력하세요.")
             with st.expander("키를 못 찾는 이유 확인하기"):
                 st.caption("프로그램이 키를 어디에서 찾았는지 보여 줍니다(키 값은 표시하지 않습니다).")
                 for line in lookup.env_diagnosis():
                     st.write("• " + line)
                 st.caption("브이월드 인증키는 프로젝트 .env 파일의 VWORLD_API_KEY 또는 기존 v_world_key로 읽습니다. 키 값은 화면에 표시하지 않습니다.")
+                st.caption("국토정보플랫폼 검색 인증키는 NGII_API_KEY, 인증키 발급 시 등록한 주소는 NGII_REFERRER_URL로 설정합니다. 브이월드 키와 별개입니다.")
                 st.caption(".env 파일을 고쳤다면 프로그램을 완전히 껐다가 다시 실행해야 새 값을 읽습니다.")
-        if vworld.api_key() and not lookup.api_key():
+        if vworld.api_key() and not lookup.api_key() and not ngii.config()[0]:
             st.info("카카오 키가 없어 시설·장소 검색은 생략합니다. 브이월드와 OpenStreetMap 환경 후보는 조회할 수 있습니다.")
-        if (lookup.api_key() or vworld.api_key()) and st.button("주소로 주변 시설·환경 후보 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
+        ngii_keyword = st.text_input("국토정보플랫폼에서 추가로 찾을 장소명 (선택)",
+                                     key=f"cap_form08_ngii_term_{project.project_id}",
+                                     help="예: 태화강, 울산초등학교. 국토정보플랫폼 POI는 키워드로 전국을 검색한 뒤 주소점 800m 안의 결과만 남깁니다. 비우면 카카오가 찾은 장소명을 대조합니다.") if ngii.config()[0] else ""
+        if ngii.config()[0] and not ngii.config()[1]:
+            st.warning("국토정보플랫폼 검색에는 .env의 NGII_REFERRER_URL(키 발급 시 등록한 주소)도 필요합니다.")
+        if (lookup.api_key() or vworld.api_key() or ngii.config()[0]) and st.button("주소로 주변 시설·환경 후보 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
             with st.spinner("주변 시설과 환경 지도 자료를 조회하는 중입니다..."):
-                found, message = lookup.find_combined_candidates(addr)
+                found, message = lookup.find_combined_candidates(addr, ngii_keyword=ngii_keyword)
             st.session_state[candidate_key] = [f8.candidate_row(c) for c in found]
             st.session_state[candidate_key + "_msg"] = message
             st.session_state[candidate_key + "_address"] = addr
