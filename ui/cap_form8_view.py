@@ -8,15 +8,11 @@ import pandas as pd
 import streamlit as st
 
 from engine.stage2 import cap_form8_workspace as f8
-from engine.stage2 import cap_site_lookup as lookup
-from engine.stage2 import cap_vworld_lookup as vworld
-from engine.stage2 import cap_ngii_lookup as ngii
 from engine.stage2 import cap_workspace as ws
 from engine.stage2 import storage
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from engine.stage2.storage import save_project
 
-CAND_KEY = "cap_form08_candidates"
 FORM8_SOURCE_URL = (
     "https://www.law.go.kr/flDownload.do?bylClsCd=200203&"
     "flNm=%5B%EB%B3%84%EC%A7%80+8%5D+%EC%82%AC%EC%97%85%EC%9E%A5+"
@@ -30,15 +26,14 @@ def _render_manual_map_guide(*, expanded: bool) -> None:
     with st.expander("처음 작성한다면: 어느 지도에서 무엇을 확인하나요?", expanded=expanded):
         st.write(
             "**특정 지도 하나만 사용해야 하는 것은 아닙니다.** 주변 시설을 찾고, 경계·거리와 "
-            "자연환경을 확인할 수 있는 자료를 목적에 맞게 대조하세요. 아래 지도 웹사이트는 "
-            "직접 열어 볼 수 있으며, 이 프로그램의 자동검색 API 키를 입력할 필요는 없습니다."
+            "자연환경을 확인할 수 있는 자료를 목적에 맞게 대조하세요. 아래 지도는 바로 열어 볼 수 있습니다."
         )
         st.markdown(
             "| 지도 바로 열기 | 여기서 먼저 확인할 것 | 확인 시 주의할 점 |\n"
             "| --- | --- | --- |\n"
             "| [카카오맵](https://map.kakao.com/) | 주소·학교·병원·주택 등 주변 장소명, 항공사진·거리 모습 | 지도에 없는 장소도 있고, 장소명만으로 법정 보호대상 구분은 확정할 수 없습니다. |\n"
             "| [브이월드](https://www.vworld.kr/) | 항공사진·건물·토지 관련 지도에서 사업장 주변 위치와 범위 대조 | 지도에서 보이는 대략적인 경계를 회사의 부지 도면과 대조하세요. |\n"
-            "| [국토정보플랫폼 국토정보맵](https://map.ngii.go.kr/ms/map/NlipMap.do) | 지형·항공사진·건물·하천 등 주변 공간 현황 보완 | 이 지도 화면을 여는 것과 국토정보플랫폼 검색 API 키를 발급받는 것은 별개입니다. |\n"
+            "| [국토정보플랫폼 국토정보맵](https://map.ngii.go.kr/ms/map/NlipMap.do) | 지형·항공사진·건물·하천 등 주변 공간 현황 보완 | 표시된 지형·시설 정보가 현재 현장과 일치하는지 확인하세요. |\n"
             "| [환경공간정보서비스](https://aid.mcee.go.kr/) | 토지피복·환경주제도에서 농경지·산림·물환경·보호지역 자료 대조 | 지도상 모양만으로 국가하천·법정 보호지역 등의 지정 여부를 확정하지 마세요. |"
         )
         st.write(
@@ -60,32 +55,14 @@ def _render_methodology() -> None:
     with st.expander("이 서식을 처음 작성한다면: 작성 순서와 예시", expanded=True):
         st.markdown(
             "1. **사업장 경계부터 500m 범위를 확인합니다.** 사업장 주소 한 점이 아니라 실제 부지 경계를 기준으로 지도나 GIS에서 살펴보세요.\n"
-            "2. **지도·기존 자료에서 후보를 찾습니다.** 지도·GIS와 필요하면 현장 자료로 학교, 병원, 주택, 하천 등을 확인하세요. 자동검색은 선택 사항입니다.\n"
-            "3. **대상별로 분류하고 거리를 적습니다.** 예를 들어 학교가 검색되면 실제 위치와 해당 분류를 확인하고, 사업장 경계에서 학교까지의 거리를 측정해 목록에 적습니다. 주소점에서 나온 검색거리는 그대로 옮기지 않습니다.\n"
+            "2. **지도·기존 자료에서 후보를 찾습니다.** 지도와 필요하면 현장 자료로 학교, 병원, 주택, 하천 등을 확인하세요. 회사에 이전 목록이 있으면 가져와 현재 상태와 대조합니다.\n"
+            "3. **대상별로 분류하고 거리를 적습니다.** 예를 들어 학교가 보이면 실제 위치와 해당 분류를 확인하고, 사업장 경계에서 학교까지의 거리를 측정해 목록에 적습니다.\n"
             "4. **지도와 목록을 대조합니다.** 목록의 일련번호를 지도에도 표시하고, 사용한 지도·확인일·측정 방법을 기록한 뒤 500m 전체를 다시 확인하세요."
         )
         st.caption(
-            "검색 결과가 없거나 모두 500m 밖에 있어도 '보호대상 없음'으로 바로 확정할 수 없습니다. "
-            "경계 기준 500m 전체를 확인하고 근거를 남겨야 합니다."
+            "지도 한 장에 표시된 장소만으로 '보호대상 없음'을 확정하지 마세요. "
+            "사업장 경계 기준 500m 전체를 대조하고 근거를 남겨야 합니다."
         )
-
-    with st.expander("자동검색은 어떻게 작동하나요?"):
-        st.write(
-            "사업장 주소를 카카오 주소 API로 좌표로 바꾸고(카카오 키가 없거나 주소 검색에 실패하면 브이월드 주소 API 사용), "
-            f"그 좌표에서 반경 {lookup.SEARCH_RADIUS_M}m의 후보를 찾습니다. "
-            "카카오는 등록된 장소 검색을 한 검색당 최대 45건 조회합니다. 브이월드 2D 데이터 API는 도로명주소 건물과 하천망, "
-            "습지·자연공원·산림·상수원 보호구역 등의 공간정보를 조회합니다. "
-            "OpenStreetMap의 시설·상점·관광지·자연환경 지도 객체도 더합니다. "
-            "국토정보플랫폼 키가 있으면 등록된 장소명을 검색하고, 같은 기관의 주소 좌표에서 800m 이내 POI만 더합니다. "
-            "이 검색 API는 반경 전체를 직접 조회하지 못하므로 키워드에 걸리지 않은 장소는 빠질 수 있습니다. "
-            "검색된 정보에는 출처와 주소점 기준 거리를 함께 보여 줍니다."
-        )
-        st.warning(
-            "화면의 검색거리는 주소 좌표 기준 참고값입니다. 사업장 경계부터의 실제 거리, "
-            "보호대상 해당 여부, 원천 데이터에 없는 시설과 페이지 제한에 따른 검색 누락은 프로그램이 확인하지 못합니다. "
-            "검색되지 않은 곳도 지도·GIS 또는 현장 자료로 확인하세요."
-        )
-        st.markdown("[국토정보플랫폼 검색 API 활용안내](https://map.ngii.go.kr/mi/emapApi/searchApiGuid.do) · 국가관심지점정보(POI) 키워드 검색/지오코딩, EPSG:5179")
 
     with st.expander("법정 서식과 분류 기준 원문 확인"):
         manifest_path = Path(__file__).resolve().parents[1] / "data/stage2/cap_authoritative_sources.json"
@@ -136,7 +113,7 @@ def _render_classification_guide() -> None:
 
 def _render_company_import(project) -> None:
     st.write("**회사에서 작성한 주변 시설 목록이 있나요?** 파일에서 가져와 지도·현장 확인 전 후보로 저장할 수 있습니다.")
-    with st.expander("기존 목록 파일 가져오기 (API 키 불필요)"):
+    with st.expander("기존 목록 파일 가져오기"):
         st.caption("CSV 또는 엑셀 파일의 첫 시트에서 ‘보호대상 명칭’을 읽습니다. ‘명칭’, ‘주소’, ‘구분’, "
                    "‘세부유형’, ‘거리(m)’, ‘근거자료’ 열도 사용할 수 있습니다. 가져온 값은 미검토 후보이며 "
                    "법정 분류나 거리로 자동 확정되지 않습니다.")
@@ -203,72 +180,14 @@ def render(project) -> None:
         _render_manual_map_guide(expanded=step["id"] == "search")
 
     if step["id"] == "search":
-        _render_company_import(project)
-        st.write("**자동 주변검색 (선택)** · 키가 없어도 기존 목록 가져오기와 직접 입력을 사용할 수 있습니다.")
-        candidate_key = f"{CAND_KEY}_{project.project_id}"
         addr = f8.address(project)
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
-        if not lookup.api_key() and not vworld.api_key() and not ngii.config()[0]:
-            st.info("자동검색이 설정되지 않았습니다. 위 지도 바로가기로 직접 확인하고, "
-                    "회사의 기존 목록을 가져오거나 다음 단계에서 직접 입력할 수 있습니다.")
-            with st.expander("자동검색 연결 상태 자세히 보기"):
-                st.caption("프로그램이 키를 어디에서 찾았는지 보여 줍니다(키 값은 표시하지 않습니다).")
-                for line in lookup.env_diagnosis():
-                    st.write("• " + line)
-                st.caption("브이월드 인증키는 프로젝트 .env 파일의 VWORLD_API_KEY 또는 기존 v_world_key로 읽습니다. 키 값은 화면에 표시하지 않습니다.")
-                st.caption("국토정보플랫폼 검색 인증키는 NGII_API_KEY, 인증키 발급 시 등록한 주소는 NGII_REFERRER_URL로 설정합니다. 브이월드 키와 별개입니다.")
-                st.caption(".env 파일을 고쳤다면 프로그램을 완전히 껐다가 다시 실행해야 새 값을 읽습니다.")
-        if vworld.api_key() and not lookup.api_key() and not ngii.config()[0]:
-            st.info("카카오 키가 없어 시설·장소 검색은 생략합니다. 브이월드와 OpenStreetMap 환경 후보는 조회할 수 있습니다.")
-        ngii_keyword = st.text_input("국토정보플랫폼에서 추가로 찾을 장소명 (선택)",
-                                     key=f"cap_form08_ngii_term_{project.project_id}",
-                                     help="예: 태화강, 울산초등학교. 국토정보플랫폼 POI는 키워드로 전국을 검색한 뒤 주소점 800m 안의 결과만 남깁니다. 비우면 카카오가 찾은 장소명을 대조합니다.") if ngii.config()[0] else ""
-        if ngii.config()[0] and not ngii.config()[1]:
-            st.warning("국토정보플랫폼 검색에는 .env의 NGII_REFERRER_URL(키 발급 시 등록한 주소)도 필요합니다.")
-        if (lookup.api_key() or vworld.api_key() or ngii.config()[0]) and st.button("주소로 주변 시설·환경 후보 찾기", type="primary", disabled=not addr, key=f"cap_form08_search_{project.project_id}"):
-            with st.spinner("주변 시설과 환경 지도 자료를 조회하는 중입니다..."):
-                found, message = lookup.find_combined_candidates(addr, ngii_keyword=ngii_keyword)
-            st.session_state[candidate_key] = [f8.candidate_row(c) for c in found]
-            st.session_state[candidate_key + "_msg"] = message
-            st.session_state[candidate_key + "_address"] = addr
-        same_address = st.session_state.get(candidate_key + "_address") == addr
-        if same_address and st.session_state.get(candidate_key + "_msg"):
-            st.caption(st.session_state[candidate_key + "_msg"])
-        if not same_address and st.session_state.get(candidate_key):
-            st.info("사업장 주소가 변경되었습니다. 주변 장소 후보를 다시 검색해 주세요.")
-        candidates = (st.session_state.get(candidate_key) or []) if same_address else []
-        if candidates:
-            st.caption(f"검색된 공간정보 {len(candidates)}건입니다. 구분·유형 후보는 검색 자료로 추정할 수 있을 때만 표시하며 확정 판정이 아닙니다. 빈칸은 확인 후 목록 단계에서 분류하세요.")
-            page_size = 100
-            page_count = (len(candidates) + page_size - 1) // page_size
-            page = st.number_input("후보 목록 페이지", min_value=1, max_value=page_count, value=1,
-                                   key=f"cap_form08_page_{project.project_id}") if page_count > 1 else 1
-            start = (page - 1) * page_size
-            page_rows = candidates[start:start + page_size]
-            frame = pd.DataFrame([{
-                "목록에 추가": False,
-                "장소명": row["보호대상 명칭"],
-                "구분 후보": row["보호대상 구분"],
-                "유형 후보": row["세부유형"],
-                "주소·위치": row["주소·위치"],
-                "주소점 거리(m)": row["검색결과 거리(주소점 기준, 참고)"],
-                "검색 출처": row["검색 출처·검색일"],
-            } for row in page_rows])
-            edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"cap_form08_cand_{project.project_id}_{page}",
-                                    disabled=[c for c in frame.columns if c != "목록에 추가"])
-            if st.button("선택한 후보를 목록에 추가", key=f"cap_form08_add_{project.project_id}"):
-                chosen = [page_rows[i] for i, selected in enumerate(edited["목록에 추가"]) if selected]
-                f8.save(project, f8.saved_rows(project) + chosen, no_target=False, status="HOLD")
-                f8.invalidate_review(project)
-                st.session_state[f"cap_form08_scope_reviewed_{project.project_id}"] = False
-                save_project(project)
-                st.success(
-                    f"{len(chosen)}건을 미검토 후보로 저장했습니다. 주소점 기준 검색거리는 참고란에만 들어가며, "
-                    "사업장 경계 기준 거리는 비워 두었습니다. 목록 단계에서 확인 후 입력하세요."
-                )
+        st.caption("위 지도를 열어 사업장 경계 주변을 확인하고, 이전에 작성한 목록이 있으면 아래에서 가져오세요. "
+                   "목록이 없다면 ‘2. 보호대상 목록’에서 새로 작성할 수 있습니다.")
+        _render_company_import(project)
     elif step["id"] == "list":
         _render_classification_guide()
-        st.caption("API 키 없이 직접 입력할 수 있습니다. 위 지도 안내를 열어 확인한 뒤, 표에 없는 대상은 새 행으로 추가하세요.")
+        st.caption("위 지도 안내를 열어 확인한 뒤, 표에 없는 대상은 새 행으로 추가하세요.")
         no_target = st.checkbox("사업장 경계 500m 안에 보호대상이 없습니다", value=f8.declared_no_target(project),
                                 key=f"cap_form08_none_{project.project_id}")
         rows_source = f8.saved_rows(project)
@@ -285,7 +204,7 @@ def render(project) -> None:
             frame = pd.DataFrame(rows_source, columns=list(f8.COLUMNS))
             config = {
                 "GIS/현장 근거": st.column_config.TextColumn(
-                    "확인한 자료·날짜·방법", help="예: 브이월드 항공사진 2026-09-28 확인, 회사 부지 도면 B-01의 경계부터 측정. 자동검색 출처만으로는 확정 근거가 되지 않습니다."),
+                    "확인한 자료·날짜·방법", help="예: 브이월드 항공사진 2026-09-28 확인, 회사 부지 도면 B-01의 경계부터 측정. 이전 목록만으로는 현재 상태를 확인한 근거가 되지 않습니다."),
                 "보호대상 구분": st.column_config.SelectboxColumn("구분", options=list(f8.CATEGORIES),
                                                                help="「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」에 따른 구분입니다. 갑종·을종은 「유해화학물질 취급시설 외벽으로부터 보호대상까지의 안전거리 고시」 별표 2·3도 함께 확인하세요."),
                 "세부유형": st.column_config.SelectboxColumn(
@@ -294,17 +213,17 @@ def render(project) -> None:
                 "사업장 경계와 거리(m)": st.column_config.NumberColumn(
                     "사업장 경계 기준 실제 거리(m)", min_value=0,
                     help="법정 서식에 작성할 값입니다. 지도/GIS에서 사업장 경계부터 대상까지 확인해 입력하세요."),
-                "검색결과 거리(주소점 기준, 참고)": st.column_config.NumberColumn(
-                    "주소점 기준 검색거리(참고)", disabled=True,
-                    help="카카오·브이월드·공개 지도가 사업장 주소 좌표에서 반환하거나 계산한 참고값입니다. 법정 거리로 사용할 수 없습니다."),
-                "검색 출처·검색일": st.column_config.TextColumn("검색 출처·검색일", disabled=True),
-                "500m 범위 전체 확인": st.column_config.CheckboxColumn("500m 범위 전체 확인", disabled=True),
                 "거주민수": st.column_config.NumberColumn(
                     "거주민수", min_value=0, help="그 대상에 사는 사람 수입니다. 별지 제12·13호 영향범위 내 주민 수 집계에 쓰입니다(비우면 0)."),
                 "근로자수": st.column_config.NumberColumn(
                     "근로자수", min_value=0, help="그 대상에서 일하는 사람 수입니다. 별지 제12·13호 집계에 쓰입니다(비우면 0)."),
             }
-            edited_rows = st.data_editor(frame, column_config=config, num_rows="dynamic", width="stretch",
+            # Keep provenance from older projects in the saved rows, but show
+            # only the fields that an author can verify on a map or site visit.
+            visible_columns = [c for c in f8.COLUMNS if c not in (
+                "검색결과 거리(주소점 기준, 참고)", "검색 출처·검색일", "500m 범위 전체 확인")]
+            edited_rows = st.data_editor(frame, column_config=config, column_order=visible_columns,
+                                         num_rows="dynamic", width="stretch",
                                          key=f"cap_form08_rows_{project.project_id}").to_dict("records")
             hints = {f"{r.get('보호대상 구분')}/{r.get('세부유형')}": f8.type_hint(str(r.get("보호대상 구분")), str(r.get("세부유형")))
                      for r in edited_rows}
@@ -312,7 +231,7 @@ def render(project) -> None:
                 if hint:
                     st.caption(f"「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4 「보호대상」 · {hint}")
         st.markdown("**지도·현장 확인 기록**")
-        st.caption("어느 지도에서 무엇을 확인했는지 기록합니다. 자동검색 후보는 이 확인을 대신하지 않습니다.")
+        st.caption("어느 지도에서 무엇을 확인했는지 기록합니다. 회사의 이전 목록은 현재 상태와 다시 대조하세요.")
         previous_review = f8.review(project)
         previous_checks = previous_review.get("확인항목", {})
         checks = {
