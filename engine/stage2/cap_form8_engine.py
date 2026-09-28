@@ -160,6 +160,23 @@ def build_cap_form8_data(project: Stage2Project) -> CAPForm8Data:
     if not explicit_no_target and not rows:
         blockers.append("500m 내 보호대상 명세가 없으며 '보호대상 없음'도 확정되지 않았습니다.")
 
+    review = project.get_field("cap.workspace.form8_review")
+    if review is not None and review.status not in CONFIRMED_STATUSES:
+        blockers.append("후보 목록이 바뀌었습니다. 지도·현장 확인표와 목록을 다시 검토해 주세요.")
+    if review is not None and review.status in CONFIRMED_STATUSES and isinstance(review.value, Mapping):
+        values = review.value
+        checks = values.get("확인항목")
+        if not isinstance(checks, Mapping) or not all(checks.get(key) is True for key in
+                                                         ("boundary", "facilities", "environment", "classification")):
+            blockers.append("지도·현장 확인표의 모든 항목을 다시 확인해 주세요.")
+        if not _clean(values.get("사용자료·확인일")) or not _clean(values.get("경계·거리 확인방법")):
+            blockers.append("지도·도면의 출처·확인일과 경계·거리 확인 방법을 남겨 주세요.")
+        if not explicit_no_target and rows:
+            numbers = [part.strip() for part in _clean(values.get("지도 번호")).split(",")]
+            if (not all(token.isdigit() for token in numbers) or len(numbers) != len(rows)
+                    or {int(token) for token in numbers} != set(range(1, len(rows) + 1))):
+                blockers.append("지도에 표시한 번호가 보호대상 목록의 일련번호와 일치하는지 확인해 주세요.")
+
     if explicit_no_target:
         messages.append("회사/GIS가 500m 내 보호대상 없음으로 확정한 경우 빈 목록을 허용합니다.")
     else:

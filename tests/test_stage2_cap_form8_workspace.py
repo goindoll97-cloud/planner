@@ -37,6 +37,47 @@ def _fake_get(url, params, headers):
 
 
 class CAPForm8WorkspaceTests(unittest.TestCase):
+    def test_company_list_import_is_staged_and_deduplicated(self):
+        project = _project()
+        imported, notices = f8.import_company_rows([
+            {"명칭": "한빛초등학교", "주소": "산업로 9", "구분": "갑종", "거리(m)": "320"},
+            {"명칭": "한빛초등학교", "주소": "산업로 9"},
+            {"명칭": "", "주소": "이름 없는 시설"},
+        ])
+        self.assertEqual(len(imported), 1)
+        self.assertEqual(len(notices), 2)
+        self.assertEqual(imported[0]["사업장 경계와 거리(m)"], "320")
+        self.assertEqual(imported[0]["검색 출처·검색일"], "")
+        self.assertFalse(imported[0]["500m 범위 전체 확인"])
+        f8.save(project, imported, no_target=False, scope_reviewed=False, status="HOLD")
+        self.assertTrue(f8.needs(project))
+
+    def test_map_numbers_and_review_record_are_rechecked_when_candidates_change(self):
+        project = _project()
+        checks = {key: True for key, _ in f8.REVIEW_ITEMS}
+        row = {"보호대상 명칭": "한빛초등학교", "보호대상 구분": "갑종",
+               "세부유형": "교육·연구시설", "주소·위치": "산업로 9",
+               "사업장 경계와 거리(m)": 320, "GIS/현장 근거": "지도 2026-09-28 경계 측정"}
+        self.assertEqual(f8.review_issues([row], False, checks, "지도·도면 2026-09-28", "경계 측정", "1"), [])
+        self.assertEqual(f8.review_issues([{**row, "사업장 경계와 거리(m)": 0}], False,
+                                          checks, "지도·도면 2026-09-28", "경계 측정", "1"), [])
+        self.assertTrue(any("지도 번호" in issue for issue in
+                            f8.review_issues([row], False, checks, "자료", "측정", "2")))
+        self.assertTrue(any("자연환경" in issue for issue in
+                            f8.review_issues([row], False, {**checks, "environment": False}, "자료", "측정", "1")))
+        f8.save(project, [row], no_target=False, scope_reviewed=True)
+        from engine.stage2.project import EvidenceRef
+        map_ref = EvidenceRef(source_type="FORM8_MAP_REVIEW", source_name="확인 지도.pdf", sha256="abc123")
+        f8.save_review(project, checks, "지도·도면 2026-09-28", "경계 측정", "1", [map_ref])
+        self.assertEqual(f8.review(project)["지도 번호"], "1")
+        self.assertEqual(project.get_field(f8.REVIEW_KEY).evidence[0].source_name, "확인 지도.pdf")
+        self.assertEqual(f8.needs(project), [])
+        f8.save_review(project, checks, "지도·도면 2026-09-28", "경계 측정", "2")
+        self.assertTrue(any("일련번호" in issue for issue in f8.needs(project)))
+        f8.invalidate_review(project)
+        self.assertEqual(f8.review(project), {})
+        self.assertTrue(any("다시 검토" in issue for issue in f8.needs(project)))
+
     def test_schema_follows_guideline_and_annex4(self):
         self.assertTrue(ws.load_form_schema(8)["title"].endswith(guide.form_guidelines()[8].title))
         rules = guide.protected_target_rules()
