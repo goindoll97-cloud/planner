@@ -25,6 +25,10 @@ def render(project) -> None:
     for item in step["explain"]:
         with st.expander(item["term"]):
             st.write(item["text"])
+    if step["id"] == "capacity":
+        st.info("입력 예시 · 방류벽 안쪽 5 m × 4 m × 유효높이 0.6 m − 탱크 기초 2 m³ = "
+                "유효용량 10 m³. 해당 시설에 적용되는 기준으로 계산한 필요용량이 "
+                "11 m³라면 1 m³ 부족합니다. 11 m³는 설명용 예시이며 일률적인 기준값이 아닙니다.")
 
     rows = f10.edit_rows(project)
     current_rule = f10.rule(project)
@@ -38,9 +42,15 @@ def render(project) -> None:
         if step["id"] == "capacity":
             ratio = st.text_input("필요용량 기준: 설계용량 대비 비율(%)", value=ratio,
                                   key=f"cap_form10_ratio_{project.project_id}",
-                                  help="법 제24조 기준에서 확인한 값을 적습니다. (예시) 기준이 설계용량의 110%면 110")
+                                  help="여러 설비에 동일한 기준 비율이 적용된다는 것을 확인한 경우에만 입력합니다. "
+                                       "(계산 예시) 확인된 비율이 110%이고 설계용량이 10 m³면 필요용량은 11 m³입니다. "
+                                       "110%는 법에서 모든 설비에 적용하도록 정한 값이 아닙니다. "
+                                       "설비별 기준이 다르면 공통 비율 대신 아래 표의 필요용량 직접입력을 사용하세요.")
             basis = st.text_input("기준 근거", value=basis, key=f"cap_form10_basis_{project.project_id}",
-                                  help="(예시) 화학물질관리법 시행규칙 별표 5 제○호(해당 조문을 확인해 적으세요)")
+                                  help="어떤 취급시설 기준과 계산자료를 적용했는지 구체적으로 적습니다. "
+                                       "(기재 예시) 「화학물질관리법 시행규칙」 별표 5의 적용 항목, "
+                                       "해당 시설 설치·관리 기준의 해당 조항 및 회사 계산서 번호. "
+                                       "「화학물질관리법」 제24조만 적으면 적용한 용량 기준을 알 수 없습니다.")
         columns = ("적용여부", "설비형태", "확산방지설비 종류") if step["id"] == "targets" else \
             ("확산방지설비 종류", *f10.COLUMN_IDS[3:])
         config = {name: st.column_config.TextColumn(name, disabled=True) for name in READ_ONLY}
