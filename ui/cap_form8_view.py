@@ -191,6 +191,53 @@ def render(project) -> None:
         no_target = st.checkbox("사업장 경계 500m 안에 보호대상이 없습니다", value=f8.declared_no_target(project),
                                 key=f"cap_form08_none_{project.project_id}")
         rows_source = f8.saved_rows(project)
+        if not no_target:
+            suggestions = f8.classification_suggestions(rows_source)
+            with st.expander("시설명으로 보호대상 구분 후보 확인 (선택)"):
+                st.caption("이름으로 시설 종류를 짐작할 수 있을 때만 후보를 표시합니다. "
+                           "실제 용도와 법정 조건을 확인한 항목만 선택하세요. 선택해도 지도·거리 검토는 별도로 필요합니다.")
+                new_name = st.text_input("지도에서 확인한 시설·장소 이름", placeholder="예: 한빛초등학교",
+                                         key=f"cap_form08_name_suggestion_{project.project_id}")
+                if new_name.strip():
+                    category, subtype, reason = f8.classification_suggestion(new_name)
+                    if category:
+                        st.write(f"**분류 후보:** {category} · {subtype} — {reason}")
+                    else:
+                        st.write(f"**분류 보류:** {reason}")
+                    if st.button("이름을 미검토 목록에 추가", key=f"cap_form08_add_named_{project.project_id}"):
+                        new_row = {"보호대상 명칭": new_name.strip(), "보호대상 구분": "", "세부유형": ""}
+                        f8.save(project, rows_source + [new_row], no_target=False,
+                                scope_reviewed=False, status="HOLD")
+                        f8.invalidate_review(project)
+                        st.session_state.pop(f"cap_form08_rows_{project.project_id}", None)
+                        save_project(project)
+                        st.rerun()
+                if suggestions:
+                    st.markdown("**목록에서 아직 분류하지 않은 항목**")
+                selectable = []
+                for index, name, category, subtype, reason in suggestions:
+                    if category:
+                        label = f"{index + 1}. {name} — {category} · {subtype}"
+                        selectable.append((index, label))
+                        st.caption(f"{label}: {reason}")
+                    else:
+                        st.caption(f"{index + 1}. {name} — 분류 보류: {reason}")
+                if selectable:
+                    chosen = st.multiselect("확인 후 목록에 적용할 항목", [label for _, label in selectable],
+                                            key=f"cap_form08_suggestions_{project.project_id}")
+                    if st.button("선택한 분류 후보 적용", disabled=not chosen,
+                                 key=f"cap_form08_apply_suggestions_{project.project_id}"):
+                        selected = {index for index, label in selectable if label in chosen}
+                        updated = [dict(row) for row in rows_source]
+                        for index, _, category, subtype, _ in suggestions:
+                            if index in selected and category:
+                                updated[index]["보호대상 구분"] = category
+                                updated[index]["세부유형"] = subtype
+                        f8.save(project, updated, no_target=False, scope_reviewed=False, status="HOLD")
+                        f8.invalidate_review(project)
+                        st.session_state.pop(f"cap_form08_rows_{project.project_id}", None)
+                        save_project(project)
+                        st.rerun()
         evidence = ""
         edited_rows: list[dict] = []
         if no_target:
