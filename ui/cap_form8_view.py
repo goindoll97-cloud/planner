@@ -24,6 +24,32 @@ RULES_SOURCE_URL = "https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=210000027
 SAFETY_DISTANCE_NOTICE_URL = "https://www.law.go.kr/admRulInfoP.do?admRulSeq=2100000266498"
 
 
+def _render_manual_map_guide(*, expanded: bool) -> None:
+    with st.expander("처음 작성한다면: 어느 지도에서 무엇을 확인하나요?", expanded=expanded):
+        st.write(
+            "**특정 지도 하나만 사용해야 하는 것은 아닙니다.** 주변 시설을 찾고, 경계·거리와 "
+            "자연환경을 확인할 수 있는 자료를 목적에 맞게 대조하세요. 아래 지도 웹사이트는 "
+            "직접 열어 볼 수 있으며, 이 프로그램의 자동검색 API 키를 입력할 필요는 없습니다."
+        )
+        st.markdown(
+            "| 지도 바로 열기 | 여기서 먼저 확인할 것 | 확인 시 주의할 점 |\n"
+            "| --- | --- | --- |\n"
+            "| [카카오맵](https://map.kakao.com/) | 주소·학교·병원·주택 등 주변 장소명, 항공사진·거리 모습 | 지도에 없는 장소도 있고, 장소명만으로 법정 보호대상 구분은 확정할 수 없습니다. |\n"
+            "| [브이월드](https://www.vworld.kr/) | 항공사진·건물·토지 관련 지도에서 사업장 주변 위치와 범위 대조 | 지도에서 보이는 대략적인 경계를 회사의 부지 도면과 대조하세요. |\n"
+            "| [국토정보플랫폼 국토정보맵](https://map.ngii.go.kr/ms/map/NlipMap.do) | 지형·항공사진·건물·하천 등 주변 공간 현황 보완 | 이 지도 화면을 여는 것과 국토정보플랫폼 검색 API 키를 발급받는 것은 별개입니다. |\n"
+            "| [환경공간정보서비스](https://aid.mcee.go.kr/) | 토지피복·환경주제도에서 농경지·산림·물환경·보호지역 자료 대조 | 지도상 모양만으로 국가하천·법정 보호지역 등의 지정 여부를 확정하지 마세요. |"
+        )
+        st.write(
+            "**작성 예시:** 사업장 부지 도면으로 경계를 확인하고 → 카카오맵에서 학교·병원을 찾고 → "
+            "브이월드나 국토정보맵에서 위치를 대조하고 → 환경공간정보서비스에서 하천·농지 등을 확인합니다. "
+            "빠진 대상을 추가한 뒤, 적용되는 기준 범위와 각 대상까지의 거리를 확인해 목록에 적으세요."
+        )
+        st.caption(
+            "지도 서비스마다 최신성·표시 대상이 다를 수 있습니다. 사용한 지도/레이어, 확인일, "
+            "사업장 경계와 거리 확인 방법을 기록하고, 법정 분류와 실제 부지 경계는 별도로 검토하세요."
+        )
+
+
 def _render_methodology() -> None:
     st.info(
         "**왜 작성하나요?** 사업장 가까이에 사람이 이용하는 시설과 환경수용체가 무엇이 있는지 확인하고, "
@@ -118,6 +144,8 @@ def render(project) -> None:
     for item in step["explain"]:
         with st.expander(item["term"]):
             st.write(item["text"])
+    if step["id"] in ("search", "list"):
+        _render_manual_map_guide(expanded=step["id"] == "search")
 
     if step["id"] == "search":
         candidate_key = f"{CAND_KEY}_{project.project_id}"
