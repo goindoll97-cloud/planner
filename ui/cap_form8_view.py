@@ -89,7 +89,7 @@ def _render_methodology() -> None:
 
 
 def _render_classification_guide() -> None:
-    with st.expander("목록의 시설을 갑종·을종·환경수용체로 어떻게 구분하나요?", expanded=True):
+    with st.expander("분류 기준과 추가 확인 사항 (필요할 때 보기)"):
         st.write(
             "먼저 지도에서 무엇인지 확인한 뒤 아래 순서대로 보세요. 검색된 이름만으로 결정할 수 없으면 "
             "해당 시설의 용도·규모 또는 법정 지정 여부를 확인하고 나서 목록에 입력합니다."
@@ -184,65 +184,17 @@ def render(project) -> None:
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
         st.caption("위 지도를 열어 사업장 경계 주변을 확인하고, 이전에 작성한 목록이 있으면 아래에서 가져오세요. "
                    "목록이 없다면 ‘2. 보호대상 목록’에서 새로 작성할 수 있습니다. "
-                   "그 단계에서 시설명에 따른 갑종·을종·환경수용체 분류 후보도 확인할 수 있습니다.")
+                   "그 단계에서 목록 전체를 한 번에 분류할 수 있습니다.")
         _render_company_import(project)
     elif step["id"] == "list":
-        st.info("**시설명을 입력하면 보호대상 구분 후보를 볼 수 있습니다.** 아래 ‘시설명으로 보호대상 구분 후보 확인’을 "
-                "열어 이름을 입력하세요. 예를 들어 초등학교는 갑종·교육·연구시설 후보를 보여 줍니다. "
-                "아파트처럼 규모 확인이 필요하거나 하천처럼 법정 지정 여부가 필요한 장소는 분류를 보류합니다. "
-                "이름만으로 법정 분류가 확정되지는 않으며, 실제 용도와 조건을 확인한 뒤 목록에 적용하세요.")
+        st.info("**표에 시설명을 입력하거나 회사 목록을 가져온 뒤 ‘갑종·을종·환경수용체 구분하기’를 누르세요.** "
+                "시설명이나 세부유형으로 알 수 있는 행은 분류 칸을 채우고, 규모·법정 지정 여부 등 "
+                "확인이 필요한 행은 비워 둔 채 이유를 보여 줍니다. 결과는 미검토 상태로 저장됩니다.")
         _render_classification_guide()
         st.caption("위 지도 안내를 열어 확인한 뒤, 표에 없는 대상은 새 행으로 추가하세요.")
         no_target = st.checkbox("사업장 경계 500m 안에 보호대상이 없습니다", value=f8.declared_no_target(project),
                                 key=f"cap_form08_none_{project.project_id}")
         rows_source = f8.saved_rows(project)
-        if not no_target:
-            suggestions = f8.classification_suggestions(rows_source)
-            with st.expander("시설명으로 보호대상 구분 후보 확인 (선택)"):
-                st.caption("이름으로 시설 종류를 짐작할 수 있을 때만 후보를 표시합니다. "
-                           "실제 용도와 법정 조건을 확인한 항목만 선택하세요. 선택해도 지도·거리 검토는 별도로 필요합니다.")
-                new_name = st.text_input("지도에서 확인한 시설·장소 이름", placeholder="예: 한빛초등학교",
-                                         key=f"cap_form08_name_suggestion_{project.project_id}")
-                if new_name.strip():
-                    category, subtype, reason = f8.classification_suggestion(new_name)
-                    if category:
-                        st.write(f"**분류 후보:** {category} · {subtype} — {reason}")
-                    else:
-                        st.write(f"**분류 보류:** {reason}")
-                    if st.button("이름을 미검토 목록에 추가", key=f"cap_form08_add_named_{project.project_id}"):
-                        new_row = {"보호대상 명칭": new_name.strip(), "보호대상 구분": "", "세부유형": ""}
-                        f8.save(project, rows_source + [new_row], no_target=False,
-                                scope_reviewed=False, status="HOLD")
-                        f8.invalidate_review(project)
-                        st.session_state.pop(f"cap_form08_rows_{project.project_id}", None)
-                        save_project(project)
-                        st.rerun()
-                if suggestions:
-                    st.markdown("**목록에서 아직 분류하지 않은 항목**")
-                selectable = []
-                for index, name, category, subtype, reason in suggestions:
-                    if category:
-                        label = f"{index + 1}. {name} — {category} · {subtype}"
-                        selectable.append((index, label))
-                        st.caption(f"{label}: {reason}")
-                    else:
-                        st.caption(f"{index + 1}. {name} — 분류 보류: {reason}")
-                if selectable:
-                    chosen = st.multiselect("확인 후 목록에 적용할 항목", [label for _, label in selectable],
-                                            key=f"cap_form08_suggestions_{project.project_id}")
-                    if st.button("선택한 분류 후보 적용", disabled=not chosen,
-                                 key=f"cap_form08_apply_suggestions_{project.project_id}"):
-                        selected = {index for index, label in selectable if label in chosen}
-                        updated = [dict(row) for row in rows_source]
-                        for index, _, category, subtype, _ in suggestions:
-                            if index in selected and category:
-                                updated[index]["보호대상 구분"] = category
-                                updated[index]["세부유형"] = subtype
-                        f8.save(project, updated, no_target=False, scope_reviewed=False, status="HOLD")
-                        f8.invalidate_review(project)
-                        st.session_state.pop(f"cap_form08_rows_{project.project_id}", None)
-                        save_project(project)
-                        st.rerun()
         evidence = ""
         edited_rows: list[dict] = []
         if no_target:
@@ -274,9 +226,35 @@ def render(project) -> None:
             # only the fields that an author can verify on a map or site visit.
             visible_columns = [c for c in f8.COLUMNS if c not in (
                 "검색결과 거리(주소점 기준, 참고)", "검색 출처·검색일", "500m 범위 전체 확인")]
+            version_key = f"cap_form08_rows_version_{project.project_id}"
             edited_rows = st.data_editor(frame, column_config=config, column_order=visible_columns,
                                          num_rows="dynamic", width="stretch",
-                                         key=f"cap_form08_rows_{project.project_id}").to_dict("records")
+                                         key=f"cap_form08_rows_{project.project_id}_{st.session_state.get(version_key, 0)}").to_dict("records")
+            report_key = f"cap_form08_classified_{project.project_id}"
+            report = st.session_state.pop(report_key, None)
+            if report is not None:
+                count, unresolved = report
+                st.success(f"{count}건의 구분·세부유형을 채웠습니다. 실제 용도와 법정 조건을 확인한 뒤 저장해 주세요.")
+                if unresolved:
+                    with st.expander(f"추가 확인이 필요한 항목 ({len(unresolved)}건)", expanded=True):
+                        for message in unresolved:
+                            st.write(f"• {message}")
+            if st.button("갑종·을종·환경수용체 구분하기", type="primary",
+                         key=f"cap_form08_classify_{project.project_id}"):
+                clean_rows = [{k: ("" if pd.isna(v) else v) for k, v in row.items()} for row in edited_rows]
+                if not clean_rows or any(not str(row.get("보호대상 명칭") or "").strip() for row in clean_rows):
+                    st.warning("먼저 표에 시설명을 입력하고 이름이 없는 행은 지워 주세요.")
+                else:
+                    classified_rows, count, unresolved = f8.classify_rows(clean_rows)
+                    existing_rows = [{column: row.get(column, "") for column in f8.COLUMNS}
+                                     for row in rows_source]
+                    if classified_rows != existing_rows:
+                        f8.save(project, classified_rows, no_target=False, scope_reviewed=False, status="HOLD")
+                        f8.invalidate_review(project)
+                        save_project(project)
+                    st.session_state[report_key] = (count, unresolved)
+                    st.session_state[version_key] = st.session_state.get(version_key, 0) + 1
+                    st.rerun()
             hints = {f"{r.get('보호대상 구분')}/{r.get('세부유형')}": f8.type_hint(str(r.get("보호대상 구분")), str(r.get("세부유형")))
                      for r in edited_rows}
             for label, hint in hints.items():

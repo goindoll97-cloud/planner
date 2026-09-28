@@ -37,6 +37,31 @@ def _fake_get(url, params, headers):
 
 
 class CAPForm8WorkspaceTests(unittest.TestCase):
+    def test_bulk_classification_fills_draft_rows_and_leaves_uncertain_cases_blank(self):
+        rows = [
+            {"보호대상 명칭": "한빛초등학교", "보호대상 구분": "", "세부유형": "", "주소·위치": "산업로 9"},
+            {"보호대상 명칭": "울산주유소", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "늘봄아파트", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "태화강", "보호대상 구분": "", "세부유형": "하천"},
+            {"보호대상 명칭": "국가하천 태화강", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "회사 기숙사", "보호대상 구분": "갑종", "세부유형": "주택"},
+            {"보호대상 명칭": "울산의료원", "보호대상 구분": "", "세부유형": "의료시설"},
+        ]
+        updated, count, unresolved = f8.classify_rows(rows)
+        self.assertEqual(count, 4)
+        self.assertEqual(updated[0]["보호대상 구분"], "갑종")
+        self.assertEqual(updated[0]["주소·위치"], "산업로 9")
+        self.assertEqual(updated[1]["보호대상 구분"], "을종")
+        self.assertEqual(updated[2]["보호대상 구분"], "")
+        self.assertEqual(updated[3]["보호대상 구분"], "")
+        self.assertEqual(updated[4]["보호대상 구분"], "환경수용체")
+        self.assertEqual(updated[5]["보호대상 구분"], "갑종")
+        self.assertEqual(updated[6]["보호대상 구분"], "갑종")
+        self.assertEqual(len(unresolved), 2)
+        self.assertEqual(rows[0]["보호대상 구분"], "")
+        same, second_count, _ = f8.classify_rows(updated)
+        self.assertEqual((same, second_count), (updated, 0))
+
     def test_name_based_classification_is_a_reviewable_suggestion(self):
         rows = [
             {"보호대상 명칭": "한빛초등학교", "보호대상 구분": "", "세부유형": ""},
