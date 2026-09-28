@@ -96,7 +96,8 @@ def invalidate_review(project: Stage2Project) -> None:
 def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mapping[str, Any]] | None = None
                         ) -> tuple[list[dict[str, Any]], list[str]]:
     """Stage a company's old list for human review; never infer its legal category."""
-    aliases = {"명칭": "보호대상 명칭", "이름": "보호대상 명칭", "구분": "보호대상 구분",
+    aliases = {"명칭": "보호대상 명칭", "이름": "보호대상 명칭", "시설명": "보호대상 명칭",
+               "시설 이름": "보호대상 명칭", "구분": "보호대상 구분",
                "종류": "세부유형", "보호대상 종류": "세부유형", "주소": "주소·위치", "위치": "주소·위치",
                "거리(m)": "사업장 경계와 거리(m)", "거리": "사업장 경계와 거리(m)",
                "근거자료": "GIS/현장 근거", "확인근거": "GIS/현장 근거"}
@@ -135,6 +136,10 @@ def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mappin
 def classification_suggestion(name: str) -> tuple[str, str, str]:
     """Suggest only recognisable facility types; a name never proves legal eligibility."""
     label = str(name or "").strip().replace(" ", "")
+    if label.startswith(("국가하천", "지방하천")):
+        return "환경수용체", "하천", "법정 하천 지정 여부를 확인하세요."
+    if "생태·경관보호지역" in label:
+        return "환경수용체", "생태·경관보호지역", "법정 보호지역 지정 여부를 확인하세요."
     if label.endswith(("국회의원", "시의원", "도의원", "구의원")):
         return "", "", "이름의 '의원'만으로 의료시설인지 알 수 없습니다. 실제 용도를 확인하세요."
     for suffix, category, subtype, reason in (
@@ -167,6 +172,42 @@ def classification_suggestions(rows: list[Mapping[str, Any]]) -> list[tuple[int,
             category, subtype, reason = classification_suggestion(name)
             proposals.append((index, name, category, subtype, reason))
     return proposals
+
+
+def classify_rows(rows: list[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], int, list[str]]:
+    """Fill recognisable categories in a draft list, preserving existing choices."""
+    updated = [dict(row) for row in rows]
+    classified = 0
+    unresolved = []
+    for index, row in enumerate(updated, start=1):
+        name = str(row.get("보호대상 명칭") or "").strip()
+        if not name:
+            unresolved.append(f"{index}행: 시설명을 먼저 입력하세요.")
+            continue
+        category = str(row.get("보호대상 구분") or "").strip()
+        subtype = str(row.get("세부유형") or "").strip()
+        if category and subtype:
+            if subtype not in SUBTYPES.get(category, ()):
+                unresolved.append(f"{index}행 {name}: 입력된 구분과 세부유형이 맞지 않습니다.")
+            continue
+        possible = [cat for cat, options in SUBTYPES.items() if subtype in options] if subtype else []
+        if subtype and not category:
+            if len(possible) == 1 and (possible[0] != "환경수용체" or
+                                       (subtype == "하천" and name.startswith(("국가하천", "지방하천"))) or
+                                       (subtype == "생태·경관보호지역" and "생태·경관보호지역" in name)):
+                row["보호대상 구분"] = possible[0]
+                classified += 1
+            else:
+                unresolved.append(f"{index}행 {name}: 세부유형만으로 법정 분류를 결정할 수 없습니다. 지정 여부·용도를 확인하세요.")
+            continue
+        suggested_category, suggested_subtype, reason = classification_suggestion(name)
+        if suggested_category and (not category or category == suggested_category):
+            row["보호대상 구분"] = suggested_category
+            row["세부유형"] = suggested_subtype
+            classified += 1
+        else:
+            unresolved.append(f"{index}행 {name}: {reason if not category else '입력된 구분과 이름을 대조해 세부유형을 직접 확인하세요.'}")
+    return updated, classified, unresolved
 
 
 def review_issues(rows: list[Mapping[str, Any]], no_target: bool, checks: Mapping[str, bool],
