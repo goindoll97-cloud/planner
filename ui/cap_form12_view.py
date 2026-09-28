@@ -13,6 +13,19 @@ from engine.stage2 import cap_workspace as ws
 from engine.stage2.storage import save_project
 
 
+def _scenario_editor_frame(rows: list[dict], columns: list[str]) -> pd.DataFrame:
+    """Text-configured inputs must have string data even when source values are numeric."""
+    frame = pd.DataFrame(rows, columns=columns)
+    text_columns = (rw.HEAD_COLUMN, rw.LATENT_HEAT_COLUMN, rw.LIQUID_CP_COLUMN,
+                    rw.VAPOR_DENSITY_COLUMN, rw.LEAK_PIPE_COLUMN, rw.HEAT_COLUMN,
+                    rw.BOILING_COLUMN, rw.LIQUID_CP_KJ_COLUMN, rw.VAPORIZATION_COLUMN,
+                    rw.BOUNDARY_COLUMN)
+    for column in text_columns:
+        if column in frame.columns:
+            frame[column] = frame[column].astype("string").fillna("")
+    return frame
+
+
 def render(project) -> None:
     schema = ws.load_form_schema(12)
     st.header(schema["title"])
@@ -43,7 +56,7 @@ def render(project) -> None:
     columns = ["단위공장", "사고시나리오명", "대상 설비번호", "유해화학물질명", "사고유형", "취급량(kg)", rw.HEAD_COLUMN,
                rw.BOUNDARY_COLUMN, *rw.FLASH_COLUMNS, rw.LEAK_PIPE_COLUMN,
                rw.HEAT_COLUMN, rw.BOILING_COLUMN, rw.LIQUID_CP_KJ_COLUMN, rw.VAPORIZATION_COLUMN, "선정 근거"]
-    frame = pd.DataFrame(saved or proposed, columns=columns)
+    frame = _scenario_editor_frame(saved or proposed, columns)
     if not saved:
         st.caption("제안한 목록입니다. 실제와 다르면 고치거나 줄을 지운 뒤 저장하세요.")
     edited = st.data_editor(

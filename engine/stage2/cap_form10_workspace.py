@@ -2,10 +2,10 @@ from __future__ import annotations
 
 """별지 제10호(확산방지설비 현황) authoring support.
 
-취급시설 목록은 별지 제1·9호에서 가져오고, 사람은 (1) 어느 설비에 확산방지설비가
-적용되는지, (2) 필요용량 기준(설계용량 대비 비율과 근거)을 한 번, (3) 유효용량
-(직접 확인값 또는 치수)만 적는다. 필요용량 비율은 프로그램이 임의로 정하지
-않는다(법 제24조 기준을 사용자가 확인해 입력). 값은 기존 엔진이 읽는
+취급시설 목록은 별지 제1·9호에서 가져온다. 사람은 적용 설비, 설비별 필요용량과
+근거, 유효용량(직접 확인값 또는 치수)을 확인해 입력한다. 동일한 기준이 적용되는
+설비에는 확인된 공통 비율을 사용할 수 있다. 비율은 프로그램이 임의로 정하지
+않는다. 값은 기존 엔진이 읽는
 cap.safety.dike_calculation 형식으로 저장한다.
 """
 
@@ -26,8 +26,9 @@ EDIT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("적용여부", "확산방지설비 적용", "이 설비에 방류벽·방지턱·트렌치 같은 확산방지설비가 있으면 '예', 없으면 '해당 없음'입니다."),
     ("설비형태", "설비 형태", "제조, 사용, 저장, 보관, 입·출하 중 하나입니다(별지 제10호서식 주 ①). 저장탱크는 저장으로 제안합니다."),
     ("확산방지설비 종류", "확산방지설비 종류", "방류벽, 방지턱, 트렌치 등입니다(별지 제10호서식 주 ②)."),
-    ("필요용량 직접입력(m3)", "필요용량 직접입력(m3)", "해당 설비에 적용되는 기준으로 산정한 필요용량을 m³로 적습니다. 예: 기준 검토 결과 11 m³. 직접 입력한 값이 위의 공통 비율 계산값보다 우선합니다. 모든 설비에 동일한 비율을 적용할 수 없으면 설비별로 입력하세요."),
-    ("직접확인 유효용량(m3)", "유효용량(m3)", "누출액을 실제로 담을 수 있는 부피입니다. 예: 안쪽 5 m × 4 m × 유효높이 0.6 m − 탱크 기초 2 m³ = 10 m³. 확인된 값이 있으면 10을 입력하고, 없으면 오른쪽 치수 칸으로 계산하세요."),
+    ("필요용량 직접입력(m3)", "필요용량(m³)", "설비 기준을 확인해 이미 계산한 필요용량을 적습니다. 예: TK-101의 검토서에서 11 m³로 산정했다면 11. 설비마다 기준이 다르면 이 칸에 각각 입력하세요."),
+    ("필요용량 근거", "필요용량 근거", "설비마다 확인한 시설기준의 이름·해당 항목 또는 회사 계산서 번호를 적습니다. 예: TK-101 방류벽 용량 검토서 2쪽. 법 제24조만 적으면 적용한 계산 기준을 알 수 없습니다."),
+    ("직접확인 유효용량(m3)", "확인한 유효용량(m³)", "회사 도면·계산서에 이미 유효용량이 있으면 그 값을 적습니다. 없다면 오른쪽의 내부 길이·폭·유효높이·차감용적을 입력하세요. 둘 다 적으면 프로그램이 서로 다른지 확인합니다."),
     ("내부 길이(m)", "내부 길이(m)", "액체가 고이는 공간의 벽 안쪽 길이입니다. 예: 5 m이면 5를 입력합니다."),
     ("내부 폭(m)", "내부 폭(m)", "액체가 고이는 공간의 벽 안쪽 폭입니다. 예: 4 m이면 4를 입력합니다."),
     ("유효높이(m)", "유효높이(m)", "바닥부터 액체를 실제로 담을 수 있는 높이입니다. 예: 배수구나 개구부를 고려한 높이가 0.6 m라면 0.6을 입력합니다."),
@@ -77,7 +78,9 @@ def edit_rows(project: Stage2Project) -> list[dict[str, Any]]:
             "설비형태": _clean(old.get("설비형태")) or suggested_form(_clean(facility.get("시설유형"))),
             "확산방지설비 종류": _clean(old.get("확산방지설비 종류")),
             "필요용량 직접입력(m3)": _clean(old.get("필요용량 직접입력(m3)")),
-            **{c: _clean(old.get(c)) for c in COLUMN_IDS[4:]},
+            "필요용량 근거": _clean(old.get("필요용량 근거")) or (
+                _clean(old.get("필요용량 기준·근거")) if _clean(old.get("필요용량 직접입력(m3)")) else ""),
+            **{c: _clean(old.get(c)) for c in COLUMN_IDS[5:]},
         })
     return out
 
@@ -86,7 +89,7 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], ratio: str, basi
     """Store rule + per-facility rows in the engine's cap.safety.dike_calculation format."""
     project.set_field(RULE_KEY, "확산방지설비 필요용량 기준(별지 제10호 작성대)",
                       {"비율(%)": _clean(ratio), "근거": _clean(basis)}, "USER_CONFIRMED",
-                      note="사용자가 확인한 법 제24조 기준의 비율·근거")
+                      note="사용자가 확인한 설비별 기준 또는 공통 비율·근거")
     percent = _number(ratio)
     stored = []
     for row in rows:
@@ -99,19 +102,21 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], ratio: str, basi
         }
         if applicable == APPLICABLE:
             direct = _clean(row.get("필요용량 직접입력(m3)"))
+            direct_basis = _clean(row.get("필요용량 근거"))
             capacity = _number(row.get("설계용량(m3)"))
             if direct:
-                item["필요용량(m3)"], item["필요용량 기준·근거"] = direct, _clean(basis) or "회사 확인 검토자료"
+                item["필요용량(m3)"], item["필요용량 기준·근거"] = direct, direct_basis
             elif percent and capacity:
                 item["필요용량(m3)"] = f"{round(capacity * percent / 100.0, 6):g}"
                 item["필요용량 기준·근거"] = f"설계용량 × {percent:g}% — {_clean(basis)}".rstrip(" —")
             item["필요용량 직접입력(m3)"] = direct
+            item["필요용량 근거"] = direct_basis
             item["확산방지설비 종류"] = _clean(row.get("확산방지설비 종류"))
-            for column in COLUMN_IDS[4:9]:
+            for column in ("직접확인 유효용량(m3)", "내부 길이(m)", "내부 폭(m)", "유효높이(m)", "내부 차감용적(m3)"):
                 item[column] = _clean(row.get(column))
         stored.append(item)
     project.set_field(DIKE_KEY, "확산방지설비 계산자료(별지 제10호 작성대)", stored, "USER_CONFIRMED",
-                      note="CAP 작성대 별지 제10호에서 적용 대상·유효용량 입력")
+                      note="별지 제10호에서 적용 대상·필요용량·유효용량 입력")
     return len(stored)
 
 
