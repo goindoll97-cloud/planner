@@ -37,6 +37,23 @@ def _fake_get(url, params, headers):
 
 
 class CAPForm8WorkspaceTests(unittest.TestCase):
+    def test_name_based_classification_is_a_reviewable_suggestion(self):
+        rows = [
+            {"보호대상 명칭": "한빛초등학교", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "늘봄아파트", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "태화강", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "울산주유소", "보호대상 구분": "", "세부유형": ""},
+            {"보호대상 명칭": "기존병원", "보호대상 구분": "을종", "세부유형": ""},
+        ]
+        proposals = f8.classification_suggestions(rows)
+        self.assertEqual(proposals[0][2:4], ("갑종", "교육·연구시설"))
+        self.assertEqual(proposals[1][2:4], ("", ""))
+        self.assertEqual(proposals[2][2:4], ("", ""))
+        self.assertEqual(proposals[3][2:4], ("을종", "위험물 저장 및 처리시설"))
+        self.assertEqual(len(proposals), 4)
+        self.assertEqual(rows[0]["보호대상 구분"], "")
+        self.assertEqual(f8.classification_suggestion("지역 국회의원")[:2], ("", ""))
+
     def test_company_list_import_is_staged_and_deduplicated(self):
         project = _project()
         imported, notices = f8.import_company_rows([

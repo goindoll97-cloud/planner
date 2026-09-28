@@ -132,6 +132,43 @@ def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mappin
     return imported, notices
 
 
+def classification_suggestion(name: str) -> tuple[str, str, str]:
+    """Suggest only recognisable facility types; a name never proves legal eligibility."""
+    label = str(name or "").strip().replace(" ", "")
+    if label.endswith(("국회의원", "시의원", "도의원", "구의원")):
+        return "", "", "이름의 '의원'만으로 의료시설인지 알 수 없습니다. 실제 용도를 확인하세요."
+    for suffix, category, subtype, reason in (
+        ("초등학교", "갑종", "교육·연구시설", "학교의 실제 용도를 확인하세요."),
+        ("중학교", "갑종", "교육·연구시설", "학교의 실제 용도를 확인하세요."),
+        ("고등학교", "갑종", "교육·연구시설", "학교의 실제 용도를 확인하세요."),
+        ("대학교", "갑종", "교육·연구시설", "학교의 실제 용도를 확인하세요."),
+        ("도서관", "갑종", "교육·연구시설", "도서관의 실제 용도를 확인하세요."),
+        ("연구소", "갑종", "교육·연구시설", "연구소의 실제 용도를 확인하세요."),
+        ("병원", "갑종", "의료시설", "병원으로 운영 중인지 확인하세요."),
+        ("의원", "갑종", "의료시설", "의원으로 운영 중인지 확인하세요."),
+        ("주유소", "을종", "위험물 저장 및 처리시설", "주유소로 운영 중인지 확인하세요."),
+        ("LPG충전소", "을종", "위험물 저장 및 처리시설", "충전소의 실제 용도를 확인하세요."),
+    ):
+        if label.endswith(suffix):
+            return category, subtype, reason
+    if any(word in label for word in ("아파트", "주택", "교회", "성당", "어린이집", "하천", "강", "공원")):
+        return "", "", "시설의 수용 인원·면적 또는 자연환경의 법정 지정 여부를 먼저 확인하세요."
+    return "", "", "시설의 실제 용도와 「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4를 확인하세요."
+
+
+def classification_suggestions(rows: list[Mapping[str, Any]]) -> list[tuple[int, str, str, str, str]]:
+    """Propose values only for rows whose category and subtype are both empty."""
+    proposals = []
+    for index, row in enumerate(rows):
+        if str(row.get("보호대상 구분") or "").strip() or str(row.get("세부유형") or "").strip():
+            continue
+        name = str(row.get("보호대상 명칭") or "").strip()
+        if name:
+            category, subtype, reason = classification_suggestion(name)
+            proposals.append((index, name, category, subtype, reason))
+    return proposals
+
+
 def review_issues(rows: list[Mapping[str, Any]], no_target: bool, checks: Mapping[str, bool],
                   source: str, method: str, map_numbers: str) -> list[str]:
     issues = [f"‘{label}’ 항목을 확인해 주세요." for key, label in REVIEW_ITEMS if not checks.get(key)]
