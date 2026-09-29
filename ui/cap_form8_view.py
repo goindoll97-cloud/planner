@@ -50,7 +50,9 @@ def _render_manual_map_guide(*, expanded: bool) -> None:
 def _render_methodology() -> None:
     st.info(
         "**왜 작성하나요?** 사업장 가까이에 사람이 이용하는 시설과 환경수용체가 무엇이 있는지 확인하고, "
-        "사고 시 영향을 검토할 수 있도록 위치와 거리를 기록하는 서식입니다."
+        "사고 시 영향을 검토할 수 있도록 위치와 거리를 기록하는 서식입니다. "
+        "이 별지의 시설·환경 목록과 거리는 지도·부지 도면·현장 자료로 확인합니다. "
+        "물질 정보가 담긴 MSDS로 주변 환경 조사 결과를 대신할 수 없습니다."
     )
     with st.expander("이 서식을 처음 작성한다면: 작성 순서와 예시", expanded=True):
         st.markdown(
