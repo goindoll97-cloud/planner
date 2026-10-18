@@ -21,9 +21,12 @@ from .regulatory_tables import (
 
 
 CAS_RE = re.compile(r"\b\d{2,7}-\d{2}-\d\b")
-CURRENT_BASE_ITEM_COUNT = 1557
-CURRENT_PAGE_COUNT = 56
-CURRENT_HAZARD_RECORD_COUNT = 2354
+# 기대값은 사람이 공식 PDF와 대조해 확인한 현재 판의 값이다. 개정으로 물질이 늘거나 줄면 이 검사가 실패해
+# 자동 승인이 멈춘다(의도된 안전장치). 값을 바꿀 때는 새 PDF와 후보표를 대조한 뒤 갱신한다.
+# 2026-12-19 시행본(발령번호 2026-20): 58쪽, 연번 1~1598, 유해성 세부행 2412.
+CURRENT_BASE_ITEM_COUNT = 1598
+CURRENT_PAGE_COUNT = 58
+CURRENT_HAZARD_RECORD_COUNT = 2412
 
 APP2_COLUMNS = [
     "record_key",
@@ -204,23 +207,41 @@ def _build_records(
 
 
 def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
+    """핵심 물질이 올바른 모양으로 추출되었는지 보는 앵커 검사.
+
+    개정으로 물질이 중간에 끼어들면 뒤쪽 연번이 전부 밀리므로, 연번이 아니라 CAS로 대상 행을 찾는다.
+    (연번에 고정했던 이전 방식은 2026-12 개정에서 한 칸씩 밀리자 내용이 맞는데도 전부 실패했다.)
+    맨 앞의 1·4·10번은 개정으로 밀리지 않았으므로 연번 앵커를 그대로 둔다.
+    """
+
     def row(item_no: int, hazard_seq: int = 1) -> pd.DataFrame:
         return df[(df["item_no"].eq(item_no)) & (df["hazard_seq"].eq(hazard_seq))]
 
-    def special_row(item_no: int, category: str) -> pd.DataFrame:
+    def has_cas(series: pd.Series, cas: str) -> pd.Series:
+        return series.astype(str).str.split("|").apply(lambda values: cas in values)
+
+    def special_row(cas: str, category: str) -> pd.DataFrame:
         return df[
-            df["item_no"].eq(item_no)
+            has_cas(df["direct_cas"], cas)
             & df["hazard_category"].astype(str).str.strip().eq(category)
         ]
 
     r1 = row(1)
     r4 = row(4)
     r10 = row(10)
-    r282 = special_row(282, "용액")
-    r557 = special_row(557, "용액")
-    r587 = row(587)
-    r1108 = row(1108)
-    r1557 = row(1557)
+    ammonia = special_row("7664-41-7", "용액")
+    hydrogen_fluoride = special_row("7664-39-3", "용액")
+    hydroxylamine_salts = df[
+        df["scope_type"].eq("SALT_FAMILY")
+        & df["direct_cas"].astype(str).eq("")
+        & has_cas(df["all_cas_in_row"], "7803-49-8")
+    ]
+    acrylate_mixture = df[
+        df["scope_type"].eq("REACTION_PRODUCT")
+        & df["direct_cas"].astype(str).eq("")
+        & has_cas(df["cas_list"], "5459-38-1")
+    ]
+    dimethylbenzenesulfonic = df[has_cas(df["direct_cas"], "25321-41-9")]
 
     return {
         "item1_exact_cas": bool(not r1.empty and r1.iloc[0]["direct_cas"] == "1313-60-6"),
@@ -236,31 +257,38 @@ def _anchor_checks(df: pd.DataFrame) -> dict[str, bool]:
         "item10_casless_compound_group": bool(
             not r10.empty and r10.iloc[0]["direct_cas"] == "" and r10.iloc[0]["scope_type"] == "COMPOUND_GROUP"
         ),
-        "item282_solution_variant": bool(
-            not r282.empty
-            and pd.isna(r282.iloc[0]["content_threshold_pct"])
-            and float(r282.iloc[0]["lowest_quantity_ton"]) == 0.5
-            and float(r282.iloc[0]["lower_quantity_ton"]) == 20
-            and float(r282.iloc[0]["upper_quantity_ton"]) == 400
+        "ammonia_solution_variant": bool(
+            len(ammonia) == 1
+            and pd.isna(ammonia.iloc[0]["content_threshold_pct"])
+            and float(ammonia.iloc[0]["lowest_quantity_ton"]) == 0.5
+            and float(ammonia.iloc[0]["lower_quantity_ton"]) == 20
+            and float(ammonia.iloc[0]["upper_quantity_ton"]) == 400
         ),
-        "item557_solution_variant": bool(
-            not r557.empty
-            and pd.isna(r557.iloc[0]["content_threshold_pct"])
-            and float(r557.iloc[0]["lowest_quantity_ton"]) == 0.1
-            and float(r557.iloc[0]["lower_quantity_ton"]) == 4
-            and float(r557.iloc[0]["upper_quantity_ton"]) == 20
+        "hydrogen_fluoride_solution_variant": bool(
+            len(hydrogen_fluoride) == 1
+            and pd.isna(hydrogen_fluoride.iloc[0]["content_threshold_pct"])
+            and float(hydrogen_fluoride.iloc[0]["lowest_quantity_ton"]) == 0.1
+            and float(hydrogen_fluoride.iloc[0]["lower_quantity_ton"]) == 4
+            and float(hydrogen_fluoride.iloc[0]["upper_quantity_ton"]) == 20
         ),
-        "item587_embedded_parent_cas": bool(
-            not r587.empty and "7803-49-8" in str(r587.iloc[0]["all_cas_in_row"])
+        "hydroxylamine_salts_embedded_parent_cas": bool(not hydroxylamine_salts.empty),
+        "acrylate_reaction_mixture_not_direct": bool(
+            not acrylate_mixture.empty
+            and len(str(acrylate_mixture.iloc[0]["cas_list"]).split("|")) == 3
         ),
-        "item1108_reaction_mixture_not_direct": bool(
-            not r1108.empty
-            and r1108.iloc[0]["scope_type"] == "REACTION_PRODUCT"
-            and r1108.iloc[0]["direct_cas"] == ""
-            and len(str(r1108.iloc[0]["cas_list"]).split("|")) == 3
-        ),
-        "item1557_exact_cas": bool(not r1557.empty and r1557.iloc[0]["direct_cas"] == "25321-41-9"),
+        "dimethylbenzenesulfonic_acid_exact_cas": bool(not dimethylbenzenesulfonic.empty),
     }
+
+
+def _solution_note_item_numbers(path: Path) -> list[int]:
+    """1쪽 일반기준 '표의 제N호, 제M호의 물질은 … 용액 구분' 문구가 가리키는 연번."""
+    try:
+        with pdfplumber.open(path) as pdf:
+            text = re.sub(r"\s+", "", pdf.pages[0].extract_text() or "")
+    except Exception:
+        return []
+    match = re.search(r"표의((?:제\d+호[,、，]?)+)의물질은[^.]{0,80}?용액", text)
+    return [int(n) for n in re.findall(r"제(\d+)호", match.group(1))] if match else []
 
 
 def build_cap_appendix2_candidate() -> CandidateResult:
@@ -303,11 +331,22 @@ def build_cap_appendix2_candidate() -> CandidateResult:
         )
 
     anchors = _anchor_checks(df)
+    # 고시 본문(일반기준)이 가리키는 용액 구분 연번과 표에서 실제 용액 구분이 있는 연번이 다르면 경고한다.
+    # 실패는 아니지만 공식 문서 안의 불일치이므로 승인 전에 사람이 확인해야 한다.
+    warnings: list[str] = []
+    note_items = _solution_note_item_numbers(path)
+    table_items = sorted({int(n) for n in df.loc[df["hazard_category"].astype(str).str.strip().eq("용액"), "item_no"]}) if not df.empty else []
+    if note_items and note_items != table_items:
+        warnings.append(
+            f"일반기준 문구는 용액 구분을 제{'·'.join(map(str, note_items))}호로 안내하지만, 표에서 용액 구분이 있는 연번은 "
+            f"{'·'.join(map(str, table_items)) or '없음'}입니다. 고시 본문의 번호 표기와 표가 어긋난 것으로 보이니 "
+            "대상 물질(암모니아·플루오르화 수소)이 맞는지 확인하세요."
+        )
     failure_reasons = list(extraction_failures)
     if len(tables) != CURRENT_PAGE_COUNT:
         failure_reasons.append(f"페이지 검사 수 {len(tables)} != {CURRENT_PAGE_COUNT}")
     if item_numbers != list(range(1, CURRENT_BASE_ITEM_COUNT + 1)):
-        failure_reasons.append("기본 연번 1~1557 연속 추출 실패")
+        failure_reasons.append(f"기본 연번 1~{CURRENT_BASE_ITEM_COUNT} 연속 추출 실패")
     if len(df) != CURRENT_HAZARD_RECORD_COUNT:
         failure_reasons.append(f"유해성 세부행 {len(df)} != {CURRENT_HAZARD_RECORD_COUNT}")
     if missing_required:
@@ -317,7 +356,7 @@ def build_cap_appendix2_candidate() -> CandidateResult:
         failure_reasons.append("핵심 앵커 검사 실패: " + ", ".join(failed_anchors))
 
     checks = {
-        "parser_mode": "56PAGE_MULTIHAZARD_WITH_CASLESS_SCOPE",
+        "parser_mode": "MULTIHAZARD_WITH_CASLESS_SCOPE_CAS_ANCHORS",
         "pages": len(tables),
         "base_items": len(base),
         "hazard_records": len(df),
@@ -326,10 +365,12 @@ def build_cap_appendix2_candidate() -> CandidateResult:
         "deleted_base_items": deleted_base,
         "first_item": item_numbers[0] if item_numbers else None,
         "last_item": item_numbers[-1] if item_numbers else None,
-        "item_numbers_exactly_1_to_1557": item_numbers == list(range(1, CURRENT_BASE_ITEM_COUNT + 1)),
+        "item_numbers_exactly_1_to_expected": item_numbers == list(range(1, CURRENT_BASE_ITEM_COUNT + 1)),
+        "expected_base_items": CURRENT_BASE_ITEM_COUNT,
         "missing_required_active_rows": missing_required,
         **anchors,
         "failure_reasons": failure_reasons,
+        "warnings": warnings,
     }
 
     status = "REVIEW_REQUIRED" if not failure_reasons else "VALIDATION_FAILED"
@@ -337,6 +378,7 @@ def build_cap_appendix2_candidate() -> CandidateResult:
         "별표 2의 직접 CAS와 CAS 미기재 포괄 규제범위를 함께 보존한 후보표를 만들었습니다. "
         "같은 연번에 여러 유해성 구분이 있으면 각각 별도 행으로 유지합니다."
     ]
+    messages.extend(f"확인 필요: {warning}" for warning in warnings)
     if failure_reasons:
         messages.append("자동추출 품질검사를 통과하지 못했습니다. 승인하지 말고 실패항목을 확인하세요.")
     else:
