@@ -53,7 +53,7 @@ def _looks_like_hwpx(content: bytes) -> bool:
 
 
 def detect_official_attachment_format(content: bytes, url: str = "", declared_kind: str = "") -> str:
-    """Recognize official PDF/HWP/HWPX files or a requested HTML body from bytes."""
+    """Recognize official PDF/HWP/HWPX files or a requested HTML/XML body from bytes."""
     if content.startswith(b"%PDF"):
         return "pdf"
     if _looks_like_hwpx(content):
@@ -62,6 +62,8 @@ def detect_official_attachment_format(content: bytes, url: str = "", declared_ki
         return "hwp"
     if declared_kind.lower() == "html" and b"<" in content[:300]:
         return "html"
+    if declared_kind.lower() == "xml" and content[:400].lstrip().startswith(b"<"):
+        return "xml"
 
     suffix = Path(urlparse(str(url or "")).path).suffix.lower().lstrip(".")
     if suffix in {"pdf", "hwp", "hwpx"}:

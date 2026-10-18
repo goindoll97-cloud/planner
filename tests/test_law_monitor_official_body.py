@@ -116,5 +116,117 @@ class OfficialBodyTests(unittest.TestCase):
                 self.assertTrue(pipeline._requires_rule_mapping_review(row))
 
 
+class BodyFallbackTests(unittest.TestCase):
+    """법제처 HTML 응답이 조문이 없는 껍데기일 때: 같은 사이트 프레임 → 공식 XML 순서로 받는다."""
+
+    TITLE = "유해화학물질의 영업허가 등에 관한 규정"
+    FOUND = {"api_status": "FOUND", "serial": "2100000278914"}
+
+    @staticmethod
+    def _resp(content: bytes):
+        class Response:
+            def __init__(self, body):
+                self.content = body
+            def raise_for_status(self):
+                pass
+        return Response(content)
+
+    def _xml(self) -> bytes:
+        return ('<?xml version="1.0" encoding="UTF-8"?><AdmRulService><행정규칙기본정보><행정규칙명>'
+                + self.TITLE + "</행정규칙명></행정규칙기본정보><조문내용>제1조(목적) "
+                + "이 규정은 " * 80 + "</조문내용></AdmRulService>").encode("utf-8")
+
+    def _get(self, responses):
+        calls = []
+        def fake_get(url, params=None, timeout=None):
+            calls.append((url, dict(params or {})))
+            return self._resp(responses.pop(0))
+        return fake_get, calls
+
+    def test_wrapper_html_falls_back_to_official_xml(self):
+        wrapper = ("<html><head><script>load()</script></head><body>" + " " * 600 + "</body></html>").encode()
+        fake_get, calls = self._get([wrapper, self._xml()])
+        with patch.object(law_api, "get_api_credential", return_value=("k", "env")), \
+             patch.object(law_api.requests, "get", side_effect=fake_get):
+            body = law_api.fetch_source_body_html(self.FOUND, self.TITLE)
+        self.assertEqual(body, self._xml())
+        self.assertEqual([c[1].get("type") for c in calls], ["HTML", "XML"])
+        self.assertEqual(law_api.official_body_kind(body), "xml")
+
+    def test_same_site_frame_is_followed_before_xml(self):
+        wrapper = ('<html><body><iframe src="/LSW/admRulInfoP.do?admRulSeq=2100000278914&amp;x=1"></iframe>'
+                   + " " * 600 + "</body></html>").encode()
+        inner = ("<html><body>" + self.TITLE + " 제1조(목적) " + "본문 " * 100 + "</body></html>").encode()
+        fake_get, calls = self._get([wrapper, inner])
+        with patch.object(law_api, "get_api_credential", return_value=("k", "env")), \
+             patch.object(law_api.requests, "get", side_effect=fake_get):
+            body = law_api.fetch_source_body_html(self.FOUND, self.TITLE)
+        self.assertEqual(body, inner)
+        self.assertEqual(calls[1][0], "https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000278914&x=1")
+        self.assertEqual(law_api.official_body_kind(body), "html")
+
+    def test_other_site_frame_is_not_followed_and_wrong_rule_fails(self):
+        wrapper = ('<html><body><iframe src="https://example.com/x"></iframe>' + " " * 600 + "</body></html>").encode()
+        wrong_xml = self._xml().replace(self.TITLE.encode(), "다른 고시".encode())
+        fake_get, calls = self._get([wrapper, wrong_xml])
+        with patch.object(law_api, "get_api_credential", return_value=("k", "env")), \
+             patch.object(law_api.requests, "get", side_effect=fake_get):
+            with self.assertRaises(ValueError) as ctx:
+                law_api.fetch_source_body_html(self.FOUND, self.TITLE)
+        self.assertIn("HTML, XML", str(ctx.exception))
+        self.assertEqual(len(calls), 2)
+
+    def test_xml_body_is_archived_with_xml_hash_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "data" / "runtime"
+            observed, approved = runtime / "law_monitor_last_observed.json", runtime / "law_monitor_approved.json"
+            source = monitor.LawSource(key="CAP_BUSINESS_NOTICE", regime="화학사고예방관리계획서",
+                                       title=self.TITLE, target="admrul", body_required=True)
+            found = {"api_status": "FOUND", "serial": "2100000278914", "effective_date": "20260511",
+                     "issue_date": "20260511", "issue_number": "제2026-113호"}
+            with (
+                patch.object(monitor, "PROJECT_ROOT", root),
+                patch.object(monitor, "OBSERVED_FILE", observed),
+                patch.object(monitor, "APPROVED_FILE", approved),
+                patch.object(monitor, "load_registry", return_value=(source,)),
+                patch.object(monitor, "search_current_source", return_value=found),
+                patch.object(monitor, "fetch_source_payload", return_value={}),
+                patch.object(monitor, "fetch_source_body_html", return_value=self._xml()),
+                patch.object(monitor, "credential_status", return_value={}),
+                patch.object(archive, "PROJECT_ROOT", root),
+                patch.object(archive, "PENDING_ATTACHMENT_DIR", runtime / "law_pending"),
+                patch.object(archive, "APPROVED_SOURCE_ROOT", root / "data" / "legal_archive" / "sources"),
+                patch.object(archive, "APPROVED_MONITOR_FILE", approved),
+                patch.object(archive, "OBSERVED_MONITOR_FILE", observed),
+            ):
+                row = monitor.run_law_monitor()[0]
+        self.assertTrue(row["observation_valid"])
+        self.assertIn("본문::XML", row["attachment_hashes"])
+        self.assertEqual(row["attachment_files"][0]["format"], "XML")
+
+    def test_switching_body_from_html_to_xml_for_same_version_is_migration_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            baseline = Path(tmp) / "approved.json"
+            baseline.write_text(json.dumps({"sources": {"CAP_BUSINESS_NOTICE": {
+                "attachment_hashes": {"본문::HTML": "old-html"}, "serial": "2100000278914",
+            }}}), encoding="utf-8")
+            with patch.object(pipeline, "APPROVED_FILE", baseline):
+                row = {
+                    "key": "CAP_BUSINESS_NOTICE", "monitor_status": "UPDATE_PENDING",
+                    "attachment_hashes": {"본문::XML": "official-xml"},
+                    "change_reason": ["첨부파일 삭제/미확인: 본문::HTML", "첨부파일 추가: 본문::XML"],
+                }
+                self.assertFalse(pipeline._requires_rule_mapping_review(row))
+                # 같은 표현(XML)의 본문 내용이 바뀌면 사람 검토
+                baseline.write_text(json.dumps({"sources": {"CAP_BUSINESS_NOTICE": {
+                    "attachment_hashes": {"본문::XML": "old-xml"}, "serial": "2100000278914"}}}), encoding="utf-8")
+                row["change_reason"] = ["첨부파일 내용 변경: 본문::XML (old-xml… → official-xml…)"]
+                self.assertTrue(pipeline._requires_rule_mapping_review(row))
+                # 실제 개정(발령정보 변경)은 형식 전환과 함께 와도 사람 검토
+                row["change_reason"] = ["시행일: 20260511 → 20261201", "첨부파일 추가: 본문::XML"]
+                self.assertTrue(pipeline._requires_rule_mapping_review(row))
+
+
 if __name__ == "__main__":
     unittest.main()

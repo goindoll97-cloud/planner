@@ -23,7 +23,7 @@ st.set_page_config(page_title="법령·근거 라이브러리", page_icon="📚"
 st.title("📚 법령·근거 라이브러리")
 st.caption(
     "작성항목을 검색하면 그 항목에 현재 구조화되어 연결된 법적 근거, 세부 작성기준, 작성 참고자료를 먼저 보여줍니다. "
-    "승인 근거와 법제처에서 내려받은 현행 PDF·HWP·HWPX 첨부 및 보관된 공식 본문 HTML은 아래 전체 자료 보관영역에서 확인할 수 있습니다."
+    "승인 근거와 법제처에서 내려받은 현행 PDF·HWP·HWPX 첨부 및 보관된 공식 본문(HTML·XML)은 아래 전체 자료 보관영역에서 확인할 수 있습니다."
 )
 
 
@@ -52,7 +52,7 @@ def _render_source_library() -> None:
                     )
                     if not files:
                         if source.get("body_required"):
-                            st.warning("공식 본문 HTML의 로컬 승인본이 없습니다. 규정 DB 관리에서 법령 최신본을 확인한 뒤 본문을 검토·승인하면 다운로드할 수 있습니다.")
+                            st.warning("공식 본문의 로컬 승인본이 없습니다. 규정 DB 관리에서 법령 최신본을 확인한 뒤 본문을 검토·승인하면 다운로드할 수 있습니다.")
                         else:
                             st.info("승인된 로컬 별표·별지 첨부파일이 없습니다. 법령 본문은 국가법령정보센터에서 확인하세요.")
                         st.link_button("국가법령정보센터에서 원문 확인", f"https://www.law.go.kr/admRulSc.do?query={quote(title)}" if source.get("target") == "admrul" else f"https://www.law.go.kr/lsSc.do?query={quote(title)}")
@@ -69,11 +69,12 @@ def _render_source_library() -> None:
                             suffix = path.suffix.lower()
                             mime = {
                                 ".html": "text/html",
+                                ".xml": "application/xml",
                                 ".pdf": "application/pdf",
                                 ".hwp": "application/x-hwp",
                                 ".hwpx": "application/vnd.hancom.hwpx",
                             }.get(suffix, "application/octet-stream")
-                            label = "공식 본문 HTML 받기" if suffix == ".html" else f"{str(file.get('format') or suffix.lstrip('.')).upper()} 받기"
+                            label = {".html": "공식 본문 HTML 받기", ".xml": "공식 본문 XML 받기"}.get(suffix) or f"{str(file.get('format') or suffix.lstrip('.')).upper()} 받기"
                             cols[idx % len(cols)].download_button(
                                 label,
                                 data=path.read_bytes(),
