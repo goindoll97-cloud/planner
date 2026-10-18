@@ -18,6 +18,7 @@ import re
 import tempfile
 from typing import Any, Mapping
 
+from . import legal_baseline_stamp
 from .project import FieldRecord, Stage2Project
 from .storage import DEFAULT_ROOT, _safe_component, project_dir
 
@@ -164,9 +165,20 @@ def freeze_version(
             "company_name": project.company_name,
             "site_name": project.site_name,
             "fields": _fields_payload(project),
+            # 작성 당시 법령판과 규칙 판정 결과. 법령 개정 후 '작성본 최신화'가 비교 기준으로 쓴다.
+            "legal_baseline": legal_baseline_stamp.current_legal_baseline(),
+            "derived": legal_baseline_stamp.derived_results(project, doc),
         },
     )
     return meta
+
+
+def load_version_snapshot(project_id: str, version_id: str, root: Path = DEFAULT_ROOT) -> dict[str, Any]:
+    """버전 스냅샷 원본(메타·필드·법령판 기록). 법령판 기록이 없는 옛 버전은 해당 키가 비어 있다."""
+    path = _snapshot_path(project_id, version_id, root)
+    if not path.exists():
+        raise FileNotFoundError(f"버전을 찾을 수 없습니다: {version_id}")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def load_version_fields(project_id: str, version_id: str, root: Path = DEFAULT_ROOT) -> dict[str, FieldRecord]:

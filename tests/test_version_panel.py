@@ -93,3 +93,56 @@ class VersionPanelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegalRefreshPanelTests(unittest.TestCase):
+    """법령 개정 반영(작성본 최신화) 화면 흐름."""
+
+    def setUp(self):
+        from unittest.mock import patch
+
+        from engine.stage2 import legal_baseline_stamp as stamp
+        from tests.test_legal_refresh import FORM1_OLD, OLD, _new_sources
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._cwd = os.getcwd()
+        os.chdir(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(os.chdir, self._cwd)
+        project = _project()
+        project.set_field("cap.internal.facility_response_plan", "시설별 대응계획", "누출 시 차단", "USER_CONFIRMED")
+        save_project(project)
+        self.sources = OLD
+        p1 = patch.object(stamp, "approved_law_sources", side_effect=lambda *a, **k: self.sources)
+        p2 = patch.object(stamp, "_form1_rows", return_value=FORM1_OLD)
+        p1.start(), p2.start()
+        self.addCleanup(p1.stop)
+        self.addCleanup(p2.stop)
+        self._new_sources = _new_sources
+        ver.freeze_version(load_project("p1"), "CAP", "신규제출")
+
+    def _run(self) -> AppTest:
+        at = AppTest.from_function(_app, default_timeout=60)
+        at.session_state["doc"] = "CAP"
+        return at.run()
+
+    def test_no_amendment_reports_nothing_to_do(self):
+        at = self._run()
+        at.button(key="lr_check_CAP_p1").click().run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any("법령 개정이 없습니다" in s.value for s in at.success))
+
+    def test_amendment_is_listed_and_applied_to_a_new_working_copy(self):
+        self.sources = self._new_sources(CAP_DRAFT={"effective_date": "20261201"})
+        at = self._run()
+        at.button(key="lr_check_CAP_p1").click().run()
+        self.assertFalse(at.exception)
+        self.assertTrue(any("개정된 법령 1건" in w.value for w in at.warning))
+        at.button(key="lr_apply_CAP_p1").click().run()
+        self.assertFalse(at.exception)
+        project = load_project("p1")
+        rec = project.fields["cap.internal.facility_response_plan"]
+        self.assertEqual((rec.value, rec.status), ("누출 시 차단", "HOLD"))
+        self.assertIn("법령 개정 재확인", rec.note)
+        # CAP 작성규정 범위 밖의 공유 사실은 그대로 확인 완료 상태
+        self.assertEqual(project.fields["facility.reactor.volume"].status, "USER_CONFIRMED")
