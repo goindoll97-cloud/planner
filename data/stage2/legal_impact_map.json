@@ -1,0 +1,181 @@
+{
+  "schema_version": "legal-impact-map-v1",
+  "note": "감시 법령(data/law_registry.json의 key)이 개정되었을 때 기존 작성본의 어느 부분을 다시 확인해야 하는지 정한 표입니다. field_prefixes에 해당하는 칸 중 확인 완료(VERIFIED·USER_CONFIRMED·CALCULATED) 상태인 칸은 최신화 작업본에서 '법령 개정 재확인'(HOLD)으로 돌립니다. recompute는 규칙 엔진이 새 판정표로 다시 계산해 이전 결과와 비교하는 항목입니다. 이 표는 초안이며 전문가 검토로 범위를 좁히거나 넓힐 수 있습니다. carries_forms가 true인 법령은 별지 서식을 담고 있어, 첨부원본(서식)이 바뀌면 영향 칸을 '다시 작성 필요'로, 조문·작성방법만 바뀌면 '내용 확인'으로 표시합니다.",
+  "sources": {
+    "CAP_ACT": {
+      "doc": "CAP",
+      "scope": "화학사고예방관리계획서 제출 대상·의무 전반",
+      "forms": [
+        "사업장 판정(대상 여부)"
+      ],
+      "field_prefixes": [],
+      "recompute": [
+        "cap_form1"
+      ],
+      "action": "대상 여부와 작성수준을 '사업장 판정하기'에서 다시 확인하세요.",
+      "carries_forms": false
+    },
+    "CAP_DECREE": {
+      "doc": "CAP",
+      "scope": "제출 대상·면제 기준",
+      "forms": [
+        "사업장 판정(대상 여부)"
+      ],
+      "field_prefixes": [],
+      "recompute": [
+        "cap_form1"
+      ],
+      "action": "대상 여부와 면제 조건을 '사업장 판정하기'에서 다시 확인하세요.",
+      "carries_forms": false
+    },
+    "CAP_RULE": {
+      "doc": "CAP",
+      "scope": "시행규칙 — 별표 4 작성 내용·방법, 별지 제31·32호 검토신청서",
+      "forms": [
+        "별지 제31·32호 검토신청서",
+        "최종 제출 확인"
+      ],
+      "field_prefixes": [
+        "cap.submission.",
+        "cap.final."
+      ],
+      "recompute": [],
+      "action": "검토신청서와 최종 제출 확인 항목을 개정 조문과 대조하세요. 별표 4 작성방법이 바뀌었다면 별지별 서술 내용도 함께 확인해야 합니다.",
+      "carries_forms": true
+    },
+    "CAP_BUSINESS_NOTICE": {
+      "doc": "CAP",
+      "scope": "유해화학물질 영업허가 관련 기준",
+      "forms": [
+        "취급시설 관련 기준"
+      ],
+      "field_prefixes": [],
+      "recompute": [],
+      "action": "취급시설 기준이 계획서 내용에 영향을 주는지 개정 조문을 확인하세요.",
+      "carries_forms": false
+    },
+    "CAP_DRAFT": {
+      "doc": "CAP",
+      "scope": "화학사고예방관리계획서 작성 등에 관한 규정 — 별지 제1~16호 서식과 작성방법",
+      "forms": [
+        "별지 제1~16호",
+        "서술형 항목(사전관리방침·비상대응계획)"
+      ],
+      "field_prefixes": [
+        "cap.business.",
+        "cap.basic.",
+        "cap.workspace.",
+        "cap.facility.",
+        "cap.chemical.",
+        "cap.site.",
+        "cap.safety.",
+        "cap.prevention.",
+        "cap.offsite.",
+        "cap.internal.",
+        "cap.external.",
+        "cap.community.",
+        "cap.notification.",
+        "cap.facts."
+      ],
+      "recompute": [
+        "cap_form1"
+      ],
+      "action": "서식 칸 구성이 바뀌었다면 프로그램 서식 갱신이 먼저 필요합니다. 작성방법만 바뀐 경우 표시된 칸을 개정 내용에 맞게 다시 확인하세요.",
+      "carries_forms": true
+    },
+    "CAP_REVIEW": {
+      "doc": "CAP",
+      "scope": "검토 절차·제출 서류",
+      "forms": [
+        "제출 서류·검토 절차"
+      ],
+      "field_prefixes": [
+        "cap.submission."
+      ],
+      "recompute": [],
+      "action": "제출 서류 구성과 검토 절차 변경을 확인하세요.",
+      "carries_forms": false
+    },
+    "CAP_QTY": {
+      "doc": "CAP",
+      "scope": "유해화학물질 규정수량(별표 1~4)",
+      "forms": [
+        "별지 제1호 작성수준 구분"
+      ],
+      "field_prefixes": [],
+      "recompute": [
+        "cap_form1"
+      ],
+      "action": "새 규정수량으로 다시 계산한 결과를 확인하고, 작성수준(1군·2군)이 바뀌는지 판정하세요.",
+      "carries_forms": false
+    },
+    "CAP_IMPL": {
+      "doc": "CAP",
+      "scope": "이행점검·자체점검(이행규정 별지 제1~3호)",
+      "forms": [
+        "이행 자체점검"
+      ],
+      "field_prefixes": [
+        "cap.implementation."
+      ],
+      "recompute": [],
+      "action": "자체점검 항목과 서식을 개정 내용과 대조하세요.",
+      "carries_forms": true
+    },
+    "PSM_ACT": {
+      "doc": "PSM",
+      "scope": "공정안전보고서 제출 대상·의무 전반",
+      "forms": [
+        "사업장 판정(대상 여부)"
+      ],
+      "field_prefixes": [],
+      "recompute": [],
+      "action": "공정안전보고서 대상 여부를 '사업장 판정하기'에서 다시 확인하세요.",
+      "carries_forms": false
+    },
+    "PSM_DECREE": {
+      "doc": "PSM",
+      "scope": "시행령 별표 13 유해·위험물질 규정량",
+      "forms": [
+        "사업장 판정(대상 여부)"
+      ],
+      "field_prefixes": [],
+      "recompute": [],
+      "action": "규정량 변경으로 대상 여부가 바뀌는지 '사업장 판정하기'에서 다시 확인하세요.",
+      "carries_forms": false
+    },
+    "PSM_RULE": {
+      "doc": "PSM",
+      "scope": "시행규칙 — 제출 시기·절차",
+      "forms": [
+        "제출 절차"
+      ],
+      "field_prefixes": [
+        "psm.admin."
+      ],
+      "recompute": [],
+      "action": "제출 시기와 행정서식 항목을 개정 조문과 대조하세요.",
+      "carries_forms": false
+    },
+    "PSM_NOTICE": {
+      "doc": "PSM",
+      "scope": "공정안전보고서 고시 — 별지 제12~21호 서식과 작성방법, 심사·확인",
+      "forms": [
+        "별지 제12~21호",
+        "별지 제1호 심사신청서·제9호 확인요청서"
+      ],
+      "field_prefixes": [
+        "psm.business.",
+        "psm.psi.",
+        "psm.risk.",
+        "psm.operation.",
+        "psm.emergency.",
+        "psm.admin.",
+        "psm.facts."
+      ],
+      "recompute": [],
+      "action": "서식 칸 구성이 바뀌었다면 프로그램 서식 갱신이 먼저 필요합니다. 작성방법만 바뀐 경우 표시된 칸을 개정 내용에 맞게 다시 확인하세요.",
+      "carries_forms": true
+    }
+  }
+}

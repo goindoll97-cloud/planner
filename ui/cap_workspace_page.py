@@ -120,6 +120,7 @@ if not project.cap_in_scope and not cap_judgement.undecided(project):
 
 from ui import version_panel
 
+version_panel.render_refresh_banner(project, "CAP")
 version_panel.render(project, "CAP")
 
 from ui import cap_forms_registry as registry
