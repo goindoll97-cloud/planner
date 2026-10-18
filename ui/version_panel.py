@@ -148,6 +148,80 @@ def render(project, doc: str) -> None:
             render_legal_refresh(project, doc, choices, latest.version_id, pending)
 
 
+def render_old_new(plan, doc: str, pid: str) -> None:
+    """개정 법령별로 법제처 신구조문 비교를 불러와 보여 준다(누를 때만 조회)."""
+    from engine import law_old_new
+    from engine.stage2 import legal_baseline_stamp as stamp
+
+    sources = None
+    for change in plan.law_changes:
+        with st.expander(f"📜 개정 전후 조문 보기 — {change.title}"):
+            key = f"lr_oldnew_{doc}_{pid}_{change.key}"
+            if st.button("법제처에서 신구조문 불러오기", key=f"{key}_btn"):
+                sources = stamp.approved_law_sources() if sources is None else sources
+                st.session_state[key] = law_old_new.fetch_old_new(change.key, sources.get(change.key) or {})
+            result = st.session_state.get(key)
+            if result is None:
+                st.caption("법제처 신구법 비교는 현재 판과 바로 직전 판을 비교합니다. 작성본 이후 개정이 여러 번이면 "
+                           "마지막 개정만 보입니다.")
+                continue
+            if result.get("status") != "OK":
+                st.info(result.get("message") or "조문 비교를 불러오지 못했습니다.")
+                continue
+            rows = [r for r in result.get("rows", []) if r.get("변경") != "같음"]
+            info = result.get("new_info") or {}
+            if info:
+                st.caption(" · ".join(f"{k} {v}" for k, v in info.items()))
+            if not rows:
+                st.write("바뀐 조문이 없습니다(별표·별지만 바뀐 개정일 수 있습니다).")
+            else:
+                st.dataframe(pd.DataFrame(rows, columns=["조문", "변경", "개정 전", "개정 후"]),
+                             hide_index=True, width="stretch")
+
+
+def render_refresh_banner(project, doc: str) -> None:
+    """작성 화면 상단 알림: 남은 법령 개정 칸, 또는 최근 버전 이후의 개정 법령."""
+    pid = project.project_id
+    try:
+        pending = lr.pending_refresh_fields(project)
+    except Exception:
+        pending = []
+    pending = [f for f in pending if f.key.startswith("psm.") == (doc == "PSM")]
+    if pending:
+        n_rewrite = sum(f.action == lr.REWRITE for f in pending)
+        st.warning(f"⚖️ 법령 개정으로 다시 작성할 칸 {n_rewrite}개, 내용을 확인할 칸 {len(pending) - n_rewrite}개가 "
+                   "남아 있습니다. 각 별지에서 확인한 뒤 다시 확정하세요.")
+        with st.expander("남은 칸 보기"):
+            st.dataframe(pd.DataFrame([{"구분": f.action_label, "항목": f.label, "사유": f.laws[0] if f.laws else ""}
+                                       for f in pending]), hide_index=True, width="stretch")
+        return
+
+    latest = _latest(ver.list_versions(pid, doc))
+    if latest is None:
+        return
+    try:
+        from engine.stage2 import legal_baseline_stamp as stamp
+
+        fingerprint = stamp._hash_json(stamp.current_legal_baseline())
+        cache_key = f"lr_banner_{doc}_{pid}"
+        cached = st.session_state.get(cache_key)
+        if cached and cached[0] == (latest.version_id, fingerprint):
+            plan = cached[1]
+        else:
+            plan = lr.build_refresh_plan(project, latest.version_id)
+            st.session_state[cache_key] = ((latest.version_id, fingerprint), plan)
+    except Exception:
+        return
+    if not plan.has_changes:
+        return
+    n_rewrite = sum(f.action == lr.REWRITE for f in plan.affected_fields)
+    parts = [f"다시 작성 필요 {n_rewrite}칸", f"내용 확인 {len(plan.affected_fields) - n_rewrite}칸"]
+    if plan.group_review:
+        parts.append("작성수준 재판정 필요")
+    st.warning(f"🔔 {latest.version_id} 작성 이후 개정된 법령 {len(plan.law_changes)}건이 있습니다 ({', '.join(parts)}). "
+               "아래 '버전 관리 → 법령 개정 반영'에서 바뀐 내용을 보고 최신화 작업본을 만드세요.")
+
+
 RECOMPUTE_LABEL = {"CHANGED": "판정 변경", "ADDED": "새로 해당", "REMOVED": "해당 없어짐"}
 
 
@@ -184,9 +258,11 @@ def render_legal_refresh(project, doc: str, choices: list[str], default_id: str,
     st.warning(f"{plan.version_id} 작성 이후 개정된 법령 {len(plan.law_changes)}건")
     st.dataframe(
         pd.DataFrame([{"법령": c.title, "현재 시행일": c.effective_date, "바뀐 점": " / ".join(c.details),
-                       "영향 서식": ", ".join(c.forms), "확인할 일": c.action} for c in plan.law_changes]),
+                       "서식 변경": "예" if c.form_changed else "", "영향 서식": ", ".join(c.forms),
+                       "확인할 일": c.action} for c in plan.law_changes]),
         hide_index=True, width="stretch",
     )
+    render_old_new(plan, doc, pid)
 
     if plan.recompute_note:
         st.write(plan.recompute_note)
@@ -205,11 +281,14 @@ def render_legal_refresh(project, doc: str, choices: list[str], default_id: str,
         st.error("규정수량 비교 결과가 달라졌습니다. '사업장 판정하기'에서 작성수준(1군·2군)을 다시 판정하세요.")
 
     if plan.affected_fields:
-        st.write(f"다시 확인할 칸 {len(plan.affected_fields)}개 — 반영하면 '법령 개정 재확인'(미확인)으로 바뀌고, "
-                 "값은 그대로 남습니다.")
+        n_rewrite = sum(f.action == lr.REWRITE for f in plan.affected_fields)
+        st.write(f"영향받는 칸 {len(plan.affected_fields)}개 — 다시 작성 필요 {n_rewrite}개, "
+                 f"내용 확인 {len(plan.affected_fields) - n_rewrite}개. 반영하면 미확인 상태로 바뀌고 값은 그대로 남습니다.")
+        st.caption("다시 작성 필요: 별지 서식(첨부원본)이 바뀌어 칸 구성·기재 방식이 달라졌을 수 있습니다. "
+                   "내용 확인: 조문·작성방법만 바뀌어 기존 내용이 개정 기준에 맞는지 확인하면 됩니다.")
         st.dataframe(
-            pd.DataFrame([{"항목": f.label, "현재 상태": f.status, "관련 개정": ", ".join(f.laws), "키": f.key}
-                          for f in plan.affected_fields]).drop(columns=["키"]),
+            pd.DataFrame([{"구분": f.action_label, "항목": f.label, "현재 상태": f.status,
+                           "관련 개정": ", ".join(f.laws)} for f in plan.affected_fields]),
             hide_index=True, width="stretch",
         )
     else:

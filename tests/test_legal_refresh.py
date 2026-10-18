@@ -86,11 +86,36 @@ class LegalRefreshTests(unittest.TestCase):
         self.assertEqual([c.key for c in plan.law_changes], ["CAP_DRAFT"])
         details = " ".join(plan.law_changes[0].details)
         self.assertIn("2025.08.07 → 2026.12.01", details)
-        self.assertIn("첨부원본", details)
+        self.assertIn("바뀐 별표·별지: 별지1", details)
+        self.assertTrue(plan.law_changes[0].form_changed)
         keys = [f.key for f in plan.affected_fields]
         # 작성규정 범위의 확인 완료 칸만; 이미 HOLD인 칸·이행규정 칸·공유 사업장 칸은 제외
         self.assertEqual(keys, ["cap.business.representative", "cap.internal.facility_response_plan"])
+        # 서식(첨부)이 바뀌었으므로 다시 작성
+        self.assertEqual({f.action for f in plan.affected_fields}, {lr.REWRITE})
         self.assertEqual(plan.recomputed, [])
+
+    def test_text_only_amendment_asks_for_content_check_not_rewrite(self):
+        meta = self._freeze(_project())
+        new = _new_sources(CAP_DRAFT={"effective_date": "20261201", "issue_number": "제2호"})
+        with patch.object(stamp, "_form1_rows", return_value=FORM1_OLD):
+            plan = lr.build_refresh_plan(_project(), meta.version_id, root=self.root, approved_sources=new)
+        self.assertFalse(plan.law_changes[0].form_changed)
+        self.assertEqual({f.action for f in plan.affected_fields}, {lr.CHECK})
+
+    def test_attachment_change_in_non_form_law_is_a_check(self):
+        # 이행규정 외 서식을 담지 않은 법령(예: 규정수량)은 첨부가 바뀌어도 칸 재작성으로 보지 않는다
+        meta = self._freeze(_project())
+        new = _new_sources(CAP_IMPL={"attachment_hashes": {"별지1": "zzz"}})
+        plan = lr.build_refresh_plan(_project(), meta.version_id, root=self.root, approved_sources=new)
+        self.assertTrue(plan.law_changes[0].form_changed)  # 이행규정은 자체점검 서식을 담고 있음
+        self.assertEqual([(f.key, f.action) for f in plan.affected_fields],
+                         [("cap.implementation.period", lr.REWRITE)])
+        new2 = _new_sources(CAP_QTY={"attachment_hashes": {"별표1": "zzz"}})
+        with patch.object(stamp, "_form1_rows", return_value=FORM1_OLD):
+            plan2 = lr.build_refresh_plan(_project(), meta.version_id, root=self.root, approved_sources=new2)
+        self.assertFalse(plan2.law_changes[0].form_changed)
+        self.assertIn("바뀐 별표·별지: 별표1(추가)", " ".join(plan2.law_changes[0].details))
 
     def test_psm_amendment_does_not_touch_cap_version(self):
         meta = self._freeze(_project())
@@ -126,6 +151,13 @@ class LegalRefreshTests(unittest.TestCase):
         self.assertIn("이전 상태 USER_CONFIRMED", rec.note)
         self.assertEqual(project.fields["cap.implementation.period"].status, "USER_CONFIRMED")
         self.assertIn("작성본 최신화", project.notes[-1])
+        pending = lr.pending_refresh_fields(project)
+        self.assertEqual([p.key for p in pending],
+                         ["cap.business.representative", "cap.internal.facility_response_plan"])
+        self.assertEqual({p.action for p in pending}, {lr.CHECK})
+        # 담당자가 다시 확정하면 목록에서 빠진다
+        project.set_field("cap.business.representative", "대표자", "홍길동", "USER_CONFIRMED")
+        self.assertEqual([p.key for p in lr.pending_refresh_fields(project)], ["cap.internal.facility_response_plan"])
         candidate = lr.change_log_candidate(plan, today="2026-12-02")
         self.assertEqual(candidate["변경의 종류"], "㈓ 정보 현행화")
 

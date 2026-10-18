@@ -52,7 +52,11 @@ def law_identity(source: Mapping[str, Any]) -> dict[str, Any]:
     row["regime"] = str(source.get("regime", "") or "")
     hashes = source.get("attachment_hashes") or {}
     row["attachment_fingerprint"] = _hash_json(hashes) if hashes else ""
+    # 어느 별표·별지가 바뀌었는지 알 수 있도록 첨부별 해시와 제목도 남긴다.
+    row["attachment_hashes"] = {str(k): str(v) for k, v in dict(hashes).items()}
     row["attachment_titles"] = dict(source.get("attachment_titles") or {})
+    # 개정 전후 조문 비교(법제처 신구법 API)에 쓰는 조회 정보.
+    row["target"] = str(source.get("target", "") or "")
     return row
 
 

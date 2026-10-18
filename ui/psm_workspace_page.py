@@ -416,6 +416,7 @@ if not project_id:
 project = load_project(project_id)
 from ui import unsaved_guard, version_panel
 
+version_panel.render_refresh_banner(project, "PSM")
 version_panel.render(project, "PSM")
 
 form_key = unsaved_guard.selector("작성할 별지", list(FORMS), key="psm_form_no", format_func=lambda key: FORMS[key])

@@ -27,6 +27,9 @@ from .storage import DEFAULT_ROOT
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 IMPACT_MAP_FILE = PROJECT_ROOT / "data" / "stage2" / "legal_impact_map.json"
 REVIEW_NOTE_PREFIX = "[법령 개정 재확인]"
+REWRITE_NOTE_PREFIX = "[법령 개정 재작성]"
+REWRITE, CHECK = "REWRITE", "CHECK"
+ACTION_LABEL = {REWRITE: "다시 작성 필요", CHECK: "내용 확인"}
 IDENTITY_LABELS = {
     "serial": "일련번호",
     "effective_date": "시행일",
@@ -46,6 +49,8 @@ class LawChange:
     details: tuple[str, ...]
     effective_date: str = ""
     inferred: bool = False  # 법령판 기록이 없어 시행일로 추정한 경우
+    form_changed: bool = False  # 별지 서식을 담은 법령의 첨부원본(서식)이 바뀜 → 다시 작성
+    changed_attachments: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,11 @@ class AffectedField:
     label: str
     status: str
     laws: tuple[str, ...]
+    action: str = CHECK  # REWRITE(서식이 바뀌어 다시 작성) / CHECK(작성방법·조문 변경으로 내용 확인)
+
+    @property
+    def action_label(self) -> str:
+        return ACTION_LABEL[self.action]
 
 
 @dataclass(frozen=True)
@@ -120,6 +130,8 @@ def compare_law_baselines(
         now = new_laws[key]
         details: list[str] = []
         inferred = False
+        changed_attachments: tuple[str, ...] = ()
+        attachment_changed = False
         if stamped:
             before = old_laws.get(key)
             if before is None:
@@ -131,7 +143,12 @@ def compare_law_baselines(
                         shown = (_fmt_date(a), _fmt_date(b)) if "date" in f else (a or "-", b or "-")
                         details.append(f"{label}: {shown[0]} → {shown[1]}")
                 if before.get("attachment_fingerprint", "") != now.get("attachment_fingerprint", ""):
-                    details.append("별표·별지 첨부원본 내용 변경")
+                    attachment_changed = True
+                    changed_attachments = _changed_attachment_titles(before, now)
+                    if changed_attachments:
+                        details.append("바뀐 별표·별지: " + ", ".join(changed_attachments))
+                    else:
+                        details.append("별표·별지 첨부원본 내용 변경")
         else:
             eff = _date_digits(now.get("effective_date"))
             if eff and cutoff and eff > cutoff:
@@ -151,8 +168,31 @@ def compare_law_baselines(
                 details=tuple(details),
                 effective_date=_fmt_date(now.get("effective_date", "")),
                 inferred=inferred,
+                form_changed=bool(meta.get("carries_forms")) and attachment_changed,
+                changed_attachments=changed_attachments,
             ))
     return changes, stamped
+
+
+def _changed_attachment_titles(before: Mapping[str, Any], now: Mapping[str, Any]) -> tuple[str, ...]:
+    """첨부별 해시를 비교해 추가·삭제·변경된 별표·별지 제목. 옛 기록(첨부별 해시 없음)은 빈 값."""
+    if "attachment_hashes" not in before:
+        return ()  # 첨부별 해시를 남기기 전 기록
+    old_h = dict(before.get("attachment_hashes") or {})
+    new_h = dict(now.get("attachment_hashes") or {})
+    titles = {**dict(before.get("attachment_titles") or {}), **dict(now.get("attachment_titles") or {})}
+    rows: list[str] = []
+    for key in sorted(set(old_h) | set(new_h)):
+        if old_h.get(key) == new_h.get(key):
+            continue
+        name = str(titles.get(key) or key)
+        if key not in old_h:
+            rows.append(f"{name}(추가)")
+        elif key not in new_h:
+            rows.append(f"{name}(삭제)")
+        else:
+            rows.append(name)
+    return tuple(dict.fromkeys(rows))
 
 
 def affected_fields(
@@ -162,6 +202,7 @@ def affected_fields(
 ) -> list[AffectedField]:
     """개정 법령의 field_prefixes에 해당하는 확인 완료 칸."""
     hits: dict[str, list[str]] = {}
+    rewrite: set[str] = set()
     for change in law_changes:
         prefixes = tuple(impact_map.get(change.key, {}).get("field_prefixes") or ())
         if not prefixes:
@@ -169,12 +210,17 @@ def affected_fields(
         for key in fields:
             if key.startswith(prefixes):
                 hits.setdefault(key, []).append(change.title)
+                if change.form_changed:
+                    rewrite.add(key)
     rows: list[AffectedField] = []
     for key in sorted(hits):
         record = fields[key]
         if record.status not in CONFIRMED_STATUSES:
             continue  # 이미 미확인·초안인 칸은 원래대로 둔다
-        rows.append(AffectedField(key, record.label or key, record.status, tuple(dict.fromkeys(hits[key]))))
+        rows.append(AffectedField(key, record.label or key, record.status, tuple(dict.fromkeys(hits[key])),
+                                  REWRITE if key in rewrite else CHECK))
+    # 다시 작성할 칸을 먼저 보여 준다.
+    rows.sort(key=lambda r: (r.action != REWRITE, r.key))
     return rows
 
 
@@ -281,14 +327,18 @@ def apply_refresh(
     """
     ver.start_from_version(project, plan.version_id, doc=plan.doc, force=True, root=root)
     stamp_date = now or datetime.now().strftime("%Y-%m-%d")
-    titles_by_key = {f.key: f.laws for f in plan.affected_fields}
     changed = 0
-    for key, laws in titles_by_key.items():
-        record = project.fields.get(key)
+    for item in plan.affected_fields:
+        record = project.fields.get(item.key)
         if record is None or record.status not in CONFIRMED_STATUSES:
             continue
         previous = record.status
-        reason = f"{REVIEW_NOTE_PREFIX} {', '.join(laws)} 개정 후 다시 확인 필요 ({stamp_date}, 이전 상태 {previous})"
+        laws = ", ".join(item.laws)
+        if item.action == REWRITE:
+            reason = (f"{REWRITE_NOTE_PREFIX} {laws} 서식 개정 — 바뀐 서식에 맞게 다시 작성 필요 "
+                      f"({stamp_date}, 이전 상태 {previous})")
+        else:
+            reason = f"{REVIEW_NOTE_PREFIX} {laws} 개정 후 다시 확인 필요 ({stamp_date}, 이전 상태 {previous})"
         record.note = f"{reason}\n{record.note}".strip() if record.note else reason
         record.status = "HOLD"
         record.updated_at = ver._utc_now()
@@ -310,3 +360,22 @@ def change_log_candidate(plan: RefreshPlan, today: str | None = None) -> dict[st
         "변경의 종류": "㈓ 정보 현행화",
         "변경 내용(변경전 → 변경후)": f"{plan.version_id} 작성 기준 법령 → 개정 법령({titles}) 반영",
     }
+
+
+def pending_refresh_fields(project: Stage2Project) -> list[AffectedField]:
+    """작업본에 남아 있는 '법령 개정' 표시 칸(아직 담당자가 다시 확정하지 않은 칸)."""
+    rows: list[AffectedField] = []
+    for key, record in sorted(project.fields.items()):
+        note = str(record.note or "")
+        if record.status in CONFIRMED_STATUSES:
+            continue
+        if note.startswith(REWRITE_NOTE_PREFIX):
+            action = REWRITE
+        elif note.startswith(REVIEW_NOTE_PREFIX):
+            action = CHECK
+        else:
+            continue
+        first = note.splitlines()[0]
+        rows.append(AffectedField(key, record.label or key, record.status, (first,), action))
+    rows.sort(key=lambda r: (r.action != REWRITE, r.key))
+    return rows
