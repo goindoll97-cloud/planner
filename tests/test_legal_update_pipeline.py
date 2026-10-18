@@ -173,6 +173,33 @@ class OneClickLegalUpdatePipelineTests(unittest.TestCase):
         db_approve.assert_not_called()
         sync_evidence.assert_not_called()
 
+    def test_blocker_shows_the_specific_failed_checks_not_only_a_generic_hint(self):
+        # 별표 2 파서는 '실패항목을 확인하세요'만 메시지에 넣고 실제 사유는 checks에만 둔다 —
+        # 화면에서 원인을 알 수 있도록 blocker에 그 사유가 들어가야 한다.
+        def failing_app2():
+            return CandidateResult(
+                key="CAP_QTY_APP2", status="VALIDATION_FAILED", row_count=2361,
+                source_file="a.pdf", candidate_file="a.csv",
+                messages=["자동추출 품질검사를 통과하지 못했습니다. 승인하지 말고 실패항목을 확인하세요."],
+                checks={"failure_reasons": ["페이지 검사 수 57 != 56", "유해성 세부행 2361 != 2354"]},
+            )
+        builders = tuple(
+            (key, label, sheet, failing_app2 if key == "CAP_QTY_APP2" else builder)
+            for key, label, sheet, builder in self._builders()
+        )
+        with (
+            patch.object(pipeline, "REGULATORY_BUILDERS", builders),
+            patch.object(pipeline, "run_law_monitor", return_value=self._law_rows()),
+            patch.object(pipeline, "decision_readiness_gate", return_value={"decision": "HOLD", "blockers": []}),
+            patch.object(pipeline, "_write_report", side_effect=lambda payload: payload),
+        ):
+            result = pipeline.refresh_all_legal_assets()
+        blocker = next(b for b in result["blockers"] if "별표 2" in b)
+        self.assertIn("실패한 검사: 페이지 검사 수 57 != 56; 유해성 세부행 2361 != 2354", blocker)
+        # 파서가 이미 메시지에 사유를 넣은 경우(별표 3 방식)는 중복 표시하지 않는다
+        summary = {"messages": ["품질검사 실패 기본 행 필수값 누락 2건"], "checks": {"failure_reasons": ["기본 행 필수값 누락 2건"]}}
+        self.assertEqual(pipeline._candidate_failure_details(summary), "품질검사 실패 기본 행 필수값 누락 2건")
+
     def test_no_change_and_ready_skips_expensive_rebuild(self):
         law_rows = self._law_rows(status="CURRENT")
         for row in law_rows:
