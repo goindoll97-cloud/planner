@@ -108,6 +108,20 @@ def _candidate_summary(result: Any) -> dict[str, Any]:
     }
 
 
+def _candidate_failure_details(summary: dict[str, Any]) -> str:
+    """후보표 검증 실패 사유. 파서가 checks.failure_reasons에만 남기는 구체 사유도 화면에 보이게 한다.
+
+    별표 1·2 파서는 '실패항목을 확인하세요'라는 안내만 메시지에 넣고, 실제로 어떤 검사가 실패했는지
+    (페이지 수·연번·행 수·앵커 등)는 checks에만 있어 화면에서 원인을 알 수 없었다.
+    """
+    messages = [str(v).strip() for v in summary.get("messages", []) if str(v).strip()]
+    reasons = [str(v).strip() for v in (summary.get("checks") or {}).get("failure_reasons") or [] if str(v).strip()]
+    reasons = [r for r in reasons if not any(r in m for m in messages)]  # 메시지에 이미 있으면 중복 표시하지 않음
+    if reasons:
+        messages.append("실패한 검사: " + "; ".join(reasons))
+    return " / ".join(messages)
+
+
 def _law_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -321,7 +335,7 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
                 }
             candidate_summaries.append(summary)
             if summary.get("status") != "REVIEW_REQUIRED":
-                details = " / ".join(str(v) for v in summary.get("messages", []) if str(v).strip())
+                details = _candidate_failure_details(summary)
                 candidate_failures.append(
                     f"{label}: 자동검증 상태 {summary.get('status') or '미확인'}"
                     + (f" · {details}" if details else "")
