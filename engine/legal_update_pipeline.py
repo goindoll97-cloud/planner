@@ -28,6 +28,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from .law_monitor import APPROVED_FILE, approve_latest_observation, run_law_monitor
+from .rule_mapping_review import is_reviewed, review_record
 from .legal_archive import EVIDENCE_CONFIG, evidence_for_key, sync_approved_evidence
 from .readiness import decision_readiness_gate
 from .regulatory_admin import approve_candidate
@@ -212,9 +213,16 @@ def _all_sources_current(rows: list[dict[str, Any]]) -> bool:
     )
 
 
+def requires_rule_mapping_review(row: dict[str, Any]) -> bool:
+    return _requires_rule_mapping_review(row)
+
+
 def _requires_rule_mapping_review(row: dict[str, Any]) -> bool:
     """Return True when one-click cannot prove the software logic is current."""
     if str(row.get("monitor_status") or "") != "UPDATE_PENDING":
+        return False
+    # 담당자가 이 정확한 판의 개정 전후 조문과 규칙을 대조했다고 기록한 경우에만 통과한다.
+    if is_reviewed(row):
         return False
     reasons = [str(value).strip() for value in (row.get("change_reason") or []) if str(value).strip()]
     if any(reason.startswith(LEGAL_METADATA_CHANGE_PREFIXES) for reason in reasons):
@@ -354,6 +362,15 @@ def refresh_all_legal_assets(progress: ProgressCallback | None = None) -> dict[s
         if mapping_blockers:
             base.update(status="HOLD", blockers=mapping_blockers, requires_program_rule_review=True)
             return _write_report(base)
+
+        # 사람이 검토 확인한 개정은 감사 기록에 남긴다.
+        reviewed = [
+            {"key": str(row.get("key") or ""), "title": str(row.get("title") or ""), **(review_record(row) or {})}
+            for row in rows
+            if str(row.get("monitor_status") or "") == "UPDATE_PENDING" and is_reviewed(row)
+        ]
+        if reviewed:
+            base["rule_mapping_reviews"] = reviewed
 
         approvable_statuses = {"BASELINE_UNAPPROVED", "BASELINE_MIGRATION_REQUIRED", "UPDATE_PENDING"}
         law_keys = [

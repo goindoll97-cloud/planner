@@ -13,9 +13,12 @@ from engine.law_attachment_archive import (
 )
 from engine.law_monitor import OBSERVED_FILE
 from engine.legal_archive import evidence_rows, open_archive_folder
-from engine.legal_update_pipeline import latest_update_report, refresh_all_legal_assets
+from engine import law_old_new
+from engine.legal_update_pipeline import latest_update_report, refresh_all_legal_assets, requires_rule_mapping_review
 from engine.readiness import decision_readiness_gate
 from engine.regulatory_admin import approved_db_status
+from engine.rule_mapping_review import record_reviews
+from engine.stage2.legal_refresh import load_impact_map
 
 
 UPDATE_REPORT_KEY = "regdb_one_click_update_report"
@@ -150,6 +153,59 @@ def _show_last_result(report: dict[str, object]) -> None:
         st.caption(f"판정용 규정 DB Excel 최신본: {excel.get('file', '')}")
 
 
+def _render_rule_mapping_review(rows: list[dict[str, object]]) -> None:
+    """실제 개정된 법령에 대해, 담당자가 규칙과 새 조문을 대조했다는 확인을 남긴다."""
+    pending = [row for row in rows if requires_rule_mapping_review(row)]
+    if not pending:
+        return
+    try:
+        impact = load_impact_map()
+    except Exception:
+        impact = {}
+    st.subheader("규칙 매핑 검토가 필요한 개정")
+    st.warning(
+        "아래 법령은 실제로 개정되었습니다. 프로그램의 판정·작성 규칙이 새 조문과 맞는지는 프로그램이 스스로 확인할 수 없어 "
+        "자동 승인하지 않았습니다. 개정 전후 조문을 확인하고 영향 범위를 대조한 뒤, 아래에 확인을 기록하고 "
+        "‘최신본 업데이트’를 다시 실행하세요. 확인은 이 판에만 적용되며 다음 개정은 다시 검토해야 합니다."
+    )
+    for row in pending:
+        key = str(row.get("key") or "")
+        with st.expander(f"{_human(row.get('title') or key)} — 시행 {row.get('effective_date') or '-'}", expanded=True):
+            for reason in row.get("change_reason") or []:
+                st.write(f"• {_human(reason)}")
+            info = impact.get(key) or {}
+            if info:
+                st.caption(f"프로그램에서 영향받는 범위: {info.get('scope', '')} → {info.get('action', '')}")
+            state_key = f"rule_review_oldnew_{key}_{row.get('serial')}"
+            if st.button("법제처에서 신구조문 불러오기", key=f"{state_key}_btn"):
+                st.session_state[state_key] = law_old_new.fetch_old_new(key, row)
+            result = st.session_state.get(state_key)
+            if result is not None:
+                if result.get("status") != "OK":
+                    st.info(result.get("message") or "조문 비교를 불러오지 못했습니다. 법제처 사이트에서 직접 확인하세요.")
+                else:
+                    changed = [r for r in result.get("rows", []) if r.get("변경") != "같음"]
+                    if changed:
+                        st.dataframe(pd.DataFrame(changed, columns=["조문", "변경", "개정 전", "개정 후"]),
+                                     hide_index=True, width="stretch")
+                    else:
+                        st.write("바뀐 조문이 없습니다(별표·별지만 바뀐 개정일 수 있습니다).")
+    with st.form("rule_mapping_review_form"):
+        confirmed = st.checkbox("위 법령의 개정 전후 조문을 확인했고, 프로그램 판정·작성 규칙이 새 조문과 어긋나지 않음을 확인했습니다.")
+        reviewer = st.text_input("확인자 이름")
+        memo = st.text_area("확인 메모(선택) — 무엇을 어떻게 확인했는지", height=80)
+        submitted = st.form_submit_button("검토 확인 기록")
+    if submitted:
+        if not confirmed:
+            st.error("확인 항목에 체크해야 기록할 수 있습니다.")
+        else:
+            result = record_reviews(pending, reviewer=reviewer, memo=memo)
+            if result.get("status") == "RECORDED":
+                st.success(f"{result['message']} 이제 ‘최신본 업데이트’를 다시 실행하세요.")
+            else:
+                st.error(result.get("message", "기록하지 못했습니다."))
+
+
 st.title("법령·규정 DB 관리")
 st.caption(
     "평소에는 별표별로 관리할 필요가 없습니다. 법령 개정 또는 최신본 미반영이 감지되면 "
@@ -199,6 +255,7 @@ if isinstance(report, dict):
 # Re-read after a possible update report so readiness shown below always reflects
 # the latest on-disk observation/approval state rather than stale session data.
 rows = _observed_rows()
+_render_rule_mapping_review(rows)
 gate = decision_readiness_gate(rows) if rows else gate
 if gate.get("decision") == "ALLOW":
     st.page_link("ui/judgement_page.py", label="사업장 판정하기로 이동", icon="✅")
