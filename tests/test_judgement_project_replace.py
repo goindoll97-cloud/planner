@@ -50,6 +50,25 @@ def _project_with_a_chemical():
     return project
 
 
+# AppTest 스크립트가 공유 streamlit 모듈의 st.file_uploader를 가짜로 바꾼다.
+# 다른 테스트 모듈에 새지 않도록 이 모듈이 끝나면 원래 함수로 되돌린다.
+_REAL_FILE_UPLOADER = None
+
+
+def setUpModule():
+    global _REAL_FILE_UPLOADER
+    import streamlit as st
+
+    _REAL_FILE_UPLOADER = st.file_uploader
+
+
+def tearDownModule():
+    import streamlit as st
+
+    if _REAL_FILE_UPLOADER is not None:
+        st.file_uploader = _REAL_FILE_UPLOADER
+
+
 class ReplaceUIGateTests(unittest.TestCase):
     def _run(self, project, *, file_uploader=None):
         rows = [{"project_id": project.project_id, "company_name": project.company_name}]
