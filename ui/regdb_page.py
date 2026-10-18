@@ -208,11 +208,21 @@ def _render_rule_mapping_review(rows: list[dict[str, object]]) -> None:
 
 st.title("법령·규정 DB 관리")
 st.caption(
-    "평소에는 별표별로 관리할 필요가 없습니다. 법령 개정 또는 최신본 미반영이 감지되면 "
-    "아래 ‘최신본 업데이트’ 한 번으로 법제처 원본(PDF·HWP/HWPX), 판정용 규정 DB, 근거 PDF, Excel 최신본을 함께 갱신합니다."
+    "‘최신본 업데이트’는 시행 중인 법령의 원본과 판정 자료를 확인합니다. "
+    "실제 개정으로 판정·작성 규칙의 검토가 필요한 경우에는 자동 승인하지 않고 아래에 확인할 내용을 표시합니다."
 )
 
 rows = _observed_rows()
+upcoming = [
+    (str(row.get("title") or row.get("key") or "법령·규정"), str(item.get("effective_date") or ""))
+    for row in rows for item in (row.get("upcoming_versions") or [])
+    if isinstance(item, dict)
+]
+if upcoming:
+    with st.expander(f"시행 예정 법령·규정 {len(upcoming)}건", expanded=False):
+        st.caption("시행 예정본은 현재 판정용 원본으로 적용하지 않습니다. 시행일 이후 다시 확인합니다.")
+        for title, effective_date in upcoming:
+            st.write(f"• {_human(title)} · 시행 예정일 {effective_date}")
 gate = decision_readiness_gate(rows) if rows else {
     "decision": "HOLD",
     "message": "아직 법령 최신성 확인기록이 없습니다.",
@@ -221,7 +231,7 @@ gate = decision_readiness_gate(rows) if rows else {
 
 law_needs_update = bool(rows) and any(not _row_is_current(row) for row in rows)
 if law_needs_update:
-    st.error("법령 개정 또는 공식 첨부원본 변경이 감지되었습니다. ‘최신본 업데이트’를 실행해 주세요.")
+    st.error("시행 중인 법령의 변경 또는 원본 확인 필요 항목이 있습니다. 아래 사유를 확인해 주세요.")
 elif rows and gate.get("decision") == "ALLOW":
     st.success("현재 법령·첨부원본과 판정용 규정 DB가 최신 상태입니다.")
 elif rows:
