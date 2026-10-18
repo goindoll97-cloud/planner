@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -238,11 +238,49 @@ def fetch_source_payload(search_result: dict[str, Any], target: str, timeout: in
     return response.json()
 
 
-def fetch_source_body_html(search_result: dict[str, Any], title: str, timeout: int = 90) -> bytes:
-    """Download the exact official administrative-rule HTML body from law.go.kr.
+_FRAME_SRC = re.compile(r"<i?frame[^>]+src=[\"']([^\"']+)[\"']", re.I)
 
-    A law has no appendix file when its text is entirely in the body. Validate
-    the response before it can enter the approved local source archive.
+
+def _decode_official(raw: bytes) -> str:
+    for encoding in ("utf-8", "euc-kr", "cp949"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeError:
+            continue
+    return ""
+
+
+def _body_has_regulation(raw: bytes, title: str) -> bool:
+    """공식 응답에 행정규칙명과 조문이 실제로 들어 있는지(껍데기 페이지가 아닌지)."""
+    if len(raw) < 500:
+        return False
+    decoded = _decode_official(raw)
+    if not decoded or "<" not in decoded:
+        return False
+    compact = re.sub(r"\s+", "", decoded)
+    expected = re.sub(r"\s+", "", title)
+    has_article = "제1조" in compact or "<조문내용" in compact
+    return expected in compact and has_article
+
+
+def official_body_kind(raw: bytes) -> str:
+    """보관할 본문 표현 형식: 'xml'(법제처 XML 응답) 또는 'html'."""
+    head = raw[:400].lstrip().lower()
+    if head.startswith(b"<?xml") or b"<admrulservice" in head:
+        return "xml"
+    return "html"
+
+
+def fetch_source_body_html(search_result: dict[str, Any], title: str, timeout: int = 90) -> bytes:
+    """Download the exact official administrative-rule body from law.go.kr.
+
+    A law has no appendix file when its text is entirely in the body. The HTML
+    representation is tried first; law.go.kr may answer with a frame/script
+    wrapper whose text is loaded separately, so a same-site frame is followed
+    once, and finally the documented XML representation (행정규칙 본문 조회,
+    ``조문내용``) is used. Every candidate is validated for the rule title and
+    article text before it can enter the approved local source archive; the
+    official response bytes are preserved as returned.
     """
     if search_result.get("api_status") != "FOUND":
         raise ValueError("공식 현행 판 확인이 필요합니다.")
@@ -252,6 +290,8 @@ def fetch_source_body_html(search_result: dict[str, Any], title: str, timeout: i
     serial = _clean(search_result.get("serial"))
     if not serial:
         raise ValueError("행정규칙 일련번호가 없습니다.")
+
+    tried: list[str] = []
     response = requests.get(
         SERVICE_URL,
         params={"OC": credential, "target": "admrul", "type": "HTML", "ID": serial},
@@ -259,17 +299,30 @@ def fetch_source_body_html(search_result: dict[str, Any], title: str, timeout: i
     )
     response.raise_for_status()
     raw = response.content
-    if len(raw) < 500:
-        raise ValueError("공식 본문 응답이 비어 있거나 너무 짧습니다.")
-    expected = re.sub(r"\s+", "", title)
-    for encoding in ("utf-8", "euc-kr", "cp949"):
-        try:
-            decoded = raw.decode(encoding)
-        except UnicodeError:
-            continue
-        if expected in re.sub(r"\s+", "", decoded) and "제1조" in decoded and "<" in decoded:
-            return raw  # preserve official response bytes; no regenerated content
-    raise ValueError("공식 본문의 법령명·조문을 확인할 수 없습니다.")
+    if _body_has_regulation(raw, title):
+        return raw
+    tried.append("HTML")
+
+    match = _FRAME_SRC.search(_decode_official(raw))
+    if match:
+        frame_url = urljoin(f"{LAW_BASE_URL}/DRF/", match.group(1).replace("&amp;", "&"))
+        if urlparse(frame_url).hostname in {"www.law.go.kr", "law.go.kr"}:
+            frame = requests.get(frame_url, timeout=timeout)
+            frame.raise_for_status()
+            if _body_has_regulation(frame.content, title):
+                return frame.content
+            tried.append("HTML 프레임")
+
+    xml = requests.get(
+        SERVICE_URL,
+        params={"OC": credential, "target": "admrul", "type": "XML", "ID": serial},
+        timeout=timeout,
+    )
+    xml.raise_for_status()
+    if _body_has_regulation(xml.content, title):
+        return xml.content
+    tried.append("XML")
+    raise ValueError(f"공식 본문의 법령명·조문을 확인할 수 없습니다(시도: {', '.join(tried)}).")
 
 
 def extract_attachments(payload: Any) -> list[dict[str, str]]:

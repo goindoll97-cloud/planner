@@ -138,6 +138,10 @@ def _show_last_result(report: dict[str, object]) -> None:
         st.error("최신본 자동 업데이트를 완료하지 못했습니다. 실패한 부분은 기존 승인본으로 임의 대체하지 않았습니다.")
         for blocker in report.get("blockers") or []:
             st.write(f"• {_human(blocker)}")
+        if not (report.get("law_approval") or {}).get("approved"):
+            st.caption("업데이트는 한 자료라도 확인에 실패하면 전체를 그 자리에서 멈춥니다. 그래서 위 문제와 관계없는 법령·별표도 "
+                       "이번에는 새 승인본으로 반영되지 않았고, 아래 판정 보류 사유에 함께 표시될 수 있습니다. "
+                       "위 문제를 해결한 뒤 다시 실행하면 함께 반영됩니다.")
     for warning in report.get("warnings") or []:
         st.warning(str(warning))
 

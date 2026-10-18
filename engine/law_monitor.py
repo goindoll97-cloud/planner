@@ -14,6 +14,7 @@ from .law_api import (
     download_binary,
     extract_attachments,
     fetch_source_body_html,
+    official_body_kind,
     fetch_source_payload,
     search_current_source,
 )
@@ -349,23 +350,25 @@ def run_law_monitor(timeout: int = 45) -> list[dict[str, Any]]:
         if source.body_required:
             try:
                 if source.target != "admrul":
-                    raise ValueError("본문 HTML 보관은 행정규칙만 지원합니다.")
-                html = fetch_source_body_html(found, source.title, timeout=max(timeout, 60))
+                    raise ValueError("공식 본문 보관은 행정규칙만 지원합니다.")
+                body = fetch_source_body_html(found, source.title, timeout=max(timeout, 60))
+                body_kind = official_body_kind(body)
                 body_meta = save_pending_attachment(
                     source_key=source.key,
                     item_id=f"{source.title} 본문",
-                    declared_kind="html",
-                    url=f"https://www.law.go.kr/DRF/lawService.do?target=admrul&type=HTML&ID={found.get('serial', '')}",
-                    content=html,
+                    declared_kind=body_kind,
+                    url=(f"https://www.law.go.kr/DRF/lawService.do?target=admrul&type={body_kind.upper()}"
+                         f"&ID={found.get('serial', '')}"),
+                    content=body,
                 )
-                if body_meta["format"] != "HTML":
+                if body_meta["format"] != body_kind.upper():
                     raise ValueError("공식 본문의 파일 형식을 확인할 수 없습니다.")
                 row["attachment_files"].append(body_meta)
                 row["pending_attachment_files"].append(body_meta["pending_file"])
-                row["attachment_hashes"]["본문::HTML"] = body_meta["sha256"]
+                row["attachment_hashes"][f"본문::{body_kind.upper()}"] = body_meta["sha256"]
             except Exception as exc:
                 attachment_problem = True
-                row["change_reason"].append(f"공식 본문 HTML 확인·보관 실패: {type(exc).__name__}: {exc}")
+                row["change_reason"].append(f"공식 본문 확인·보관 실패: {type(exc).__name__}: {exc}")
 
         row["attachment_file_count"] = len(row["attachment_files"])
         if attachment_problem:
