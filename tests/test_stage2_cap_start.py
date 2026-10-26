@@ -140,7 +140,9 @@ class CapStartTests(unittest.TestCase):
         page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
         self.assertIn("cap_start_panel.render", page)
         writing = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("create_direct_cap_project", writing)
+        start = (ROOT / "ui/evidence_workspace_page.py").read_text(encoding="utf-8")
+        self.assertIn("create_direct_cap_project", start)       # 작성 시작은 사업장 업무 화면에서
+        self.assertNotIn("create_direct_cap_project", writing)  # 작성 화면은 새로 만들지 않고 안내만
         self.assertNotIn("cap_start_panel.render", writing)
         self.assertNotIn("judgement_panel.render", writing)
         panel = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")

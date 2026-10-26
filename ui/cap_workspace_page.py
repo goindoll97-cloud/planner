@@ -19,34 +19,19 @@ DIM_LABELS = {
 }
 
 
-def _direct_start(expanded: bool) -> None:
-    from engine.stage2.direct_template import create_direct_cap_project
-
-    with st.expander("판정 없이 화사계 작성 시작", expanded=expanded):
-        st.caption("이미 작성 대상인지 확인한 사업장은 여기서 바로 시작할 수 있습니다. 작성수준은 알 때만 선택하고, 별지 제1호의 최대보유량과 작성수준은 제출 전 확인하세요.")
-        with st.form("cap_direct_start"):
-            name = st.text_input("사업장명", key="cap_direct_name")
-            address = st.text_input("사업장 주소", key="cap_direct_address")
-            group = st.selectbox("작성수준 (알면 선택)", ["확인 전", "1군", "2군"], key="cap_direct_group")
-            submitted = st.form_submit_button("화사계 작성 시작")
-        if submitted:
-            try:
-                project = create_direct_cap_project(
-                    name, address=address, cap_group="" if group == "확인 전" else group,
-                )
-            except ValueError as exc:
-                st.warning(str(exc))
-                return
-            save_project(project)
-            st.session_state[ACTIVE_PROJECT_KEY] = project.project_id
-            st.rerun()
+def _start_pointer() -> None:
+    """새 사업장은 ‘사업장 업무’에서 자료를 올려 시작합니다(여기서는 만들지 않음)."""
+    try:
+        st.page_link("ui/evidence_workspace_page.py", label="새 사업장은 ‘사업장 업무’에서 자료를 올려 시작하세요", icon="📂")
+    except Exception:  # 이 화면만 따로 실행한 경우(이동 링크를 만들 수 없음)
+        st.caption("새 사업장은 ‘사업장 업무’ 화면에서 자료를 올려 시작하세요.")
 
 
 def _project_selector() -> str | None:
     projects = list_projects()
     if not projects:
-        st.info("작성할 사업장이 아직 없습니다. 사업장 정보를 적고 바로 별지 작성을 시작하세요.")
-        _direct_start(expanded=True)
+        st.info("작성할 사업장이 아직 없습니다. 회사 자료를 올리면 초안이 먼저 만들어집니다.")
+        _start_pointer()
         return None
     labels = {row["project_id"]: f"{row['company_name']} · {row['project_id']}" for row in projects}
     ids = list(labels)
@@ -56,7 +41,7 @@ def _project_selector() -> str | None:
         format_func=lambda pid: labels[pid],
     )
     st.session_state[ACTIVE_PROJECT_KEY] = selected
-    _direct_start(expanded=False)
+    _start_pointer()
     return selected
 
 
