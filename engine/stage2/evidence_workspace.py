@@ -354,6 +354,28 @@ def find_header_row(rows):
     return best
 
 
+def classify_document(name, content):
+    """식별자와 항목명이 가리키는 자료 종류를 결정합니다. 모호하면 확인을 요청합니다."""
+    tables, _ = read_document(name, content)
+    scores = {"material": 0, "facility": 0}
+    for table in tables:
+        at = find_header_row(table.rows)
+        if at is None:
+            continue
+        headings = {norm(cell) for cell in table.rows[at]}
+        if headings & {"제품코드", "물질코드", "cas", "casno", "cas번호"}:
+            scores["material"] += 3
+        if headings & {"설비번호", "시설번호", "설비코드", "장치번호", "tagno"}:
+            scores["facility"] += 3
+        scores["material"] += len(headings & {"제품명", "물질명", "함량", "함량%"})
+        scores["facility"] += len(headings & {"설비명", "시설명", "용량", "용량m3", "용량l", "최대보유량kg", "운전압력mpa", "시설유형"})
+    if scores["material"] and not scores["facility"]:
+        return "material"
+    if scores["facility"] and not scores["material"]:
+        return "facility"
+    raise ValueError("자료 종류를 자동 판별하지 못했습니다. 이 파일의 물질 또는 설비 종류를 선택해 주세요.")
+
+
 # ---------------------------------------------------------------- 접수
 
 def ingest(project, name, content, kind="facility", entity_hint=""):
@@ -724,7 +746,13 @@ def publishing_plan(project):
     return plans
 
 
+def unreviewed_legal(project):
+    return [slot for slot in slots(project) if slot["method"] == "AUTO" and slot["field"] in LEGAL_FIELDS]
+
+
 def publish(project, *, replace_existing=False):
+    if unreviewed_legal(project):
+        raise ValueError("법적 계산에 쓰이는 자동 기입값을 원자료와 대조해 확인한 뒤 연결하세요.")
     plans = publishing_plan(project)
     if not plans:
         raise ValueError("연결할 확인 완료 사실이 없습니다.")

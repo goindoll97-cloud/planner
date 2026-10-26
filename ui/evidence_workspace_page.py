@@ -82,14 +82,24 @@ def _metrics(project) -> None:
 def _tab_upload(project) -> None:
     st.write("회사에 있는 자료를 그대로 올리세요. 표의 설비번호·제품코드로 같은 대상을 연결하고, 규칙을 통과한 값은 알아서 채웁니다.")
     pid = project.project_id
-    kind = st.radio("자료 종류", ["facility", "material"], horizontal=True, key="evidence_kind_" + pid,
-                    format_func=lambda k: "설비·운전 자료" if k == "facility" else "제품·물질·SDS 자료")
-    hint = st.text_input("대상 식별번호 (SDS·단일 설비 설명서처럼 표에 번호가 없을 때만)", help="예: P-01, TK-01")
     uploaded = st.file_uploader("회사 자료 (파일당 20MB 이하)", type=["csv", "xlsx", "pdf", "docx", "hwpx", "txt"], accept_multiple_files=True)
+    st.caption("물질·설비 파일을 함께 선택하세요. 머리글로 자동 분류하고 판별할 수 없는 파일만 종류를 묻습니다.")
+    selected = {}
+    for index, file in enumerate(uploaded or []):
+        try:
+            detected = ew.classify_document(file.name, file.getvalue())
+            st.write(f"{file.name}: {'물질' if detected == 'material' else '설비'} 자료로 분류")
+            selected[index] = detected
+        except Exception:
+            selected[index] = st.selectbox(f"{file.name} 자료 종류 확인", ["선택하세요", "material", "facility"],
+                                           format_func=lambda v: {"선택하세요": "선택하세요", "material": "물질", "facility": "설비"}[v], key=f"kind_{pid}_{index}")
+    hint = st.text_input("식별번호가 없는 단일 대상 문서의 대상번호 (선택)", help="예: P-01, TK-01. 표에 번호가 있으면 비워 두세요.")
     if st.button("자료 읽기", type="primary", disabled=not uploaded):
-        for file in uploaded:
+        for index, file in enumerate(uploaded):
             try:
-                count = ew.ingest(project, file.name, file.getvalue(), kind, hint)
+                if selected[index] == "선택하세요":
+                    raise ValueError("자료 종류를 선택하세요.")
+                count = ew.ingest(project, file.name, file.getvalue(), selected[index], hint)
                 save_attachment(project.project_id, file.name, file.getvalue(), note="공통정보 추출 원문")
                 save_project(project)
                 st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 후보 {count}개 접수")
@@ -98,7 +108,7 @@ def _tab_upload(project) -> None:
                     f"{file.name}: 읽지 못했습니다 ({exc if isinstance(exc, ValueError) else type(exc).__name__}). 저장된 다른 자료는 유지됩니다.")
         st.rerun()
     st.download_button("가상 회사 시험자료 ZIP", ew.demo_zip(), file_name="synthetic_company_evidence.zip", mime="application/zip")
-    st.caption("ZIP을 풀고 01번은 제품·물질 자료로, 나머지는 설비 자료로 올리세요. 02·03번은 용량 충돌, 04번은 제목 줄과 수식이 있는 실제형 대장입니다.")
+    st.caption("ZIP을 풀어 네 파일을 한 번에 올리세요. 02·03번은 용량 충돌, 04번은 제목 줄과 수식이 있는 대장입니다.")
     data = ew.graph(project)
     for doc in data["documents"]:
         with st.expander(f"{doc['name']} · 후보 {doc['fact_count']}개"):
@@ -324,6 +334,18 @@ def _form1_payoff(project) -> None:
 def _tab_export(project) -> None:
     data = ew.graph(project)
     info = ew.summary(project)
+    legal = ew.unreviewed_legal(project)
+    if legal:
+        st.warning(f"법적 계산 입력값 {len(legal)}개가 자동 기입 상태입니다. 원자료를 확인하기 전에는 작성자료에 연결할 수 없습니다.")
+        with st.expander("법적 계산 입력값 확인", expanded=True):
+            st.dataframe([{"대상": _entity_label(s["entity"]), "항목": ew.LABELS[s["field"]],
+                           "값": str(s["chosen"]["value"]), "자료": s["chosen"]["document"],
+                           "위치": s["chosen"]["location"]} for s in legal], hide_index=True, width="stretch")
+            checked = st.checkbox("위 값과 원자료·단위·현재 적용 여부를 모두 대조했습니다", key="legal_review_" + project.project_id)
+            if st.button("법적 입력값 확인 완료", disabled=not checked):
+                ew.confirm_auto(project, [s["key"] for s in legal])
+                save_project(project)
+                st.rerun()
     if info["critical_auto"]:
         st.warning(f"자동 기입한 핵심값 {info['critical_auto']}개를 아직 확인하지 않았습니다. ‘확인할 일’에서 먼저 보세요.")
     proposed = ew.publishing_plan(project)
@@ -337,7 +359,7 @@ def _tab_export(project) -> None:
                 st.write("현재 저장값")
                 st.json(old.value)
     overwrite = st.checkbox("기존 작성자료와의 차이를 검토했으며 해당 목록을 새 연결값으로 교체합니다")
-    if st.button("확인한 공통정보를 작성자료에 연결", disabled=not proposed):
+    if st.button("확인한 공통정보를 작성자료에 연결", disabled=not proposed or bool(legal)):
         try:
             ew.publish(project, replace_existing=overwrite)
             save_project(project)

@@ -154,7 +154,20 @@ class EvidenceTests(unittest.TestCase):
         e.approve(self.p, conflict['key'], conflict['facts'][0]['id'])
         e.add_manual(self.p, 'facility:RX-01', 'inventory', '2000', '현장 확인(수식 결과 확인)', confirm=True)
         self.assertEqual(e.review_queue(self.p), [])
+        self.assertTrue(e.unreviewed_legal(self.p))
+        with self.assertRaises(ValueError):
+            e.publish(self.p)
+        e.confirm_auto(self.p, [s['key'] for s in e.unreviewed_legal(self.p)])
         self.assertEqual(set(e.publish(self.p)), {'inventory.chemicals', 'inventory.facilities'})
+
+    def test_mixed_batch_files_are_classified_before_ingestion(self):
+        with ZipFile(BytesIO(e.demo_zip())) as archive:
+            files = [name for name in archive.namelist() if name.endswith(('.csv', '.xlsx'))]
+            kinds = {name: e.classify_document(name, archive.read(name)) for name in files}
+        self.assertEqual(kinds['01_materials.csv'], 'material')
+        self.assertEqual({v for k, v in kinds.items() if k != '01_materials.csv'}, {'facility'})
+        with self.assertRaisesRegex(ValueError, '자료 종류'):
+            e.classify_document('unclear.txt', b'No recognizable headings')
 
     def test_invalid_file_leaves_graph_unchanged(self):
         before = e.graph(self.p)
@@ -287,6 +300,7 @@ class EvidenceTests(unittest.TestCase):
         self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품 A,64-17-5,99\n', 'material')
         self.upload('f.csv', '설비번호,설비명,취급제품,용량(m3),비중,시설유형,물질성상\nT1,탱크1,제품 A,10,0.79,저장탱크,액체\nT2,탱크2,제품 A,5,0.79,저장탱크,액체\n')
         self.assertEqual(e.review_queue(self.p), [])
+        e.confirm_auto(self.p, [s['key'] for s in e.unreviewed_legal(self.p)])
         e.publish(self.p)
         rows = ws.facility_editor_rows(self.p)
         self.assertEqual([(r['시설유형'], r['물질성상'], r['비중']) for r in rows], [('저장탱크', '액체', 0.79)] * 2)
@@ -298,6 +312,7 @@ class EvidenceTests(unittest.TestCase):
     def test_missing_calculation_inputs_are_reported_from_the_engine_not_guessed(self):  # noqa
         self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품 A,64-17-5,99\n', 'material')
         self.upload('f.csv', '설비번호,설비명,취급제품,용량(m3),시설유형,물질성상\nT1,탱크,제품 A,10,저장탱크,액체\n')
+        e.confirm_auto(self.p, [s['key'] for s in e.unreviewed_legal(self.p)])
         e.publish(self.p)
         self.assertTrue(any('비중' in t['task'] and t['entity'] == '별지 제1호' for t in e.tasks(self.p)))
 
