@@ -6,6 +6,8 @@ returned geometry and are measured from the address point, not the site edge.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import os
 import re
@@ -22,7 +24,7 @@ ADDRESS_ENDPOINT = "https://api.vworld.kr/req/address"
 # Published VWorld 2D Data API service IDs. A designation is not proof of
 # protection under the CAP annex, and the river network is a mapped line.
 LAYERS = (
-    ("LT_C_SPBD", "도로명주소 건물", ("bd_nm", "bld_nm", "name")),
+    ("LT_C_SPBD", "도로명주소 건물", ("buld_nm", "bd_nm", "bld_nm", "building_name", "name")),
     ("LT_C_WKMSTRM", "하천망", ("riv_nm", "riv_name")),
     ("LT_C_UM901", "습지보호지역", ("name", "nm")),
     ("LT_C_WGISARWET", "습지보호구역", ("name", "nm")),
@@ -37,6 +39,44 @@ MAX_PAGES = 30  # Surface truncation explicitly if the provider still has more.
 
 class VWorldResponseError(ValueError):
     """Safe diagnostic containing only validated server status and error code."""
+
+
+def api_domain() -> str:
+    from ..kosha_msds import _load_local_env
+
+    _load_local_env()
+    return os.environ.get("VWORLD_DOMAIN", "").strip()
+
+
+def _with_domain(params: dict[str, Any]) -> dict[str, Any]:
+    values = dict(params)
+    domain = api_domain()
+    if domain:
+        values.setdefault("domain", domain)
+    return values
+
+
+def _properties(feature: dict) -> dict:
+    props = feature.get("properties") or {}
+    return {str(k).lower(): v for k, v in props.items()} if isinstance(props, dict) else {}
+
+
+def _first_text(props: dict, fields) -> str:
+    return next((str(props[field]).strip() for field in fields
+                 if props.get(field) is not None and str(props[field]).strip()), "")
+
+
+def _feature_identifier(feature: dict) -> str:
+    identifier = str(feature.get("id") or "").strip()
+    if identifier:
+        return identifier
+    identifier = _first_text(_properties(feature), ("gid", "bd_mgt_sn", "bld_mgt_sn", "id"))
+    if identifier:
+        return identifier
+    # 위치나 거리의 반올림값 대신 도형/속성의 안정적인 식별자를 사용합니다.
+    data = json.dumps({"geometry": feature.get("geometry"), "properties": feature.get("properties")},
+                      sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return "geometry-" + hashlib.sha256(data.encode("utf-8")).hexdigest()[:20]
 
 
 def api_key() -> str:
@@ -54,7 +94,7 @@ def geocode(address: str, *, get: Callable | None = None) -> tuple[str, str] | N
         return None
     if get is None:
         def get(params: dict[str, Any]) -> dict[str, Any]:
-            response = requests.get(ADDRESS_ENDPOINT, params=params, timeout=15)
+            response = requests.get(ADDRESS_ENDPOINT, params=_with_domain(params), timeout=15)
             response.raise_for_status()
             return response.json()
     for kind in ("ROAD", "PARCEL"):
@@ -68,7 +108,7 @@ def geocode(address: str, *, get: Callable | None = None) -> tuple[str, str] | N
 
 
 def _default_get(params: dict[str, Any]) -> dict[str, Any]:
-    response = requests.get(ENDPOINT, params=params, timeout=10)
+    response = requests.get(ENDPOINT, params=_with_domain(params), timeout=10)
     response.raise_for_status()
     return response.json()
 
@@ -116,6 +156,9 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
     found: dict[tuple[str, str], Candidate] = {}
     notices: list[str] = []
     for layer, title, name_fields in LAYERS:
+        raw_count = 0
+        unnamed: set[str] = set()
+        malformed = 0
         seen_pages: set[tuple[str, ...]] = set()
         for page in range(1, MAX_PAGES + 1):
             try:
@@ -135,6 +178,14 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                     code = code if isinstance(code, str) and re.fullmatch(r"[A-Z_]{1,40}", code) else ""
                     if status == "NOT_FOUND" and not code:
                         break  # This layer has no features at this address.
+                    # 실제 응답이 data 코드 자체를 거부할 때에만 지원 미확인으로 표시합니다.
+                    # 다른 INVALID_RANGE 오류나 키 오류를 '결과 없음'으로 바꾸지 않습니다.
+                    detail_text = str(error.get("text") or "") if isinstance(error, dict) else ""
+                    if (code == "INVALID_RANGE" and layer in detail_text
+                            and re.search(r"\bdata\b", detail_text, re.IGNORECASE)):
+                        notices.append(f"브이월드 {title}: {layer} 코드가 2D 데이터 API에서 거부되었습니다. "
+                                       "이 레이어는 조회 미완료입니다. 지원되는 데이터 코드 또는 다른 공식 공간자료를 확인해야 하며 '해당 지역 없음'으로 판단하지 마세요.")
+                        break
                     raise VWorldResponseError(f"응답 상태 {status}" + (f", 코드 {code}" if code else ""))
                 collection = (body.get("result") or {}).get("featureCollection") or {}
                 features = collection.get("features")
@@ -147,7 +198,8 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                     return sorted(found.values(), key=lambda item: item.distance_m or 0), notices
                 notices.append(f"브이월드 {title} 조회 실패({detail}); 해당 레이어는 직접 확인하세요.")
                 break
-            fingerprints = tuple(str(item.get("id") or (item.get("properties") or {}).get("gid") or "")
+            raw_count += len(features)
+            fingerprints = tuple(_feature_identifier(item)
                                  for item in features if isinstance(item, dict))
             if fingerprints and fingerprints in seen_pages:
                 notices.append(f"브이월드 {title}에서 같은 결과 페이지가 반복되어 조회를 중단했습니다. 누락 여부를 확인하세요.")
@@ -155,26 +207,40 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
             seen_pages.add(fingerprints)
             for feature in features:
                 try:
-                    props = feature.get("properties") or {}
+                    if not isinstance(feature, dict):
+                        malformed += 1
+                        continue
+                    props = _properties(feature)
                     geom = feature.get("geometry") or {}
                     distance = _geometry_distance(lat, lon, geom)
+                    if not math.isfinite(distance):
+                        malformed += 1
+                        continue
                     if distance > SEARCH_RADIUS_M:
                         continue
-                    identifier = str(feature.get("id") or props.get("gid") or props.get("bd_mgt_sn") or "").strip()
-                    name = next((str(props[field]).strip() for field in name_fields if props.get(field)), "")
+                    identifier = _feature_identifier(feature)
+                    name = _first_text(props, name_fields)
                     if not name:
-                        continue
-                    identifier = identifier or f"{name}/{round(distance, 1)}"
+                        # 이름 없는 객체도 조사 대상으로 보존하되 실제 명칭을 추정하지 않습니다.
+                        name = f"명칭 미제공 · {title} · {identifier}"
+                        unnamed.add(identifier)
                     found[(layer, identifier)] = Candidate(
                         name=name, category="", subtype="",
                         address=f"브이월드 {title} · {layer} · {identifier}",
                         distance_m=round(distance, 1),
-                        source=f"브이월드 2D 데이터 API · {title} (법정 분류 미확인)",
+                        source=f"브이월드 2D 데이터 API · {title} (지도 객체 후보, 법정 분류 미확인)",
                     )
-                except (TypeError, ValueError, KeyError, IndexError, OverflowError):
+                except (TypeError, ValueError, KeyError, IndexError, AttributeError, OverflowError):
+                    malformed += 1
                     continue
             if len(features) < PAGE_SIZE:
                 break
         else:
             notices.append(f"브이월드 {title} 조회가 {MAX_PAGES * PAGE_SIZE}건 제한에 도달했습니다. 누락 여부를 확인하세요.")
+        if raw_count:
+            kept = sum(1 for key in found if key[0] == layer)
+            notices.append(f"브이월드 {title}: API 수신 {raw_count}건, 반경 내 중복제거 후보 {kept}건. "
+                           f"이름 없는 {len(unnamed)}건은 식별번호로 보존했습니다. 건물 객체 수는 보호대상 시설 수나 회사 수와 다릅니다.")
+        if malformed:
+            notices.append(f"브이월드 {title}: 도형/속성을 해석하지 못한 {malformed}건이 있어 검토가 필요합니다.")
     return sorted(found.values(), key=lambda item: item.distance_m or 0), notices

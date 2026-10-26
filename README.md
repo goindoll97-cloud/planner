@@ -152,6 +152,11 @@ KAKAO_REST_API_KEY=카카오_REST_API_키          # 주소 좌표·주변 보�
 
 ## 실행과 테스트
 
+실제 주소로 카카오·브이월드·국토정보플랫폼 연결을 시험하려면 `python check_address_apis.py`를 실행합니다.
+브이월드는 키 외에 발급 시 등록한 `VWORLD_DOMAIN`을 `.env`에 설정합니다.
+레이어별 원자료 건수와 필터 제외 건수, 조회 오류를 확인하는 방법은
+[주소 API 시험 안내](docs/address_api_smoke_test.md)를 참고하세요.
+
 ```bash
 pip install -r requirements.txt
 streamlit run app.py

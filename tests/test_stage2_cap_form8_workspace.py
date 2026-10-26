@@ -199,8 +199,12 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
 
         with patch.dict(os.environ, {vworld.ENV_KEY: "test-key"}):
             found, warnings = vworld.search(35.5, 129.3, get=data)
-        self.assertEqual({c.name for c in found}, {"태화강"})
-        self.assertLess(found[0].distance_m, 800)
+        self.assertEqual(len(found), 2)
+        river = next(c for c in found if c.name == "태화강")
+        wetland = next(c for c in found if "wetland" in c.address)
+        self.assertLess(river.distance_m, 800)
+        self.assertTrue(wetland.name.startswith("명칭 미제공"))
+        self.assertEqual((wetland.category, wetland.subtype), ("", ""))
         self.assertIn("습지보호지역", " ".join(warnings))
 
     def test_vworld_key_alone_can_geocode_and_find_environment(self):
@@ -234,7 +238,7 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
 
         with patch.dict(os.environ, {vworld.ENV_KEY: "test-key"}):
             found, notices = vworld.search(35.5, 129.3, get=data)
-        self.assertEqual(notices, [])
+        self.assertTrue(any("중복제거 후보 1건" in note for note in notices))
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0].distance_m, 0)
         raw = f8.candidate_row(found[0], unclassified=True)
