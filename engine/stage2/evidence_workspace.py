@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from copy import deepcopy
 from hashlib import sha256
 from io import BytesIO, StringIO
@@ -354,25 +355,61 @@ def find_header_row(rows):
     return best
 
 
-def classify_document(name, content):
-    """식별자와 항목명이 가리키는 자료 종류를 결정합니다. 모호하면 확인을 요청합니다."""
-    tables, _ = read_document(name, content)
-    scores = {"material": 0, "facility": 0}
-    for table in tables:
-        at = find_header_row(table.rows)
-        if at is None:
-            continue
-        headings = {norm(cell) for cell in table.rows[at]}
-        if headings & {"제품코드", "물질코드", "cas", "casno", "cas번호"}:
-            scores["material"] += 3
-        if headings & {"설비번호", "시설번호", "설비코드", "장치번호", "tagno"}:
-            scores["facility"] += 3
-        scores["material"] += len(headings & {"제품명", "물질명", "함량", "함량%"})
-        scores["facility"] += len(headings & {"설비명", "시설명", "용량", "용량m3", "용량l", "최대보유량kg", "운전압력mpa", "시설유형"})
-    if scores["material"] and not scores["facility"]:
-        return "material"
-    if scores["facility"] and not scores["material"]:
+FACILITY_ID_HEADERS = {"설비번호", "시설번호", "설비id", "설비코드", "장치번호", "tagno", "tag번호"}
+MATERIAL_ID_HEADERS = {"제품코드", "물질코드"}
+# 단위 표기가 붙어도 인정하도록 접두어로 비교합니다 (예: 용량(m3) → 용량m3).
+FACILITY_HINTS = ("설비명", "시설명", "용량", "최대보유량", "운전압력", "운전온도", "시설유형", "설비유형", "공정유형")
+MATERIAL_HINTS = ("cas", "제품명", "물질명", "함량", "성상", "비중", "인화점")
+
+
+def _classify_table(headings):
+    """표 하나의 종류. 식별자 열이 한쪽에만 있으면 그쪽으로 정합니다.
+    설비대장에 물질명·CAS 열이 함께 있는 것은 흔하므로 항목명은 보조 근거로만 씁니다."""
+    facility_id, material_id = headings & FACILITY_ID_HEADERS, headings & MATERIAL_ID_HEADERS
+    if facility_id and material_id:
+        return "both"          # 설비-제품 대응표처럼 두 대상을 잇는 표: 사람에게 묻습니다
+    if facility_id:
         return "facility"
+    if material_id:
+        return "material"
+    facility = sum(any(h.startswith(p) for p in FACILITY_HINTS) for h in headings)
+    material = sum(any(h.startswith(p) for p in MATERIAL_HINTS) for h in headings)
+    if facility >= 2 and facility >= 2 * material:
+        return "facility"
+    if material >= 2 and material >= 2 * facility:
+        return "material"
+    return None
+
+
+_CLASSIFY_CACHE: OrderedDict = OrderedDict()   # (내용 해시, 확장자) → 종류 또는 None
+CLASSIFY_CACHE_LIMIT = 256
+
+
+def classify_document(name, content):
+    """식별자와 항목명이 가리키는 자료 종류를 결정합니다. 모호하면 확인을 요청합니다.
+
+    화면은 다시 그려질 때마다 이 함수를 부르므로, 파일 내용 해시(+확장자)로 결과를 보관해
+    같은 파일을 다시 읽지 않습니다. 판별 실패도 보관합니다."""
+    key = (sha256(content).hexdigest(), str(name).rsplit(".", 1)[-1].lower())
+    if key in _CLASSIFY_CACHE:
+        _CLASSIFY_CACHE.move_to_end(key)
+        kind = _CLASSIFY_CACHE[key]
+    else:
+        tables, _ = read_document(name, content)
+        kinds = set()
+        for table in tables:
+            at = find_header_row(table.rows)
+            if at is None:
+                continue
+            found = _classify_table({norm(cell) for cell in table.rows[at] if str(cell).strip()})
+            if found:
+                kinds.add(found)
+        kind = kinds.pop() if len(kinds) == 1 and "both" not in kinds else None
+        _CLASSIFY_CACHE[key] = kind
+        if len(_CLASSIFY_CACHE) > CLASSIFY_CACHE_LIMIT:
+            _CLASSIFY_CACHE.popitem(last=False)
+    if kind:
+        return kind
     raise ValueError("자료 종류를 자동 판별하지 못했습니다. 이 파일의 물질 또는 설비 종류를 선택해 주세요.")
 
 

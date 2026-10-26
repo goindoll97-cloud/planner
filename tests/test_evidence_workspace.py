@@ -169,6 +169,34 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '자료 종류'):
             e.classify_document('unclear.txt', b'No recognizable headings')
 
+    def test_classifier_uses_identifier_column_over_incidental_headings(self):
+        def kind(text):
+            return e.classify_document('x.csv', text.encode('utf-8-sig'))
+        # 실제 설비대장에는 취급 물질 열이 흔합니다
+        self.assertEqual(kind('설비번호,설비명,물질명,CAS번호,용량(m3),최대보유량(kg)\nTK-01,탱크,톨루엔,108-88-3,10,8000\n'), 'facility')
+        self.assertEqual(kind('제품코드,제품명,CAS번호,함량(%),용량(L)\nP-01,신나,108-88-3,60,18\n'), 'material')
+        # 식별자가 없어도 항목명이 한쪽으로 뚜렷하면 분류합니다
+        self.assertEqual(kind('물질명,CAS번호,함량(%)\n톨루엔,108-88-3,60\n'), 'material')
+        self.assertEqual(kind('설비명,용량(m3),운전압력(MPa)\n탱크,10,0.1\n'), 'facility')
+        # 두 대상을 잇는 대응표나 근거가 엇갈리면 묻습니다
+        for text in ('설비번호,제품코드\nTK-01,P-01\n', '물질명,용량(m3)\n톨루엔,10\n'):
+            with self.assertRaisesRegex(ValueError, '자료 종류'):
+                kind(text)
+
+    def test_classifier_reads_each_file_once_even_when_screen_redraws(self):
+        from unittest import mock
+        good = '설비번호,설비명,용량(m3)\nTK-99,탱크,10\n'.encode('utf-8-sig')
+        unclear = '시설과 무관한 머리글,값\n가,1\n'.encode('utf-8-sig')
+        with mock.patch.object(e, 'read_document', wraps=e.read_document) as reader:
+            for _ in range(3):                       # 화면이 세 번 다시 그려짐
+                self.assertEqual(e.classify_document('cache_a.csv', good), 'facility')
+                with self.assertRaisesRegex(ValueError, '자료 종류'):
+                    e.classify_document('cache_b.csv', unclear)
+            self.assertEqual(reader.call_count, 2)   # 판별 실패도 다시 읽지 않음
+            with self.assertRaises(ValueError):       # 확장자가 다르면 읽는 방식이 달라 새로 읽음 (TXT는 표가 없음)
+                e.classify_document('cache_a.txt', good)
+            self.assertEqual(reader.call_count, 3)
+
     def test_invalid_file_leaves_graph_unchanged(self):
         before = e.graph(self.p)
         with self.assertRaises(ValueError):

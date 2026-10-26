@@ -1,6 +1,7 @@
 """사업장 업무 화면: 자료를 올리면 초안이 먼저 만들어지고, 사람은 예외만 처리합니다."""
 from __future__ import annotations
 
+import hashlib
 import json
 
 import streamlit as st
@@ -79,6 +80,15 @@ def _metrics(project) -> None:
 
 # ---------------------------------------------------------------- 1. 자료 올리기
 
+def _classify(name: str, content: bytes) -> tuple[str, str | None]:
+    """(내용 해시, 종류). 분류 결과는 엔진이 내용 해시로 보관하므로 다시 그려도 파일을 다시 읽지 않습니다."""
+    digest = hashlib.sha256(content).hexdigest()
+    try:
+        return digest, ew.classify_document(name, content)
+    except Exception:
+        return digest, None
+
+
 def _tab_upload(project) -> None:
     st.write("회사에 있는 자료를 그대로 올리세요. 표의 설비번호·제품코드로 같은 대상을 연결하고, 규칙을 통과한 값은 알아서 채웁니다.")
     pid = project.project_id
@@ -86,13 +96,15 @@ def _tab_upload(project) -> None:
     st.caption("물질·설비 파일을 함께 선택하세요. 머리글로 자동 분류하고 판별할 수 없는 파일만 종류를 묻습니다.")
     selected = {}
     for index, file in enumerate(uploaded or []):
-        try:
-            detected = ew.classify_document(file.name, file.getvalue())
+        digest, detected = _classify(file.name, file.getvalue())
+        if detected:
             st.write(f"{file.name}: {'물질' if detected == 'material' else '설비'} 자료로 분류")
             selected[index] = detected
-        except Exception:
+        else:
+            # 파일 내용 기준 키: 다른 파일을 빼도 이미 고른 종류가 다른 파일로 옮겨 가지 않습니다
             selected[index] = st.selectbox(f"{file.name} 자료 종류 확인", ["선택하세요", "material", "facility"],
-                                           format_func=lambda v: {"선택하세요": "선택하세요", "material": "물질", "facility": "설비"}[v], key=f"kind_{pid}_{index}")
+                                           format_func=lambda v: {"선택하세요": "선택하세요", "material": "물질", "facility": "설비"}[v],
+                                           key=f"kind_{pid}_{digest[:16]}")
     hint = st.text_input("식별번호가 없는 단일 대상 문서의 대상번호 (선택)", help="예: P-01, TK-01. 표에 번호가 있으면 비워 두세요.")
     if st.button("자료 읽기", type="primary", disabled=not uploaded):
         for index, file in enumerate(uploaded):
