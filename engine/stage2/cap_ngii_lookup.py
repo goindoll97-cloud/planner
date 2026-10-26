@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import os
 from typing import Any, Callable
+from pyproj import Transformer
 
 import requests
 
@@ -101,6 +102,10 @@ def search(address: str, keywords: list[str], *, get: Callable = _get) -> tuple[
                         address=f"{address_text} · 지도 분류: {type_name}" if type_name else address_text,
                         distance_m=round(distance, 1),
                         source="국토정보플랫폼 검색 API · 국가관심지점정보(POI) (법정 분류 미확인)",
+                        object_id=f"ngii:{name}:{px}:{py}",
+                        geometry={"type": "Point", "coordinates": list(
+                            Transformer.from_crs(5179, 4326, always_xy=True).transform(px, py))},
+                        attributes=dict(item),
                     )
                 except (KeyError, TypeError, ValueError, OverflowError):
                     continue

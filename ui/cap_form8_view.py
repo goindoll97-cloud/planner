@@ -54,7 +54,7 @@ def _render_methodology() -> None:
         "이 별지의 시설·환경 목록과 거리는 지도·부지 도면·현장 자료로 확인합니다. "
         "물질 정보가 담긴 MSDS로 주변 환경 조사 결과를 대신할 수 없습니다."
     )
-    with st.expander("이 서식을 처음 작성한다면: 작성 순서와 예시", expanded=True):
+    with st.expander("이 서식을 처음 작성한다면: 작성 순서와 예시", expanded=False):
         st.markdown(
             "1. **사업장 경계부터 500m 범위를 확인합니다.** 사업장 주소 한 점이 아니라 실제 부지 경계를 기준으로 지도나 GIS에서 살펴보세요.\n"
             "2. **지도·기존 자료에서 후보를 찾습니다.** 지도와 필요하면 현장 자료로 학교, 병원, 주택, 하천 등을 확인하세요. 회사에 이전 목록이 있으면 가져와 현재 상태와 대조합니다.\n"
@@ -179,14 +179,16 @@ def render(project) -> None:
         with st.expander(item["term"]):
             st.write(item["text"])
     if step["id"] in ("search", "list"):
-        _render_manual_map_guide(expanded=step["id"] == "search")
+        _render_manual_map_guide(expanded=False)
 
     if step["id"] == "search":
+        from ui import surroundings_map_panel
+
+        surroundings_map_panel.render(project)
         addr = f8.address(project)
         st.markdown(f"**사업장 주소(별지 제3호):** {addr or '아직 없음 — 별지 제3호에서 입력하세요'}")
-        st.caption("위 지도를 열어 사업장 경계 주변을 확인하고, 이전에 작성한 목록이 있으면 아래에서 가져오세요. "
-                   "목록이 없다면 ‘2. 보호대상 목록’에서 새로 작성할 수 있습니다. "
-                   "그 단계에서 목록 전체를 한 번에 분류할 수 있습니다.")
+        st.caption("지도 조사에서 확인한 시설 묶음은 ‘2. 보호대상 목록’에 미검토 후보로 연결됩니다. "
+                   "이전에 작성한 회사 목록이 있으면 아래에서도 가져올 수 있습니다.")
         _render_company_import(project)
     elif step["id"] == "list":
         st.info("**표에 시설명을 입력하거나 회사 목록을 가져온 뒤 ‘갑종·을종·환경수용체 구분하기’를 누르세요.** "

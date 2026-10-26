@@ -5,4 +5,8 @@ requests==2.32.5
 pdfplumber==0.11.9
 python-docx==1.1.2
 python-hwpx==6.4.0
+shapely==2.1.2
+pyproj==3.7.2
+folium==0.20.0
+streamlit-folium==0.25.3
 pyhwpx==1.7.2; platform_system == "Windows"

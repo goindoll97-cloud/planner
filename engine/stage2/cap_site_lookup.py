@@ -10,7 +10,7 @@ Without KAKAO_REST_API_KEY nothing is looked up and the user enters candidates
 manually.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from typing import Any, Callable
 
@@ -66,6 +66,21 @@ class Candidate:
     address: str
     distance_m: float | None
     source: str
+    object_id: str = ""
+    geometry: dict[str, Any] | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
+
+
+def point_geometry(x: object, y: object) -> dict[str, Any] | None:
+    import math
+
+    try:
+        lon, lat = float(x), float(y)
+        if math.isfinite(lon) and math.isfinite(lat) and -180 <= lon <= 180 and -90 <= lat <= 90:
+            return {"type": "Point", "coordinates": [lon, lat]}
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 def api_key() -> str:
@@ -158,6 +173,9 @@ def find_candidates(address: str, *, get: Callable = _default_get) -> tuple[list
                         name=name, category=category, subtype=subtype, address=address,
                         distance_m=float(distance) if str(distance or "").strip() else None,
                         source=f"카카오 로컬 API · {'분류' if mode == 'category' else '검색어'} {value}",
+                        object_id=f"kakao:{identity}",
+                        geometry=point_geometry(doc.get("x"), doc.get("y")),
+                        attributes=dict(doc),
                     )
                 # Older mocked responses without meta represent one complete page.
                 if data.get("meta", {}).get("is_end", True) or not data.get("documents"):

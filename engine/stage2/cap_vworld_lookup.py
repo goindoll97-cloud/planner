@@ -146,13 +146,16 @@ def _geometry_distance(lat: float, lon: float, geometry: dict) -> float:
     return min((_distance(lat, lon, path) for path in paths), default=math.inf)
 
 
-def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[list[Candidate], list[str]]:
+def search(lat: float, lon: float, *, get: Callable = _default_get,
+           radius_m: float = SEARCH_RADIUS_M) -> tuple[list[Candidate], list[str]]:
     """Return (candidates, notices). Individual layer failures stay visible."""
     key = api_key()
     if not key:
         return [], [f"{ENV_KEY}가 없어 브이월드 환경 레이어를 검색하지 않았습니다."]
     if not (33 <= lat <= 39 and 124 <= lon <= 132):
         raise ValueError("주소 좌표가 대한민국 범위에 있지 않습니다.")
+    if not math.isfinite(radius_m) or not 0 < radius_m <= 10000:
+        raise ValueError("조회 반경은 0m 초과 10,000m 이하로 지정하세요.")
     found: dict[tuple[str, str], Candidate] = {}
     notices: list[str] = []
     for layer, title, name_fields in LAYERS:
@@ -165,7 +168,7 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                 payload = get({
                     "service": "data", "request": "GetFeature", "version": "2.0",
                     "data": layer, "key": key, "format": "json", "crs": "EPSG:4326",
-                    "geomFilter": f"POINT({lon} {lat})", "buffer": SEARCH_RADIUS_M,
+                    "geomFilter": f"POINT({lon} {lat})", "buffer": radius_m,
                     "geometry": "true", "size": PAGE_SIZE, "page": page,
                 })
                 body = payload.get("response") or {}
@@ -216,7 +219,7 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                     if not math.isfinite(distance):
                         malformed += 1
                         continue
-                    if distance > SEARCH_RADIUS_M:
+                    if distance > radius_m:
                         continue
                     identifier = _feature_identifier(feature)
                     name = _first_text(props, name_fields)
@@ -229,6 +232,9 @@ def search(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[lis
                         address=f"브이월드 {title} · {layer} · {identifier}",
                         distance_m=round(distance, 1),
                         source=f"브이월드 2D 데이터 API · {title} (지도 객체 후보, 법정 분류 미확인)",
+                        object_id=f"vworld:{layer}:{identifier}",
+                        geometry=geom,
+                        attributes=dict(feature.get("properties") or {}),
                     )
                 except (TypeError, ValueError, KeyError, IndexError, AttributeError, OverflowError):
                     malformed += 1
