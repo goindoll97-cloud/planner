@@ -52,7 +52,7 @@ class EvidencePageTests(unittest.TestCase):
         self.assertEqual(metrics["접수한 문서"], "4")
         self.assertGreater(int(metrics["자동 기입"]), 10)
         self.assertEqual(metrics["확인할 일"], "2")          # 용량 충돌 1 + 수식 값 1
-        self.assertEqual([t.label for t in at.tabs], ["1. 자료 올리기", "2. 확인할 일", "3. 시나리오 후보", "4. 연결·내보내기"])
+        self.assertEqual([t.label for t in at.tabs], ["자료 올리기", "확인할 일", "시나리오 후보", "연결·내보내기"])
 
     def test_resolving_a_conflict_from_the_screen_is_saved(self):
         at = self.run_page()

@@ -24,7 +24,16 @@ from .project import Stage2Project
 KEY = "workspace.evidence_graph"
 LABELS = {"name": "명칭", "product": "취급제품", "cas": "CAS 번호", "capacity": "용량(m³)",
           "pressure": "운전압력(MPa)", "design_pressure": "설계압력(MPa)", "temperature": "운전온도(°C)",
-          "inventory": "최대보유량(kg)", "concentration": "함량(%)"}
+          "inventory": "최대보유량(kg)", "concentration": "함량(%)",
+          "facility_type": "시설유형", "substance_state": "물질성상",
+          "density": "비중(kg/L)", "process_type": "공정유형"}
+# 별지 제1호 계산이 받는 값과 같아야 합니다(tests/test_evidence_workspace.py가 cap_workspace와 일치를 검사).
+CHOICES = {"facility_type": ("저장탱크", "제조·사용시설", "보관시설", "기타", "탱크로리·운송차량", "사외배관", "취급중단 신고시설"),
+           "substance_state": ("액체", "고체", "기체·고압가스", "복수성상"),
+           "process_type": ("변화없음", "단순혼합", "반응")}
+CHOICE_SYNONYMS = {"기체": "기체·고압가스", "고압가스": "기체·고압가스", "기체/고압가스": "기체·고압가스", "기체고압가스": "기체·고압가스",
+                   "탱크로리": "탱크로리·운송차량", "운송차량": "탱크로리·운송차량", "제조사용시설": "제조·사용시설",
+                   "제조시설": "제조·사용시설", "사용시설": "제조·사용시설"}
 ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비명": "name", "시설명": "name",
            "화학물질명": "name", "물질명칭": "name", "설비명칭": "name", "품명": "name",
            "취급제품": "product", "취급물질": "product", "취급제품명": "product",
@@ -34,16 +43,21 @@ ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비�
            "설계압력mpa": "design_pressure", "설계압력kpa": "design_pressure",
            "운전온도": "temperature", "운전온도c": "temperature", "운전온도°c": "temperature", "운전온도℃": "temperature",
            "최대보유량kg": "inventory", "최대보유량ton": "inventory", "최대보유량": "inventory",
-           "함량": "concentration", "함량%": "concentration"}
+           "함량": "concentration", "함량%": "concentration",
+           "시설유형": "facility_type", "설비유형": "facility_type", "시설구분": "facility_type",
+           "물질성상": "substance_state", "물질상태": "substance_state", "성상": "substance_state",
+           "비중": "density", "밀도": "density", "비중kg/l": "density", "밀도kg/l": "density", "밀도g/cm3": "density",
+           "밀도ton/m3": "density", "비중또는밀도": "density", "비중또는밀도kg/l=ton/m3": "density",
+           "공정유형": "process_type", "공정구분": "process_type"}
 ID_HEADERS = {"설비번호", "시설번호", "설비id", "제품코드", "물질코드", "설비코드", "장치번호", "tagno", "tag번호"}
 
-NUMERIC_FIELDS = {"capacity", "pressure", "design_pressure", "temperature", "inventory", "concentration"}
+NUMERIC_FIELDS = {"capacity", "pressure", "design_pressure", "temperature", "inventory", "concentration", "density"}
 BOUNDS = {"capacity": (0, 1e6), "pressure": (0, 100), "design_pressure": (0, 100),
-          "temperature": (-273.15, 2000), "inventory": (0, 1e9), "concentration": (0, 100)}
+          "temperature": (-273.15, 2000), "inventory": (0, 1e9), "concentration": (0, 100), "density": (0, 30)}
 UNIT_SUFFIXES = {"capacity": ("m3", "m³", "㎥", "l"), "pressure": ("mpa", "kpa"), "design_pressure": ("mpa", "kpa"),
                  "inventory": ("kg", "ton"), "temperature": ("c", "°c", "℃"), "concentration": ("%",)}
 # 법적 판정(규정수량·방류벽 용량 등)에 직접 쓰이는 항목은 순위와 관계없이 엄격하게 봅니다.
-LEGAL_FIELDS = {"inventory", "concentration", "cas", "capacity"}
+LEGAL_FIELDS = {"inventory", "concentration", "cas", "capacity", "facility_type", "substance_state", "density", "process_type"}
 STRICT_CONFIDENCE = 0.98
 RELAXED_CONFIDENCE = 0.90
 HEADER_SCAN_ROWS = 20
@@ -96,6 +110,12 @@ def cas_valid(text):
 
 def normalize_value(field, raw, header):
     text = str(raw).strip()
+    if field in CHOICES:
+        squeezed = re.sub(r"\s+", "", text)
+        for option in CHOICES[field]:
+            if squeezed == re.sub(r"\s+", "", option):
+                return option
+        return CHOICE_SYNONYMS.get(squeezed, text)
     if field in {"name", "product", "cas"}:
         return text
     # 범위나 단위가 불명확한 값을 임의로 숫자로 확정하지 않습니다.
@@ -120,6 +140,8 @@ def value_problem(field, value):
     """승인할 수 없는 값이면 이유를, 괜찮으면 None을 돌려줍니다."""
     if field in {"name", "product"}:
         return None if str(value).strip() else "빈 값"
+    if field in CHOICES:
+        return None if value in CHOICES[field] else "허용 값: " + ", ".join(CHOICES[field])
     if field == "cas":
         return None if cas_valid(value) else "CAS 형식 또는 검산값이 맞지 않음"
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
@@ -644,7 +666,7 @@ def tasks(project):
             confirmed.setdefault(s["entity"], {})[s["field"]] = s["chosen"]["value"]
     for identifier in sorted(e for e in by_entity if e.startswith("facility:")):
         present = by_entity[identifier]
-        for field in ("product", "inventory", "pressure", "temperature"):
+        for field in ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state"):
             if field not in present:
                 result.append({"entity": identifier, "task": "기본 운전조건 미확인: " + LABELS[field], "key": ""})
         product = confirmed.get(identifier, {}).get("product")
@@ -652,7 +674,20 @@ def tasks(project):
             matches = [k for k, v in confirmed.items() if k.startswith("material:") and (v.get("name") == product or k.split(":", 1)[1] == product)]
             if len(matches) != 1:
                 result.append({"entity": identifier, "task": "취급제품과 물질자료를 하나로 연결할 수 없습니다. 제품코드·이름을 확인하세요.", "key": ""})
+    result.extend({"entity": "별지 제1호", "task": need, "key": ""} for need in form1_needs(project))
     return result
+
+
+def form1_needs(project):
+    """연결한 설비 자료로 별지 제1호 최대보유량을 계산할 때 아직 부족한 값(계산 엔진이 알려 줌)."""
+    record = project.get_field("inventory.facilities")
+    if record is None or record.status not in {"USER_CONFIRMED", "VERIFIED"}:
+        return ()
+    try:
+        from . import cap_workspace
+        return tuple(cap_workspace.resolve_form1(project).needs)
+    except Exception:
+        return ()
 
 
 # ---------------------------------------------------------------- 연결·보고서
@@ -660,7 +695,8 @@ def tasks(project):
 def publishing_plan(project):
     mapping = {"name": "물질명", "cas": "CAS 번호", "concentration": "함량(%)"}
     facilities = {"name": "설비명", "product": "취급물질", "capacity": "용량", "pressure": "운전압력(MPa)",
-                  "design_pressure": "설계압력(MPa)", "temperature": "운전온도(℃)", "inventory": "최대보유량(kg)"}
+                  "design_pressure": "설계압력(MPa)", "temperature": "운전온도(℃)", "inventory": "최대보유량(kg)",
+                  "facility_type": "시설유형", "substance_state": "물질성상", "density": "비중", "process_type": "공정유형"}
     entities = confirmed_entities(project)
     plans = {}
     for kind, target, columns in [("material", "inventory.chemicals", mapping), ("facility", "inventory.facilities", facilities)]:

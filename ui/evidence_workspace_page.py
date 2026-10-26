@@ -16,7 +16,26 @@ MAX_EXPANDERS = 40
 
 
 def _entity_label(entity: str) -> str:
+    if not entity.startswith(("facility:", "material:")):
+        return entity
     return entity.split(":", 1)[1] + (" (설비)" if entity.startswith("facility:") else " (물질)")
+
+
+MISSING_PREFIX = "기본 운전조건 미확인: "
+
+
+def _task_rows(project) -> list[dict]:
+    """같은 설비의 빠진 항목은 한 줄로 묶고, 화면에 내부 열 이름이 보이지 않게 합니다."""
+    grouped, rows = {}, []
+    for task in ew.tasks(project):
+        if task["key"]:
+            continue
+        if task["task"].startswith(MISSING_PREFIX):
+            grouped.setdefault(task["entity"], []).append(task["task"][len(MISSING_PREFIX):])
+        else:
+            rows.append({"대상": _entity_label(task["entity"]), "할 일": task["task"]})
+    rows.extend({"대상": _entity_label(entity), "할 일": "자료에 없는 값: " + ", ".join(labels)} for entity, labels in grouped.items())
+    return rows
 
 
 def _commit(project) -> None:
@@ -66,7 +85,7 @@ def _tab_upload(project) -> None:
     kind = st.radio("자료 종류", ["facility", "material"], horizontal=True, key="evidence_kind_" + pid,
                     format_func=lambda k: "설비·운전 자료" if k == "facility" else "제품·물질·SDS 자료")
     hint = st.text_input("대상 식별번호 (SDS·단일 설비 설명서처럼 표에 번호가 없을 때만)", help="예: P-01, TK-01")
-    uploaded = st.file_uploader("회사 자료", type=["csv", "xlsx", "pdf", "docx", "hwpx", "txt"], accept_multiple_files=True)
+    uploaded = st.file_uploader("회사 자료 (파일당 20MB 이하)", type=["csv", "xlsx", "pdf", "docx", "hwpx", "txt"], accept_multiple_files=True)
     if st.button("자료 읽기", type="primary", disabled=not uploaded):
         for file in uploaded:
             try:
@@ -205,9 +224,10 @@ def _tab_review(project) -> None:
                 st.markdown(f"**{_entity_label(item['entity'])} · {ew.LABELS[item['field']]}**")
                 _resolve_item(project, item)
 
-    others = [t for t in ew.tasks(project) if not t["key"]]
+    others = _task_rows(project)
     if others:
         st.subheader("자료에서 더 필요한 것")
+        st.caption("올린 자료에 없는 값입니다. 알고 있으면 아래 ‘직접 추가’로, 없으면 다음 자료를 올리세요.")
         st.dataframe(others, hide_index=True, width="stretch")
 
     with st.expander("회사에서 확인한 사실 직접 추가"):
@@ -283,15 +303,29 @@ def _tab_scenarios(project) -> None:
 
 # ---------------------------------------------------------------- 4. 연결·내보내기
 
+def _form1_payoff(project) -> None:
+    """연결한 자료로 별지 제1호가 어디까지 채워졌는지, 법정 산정에 더 필요한 값이 무엇인지 보여 줍니다."""
+    record = project.get_field("inventory.facilities")
+    if record is None or record.status not in {"USER_CONFIRMED", "VERIFIED"}:
+        return
+    from engine.stage2 import cap_workspace as ws
+    form = ws.resolve_form1(project)
+    st.subheader("별지 제1호에 이어진 결과")
+    if form.chemical_rows:
+        st.dataframe([{"물질": r.get("물질명"), "CAS": r.get("CAS No."), "최대보유량(ton)": r.get("사업장 내 최대보유량(ton)"),
+                       "산정근거": r.get("산정근거")} for r in form.chemical_rows], hide_index=True, width="stretch")
+    needs = ew.form1_needs(project)
+    if needs:
+        st.caption("법정 산정(별표 4)으로 계산하려면 아래 값이 더 필요합니다. 별지 제1호의 시설 입력에서 저장하면 계산됩니다. 읽어 온 시설유형·성상·용량·비중은 미리 채워져 있습니다.")
+        for need in needs:
+            st.write("• " + need)
+
+
 def _tab_export(project) -> None:
     data = ew.graph(project)
     info = ew.summary(project)
     if info["critical_auto"]:
         st.warning(f"자동 기입한 핵심값 {info['critical_auto']}개를 아직 확인하지 않았습니다. ‘확인할 일’에서 먼저 보세요.")
-    confirmed = [{"대상": _entity_label(s["entity"]), "항목": ew.LABELS[s["field"]], "값": str(s["chosen"]["value"]),
-                  "방식": ew.DECISION_LABEL.get(s["method"], "확인 완료"), "문서": s["chosen"]["document"], "위치": s["chosen"]["location"]}
-                 for s in ew.slots(project) if s["chosen"]]
-    st.dataframe(confirmed, hide_index=True, width="stretch")
     proposed = ew.publishing_plan(project)
     st.write("기존 작성자료에 연결할 내용")
     for key, rows in proposed.items():
@@ -310,6 +344,12 @@ def _tab_export(project) -> None:
             st.success("연결했습니다. 아래 작성 화면에서 누락 조건과 산정값을 이어서 검토하세요.")
         except ValueError as exc:
             st.error(str(exc))
+    _form1_payoff(project)
+    confirmed = [{"대상": _entity_label(s["entity"]), "항목": ew.LABELS[s["field"]], "값": str(s["chosen"]["value"]),
+                  "방식": ew.DECISION_LABEL.get(s["method"], "확인 완료"), "문서": s["chosen"]["document"], "위치": s["chosen"]["location"]}
+                 for s in ew.slots(project) if s["chosen"]]
+    with st.expander(f"확정한 사실 {len(confirmed)}개와 출처"):
+        st.dataframe(confirmed, hide_index=True, width="stretch")
     for packet in ew.scenario_packets(project):
         with st.expander(packet["설비"] + " · 시나리오 입력 검토팩"):
             st.json(packet)
@@ -328,7 +368,7 @@ _active = _project_header()
 _metrics(_active)
 for _note in st.session_state.pop("evidence_notes", []):
     (st.error if "읽지 못" in _note else st.success)(_note)
-_tabs = st.tabs(["1. 자료 올리기", "2. 확인할 일", "3. 시나리오 후보", "4. 연결·내보내기"])
+_tabs = st.tabs(["자료 올리기", "확인할 일", "시나리오 후보", "연결·내보내기"])
 with _tabs[0]:
     _tab_upload(_active)
 with _tabs[1]:

@@ -267,6 +267,46 @@ class EvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             e.ingest(self.p, 'old.hwpx', b'not a zip', 'facility')
 
+    # ---- 별지 제1호로 이어지는 선택형 항목 ----
+    def test_choice_fields_match_form1_vocabulary_and_normalize_common_wording(self):
+        from engine.stage2 import cap_workspace as ws
+        self.assertEqual(list(e.CHOICES['facility_type']), ws.FACILITY_TYPES)
+        self.assertEqual(list(e.CHOICES['substance_state']), ws.SUBSTANCE_STATES)
+        self.upload('f.csv', '설비번호,시설유형,물질상태\nT1,저장 탱크,기체\nT2,탱크,액체\n')
+        slots = {(s['entity'], s['field']): s for s in e.slots(self.p)}
+        t1_type, t1_state = slots[('facility:T1', 'facility_type')], slots[('facility:T1', 'substance_state')]
+        self.assertEqual((t1_type['chosen']['value'], t1_state['chosen']['value']), ('저장탱크', '기체·고압가스'))
+        bad = slots[('facility:T2', 'facility_type')]
+        self.assertFalse(bad['chosen'])
+        self.assertIn('허용 값', e.review_gate(bad)[0])
+
+    def test_published_rows_prefill_the_legal_holding_calculation_inputs(self):
+        # 별표4 산정(설계용량×비중)은 별지 제1호 시설 입력에서 저장할 때 일어납니다.
+        # 그래프는 그 화면이 묻는 값(시설유형·성상·용량·비중)을 미리 채워, 다시 묻지 않게 합니다.
+        from engine.stage2 import cap_workspace as ws
+        self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품 A,64-17-5,99\n', 'material')
+        self.upload('f.csv', '설비번호,설비명,취급제품,용량(m3),비중,시설유형,물질성상\nT1,탱크1,제품 A,10,0.79,저장탱크,액체\nT2,탱크2,제품 A,5,0.79,저장탱크,액체\n')
+        self.assertEqual(e.review_queue(self.p), [])
+        e.publish(self.p)
+        rows = ws.facility_editor_rows(self.p)
+        self.assertEqual([(r['시설유형'], r['물질성상'], r['비중']) for r in rows], [('저장탱크', '액체', 0.79)] * 2)
+        results = ws.compute_holdings(self.p, rows)
+        self.assertEqual([r.problem for r in results], ['', ''])
+        self.assertAlmostEqual(results[1].ton, 3.95)
+        self.assertEqual(e.form1_needs(self.p), ())
+
+    def test_missing_calculation_inputs_are_reported_from_the_engine_not_guessed(self):  # noqa
+        self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품 A,64-17-5,99\n', 'material')
+        self.upload('f.csv', '설비번호,설비명,취급제품,용량(m3),시설유형,물질성상\nT1,탱크,제품 A,10,저장탱크,액체\n')
+        e.publish(self.p)
+        self.assertTrue(any('비중' in t['task'] and t['entity'] == '별지 제1호' for t in e.tasks(self.p)))
+
+    def test_missing_facility_type_is_a_task(self):
+        self.upload('f.csv', '설비번호,설비명\nT1,탱크\n')
+        tasks = [t['task'] for t in e.tasks(self.p)]
+        self.assertIn('기본 운전조건 미확인: 시설유형', tasks)
+        self.assertIn('기본 운전조건 미확인: 물질성상', tasks)
+
 
 if __name__ == '__main__':
     unittest.main()
