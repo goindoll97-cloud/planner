@@ -6,6 +6,9 @@ from docx import Document
 from engine.stage2 import cap_evidence_links as links
 from engine.stage2 import demo_full_company as demo
 from engine.stage2 import evidence_workspace as ew
+from engine.stage2 import cap_form2_workspace as form2
+from engine.stage2 import cap_form16_engine as form16
+from engine.stage2 import statutory_report as report
 from engine.stage2.direct_template import create_direct_cap_project
 
 
@@ -37,6 +40,34 @@ class EvidenceLinksTests(unittest.TestCase):
         self.assertEqual(self.project.get_field("cap.prevention.emergency_contact_system").status, "AI_DRAFT")
         self.assertTrue(links.confirm(self.project, "cap.prevention.emergency_contact_system"))
         self.assertEqual(self.project.get_field("cap.prevention.emergency_contact_system").status, "USER_CONFIRMED")
+
+    def test_one_company_file_reuses_facts_in_forms_2_3_16(self):
+        files = demo._files()
+        ew.register_reference(self.project, "03_사업장_일반정보.docx", files["03_사업장_일반정보.docx"])
+        self.assertEqual(form2.submission(self.project)["unit_plant"], demo.DATA["company"]["단위공장명"])
+        self.assertEqual(self.project.get_field(form2.SUBMISSION_TYPE_KEY).status, "AI_DRAFT")
+        self.assertTrue(links.confirm(self.project, form2.SUBMISSION_TYPE_KEY))
+        self.assertEqual(form2.submission(self.project)["type"], demo.DATA["company"]["제출구분"])
+        self.assertEqual(form16.build_cap_form16_data(self.project).business["대표자"],
+                         demo.DATA["company"]["representative"])
+        doc = Document()
+        report._cap_form3(doc, self.project)
+        values = [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
+        self.assertIn(demo.DATA["company"]["단위공장명"], values)
+        self.assertIn(demo.DATA["company"]["writer_name"], " ".join(values))
+
+    def test_one_process_file_reuses_description_in_forms_4_5(self):
+        files = demo._files()
+        ew.register_reference(self.project, "04_공정설명서.docx", files["04_공정설명서.docx"])
+        doc = Document()
+        report._cap_facility_overview(doc, self.project, detailed=False)
+        report._cap_facility_overview(doc, self.project, detailed=True)
+        rows = [[cell.text for cell in row.cells] for table in doc.tables for row in table.rows]
+        descriptions = [row[1] for row in rows if row[0] == "공정개요"]
+        self.assertEqual(len(descriptions), 2)
+        self.assertEqual(descriptions, [demo.DATA["process"]["공정개요"]] * 2)
+        overviews = [row[1] for row in rows if row[0] == "단위공장 구성"]
+        self.assertEqual(overviews, [demo.DATA["process"]["총괄 개요"], demo.DATA["process"]["단위공장 개요"]])
 
     def test_hwpx_and_binary_hwp_link_identically(self):
         files = demo._files()

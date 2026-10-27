@@ -12,18 +12,24 @@ from .cap_form3_workspace import fields as form3_fields
 from .cap_form16_workspace import items as form16_items
 from .cap_form4_workspace import LOADING_KEY, OVERVIEW_KEY, PROCESS_KEY
 from .cap_form5_workspace import OVERVIEW_KEY as UNIT_OVERVIEW_KEY
+from .cap_form2_workspace import SUBMISSION_TYPE_KEY, SUBMISSION_REASON_KEY, UNIT_PLANT_KEY, SUBMISSION_TYPES, SUBMISSION_REASONS
 from .project import EvidenceRef
 
 NOTE = "업로드 문서의 항목·값 자동 연결"
 DIRECT = {item["label"]: (item["key"], item["label"], item["kind"] != "choice")
           for item in form3_fields()}
 DIRECT.update({
+    "단위공장명": (UNIT_PLANT_KEY, "단위공장명", True),
+    "제출구분": (SUBMISSION_TYPE_KEY, "제출구분", False),
+    "제출 사유": (SUBMISSION_REASON_KEY, "제출 사유", False),
     "총괄 취급시설 단위공장 구성": (OVERVIEW_KEY, "총괄 취급시설 단위공장 구성", True),
     "공정개요": (PROCESS_KEY, "공정개요", True),
     "단위공장 취급시설 개요": (UNIT_OVERVIEW_KEY, "단위공장 취급시설 개요", True),
 })
 DIRECT.update({item["label"]: (item["key"], item["label"], False) for item in form16_items()})
 CHOICES = {item["key"]: set(item.get("options") or ()) for item in form3_fields() if item["kind"] == "choice"}
+CHOICES[SUBMISSION_TYPE_KEY] = set(SUBMISSION_TYPES)
+CHOICES[SUBMISSION_REASON_KEY] = set(SUBMISSION_REASONS)
 LOADING_LABEL = "입·출하 시설 수(기)"
 
 
