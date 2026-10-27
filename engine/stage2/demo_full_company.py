@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from io import BytesIO, StringIO
+import json
 from zipfile import ZIP_DEFLATED, ZipFile
 
 COMPANY = "가상 새솔화학(주)"
@@ -194,7 +195,8 @@ def readme(address: str = "", complex_name: str = "") -> str:
     return f"""{COMPANY} — 화학사고예방관리계획서 끝까지 연습 자료
 
 {notice} 실제 운전·평가·제출에 쓸 수 없습니다.
-answer_key가 따로 없습니다. 각 문서에 적힌 값이 곧 넣을 값입니다.
+ZIP의 answer_key.json에 물질·설비의 원래 값을 보관합니다. 실제 주소를 넣은 경우 주변 보호대상 정답은
+만들어 두지 않았습니다. 조사 결과를 지도와 대조하세요.
 
 [준비]
 0. 왼쪽 ‘참고 > 규정 DB 관리’에서 최신본 업데이트로 법령 기준표(별표 1~4)를 승인해 두세요.
@@ -419,5 +421,61 @@ def full_demo_zip(address: str = "", complex_name: str = ""):
     with ZipFile(out, "w", ZIP_DEFLATED) as archive:
         for name, content in files(address, complex_name).items():
             archive.writestr(name, content)
+        archive.writestr("answer_key.json", json.dumps({
+            "company": company(address, complex_name), "products": DATA["products"],
+            "facilities": DATA["facilities"], "scenario_inputs": DATA["scenario_inputs"],
+            "surroundings": None if address.strip() else DATA["surroundings"],
+            "note": "허구 자료의 생성 원본. 실제 주소의 주변 정보는 별도로 조사해 확인해야 합니다.",
+        }, ensure_ascii=False, indent=2).encode("utf-8"))
         archive.writestr("README_테스트_안내서.txt", readme(address, complex_name).encode("utf-8"))
+    return out.getvalue()
+
+
+def stress_files():
+    """정상 연습 프로젝트와 분리해서 올릴 현장형 예외 자료. 값과 회사는 모두 허구입니다."""
+    return {
+        "01_두공장_설비대장.csv": (
+            "단위공장,설비번호,설비명,취급제품,최대보유량(kg),운전압력(MPa)\n"
+            "A공장,T-01,A공장 저장탱크,P-01,1000,0.1\n"
+            "B공장,T-01,B공장 저장탱크,P-01,9000,0.2\n").encode("utf-8-sig"),
+        "02_혼합물_성분목록.xlsx": _book({"성분목록": (
+            ("제품코드", "제품명", "CAS 번호", "함량(%)"),
+            [{"제품코드": "MIX-01", "제품명": "가상 혼합용제", "CAS 번호": "64-17-5", "함량(%)": 60},
+             {"제품코드": "MIX-01", "제품명": "가상 혼합용제", "CAS 번호": "67-56-1", "함량(%)": 40}])}),
+        "03_구버전_설비사양.csv": (
+            "설비번호,설비명,최대보유량(kg),운전압력(kPa)\n"
+            "T-02,가상 반응기,5000,200\n").encode("cp949"),
+        "04_개정_설비사양.csv": (
+            "설비번호,설비명,최대보유량(kg),운전압력(kPa)\n"
+            "T-02,가상 반응기,7000,250\n").encode("utf-8-sig"),
+        "05_서술형_운전기록.docx": _doc("가상 반응기 운전기록", [
+            ("설비번호 T-02", "운전압력(MPa): 0.25\n운전온도(℃): 35\n구버전 운전자료는 현재 값으로 사용하지 않음")]),
+    }
+
+
+STRESS_TRUTH = {
+    "purpose": "가상 회사 자료의 동일번호·혼합물·개정자료 충돌을 확인하는 별도 프로젝트용 진단",
+    "facilities": ["A공장/T-01", "B공장/T-01", "T-02"],
+    "components": [{"product": "MIX-01", "cas": "64-17-5", "concentration": 60},
+                   {"product": "MIX-01", "cas": "67-56-1", "concentration": 40}],
+    "current_T02_inventory_kg": 7000,
+    "expected_limitations": ["단위공장별 중복 설비번호를 서로 다른 설비로 자동 분리하지 못함",
+                             "한 제품코드의 여러 CAS 성분을 별도 성분으로 자동 분리하지 못함",
+                             "서로 다른 시점의 값은 날짜만으로 현재 값을 자동 결정하지 않음"],
+}
+
+
+def stress_demo_zip():
+    """정상 작성자료와 섞지 않는 별도 압박 시험 ZIP."""
+    out = BytesIO()
+    with ZipFile(out, "w", ZIP_DEFLATED) as archive:
+        for name, content in stress_files().items():
+            archive.writestr(name, content)
+        archive.writestr("answer_key.json", json.dumps(STRESS_TRUTH, ensure_ascii=False, indent=2).encode())
+        archive.writestr("README.txt", (
+            "모두 허구의 시험자료입니다. '계획서 끝까지 연습 자료' 프로젝트에는 섞지 마세요.\n"
+            "새 사업장을 만들어 01~04 파일을 올리고, 05 문서는 설비번호 T-02를 지정해 올리세요.\n"
+            "T-01은 서로 다른 두 공장에 각각 한 대, MIX-01에는 두 CAS 성분이 있습니다.\n"
+            "answer_key.json과 추출 설비·성분 수 및 충돌 질문을 비교하세요.\n"
+            "프로그램이 두 경우를 합쳐 버리면 해결된 것이 아니라 확인된 결함입니다.\n").encode())
     return out.getvalue()

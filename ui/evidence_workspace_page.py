@@ -391,6 +391,11 @@ def _step_upload(project, found) -> None:
         st.caption("제품 3개·설비 4대의 작은 가상 회사. 별지 제1~16호와 서술형에 넣을 값이 모두 회사 문서로 들어 있고, "
                    "README 안내서를 따라 하면 화학사고예방관리계획서 내려받기까지 갈 수 있어요."
                    + (" 주소를 넣었으니 별지 제8호는 실제 지도 조회로 채워요." if real_address.strip() else ""))
+    with st.expander("회사 자료처럼 복잡한 파일로 별도 시험하기"):
+        st.caption("두 공장의 같은 설비번호, 한 제품의 여러 CAS 성분, 구버전·개정 자료의 충돌을 넣었어요. "
+                   "위 계획서 작성용 자료와 섞지 말고 새 연습 사업장에 올리세요. 정답표와 비교해 누락·합침을 확인합니다.")
+        st.download_button("현장형 예외 자료와 정답표 받기", demo_full_company.stress_demo_zip(),
+                           file_name="synthetic_company_stress_audit.zip", mime="application/zip", key="stress_audit")
     _local_llm(project)
 
 

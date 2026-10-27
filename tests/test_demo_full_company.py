@@ -5,6 +5,7 @@
   시나리오 목록을 직접 저장합니다(화면에서는 제안된 목록에 같은 값을 넣고 저장하는 단계).
 - 끝에 남는 것은 승인 DB가 필요한 항목과 검토 안내뿐이어야 합니다.
 """
+import json
 import unittest
 from hashlib import sha256
 from io import BytesIO
@@ -26,6 +27,7 @@ from engine.stage2 import (cap_form2_workspace as f2, cap_form3_workspace as f3,
                            psm_narrative_workspace as pn, report_export as rx, cap_surroundings as survey,
                            cap_site_lookup as kakao, cap_vworld_lookup as vworld)
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft
+from engine.stage2.completeness import evaluate_project_completeness
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.project import EvidenceRef
 from engine.stage2.cap_site_lookup import Candidate
@@ -155,7 +157,11 @@ class FullDemoTests(unittest.TestCase):
         with ZipFile(BytesIO(d.full_demo_zip())) as z:
             names = set(z.namelist())
             guide = z.read("README_테스트_안내서.txt").decode("utf-8")
-        self.assertEqual(names, set(d.files()) | {"README_테스트_안내서.txt"})
+        self.assertEqual(names, set(d.files()) | {"README_테스트_안내서.txt", "answer_key.json"})
+        with ZipFile(BytesIO(d.full_demo_zip())) as z:
+            key = json.loads(z.read("answer_key.json"))
+        self.assertEqual(len(key["facilities"]), 4)
+        self.assertEqual(len(key["products"]), 3)
         for name in d.files():
             self.assertIn(name, guide, name)
         for name, kind in d.UPLOAD.items():
@@ -220,6 +226,8 @@ class RealAddressTests(unittest.TestCase):
         self.assertIn("연습 국가산업단지", cells)
         self.assertNotIn("07_주변보호대상_지도.png", names)
         self.assertEqual(survey_sheet.max_row, 1)                       # 빈 양식(머리글만)
+        with ZipFile(BytesIO(d.full_demo_zip(REAL))) as z:
+            self.assertIsNone(json.loads(z.read("answer_key.json"))["surroundings"])
         for words in (REAL, "주소로 주변자료 조사", "VWORLD_API_KEY", "사업장 경계 저장"):
             self.assertIn(words, guide)
         self.assertNotIn("가상 초등학교", guide)
@@ -237,6 +245,51 @@ class RealAddressTests(unittest.TestCase):
         state = rx.evaluate(self.p, "CAP")
         left = [i.message for i in list(state.text_issues) + list(state.manual_issues) if i.status != "PASS"]
         self.assertEqual([m for m in left if not any(word in m for word in ALLOWED)], [])
+
+
+class NonDrawingAuditTests(unittest.TestCase):
+    """도면을 제외해도 남는 작업을 별도 공개해 '끝까지'라는 이름으로 가리지 않습니다."""
+
+    def test_full_walk_keeps_non_drawing_gaps_visible(self):
+        p, questions = walk()
+        scenarios(p)
+        self.assertEqual(questions, [])
+        state = rx.evaluate(p, "CAP")
+        self.assertFalse(state.final_ready)
+        drawing_keys = {"documents.pfd", "documents.pid", "documents.site_plan",
+                        "cap.site.unit_plant_layout", "cap.site.equipment_layout", "cap.safety.dike_layout"}
+        remaining = []
+        for item in evaluate_project_completeness(p)["requirements"]:
+            if item["system"] not in {"CAP", "COMMON"} or item["state"] in {"READY", "NOT_REQUIRED"}:
+                continue
+            keys = (set(item["missing_fields"]) | set(item["hold_fields"]) | set(item["draft_fields"])) - drawing_keys
+            if keys:
+                remaining.append((item["label"], keys))
+        self.assertGreater(len(remaining), 0, "도면 외 항목이 실제로 연결되면 이 시험과 안내를 갱신하세요")
+        self.assertTrue(any("cap.facility.equipment_specs" in keys for _, keys in remaining))
+        self.assertTrue(any("cap.offsite.impact_range_result" in keys for _, keys in remaining))
+
+    def test_stress_pack_exposes_merges_instead_of_claiming_success(self):
+        files = d.stress_files()
+        with ZipFile(BytesIO(d.stress_demo_zip())) as z:
+            self.assertEqual(set(z.namelist()), set(files) | {"answer_key.json", "README.txt"})
+            truth = json.loads(z.read("answer_key.json"))
+        self.assertEqual(len(truth["facilities"]), 3)
+        self.assertEqual(len(truth["components"]), 2)
+        p = create_direct_cap_project("가상 압박 시험", address="가상 주소", cap_group="")
+        for name, content in files.items():
+            if name.endswith(".docx"):
+                ew.ingest(p, name, content, "facility", "T-02")
+            else:
+                kind = "material" if "혼합물" in name else "facility"
+                self.assertEqual(ew.classify_document(name, content), kind)
+                ew.ingest(p, name, content, kind)
+        facilities = {s["entity"] for s in ew.slots(p) if s["entity"].startswith("facility:")}
+        self.assertEqual(facilities, {"facility:T-01", "facility:T-02"})  # 실제 정답은 3대: 알려진 결함
+        cas = next(s for s in ew.slots(p) if s["key"] == "material:MIX-01|cas")
+        self.assertEqual(cas["status"], "값 충돌")                  # 성분 2개를 하나로 묶음
+        inventory = next(s for s in ew.slots(p) if s["key"] == "facility:T-02|inventory")
+        self.assertEqual(inventory["status"], "값 충돌")          # 개정 자료를 자동으로 채택하지 않음
 
 
 if __name__ == "__main__":
