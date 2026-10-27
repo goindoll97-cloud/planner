@@ -1,6 +1,6 @@
 """사업장 업무 화면: 신입사원도 따라올 수 있게 단계별로 안내합니다.
 
-① 자료 올리기 → ② 질문에 답하기 → ③ 시나리오 후보 → ④ 보내기·진행 현황
+① 자료 올리기 → ② 파일별 보완 요청 → ③ 시나리오 후보 → ④ 보내기·진행 현황
 
 화면에는 사람 말만 씁니다. 파일 해시·내부 식별자·JSON 같은 기록은 ④의 ‘검토·감사용 기록’에만 둡니다.
 """
@@ -15,12 +15,13 @@ from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import demo_company, evidence_llm, scenario_triage, scenario_workup
+from engine.stage2 import demo_company, evidence_llm, scenario_triage, scenario_workup, cap_intake_guide
+from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import delete_all_projects, list_projects, load_attachment, load_project, save_attachment, save_project
 
-STEPS = {1: "① 자료 올리기", 2: "② 질문에 답하기", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
+STEPS = {1: "① 자료 올리기", 2: "② 파일별 보완 요청", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
 MAX_CARDS = 30
 DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".txt")
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
@@ -303,10 +304,10 @@ def _status_line(project, found) -> None:
     info = ew.summary(project)
     if not info["documents"]:
         return
-    count = _question_count(found)
+    count = len(_correction_rows(project, found))
     parts = [f"자료 {info['documents']}개를 읽었어요", f"값 {info['auto'] + info['person']}개를 채웠어요"]
     unread = sum(bool(d.get("needs_reading")) for d in ew.documents(project))
-    parts.append(f"답해 주실 질문이 {count}개 있어요" if count else "지금 답할 질문은 없어요")
+    parts.append(f"보완·확인할 항목 {count}개" if count else "자료에서 확인할 항목이 없어요")
     if unread:
         parts.append(f"읽지 못한 파일 {unread}개는 확인이 필요해요")
     st.markdown(" · ".join(parts))
@@ -325,27 +326,41 @@ def _classify(name: str, content: bytes) -> tuple[str, str | None]:
 
 def _step_upload(project, found) -> None:
     pid = project.project_id
-    st.write("회사에 있는 자료를 **그대로** 올리세요. 서식을 채울 필요 없어요. "
-             "프로그램이 값을 찾아 정리하고, 사람이 확인해야 할 것만 다음 단계에서 물어봐요.")
+    st.write("회사 자료를 한 번에 올리세요. 파일별로 읽힌 값과 보완할 부분을 알려 드립니다.")
     with st.expander("어떤 자료를 올리면 되나요?"):
-        st.markdown(
-            "- **설비 목록·설비대장**: 설비번호, 설비 이름, 용량, 최대보유량, 운전압력·온도가 있는 엑셀·CSV\n"
-            "- **물질 목록·MSDS**: 제품코드, 제품 이름, CAS 번호, 함량이 있는 엑셀·CSV·PDF\n"
-            "- **운전조건표·설비 사양서**: 표가 있는 엑셀·워드(DOCX)·한글(HWPX)·PDF\n\n"
-            "여러 파일을 한 번에 올려도 돼요. 같은 설비번호·제품코드끼리 알아서 묶어요. "
-            "스캔한 PDF(사진)와 옛 한글 파일(HWP)은 아직 읽지 못해요.")
+        group = project.cap_group if project.cap_group in {"1군", "2군"} else ""
+        st.caption("회사에 그대로 전달할 자료 요청 목록입니다. 작성수준을 아직 확인하지 않았다면 1·2군 후보 항목을 함께 보여 줍니다. "
+                   "업로드만으로 서식이 완성되지는 않으며, 읽지 못한 자료는 보완 요청에 남습니다.")
+        cols = st.columns(2)
+        cols[0].download_button("전체 준비자료 목록 TXT", cap_intake_guide.guidance_text(group),
+                                file_name="화학사고예방관리계획서_회사자료_요청목록.txt", mime="text/plain", key="cap_request_txt")
+        cols[1].download_button("전체 준비자료 목록 한글(HWPX)", cap_intake_guide.guidance_hwpx(group),
+                                file_name="화학사고예방관리계획서_회사자료_요청목록.hwpx",
+                                mime="application/hwp+zip", key="cap_request_hwpx")
+        st.markdown("**우선 모을 파일**: 설비목록·설비대장(설비번호·공장·용량·최대보유량), 물질목록·제품별 SDS(CAS·함량), "
+                    "운전조건표·설비사양서(압력·온도·단위), 공정설명서, 안전설비·비상대응 자료, 주변현황·평가 근거.")
+        rows = cap_intake_guide.checklist(group)
+        st.dataframe([{"구역": r["section"], "필요한 내용": r["label"],
+                       "준비할 자료 예시": " / ".join(r["evidence"]) or r["details"],
+                       "작성수준": "·".join(r["levels"])} for r in rows], hide_index=True, width="stretch")
+        st.caption("HWPX는 읽을 수 있습니다. 옛 한글 HWP는 한글에서 HWPX 또는 텍스트 PDF로 다시 저장하세요. "
+                   "사진으로 스캔된 PDF는 문자 인식과 원본 확인이 필요합니다.")
     uploaded = st.file_uploader("파일 선택 (여러 개 가능, 파일당 20MB 이하)",
-                                type=["csv", "xlsx", "pdf", "docx", "hwpx", "txt"], accept_multiple_files=True)
+                                type=["csv", "xlsx", "pdf", "docx", "hwpx", "hwp", "txt"], accept_multiple_files=True)
     selected, hints = {}, {}
     for index, file in enumerate(uploaded or []):
+        if file.name.lower().endswith(".hwp"):
+            st.error(f"{file.name}: 이 파일은 구형 HWP라 읽지 못합니다. 한글에서 HWPX 또는 텍스트 PDF로 저장해 다시 올려 주세요.")
+            selected[index] = "unsupported"
+            continue
         digest, detected = _classify(file.name, file.getvalue())
         if detected:
             st.write(f"✅ {file.name} — {'물질 목록·MSDS' if detected == 'material' else '설비 목록·운전 자료'}로 알아봤어요")
             selected[index] = detected
         else:
             # 파일 내용 기준 키: 다른 파일을 빼도 이미 고른 종류가 다른 파일로 옮겨 가지 않습니다
-            selected[index] = st.selectbox(f"❓ {file.name} — 어떤 자료인가요?", ["선택하세요", "facility", "material"],
-                                           format_func={"선택하세요": "선택하세요", "material": "물질 목록·MSDS",
+            selected[index] = st.selectbox(f"{file.name} — 자료 유형", ["reference", "facility", "material"],
+                                           format_func={"reference": "기타 작성 근거자료 (원본 보관·보완 검토)", "material": "물질 목록·MSDS",
                                                         "facility": "설비 목록·운전 자료"}.get,
                                            key=f"kind_{pid}_{digest[:16]}")
         if file.name.lower().endswith(DOCUMENT_TYPES):
@@ -357,8 +372,15 @@ def _step_upload(project, found) -> None:
     if st.button("자료 읽기", type="primary", disabled=not uploaded, key="read_" + pid):
         for index, file in enumerate(uploaded):
             try:
-                if selected[index] == "선택하세요":
-                    raise ValueError("어떤 자료인지 골라 주세요")
+                if selected[index] == "unsupported":
+                    continue
+                if selected[index] == "reference":
+                    ew.register_reference(project, file.name, file.getvalue())
+                    save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 자동 추출·서식 연결 미완료")
+                    save_project(project)
+                    st.session_state.setdefault("evidence_notes", []).append(
+                        f"{file.name}: 원본만 보관했어요. 서식 값으로 연결되지 않았습니다. 파일별 보완 요청을 확인하세요.")
+                    continue
                 count = ew.ingest(project, file.name, file.getvalue(), selected[index], hints.get(index, ""))
                 save_attachment(project.project_id, file.name, file.getvalue(), note="공통정보 추출 원문")
                 save_project(project)
@@ -368,7 +390,7 @@ def _step_upload(project, found) -> None:
             except Exception as exc:
                 why = exc if isinstance(exc, ValueError) else "파일 형식을 확인해 주세요"
                 st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 읽지 못했어요 ({why}). 다른 자료는 그대로예요.")
-        st.session_state["evidence_goto"] = 2   # 읽고 나면 바로 질문 단계로 (단계 위젯은 다음 실행 전에 바꿉니다)
+        st.session_state["evidence_goto"] = 2
         st.rerun()
 
     docs = ew.documents(project)
@@ -381,7 +403,7 @@ def _step_upload(project, found) -> None:
         reasons = {f["id"]: g["reason"] for g in found["problems"] for f in g["facts"]}
         for doc in docs:
             _reading_report(project, doc, by_doc.get(doc["sha256"], []), found["names"], reasons)
-        _next_button(2, pid, "다음: 질문에 답하기 →")
+        _next_button(2, pid, "다음: 파일별 보완 요청 →")
     st.divider()
     st.markdown("**연습용 가상 회사 자료**")
     cols = st.columns(3)
@@ -405,8 +427,8 @@ def _step_upload(project, found) -> None:
         count = len(demo_full_company.files(real_address, complex_name if real_address.strip() else ""))
         st.download_button(f"계획서 끝까지 연습 자료 (파일 {count}개)", package,
                            file_name="synthetic_company_full_plan.zip", mime="application/zip", key="demo_full")
-        st.caption("제품 3개·설비 4대의 작은 가상 회사. 별지 제1~16호와 서술형에 넣을 값이 모두 회사 문서로 들어 있고, "
-                   "README 안내서를 따라 하면 화학사고예방관리계획서 내려받기까지 갈 수 있어요."
+        st.caption("제품 3개·설비 4대의 가상 회사. 회사 근거자료와 정답표가 들어 있습니다. "
+                   "현재 자동 추출 범위는 일부 공통정보뿐입니다. 파일별 보완 요청과 서식 미연결 항목을 확인하세요."
                    + (" 주소를 넣었으니 별지 제8호는 실제 지도 조회로 채워요." if real_address.strip() else ""))
     with st.expander("회사 자료처럼 복잡한 파일로 별도 시험하기"):
         st.caption("두 공장의 같은 설비번호, 한 제품의 여러 CAS 성분, 구버전·개정 자료의 충돌을 넣었어요. "
@@ -455,7 +477,7 @@ def _reading_report(project, doc, facts, names, reasons) -> None:
             if st.button("지정하고 다시 읽기", key=f"col_ok_{pid}_{sha[:12]}", disabled=not picked):
                 _remap_columns(project, picked)
         if unusable:
-            st.markdown("**그대로 쓸 수 없는 칸** — ② 질문에 답하기에서 다뤄요.")
+            st.markdown("**그대로 쓸 수 없는 칸** — 원본 파일을 수정해 다시 올려 주세요.")
             st.dataframe([{"읽은 곳": _where(f), "항목": _name(f["field"]), "적힌 글자": f["raw"], "이유": reasons[f["id"]]}
                           for f in unusable[:200]], hide_index=True, width="stretch")
         if facts:
@@ -499,12 +521,12 @@ def _local_llm(project) -> None:
                 from engine.stage2.local_llm import build_local_llm_client, local_llm_config_from_sources
                 outcome = evidence_llm.propose(project, doc_id, build_local_llm_client(local_llm_config_from_sources()))
                 save_project(project)
-                st.success(f"원문과 맞는 값 {outcome['accepted']}개를 찾았어요 (맞지 않아 버린 값 {outcome['rejected']}개). ‘질문에 답하기’에서 확인해 주세요.")
+                st.success(f"원문과 맞는 값 {outcome['accepted']}개를 찾았어요 (맞지 않아 버린 값 {outcome['rejected']}개). 파일별 보완 요청에서 확인해 주세요.")
             except Exception as exc:
                 st.error(f"AI 연결에 실패했어요: {exc}")
 
 
-# ---------------------------------------------------------------- ② 질문에 답하기
+# ---------------------------------------------------------------- ② 파일별 보완 요청
 
 def _card_conflict(project, item, names) -> None:
     slot, pid, field = item["slot"], project.project_id, item["field"]
@@ -678,11 +700,78 @@ def _visible(items, key):
     return entries[page * MAX_CARDS:(page + 1) * MAX_CARDS]
 
 
+def _correction_rows(project, found) -> list[dict]:
+    """파일·위치·항목·수정 지시를 한 줄씩 적는다. 추정된 원본은 쓰지 않는다."""
+    rows = []
+
+    def add(source, item, detail, action):
+        rows.append({"파일·위치": source, "항목": item, "확인된 문제": detail, "수정 요청": action})
+
+    for doc in ew.documents(project):
+        if doc.get("needs_reading"):
+            add(doc["name"], "문서 읽기", doc.get("problem") or "값을 연결하지 못했습니다.",
+                "스캔본은 OCR을 적용하세요. 근거자료라면 서식에 필요한 내용을 확인하고 해당 문서·원본을 제출하세요.")
+        for table in doc.get("tables", []):
+            for skipped in table.get("skipped", []):
+                add(f"{doc['name']} · {table['location']} {skipped['row']}행", "설비·제품 번호",
+                    skipped["reason"], "설비번호 또는 제품코드를 원본 행에 기재한 뒤 다시 올려 주세요.")
+        for column in doc.get("unmapped_columns", []):
+            add(doc["name"], column + " 열", "알 수 없는 항목 이름", "열 이름과 뜻·단위를 확인해 원본을 수정한 뒤 다시 올려 주세요.")
+    for item in found["conflicts"]:
+        facts = item["slot"]["facts"]
+        add(" / ".join(dict.fromkeys(_where(f) for f in facts)),
+            f"{found['names'](item['entity'])} · {_name(item['field'])}",
+            "자료마다 값이 다릅니다: " + ", ".join(_value(item["field"], f["value"]) for f in facts[:5]),
+            "현재 적용되는 개정본을 확인하고 파일의 값을 바로잡아 다시 올려 주세요. 확인 전에는 자동 확정되지 않습니다.")
+    for group in found["problems"]:
+        fact = group["facts"][0]
+        add(_where(fact), _name(group["field"]), f"‘{group['raw']}’: {group['reason']}",
+            "숫자·단위·표기와 적용 대상을 원본에서 수정한 뒤 다시 올려 주세요.")
+    for entity, fields in found["missing"].items():
+        add("설비대장·운전조건표 (해당 파일 위치 미확인)", found["names"](entity),
+            "자료에서 " + ", ".join(_name(field) for field in fields) + " 항목을 찾지 못했습니다.",
+            "해당 설비번호의 누락 열을 원본에 기재해 올려 주세요.")
+    for question in found["rank"]:
+        add("설비대장·물질목록 (해당 파일 위치 미확인)", found["names"](question["entity"]),
+            f"시나리오 우선순위에 영향을 줄 {_name(question['field'])} 값을 확인하지 못했습니다.",
+            "해당 물질·설비의 값을 단위와 함께 원본에 기재해 올려 주세요.")
+    for item in found["held"]:
+        fact = item["slot"]["facts"][0]
+        add(_where(fact), _name(item["field"]), "출처·단위·법적 판단용 값의 확인이 필요합니다.",
+            "원본과 현장 적용 여부를 확인하고 최신본을 다시 올리거나 아래 확인 절차를 이용하세요.")
+    for req in build_intake_catalog(project):
+        if req.system not in {"CAP", "COMMON"} or req.coverage_status in {"확인", "해당 없음"}:
+            continue
+        missing = ", ".join(req.missing_labels or (req.label,))
+        add(" / ".join(req.suggested_evidence) or "근거 파일 미지정", req.label,
+            f"작성 항목에 {missing} 값이 아직 연결되지 않았습니다. 업로드한 자료에 있어도 자동 연결되지 않았을 수 있습니다.",
+            "해당 근거자료와 최신본·적용범위를 확인해 제출하고 작성 화면에서 연결·확정하세요.")
+    return rows
+
+
 def _step_questions(project, found) -> None:
     pid, names = project.project_id, found["names"]
     if not ew.documents(project):
         st.info("먼저 ① 자료 올리기에서 자료를 올려 주세요.")
         return
+    rows = _correction_rows(project, found)
+    st.markdown("**파일별 수정 요청**")
+    st.caption("원본 파일을 고쳐 한 번에 다시 올리세요. ‘작성 항목에 연결되지 않음’은 그 값이 회사 자료에 없다는 뜻이 아닙니다.")
+    if rows:
+        st.dataframe(rows, hide_index=True, width="stretch")
+        text_report = "파일·위치 | 항목 | 확인된 문제 | 수정 요청\n" + "\n".join(
+            " | ".join(str(row[k]).replace("\n", " ") for k in ("파일·위치", "항목", "확인된 문제", "수정 요청")) for row in rows)
+        st.download_button("회사에 보낼 수정 요청 TXT", text_report.encode("utf-8-sig"),
+                           file_name="회사자료_파일별_수정요청.txt", mime="text/plain", key="corrections_" + pid)
+    else:
+        st.success("현재 연결된 자료에서 수정 요청을 찾지 못했습니다. 법정 판정과 서식 확인은 별도로 진행하세요.")
+    with st.expander("파일을 바로 고칠 수 없을 때만 직접 확인·입력"):
+        _inline_review(project, found)
+    _next_button(3, pid, "다음: 시나리오 후보 보기 →")
+
+
+def _inline_review(project, found) -> None:
+    pid, names = project.project_id, found["names"]
     unmapped = [d for d in ew.documents(project) if d.get("unmapped_columns")]
     if unmapped:
         st.info(f"프로그램이 모르는 열이 있는 파일이 {len(unmapped)}개 있어요. ① 자료 올리기의 ‘읽기 결과 보기’에서 필요한 열을 먼저 "
@@ -720,7 +809,6 @@ def _step_questions(project, found) -> None:
         for note in found["notes"]:
             st.write("• " + (names(note["entity"]) + ": " if note["entity"].startswith(("facility:", "material:")) else "")
                      + note["task"])
-    _next_button(3, pid, "다음: 시나리오 후보 보기 →")
 
 
 # ---------------------------------------------------------------- ③ 시나리오 후보
@@ -729,7 +817,7 @@ def _step_scenarios(project, found, triage) -> None:
     pid, names = project.project_id, found["names"]
     workup = scenario_workup.compile_workup(project, triage)
     st.write("물질과 설비를 짝지어 **어느 조합부터 사고시나리오로 검토할지** 순서를 매겼어요. "
-             "질문에 답하기 전에도 자료에서 읽은 값으로 먼저 계산해요.")
+             "파일 보완 전에도 자료에서 읽은 값으로 먼저 계산해요.")
     with st.expander("순서는 어떻게 매기나요?"):
         st.markdown("최대보유량(kg) × (1 + 운전압력(MPa)) × 함량(%) ÷ 100 이 큰 조합을 먼저 보여 줘요. "
                     "많이, 높은 압력으로, 진하게 들어 있을수록 앞에 와요.\n\n"
@@ -746,7 +834,7 @@ def _step_scenarios(project, found, triage) -> None:
         st.caption(f"검토할 조합 {len(packets)}개 · 자료 확인이 남은 조합 {sum(p['state'] != '예비 검토' for p in packets)}개")
         if found["rank"]:
             st.warning(f"순서를 확실히 하려면 답해 주실 값이 {len(found['rank'])}개 있어요.")
-            st.button("② 질문에 답하러 가기", key="to_questions_" + pid, on_click=_go, args=(2, pid))
+            st.button("② 파일별 보완 요청 보기", key="to_questions_" + pid, on_click=_go, args=(2, pid))
         with st.expander("조합별로 어떤 값을 썼는지 보기"):
             pick = st.selectbox("조합", range(len(linked)), key="combo_" + pid,
                                 format_func=lambda i: f"{linked[i]['rank']}번 · {names(linked[i]['facility'])} × {names(linked[i]['material'])}")
@@ -858,7 +946,7 @@ def _send(project, found) -> None:
     pid, names = project.project_id, found["names"]
     pending = _question_count(found)
     if pending:
-        st.info(f"② 질문에 아직 답하지 않은 것이 {pending}개 있어요. 답한 값만 보내지고, 나머지는 나중에 다시 보낼 수 있어요.")
+        st.info(f"② 아직 보완·확인하지 않은 값 {pending}개가 있어요. 확인한 값만 연결되고 나머지는 보류됩니다.")
     check = _final_check(project)
     if check:
         groups = {}
@@ -889,7 +977,7 @@ def _send(project, found) -> None:
         return
 
     if not ew.publishing_plan(project):
-        st.info("보낼 값이 아직 없어요. ① 자료를 올리고 ② 질문에 답해 주세요.")
+        st.info("보낼 값이 아직 없어요. ① 자료를 올리고 ② 파일별 보완 요청을 확인해 주세요.")
         return
     st.caption("같은 설비번호·CAS 번호의 행에 합쳐요. 별지에서만 적은 칸(분자량·형상 치수 등)은 그대로 두고, "
                "자료마다 달라 아직 정하지 않은 값은 비워요. 별지 제1·6호에서 고친 값은 이미 여기에 반영돼 있어요.")
@@ -938,7 +1026,7 @@ def _records(project, names) -> None:
 
 st.set_page_config(page_title="사업장 업무", page_icon="📂", layout="wide")
 st.title("화학사고예방관리계획서 자료 정리")
-st.caption("회사 자료를 올리면 프로그램이 값을 찾아 정리하고, 사람이 확인해야 할 것만 물어봐요.")
+st.caption("회사 자료를 올리면 값을 찾아 정리하고, 파일별 수정·확인 요청을 보여 줍니다.")
 _active = _project_header()
 _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
@@ -950,7 +1038,7 @@ _step_key = "evidence_step_" + _active.project_id
 if "evidence_goto" in st.session_state:
     st.session_state[_step_key] = st.session_state.pop("evidence_goto")
 if _step_key not in st.session_state:
-    st.session_state[_step_key] = 1 if not ew.documents(_active) else (2 if _question_count(_found) else 3)
+    st.session_state[_step_key] = 1 if not ew.documents(_active) else (2 if _correction_rows(_active, _found) else 3)
 # 단계 이름은 고정합니다: 이름이 바뀌면 위젯이 새로 만들어져 보던 단계가 처음으로 돌아갈 수 있습니다.
 _step = st.radio("단계", list(STEPS), key=_step_key, horizontal=True, label_visibility="collapsed", format_func=STEPS.get)
 st.divider()

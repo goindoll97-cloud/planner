@@ -110,6 +110,24 @@ def documents(project):
     return _read(project)["documents"]
 
 
+def register_reference(project, name, content):
+    """서식 근거자료를 원본과 연결한다. 표준 사실로 추출하지 않았음을 명시한다."""
+    digest = sha256(content).hexdigest()
+    data = graph(project)
+    if any(d["sha256"] == digest for d in data["documents"]):
+        return False
+    tables, passages = read_document(name, content)
+    has_text = any(p.get("text", "").strip() for p in passages)
+    problem = ("글자가 없는 스캔본입니다. OCR 후 원본을 확인해 다시 올려 주세요." if not tables and not has_text else
+               "원본은 보관했습니다. 이 문서의 값은 아직 법정 서식에 자동 연결되지 않았습니다.")
+    data["documents"].append({"name": name, "sha256": digest, "kind": "reference", "hint": "",
+                              "passages": passages, "fact_count": 0, "unmapped_columns": [], "tables": [],
+                              "rows_without_id": 0, "needs_reading": True,
+                              "needs_ocr": not tables and not has_text, "problem": problem})
+    _store(project, data)
+    return True
+
+
 def _invalidate(project):
     for record in project.fields.values():
         if record.note.startswith("공통정보 연결") or record.status == "AI_DRAFT":

@@ -2,7 +2,8 @@
 
 큰 연습 자료(demo_company)는 ‘자료 정리’가 복잡한 경우에 얼마나 견디는지 보는 용도이고,
 이 자료는 사람이 화면을 따라가며 계획서 전체를 한 번 끝까지 써 보는 용도입니다.
-그래서 제품 3개·설비 4대로 작게 만들고, 각 별지 화면이 묻는 값을 모두 회사 문서 형태로 넣었습니다.
+그래서 제품 3개·설비 4대로 작게 만들고, 각 별지에서 참고할 값을 회사 문서 형태로 넣었습니다.
+공통정보 이외의 자동 서식 연결은 아직 완성되지 않았습니다. 누락 검사로 이를 확인합니다.
 
 모든 값은 이 파일의 DATA 하나에서 나옵니다. 문서·안내서·자동 점검(tests/test_demo_full_company.py)이 같은 값을 씁니다.
 회사·사람·주소·번호·운전값은 모두 허구입니다(물질명·CAS 번호만 실제). 실제 운전·평가·제출에 쓸 수 없습니다.
@@ -204,9 +205,16 @@ ZIP의 answer_key.json에 물질·설비의 원래 값을 보관합니다. 실�
 
 [1] 자료 접수·확인할 일 (왼쪽 ‘사업장 업무’)
  1-1. ‘새 사업장 만들기’: 사업장 이름 「{COMPANY}」, 주소 「{c['주소']}」
- 1-2. ① 자료 올리기: 01_제품목록.xlsx, 02_설비대장.xlsx를 한 번에 올리고 ‘자료 읽기’
- 1-3. ② 질문에 답하기: 질문이 거의 없어야 정상입니다. 남은 질문은 문서 값으로 답하세요.
- 1-4. ④ 보내기·진행 현황: 마지막 확인에서 파일별로 확인 후 저장 → ‘작성자료로 보내기’
+ 1-2. ‘어떤 자료를 올리면 되나요?’의 전체 준비자료 목록(HWPX/TXT)을 먼저 확인하세요.
+ 1-3. ① 자료 올리기: 01_제품목록.xlsx, 02_설비대장.xlsx를 한 번에 선택하세요. 두 파일은 물질/설비 정보로 분류되고
+      나머지 한글·엑셀·워드·이미지 원본 중 지원하는 파일은 작성 근거로 보관됩니다.
+      PNG 그림은 별도 서식 화면의 도면 첨부에 사용하세요. HWPX는 01·02 엑셀과 같은 내용을
+      복제한 형식 비교용 파일이므로 같은 프로젝트에 둘 다 올리지 마세요.
+      한글판 파일: 01_제품목록_한글판.hwpx, 02_설비대장_한글판.hwpx,
+      03_사업장_일반정보_한글판.hwpx, 04_공정설명서_한글판.hwpx,
+      09_안전관리_비상대응계획_한글판.hwpx. 구형 HWP는 지원하지 않으니 HWPX로 다시 저장하세요.
+ 1-4. ② 파일별 보완 요청: 잘못 읽힌 행, 값 충돌, 서식 미연결 항목을 파일별로 내려받아 원본을 고치세요.
+ 1-5. ④ 보내기·진행 현황: 마지막 확인에서 파일별로 확인 후 저장 → ‘작성자료로 보내기’
       이후 진행 현황판의 ‘이어서 작성’을 따라가면 됩니다.
 
 [2] 사업장·물질·시설 작성 (화학사고예방관리계획서 > 사업장·물질·시설 작성)
@@ -237,7 +245,8 @@ ZIP의 answer_key.json에 물질·설비의 원래 값을 보관합니다. 실�
  - 제출 전에 왼쪽 ‘버전 관리’에서 현재 값을 v1.0(신규제출)으로 저장해 두세요.
 
 [6] 점검·내보내기
- - 남은 보완 항목을 보고, 검토용 초안 또는 (모두 해결되면) 제출용 작성본 DOCX를 내려받으세요.
+ - 남은 보완 항목을 보고 검토용 초안을 내려받으세요. 이 자료만 업로드해서는 법정 서식이 완성되지 않습니다.
+ - 도면을 제외해도 일부 필드의 자동 연결이 안 되어 남습니다. 최종 제출 준비 상태는 별도 검증하세요.
 """
 
 
@@ -285,6 +294,38 @@ def _doc(title, sections, notice="가상 회사 연습 자료입니다. 모든 �
     return out.getvalue()
 
 
+def _hwpx_table(title, headers, rows):
+    """원본 엑셀과 같은 값을 담은 독립적인 한글(HWPX) 입력 샘플."""
+    from hwpx import HwpxDocument
+    doc = HwpxDocument.new()
+    doc.add_paragraph(title)
+    doc.add_paragraph("가상 회사 연습 자료. 실제 운전·제출에 사용 금지.")
+    table = doc.add_table(len(rows) + 1, len(headers))
+    for col, header in enumerate(headers):
+        table.set_cell_text(0, col, header)
+    for row_no, row in enumerate(rows, 1):
+        for col, header in enumerate(headers):
+            table.set_cell_text(row_no, col, str(row.get(header, "")))
+    return doc.to_bytes()
+
+
+def _hwpx_from_docx(content):
+    """한글 문서 형식 시험용: 원문 표와 문단을 HWPX로 복제한다."""
+    from docx import Document
+    from hwpx import HwpxDocument
+    source = Document(BytesIO(content))
+    target = HwpxDocument.new()
+    for p in source.paragraphs:
+        if p.text.strip():
+            target.add_paragraph(p.text)
+    for old in source.tables:
+        new = target.add_table(len(old.rows), len(old.columns))
+        for r, row in enumerate(old.rows):
+            for c, cell in enumerate(row.cells):
+                new.set_cell_text(r, c, cell.text)
+    return target.to_bytes()
+
+
 def _sds_state(state):
     """별지 제6호의 물질 상태 칸은 기체·액체·고체로 고릅니다(액화가스도 ‘기체’)."""
     return "기체" if state.startswith("기체") else state
@@ -308,6 +349,13 @@ def _files(address="", complex_name=""):
         [{"설비번호": f["id"], "설비명": f["name"], "시설구분": f["type"], "공정구분": f["process"], "취급제품": f["product"],
           "용량(m3)": f["capacity_m3"], "최대보유량(kg)": f["inventory_kg"], "운전압력(MPa)": f["pressure"],
           "운전온도(℃)": f["temperature"], "물질상태": f["state"], "비중": f["density"]} for f in facilities])})
+    files["01_제품목록_한글판.hwpx"] = _hwpx_table("제품 목록·성분 확인", ("제품코드", "제품명", "CAS 번호", "함량(%)", "성상", "비중"),
+        [{"제품코드": p["code"], "제품명": p["name"], "CAS 번호": p["cas"], "함량(%)": p["conc"],
+          "성상": p["state"], "비중": p["density"]} for p in products])
+    files["02_설비대장_한글판.hwpx"] = _hwpx_table("설비목록·설비대장·운전조건", ("설비번호", "설비명", "시설구분", "취급제품", "용량(m3)", "최대보유량(kg)", "운전압력(MPa)", "운전온도(℃)"),
+        [{"설비번호": f["id"], "설비명": f["name"], "시설구분": f["type"], "취급제품": f["product"],
+          "용량(m3)": f["capacity_m3"], "최대보유량(kg)": f["inventory_kg"],
+          "운전압력(MPa)": f["pressure"], "운전온도(℃)": f["temperature"]} for f in facilities])
     files["03_사업장_일반정보.docx"] = _doc(f"{COMPANY} 사업장 일반정보", [
         ("별지 제3호 · 사업장 일반정보", [
             ("사업자 등록번호", c["registration_no"]), ("대표자", c["representative"]), ("우편번호/주소", c["주소"]),
@@ -365,6 +413,8 @@ def _files(address="", complex_name=""):
     titles = {i["id"]: i["label"] for i in f16_items()}
     files["09_안전관리_비상대응계획.docx"] = _doc(f"{COMPANY} 안전관리·비상대응계획", [
         ("별지 제16호 · 내부 비상대응", [(titles.get(k, k), v) for k, v in DATA["emergency"].items()]), *narrative])
+    for name in ("03_사업장_일반정보", "04_공정설명서", "09_안전관리_비상대응계획"):
+        files[name + "_한글판.hwpx"] = _hwpx_from_docx(files[name + ".docx"])
     return files
 
 
