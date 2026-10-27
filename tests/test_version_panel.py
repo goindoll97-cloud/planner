@@ -206,3 +206,44 @@ class RefreshBannerTests(LegalRefreshPanelTests):
         self.assertEqual(fetch.call_args.args[0], "CAP_DRAFT")
         table = [df.value for df in at.dataframe if "개정 후" in df.value.columns][0]
         self.assertEqual(list(table["조문"]), ["제3조"])  # 같은 조문은 숨김
+
+
+class VersionPageTests(unittest.TestCase):
+    """왼쪽 메뉴의 독립 ‘버전 관리’ 화면과, 작성 화면에 남기는 한 줄 상태."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._cwd = os.getcwd()
+        os.chdir(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(os.chdir, self._cwd)
+        save_project(_project())
+
+    def _page(self):
+        from pathlib import Path
+        page = Path(__file__).resolve().parents[1] / "ui" / "version_page.py"
+        at = AppTest.from_file(str(page), default_timeout=60)
+        at.session_state["_stage2_active_project_id"] = "p1"
+        return at.run()
+
+    def test_page_saves_and_compares_versions_without_opening_a_writing_screen(self):
+        at = self._page()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        self.assertEqual(len(at.expander), 0)                     # 접지 않고 바로 펼침
+        at.button(key="ver_save_CAP_p1").click().run()
+        self.assertEqual([m.version_id for m in ver.list_versions("p1", "CAP")], ["CAP-v1.0"])
+        save_project(_project(volume=8))
+        at = self._page()
+        self.assertTrue(any("저장하지 않은 변경 1건" in m.value for m in at.markdown))
+
+    def test_writing_screen_shows_one_line_status_only(self):
+        def app():
+            from engine.stage2.storage import load_project
+            from ui import version_panel
+            version_panel.render_status(load_project("p1"), "CAP")
+
+        at = AppTest.from_function(app, default_timeout=60).run()
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.expander), 0)
+        self.assertEqual(len(at.button), 0)
+        self.assertIn("버전 없음", at.caption[0].value)

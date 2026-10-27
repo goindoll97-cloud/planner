@@ -106,7 +106,7 @@ if not project.cap_in_scope and not cap_judgement.undecided(project):
 from ui import version_panel
 
 version_panel.render_refresh_banner(project, "CAP")
-version_panel.render(project, "CAP")
+version_panel.render_status(project, "CAP")   # 버전 관리는 왼쪽 ‘버전 관리’ 화면으로 옮김
 
 from ui import cap_forms_registry as registry
 

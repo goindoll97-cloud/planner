@@ -43,22 +43,42 @@ def _latest(metas: list[ver.VersionMeta]) -> ver.VersionMeta | None:
     return max(metas, key=lambda m: ver._parse_version(m.version_id)) if metas else None
 
 
-def render(project, doc: str) -> None:
+def _summary(project, doc: str):
     name = DOC_NAME[doc]
-    pid = project.project_id
-    metas = ver.list_versions(pid, doc)
+    metas = ver.list_versions(project.project_id, doc)
     latest = _latest(metas)
     pending = ver.diff_versions(project, latest.version_id) if latest else []
     if latest is None:
-        summary = f"{name} 버전 없음 · 제출하면 버전으로 저장해 두세요"
-    elif pending:
-        summary = f"{name} · 기준 {latest.version_id} · 저장하지 않은 변경 {len(pending)}건"
-    else:
-        summary = f"{name} · 기준 {latest.version_id} · 변경 없음"
+        return metas, latest, pending, f"{name} 버전 없음 · 제출하면 버전으로 저장해 두세요"
+    if pending:
+        return metas, latest, pending, f"{name} · 기준 {latest.version_id} · 저장하지 않은 변경 {len(pending)}건"
+    return metas, latest, pending, f"{name} · 기준 {latest.version_id} · 변경 없음"
 
-    with st.expander(f"🕘 버전 관리 — {summary}", expanded=bool(pending)):
-        st.caption("제출한 시점의 값을 버전으로 저장해 두면, 이후 아래 입력 화면을 그대로 고쳤을 때 무엇이 바뀌었는지 "
-                   "이전 버전과 자동으로 비교됩니다. 첨부파일은 버전에 포함되지 않고 입력값만 저장됩니다.")
+
+PAGE = "ui/version_page.py"
+
+
+def render_status(project, doc: str) -> None:
+    """작성 화면에 남기는 한 줄: 현재 기준 버전과 저장하지 않은 변경 수, 버전 관리 화면으로 가는 링크."""
+    *_, summary = _summary(project, doc)
+    st.caption(f"🕘 {summary}")
+    try:
+        st.page_link(PAGE, label="버전 관리 열기 (저장·비교·이전 제출본에서 시작·법령 개정 반영)", icon="🕘")
+    except Exception:  # 메뉴 없이 단독 실행되는 시험에서는 이동 링크를 만들 수 없음
+        pass
+
+
+def render(project, doc: str, *, inline: bool = False) -> None:
+    """버전 관리 전체. inline=True면 접지 않고 화면에 바로 펼칩니다(버전 관리 화면용)."""
+    pid = project.project_id
+    metas, latest, pending, summary = _summary(project, doc)
+    if inline:
+        st.markdown(f"**{summary}**")
+    box = st.container() if inline else st.expander(f"🕘 버전 관리 — {summary}", expanded=bool(pending))
+    with box:
+        if not inline:   # 버전 관리 화면은 자체 설명이 있으므로 작성 화면 안에 펼칠 때만 보여 줍니다
+            st.caption("제출한 시점의 값을 버전으로 저장해 두면, 이후 아래 입력 화면을 그대로 고쳤을 때 무엇이 바뀌었는지 "
+                       "이전 버전과 자동으로 비교됩니다. 첨부파일은 버전에 포함되지 않고 입력값만 저장됩니다.")
 
         if metas:
             st.dataframe(
@@ -219,7 +239,7 @@ def render_refresh_banner(project, doc: str) -> None:
     if plan.group_review:
         parts.append("작성수준 재판정 필요")
     st.warning(f"🔔 {latest.version_id} 작성 이후 개정된 법령 {len(plan.law_changes)}건이 있습니다 ({', '.join(parts)}). "
-               "아래 '버전 관리 → 법령 개정 반영'에서 바뀐 내용을 보고 최신화 작업본을 만드세요.")
+               "왼쪽 ‘버전 관리’ 화면의 ‘법령 개정 반영’에서 바뀐 내용을 보고 최신화 작업본을 만드세요.")
 
 
 RECOMPUTE_LABEL = {"CHANGED": "판정 변경", "ADDED": "새로 해당", "REMOVED": "해당 없어짐"}
