@@ -16,6 +16,7 @@ from datetime import date
 import streamlit as st
 
 from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_coverage_report
+from engine.stage2 import cap_fact_catalog, cap_fact_status
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
@@ -359,13 +360,14 @@ def _step_upload(project, found) -> None:
     for index, file in enumerate(uploaded or []):
         digest, detected = _classify(file.name, file.getvalue())
         if detected:
-            st.write(f"✅ {file.name} — {'물질 목록·MSDS' if detected == 'material' else '설비 목록·운전 자료'}로 알아봤어요")
+            st.write(f"✅ {file.name} — {KIND_NAMES.get(detected, detected)}로 알아봤어요")
             selected[index] = detected
         else:
             # 파일 내용 기준 키: 다른 파일을 빼도 이미 고른 종류가 다른 파일로 옮겨 가지 않습니다
-            selected[index] = st.selectbox(f"{file.name} — 자료 유형", ["reference", "facility", "material"],
+            selected[index] = st.selectbox(f"{file.name} — 자료 유형", ["reference", "facility", "material", "site"],
                                            format_func={"reference": "기타 작성 근거자료 (원본 보관·보완 검토)", "material": "물질 목록·MSDS",
-                                                        "facility": "설비 목록·운전 자료"}.get,
+                                                        "facility": "설비 목록·운전 자료",
+                                                        "site": "사업장 일반정보·공정 설명"}.get,
                                            key=f"kind_{pid}_{digest[:16]}")
         if file.name.lower().endswith(DOCUMENT_TYPES):
             # 번호는 파일마다 따로 받습니다. 한 칸을 모든 파일에 쓰면 다른 파일의 값이 엉뚱한 설비로 붙습니다.
@@ -374,6 +376,7 @@ def _step_upload(project, found) -> None:
                                          help="사양서·MSDS처럼 표에 번호가 없는 문서일 때만 적으세요. "
                                               "적으면 문서 속 ‘운전압력(MPa): 0.35’ 같은 문장도 읽어요.").strip()
     if st.button("자료 읽기", type="primary", disabled=not uploaded, key="read_" + pid):
+        before = cap_fact_status.snapshot(project)
         for index, file in enumerate(uploaded):
             try:
                 if selected[index] == "reference":
@@ -392,6 +395,8 @@ def _step_upload(project, found) -> None:
             except Exception as exc:
                 why = exc if isinstance(exc, ValueError) else "파일 형식을 확인해 주세요"
                 st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 읽지 못했어요 ({why}). 다른 자료는 그대로예요.")
+        delta = cap_fact_status.change(before, cap_fact_status.snapshot(project))
+        st.session_state["evidence_change"] = "이번에 올린 파일로 " + cap_fact_status.change_text(delta)
         st.session_state["evidence_goto"] = 2
         st.rerun()
 
@@ -707,33 +712,82 @@ def _correction_rows(project, found) -> list[dict]:
     return rows
 
 
-def _coverage_panel(project) -> None:
-    """올린 파일을 어디까지 읽었는지, 화사계 항목 중 무엇이 비었는지 한눈에 보여 줍니다."""
-    report = cap_coverage_report.summary(project)
-    files = report["files"]
+KIND_NAMES = {"material": "물질 목록·SDS", "facility": "설비 목록·운전 자료", "site": "사업장 일반정보·공정 설명",
+              "detector": "가스감지기 명세", "mixed": "여러 종류가 든 묶음 파일(시트마다 따로 읽음)"}
+FACT_FORMS = (1, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+FACT_COLUMNS = ("상태", "사실", "값", "출처", "쓰이는 곳", "올릴 파일", "필요", "고칠 점")
+
+
+def _file_panel(project) -> None:
+    files = cap_coverage_report.file_results(project)
     st.markdown("**올린 파일을 어디까지 읽었나요**")
-    if files:
-        bad = [f for f in files if not f["_ok"]]
-        if bad:
-            st.warning(f"읽지 못했거나 일부만 읽은 파일이 {len(bad)}개 있어요. ‘읽지 못한 이유’를 보고 파일을 고쳐 다시 올려 주세요.")
-        else:
-            st.success("올린 파일을 모두 읽었어요.")
-        st.dataframe([{k: v for k, v in f.items() if not k.startswith("_")} for f in files], hide_index=True, width="stretch")
-    st.markdown("**화학사고예방관리계획서 항목별 현황**")
-    counts = report["counts"]
-    cols = st.columns(4)
-    cols[0].metric("채워짐", counts.get(cap_coverage_report.FILLED, 0))
-    cols[1].metric("자료에 없음", counts.get(cap_coverage_report.MISSING, 0))
-    cols[2].metric("읽지 못했을 수 있음", counts.get(cap_coverage_report.POSSIBLY_UNREAD, 0))
-    cols[3].metric("프로그램이 계산·조회", counts.get(cap_coverage_report.COMPUTED, 0))
-    only_gaps = st.checkbox("비어 있는 항목만 보기", value=True, key="coverage_gaps_" + project.project_id)
-    rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in report["items"]
-            if not only_gaps or r["현황"] in {cap_coverage_report.MISSING, cap_coverage_report.POSSIBLY_UNREAD}]
-    if rows:
-        st.dataframe(rows, hide_index=True, width="stretch")
+    if not files:
+        return
+    bad = [f for f in files if not f["_ok"]]
+    if bad:
+        st.warning(f"읽지 못했거나 일부만 읽은 파일이 {len(bad)}개 있어요. ‘읽지 못한 이유’를 보고 파일을 고쳐 다시 올려 주세요.")
     else:
-        st.success("비어 있는 항목이 없어요.")
-    st.caption("‘자료에 없음’은 올린 파일에서 찾지 못했다는 뜻이에요. 해당 내용을 ‘필요한 자료’에 맞춰 파일에 적어 다시 올리면 초안에 채워져요.")
+        st.success("올린 파일을 모두 읽었어요.")
+    st.dataframe([{k: v for k, v in f.items() if not k.startswith("_")} for f in files], hide_index=True, width="stretch")
+
+
+def _coverage_panel(project) -> None:
+    """올린 파일을 어디까지 읽었는지, 화사계에 필요한 사실 중 무엇을 파일에서 찾았는지 사실 표로 보여 줍니다."""
+    pid = project.project_id
+    _file_panel(project)
+    st.markdown("**화학사고예방관리계획서에 필요한 사실**")
+    st.caption("한 줄에 사실 하나예요. O는 파일에서 찾은 값(출처를 함께 보여 줘요), 빈칸은 아직 못 찾은 값, "
+               "⚠ 충돌은 파일끼리 값이 달라 초안에 넣지 않은 값, △ 확인은 읽었지만 그대로 쓸 수 없는 값이에요.")
+    cols = st.columns(3)
+    groups = ["전체", "1군", "2군"]
+    default = groups.index(project.cap_group) if project.cap_group in groups else 0
+    group = cols[0].radio("작성수준", groups, index=default, horizontal=True, key="fact_group_" + pid)
+    forms = cols[1].multiselect("별지", FACT_FORMS, default=[], format_func=lambda n: f"제{n}호", key="fact_forms_" + pid,
+                                placeholder="모든 별지")
+    view = cols[2].radio("보기", ["빈칸·충돌만", "전체"], horizontal=True, key="fact_view_" + pid)
+    rows = cap_fact_status.fact_rows(project, group="" if group == "전체" else group, forms=forms)
+    info = cap_fact_status.summary(rows)
+    metrics = st.columns(5)
+    metrics[0].metric("파일에서 찾은 사실", f"{info['filled']}/{info['company']}")
+    metrics[1].metric("빈칸(필수)", info["blank_required"])
+    metrics[2].metric("충돌", info["conflicts"])
+    metrics[3].metric("확인 필요", info["checks"])
+    metrics[4].metric("계산·조회 완료", f"{info['derived_done']}/{info['derived']}")
+    company = [r for r in rows if r["_company"]]
+    if view == "빈칸·충돌만":
+        company = [r for r in company if r["_state"] in (cap_fact_status.CONFLICT, cap_fact_status.CHECK)
+                   or (r["_state"] == cap_fact_status.BLANK and r["_required"])]
+    if company:
+        st.dataframe([{k: r[k] for k in FACT_COLUMNS} for r in company], hide_index=True, width="stretch")
+    else:
+        st.success("필수 사실을 모두 파일에서 찾았고 충돌도 없어요.")
+    derived = [r for r in rows if not r["_company"]]
+    if derived:
+        with st.expander("프로그램이 계산·조회하는 값과 지도 조사 값 (회사 파일에서 읽지 않음)"):
+            st.dataframe([{k: r[k] for k in ("상태", "사실", "쓰이는 곳", "올릴 파일", "고칠 점")} for r in derived],
+                         hide_index=True, width="stretch")
+    _matrix_panel(project, forms)
+    st.caption("빈칸은 ‘올릴 파일’에 ‘고칠 점’의 항목 이름으로 적어 다시 올리면 채워져요. "
+               "‘엑셀 업로드 양식’을 받으면 빈 사실의 열 이름이 미리 들어 있어요.")
+
+
+def _matrix_panel(project, forms) -> None:
+    pid = project.project_id
+    tabs = [(kind, title) for kind, title in (("facility", "설비 × 항목"), ("material", "물질 × 항목"), ("detector", "감지기 × 항목"))
+            if cap_fact_status.entities(project, kind)]
+    if not tabs:
+        return
+    st.markdown("**대상별 표**")
+    required_only = st.checkbox("꼭 필요한 항목만 보기", value=True, key="matrix_required_" + pid)
+    for tab, (kind, _) in zip(st.tabs([title for _, title in tabs]), tabs):
+        with tab:
+            data = cap_fact_status.matrix(project, kind, forms=forms, required_only=required_only)
+            if not data["columns"]:
+                st.caption("고른 별지에 쓰이는 이 종류의 항목이 없어요.")
+                continue
+            st.dataframe(data["rows"], hide_index=True, width="stretch")
+            if data["problems"]:
+                st.dataframe(data["problems"], hide_index=True, width="stretch")
 
 
 def _step_questions(project, found) -> None:
@@ -967,6 +1021,9 @@ _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
 _auto_publish(_active)
 _status_line(_active, _found)
+_change = st.session_state.pop("evidence_change", None)
+if _change:
+    (st.warning if "새 충돌 0개" not in _change and "새 충돌은 없어요" not in _change else st.info)(_change)
 for _note in st.session_state.pop("evidence_notes", []):
     (st.error if "읽지 못" in _note else st.warning if "찾지 못" in _note else st.success)(_note)
 

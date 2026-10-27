@@ -511,7 +511,7 @@
   },
   {
    "id": "facility.inventory",
-   "name": "최대보유량(회사 기재)",
+   "name": "회사가 적은 최대보유량",
    "kind": "facility",
    "source": "company",
    "format": "number",
@@ -816,7 +816,7 @@
   },
   {
    "id": "facility.dike_required_direct",
-   "name": "필요용량(직접 확인)",
+   "name": "직접 확인한 필요용량",
    "kind": "facility",
    "source": "company",
    "format": "number",
@@ -850,7 +850,7 @@
   },
   {
    "id": "facility.dike_effective_direct",
-   "name": "유효용량(직접 확인)",
+   "name": "직접 확인한 유효용량",
    "kind": "facility",
    "source": "company",
    "format": "number",

@@ -102,6 +102,30 @@ class EvidencePageTests(unittest.TestCase):
         self.assertIn("엑셀 계산식만 있고 계산 결과가 파일에 저장돼 있지 않아요", text)   # 추측이 아니라 파일에서 확인한 사실
         self.assertEqual(len(at.json), 0)
 
+    def test_questions_step_shows_fact_table_with_filters_and_matrix(self):
+        at = self.run_page(step=2)
+        text = " ".join(_texts(at))
+        self.assertIn("화학사고예방관리계획서에 필요한 사실", text)
+        self.assertIn("대상별 표", text)
+        labels = [m.label for m in at.metric]
+        self.assertIn("파일에서 찾은 사실", labels)
+        self.assertIn("충돌", labels)
+        conflicts = next(m for m in at.metric if m.label == "충돌")
+        self.assertNotEqual(str(conflicts.value), "0")              # 연습 자료의 TK-01 용량 충돌
+        at.radio(key="fact_view_" + self.pid).set_value("전체").run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        at.radio(key="fact_group_" + self.pid).set_value("1군").run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+
+    def test_upload_change_message_is_shown_once(self):
+        at = AppTest.from_string(SCRIPT, default_timeout=60)
+        at.session_state["_stage2_active_project_id"] = self.pid
+        at.session_state["evidence_change"] = "이번에 올린 파일로 O가 3개 늘었고 새 충돌 1개."
+        at.run()
+        self.assertTrue(any("O가 3개 늘었고" in str(w.value) for w in at.warning))
+        at.run()
+        self.assertFalse(any("O가 3개 늘었고" in str(w.value) for w in at.warning))
+
     def test_no_developer_text_on_any_step(self):
         for step in (1, 2, 3, 4):
             at = self.run_page(step)
