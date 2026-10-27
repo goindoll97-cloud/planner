@@ -281,7 +281,10 @@ def _status_line(project, found) -> None:
         return
     count = _question_count(found)
     parts = [f"자료 {info['documents']}개를 읽었어요", f"값 {info['auto'] + info['person']}개를 채웠어요"]
+    unread = sum(bool(d.get("needs_reading")) for d in ew.graph(project)["documents"])
     parts.append(f"답해 주실 질문이 {count}개 있어요" if count else "지금 답할 질문은 없어요")
+    if unread:
+        parts.append(f"읽지 못한 파일 {unread}개는 확인이 필요해요")
     st.markdown(" · ".join(parts))
 
 
@@ -406,7 +409,7 @@ def _card_conflict(project, item, names) -> None:
     slot, pid, field = item["slot"], project.project_id, item["field"]
     with st.container(border=True):
         st.markdown(f"**{names(item['entity'])}의 {_j(_name(field), '이', '가')} 자료마다 달라요.**")
-        st.caption("더 최근에 만든 자료의 값을 고르세요. 잘 모르겠으면 현장 담당자에게 물어보세요.")
+        st.caption("파일 이름이나 날짜만으로 정하지 마세요. 현재 설비에 실제로 적용되는 값을 원자료·현장 담당자와 확인해 고르세요. 모르면 그대로 두어도 돼요.")
         facts = {f["id"]: f for f in slot["facts"] if ew.value_problem(field, f["value"]) is None}
         for bad in (f for f in slot["facts"] if f["id"] not in facts):
             st.caption(f"{_where(bad)}에는 ‘{bad.get('raw', bad['value'])}’로 적혀 있어 그대로는 고를 수 없어요 "
@@ -531,32 +534,48 @@ def _section(title: str, items: list, caption: str) -> bool:
     return True
 
 
+def _visible(items, key):
+    """질문이 많을 때 뒤쪽 질문도 선택해 볼 수 있게 합니다."""
+    entries = list(items)
+    if len(entries) <= MAX_CARDS:
+        return entries
+    pages = (len(entries) + MAX_CARDS - 1) // MAX_CARDS
+    page = st.selectbox("볼 질문 묶음", range(pages), key=key,
+                        format_func=lambda i: f"{i + 1}/{pages} 묶음 · {i * MAX_CARDS + 1}~{min((i + 1) * MAX_CARDS, len(entries))}번")
+    st.caption(f"전체 {len(entries)}개 중 이 묶음의 질문을 보여 줍니다. 다음 묶음도 확인해 주세요.")
+    return entries[page * MAX_CARDS:(page + 1) * MAX_CARDS]
+
+
 def _step_questions(project, found) -> None:
     pid, names = project.project_id, found["names"]
     if not ew.graph(project)["documents"]:
         st.info("먼저 ① 자료 올리기에서 자료를 올려 주세요.")
         return
     if not _question_count(found):
-        st.success("지금 답할 질문이 없어요. ③ 시나리오 후보를 확인해 보세요.")
+        if any(d.get("needs_reading") for d in ew.graph(project)["documents"]):
+            st.warning("답할 질문은 없지만 읽지 못한 파일이 있어요. ① 자료 올리기에서 해당 파일을 확인해 주세요.")
+        else:
+            st.success("지금 답할 질문이 없어요. ③ 시나리오 후보를 확인해 보세요.")
     if _section("자료마다 값이 달라요", found["conflicts"], "같은 설비의 같은 항목이 파일마다 다르게 적혀 있어요. 맞는 값을 하나 골라 주세요."):
-        for item in found["conflicts"][:MAX_CARDS]:
+        for item in _visible(found["conflicts"], "conflict_page_" + pid):
             _card_conflict(project, item, names)
     if _section("읽을 수 없는 값이 있어요", found["invalid"], "자료에 적힌 모양 그대로는 계산에 쓸 수 없어요."):
-        for item in found["invalid"][:MAX_CARDS]:
+        for item in _visible(found["invalid"], "invalid_page_" + pid):
             _card_invalid(project, item, names)
     if _section("순위를 정하려면 꼭 필요한 값", found["rank"], "자료에 없는 값 중 시나리오 후보 순위를 바꾸는 것만 골랐어요."):
-        for question in found["rank"][:MAX_CARDS]:
+        for question in _visible(found["rank"], "rank_page_" + pid):
             _card_rank(project, question, names)
     if _section("한 번 확인해 주세요", found["held"], "값은 찾았지만 자동으로 채우기엔 확실하지 않은 값이에요."):
         table_only = [i for i in found["held"] if all(f.get("method") == "table" for f in i["slot"]["facts"])]
-        if len(table_only) > 3 and st.button(f"표에서 읽은 값 {len(table_only)}개가 모두 자료와 같아요", key="bulk_" + pid):
+        checked = st.checkbox("표에서 읽은 값들의 원자료를 확인했어요", key="bulk_check_" + pid) if len(table_only) > 3 else False
+        if len(table_only) > 3 and st.button(f"확인한 표 값 {len(table_only)}개 저장", key="bulk_" + pid, disabled=not checked):
             outcome = ew.approve_bulk(project, [i["key"] for i in table_only])
             _save(project, f"{outcome['approved']}개를 확인했어요.")
-        for item in found["held"][:MAX_CARDS]:
+        for item in _visible(found["held"], "held_page_" + pid):
             _card_held(project, item, names)
     if _section("자료에 없는 정보", list(found["missing"]), "알고 있으면 적어 주세요. 모르면 비워 두고 관련 자료를 더 올려도 돼요."):
         materials = sorted({s["entity"] for s in found["slots"] if s["entity"].startswith("material:")})
-        for entity, fields in list(found["missing"].items())[:MAX_CARDS]:
+        for entity, fields in _visible(found["missing"].items(), "missing_page_" + pid):
             _card_missing(project, entity, fields, names, materials)
     if found["notes"]:
         st.subheader("참고")
@@ -644,19 +663,28 @@ def _step_export(project, found) -> None:
         st.info(f"② 질문에 아직 답하지 않은 것이 {pending}개 있어요. 답한 값만 보내지고, 나머지는 나중에 다시 보낼 수 있어요.")
     check = _final_check(project)
     if check:
-        st.subheader(f"보내기 전 마지막 확인 ({len(check)})")
-        st.caption("자동으로 채운 값 중 법적 계산에 쓰이거나 시나리오 순서를 바꾸는 값이에요. 회사 자료와 같은지 한 번만 봐 주세요.")
+        groups = {}
+        for slot in check:
+            source = slot["chosen"]["sha256"]
+            groups.setdefault(source, []).append(slot)
+        st.subheader(f"보내기 전 마지막 확인 · 파일 {len(groups)}개")
+        st.caption("자동으로 채운 중요한 값은 파일별로 확인해요. 지금 모르면 확인하지 않고 원자료를 다시 살펴보세요.")
+        source = st.selectbox("확인할 파일", list(groups), key="final_source_" + pid,
+                              format_func=lambda key: f"{groups[key][0]['chosen']['document']} · {len(groups[key])}개 값")
+        selected = groups[source]
+        st.caption(f"이 파일에서 확인할 값 {len(selected)}개 · 전체 남은 값 {len(check)}개")
         st.dataframe([{"설비·물질": names(s["entity"]), "항목": _name(s["field"]),
                        "값": _value(s["field"], s["chosen"]["value"]) + _raw_note(s["chosen"]),
-                       "읽은 곳": _where(s["chosen"])} for s in check], hide_index=True, width="stretch")
+                       "읽은 곳": _where(s["chosen"])} for s in selected], hide_index=True, width="stretch")
+        checked = st.checkbox("이 파일의 값과 원자료·단위·현재 적용 여부를 확인했어요", key="final_check_" + pid + "_" + source)
         cols = st.columns([1, 2])
-        if cols[0].button("모두 자료와 같아요", key="final_ok_" + pid, type="primary"):
-            ew.confirm_auto(project, [s["key"] for s in check])
-            _save(project, f"{len(check)}개 값을 확인했어요.")
+        if cols[0].button("이 파일의 값 저장", key="final_ok_" + pid, type="primary", disabled=not checked):
+            ew.confirm_auto(project, [s["key"] for s in selected])
+            _save(project, f"{len(selected)}개 값을 확인했어요.")
         with cols[1].popover("틀린 값이 있어요"):
-            pick = st.selectbox("어느 값인가요?", range(len(check)), key="final_pick_" + pid,
-                                format_func=lambda i: f"{names(check[i]['entity'])} · {_name(check[i]['field'])}")
-            slot = check[pick]
+            pick = st.selectbox("어느 값인가요?", range(len(selected)), key="final_pick_" + pid,
+                                format_func=lambda i: f"{names(selected[i]['entity'])} · {_name(selected[i]['field'])}")
+            slot = selected[pick]
             typed = _value_input(slot["field"], f"final_fix_{pid}_{slot['key']}", "맞는 값")
             if st.button("고치기", key="final_fix_ok_" + pid, disabled=not typed):
                 _confirm_manual(project, slot["entity"], slot["field"], typed, "")

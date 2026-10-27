@@ -85,6 +85,7 @@ class EvidencePageTests(unittest.TestCase):
 
     def test_conflict_explains_unit_conversion_and_is_resolved_in_one_click(self):
         at = self.run_page()
+        self.assertIn("파일 이름이나 날짜만으로 정하지 마세요", " ".join(_texts(at)))
         slot = next(s for s in ew.slots(self.project) if s["status"] == "값 충돌")
         radio = at.radio(key=f"pick_{self.pid}_{slot['key']}")
         self.assertIn("10 m³ — 02_equipment.csv 2번째 줄 (자료에는 ‘10,000 L’로 적혀 있음)", radio.options)   # 화면에 보이는 문구
@@ -135,11 +136,34 @@ class EvidencePageTests(unittest.TestCase):
         save_project(project)
         at = self.run_page(4)
         self.assertTrue(any("보내기 전 마지막 확인" in s.value for s in at.subheader))
-        at.button(key="final_ok_" + self.pid).click().run()
+        self.assertTrue(at.button(key="final_ok_" + self.pid).disabled)
+        for _ in range(10):
+            if not any(b.key == "final_ok_" + self.pid for b in at.button):
+                break
+            source = at.selectbox(key="final_source_" + self.pid).value
+            at.checkbox(key="final_check_" + self.pid + "_" + source).set_value(True).run()
+            at.button(key="final_ok_" + self.pid).click().run()
         self.assertFalse(ew.unreviewed_legal(load_project(self.pid)))
         at.button(key="publish_" + self.pid).click().run()
         self.assertFalse(at.exception)
         self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
+
+    def test_more_than_thirty_conflicts_are_reachable(self):
+        old = "설비번호,용량(m3)\n" + "".join(f"EX-{i},10\n" for i in range(35))
+        new = "설비번호,용량(m3)\n" + "".join(f"EX-{i},12\n" for i in range(35))
+        ew.ingest(self.project, "old.csv", old.encode())
+        ew.ingest(self.project, "new.csv", new.encode())
+        save_project(self.project)
+        at = self.run_page(2)
+        self.assertTrue(any("전체 36개" in t for t in _texts(at)))
+        at.selectbox(key="conflict_page_" + self.pid).set_value(1).run()
+        self.assertTrue(any("EX-9의 용량이 자료마다 달라요" in t for t in _texts(at)))
+
+    def test_unread_document_is_visible_in_status(self):
+        ew.ingest(self.project, "scan.txt", b"Unstructured text", "facility", "EX")
+        save_project(self.project)
+        at = self.run_page(2)
+        self.assertIn("읽지 못한 파일 1개", " ".join(_texts(at)))
 
 
 class LargeDemoPageTests(unittest.TestCase):
