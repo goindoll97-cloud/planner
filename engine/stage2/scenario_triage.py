@@ -153,33 +153,43 @@ def evaluate(project):
 
     eligible = [r for r in rows if r["linked"]]
     ranker = _Ranker(r["score"] for r in eligible)
+    for row in eligible:
+        row["rank"] = ranker.rank(row["score"], row["score"])
+
+    def changed_ranks(target, field, value):
+        """공유 설비/물질의 값을 바꾸면 연결된 모든 조합을 함께 다시 계산합니다."""
+        entity = target["material"] if field == "concentration" else target["facility"]
+        affected = [candidate for candidate in eligible if candidate[
+            "material" if field == "concentration" else "facility"] == entity]
+        changed = {id(candidate): _score(*(value if part == field else candidate["values"][part]
+                                          for part in SCORED_FIELDS)) for candidate in affected}
+        simulated = _Ranker(changed.get(id(candidate), candidate["score"]) for candidate in eligible)
+        ranks = {id(candidate): simulated.rank(changed.get(id(candidate), candidate["score"])) for candidate in eligible}
+        return ranks[id(target)], any(ranks[id(candidate)] != candidate["rank"] for candidate in eligible)
+
     questions, critical_values = [], []
     for row in eligible:
-        row["rank"] = baseline = ranker.rank(row["score"], row["score"])
+        baseline = row["rank"]
         for field in SCORED_FIELDS:
             current = row["values"][field]
-            others = {f: row["values"][f] for f in SCORED_FIELDS if f != field}
-
-            def rescored(value):
-                merged = {**others, field: value}
-                return _score(merged["inventory"], merged["pressure"], merged["concentration"])
-
             if field in row["assumptions"]:
                 # 값이 없으니 0 ~ 임시값의 2배 범위에서 순위가 바뀌는지 봅니다.
                 top = min(100, current * 2) if field == "concentration" else current * 2
-                ranks = [ranker.rank(rescored(v), row["score"]) for v in (0, top)]
-                if any(r != baseline for r in ranks):
+                simulations = [changed_ranks(row, field, v) for v in (0, top)]
+                ranks = [rank for rank, _ in simulations]
+                if any(changed for _, changed in simulations):
                     row["rank_sensitive"].append(field)
                     assumption = row["assumptions"][field]
                     questions.append({"facility": row["facility"], "material": row["material"], "field": field,
-                                      "question": f"{ew.LABELS[field]}의 실제 값을 확인하세요. 가정 {assumption['value']:g}{assumption['unit']}을 바꾸면 예비 순위가 달라집니다.",
+                                      "question": f"{ew.LABELS[field]}의 실제 값을 확인하세요. 가정 {assumption['value']:g}{assumption['unit']}을 바꾸면 한 개 이상 조합의 예비 순위가 달라집니다.",
                                       "baseline_rank": baseline, "range_ranks": ranks})
             else:
                 low, high = current * LOW_FACTOR, current * HIGH_FACTOR
                 if field == "concentration":
                     high = min(100, high)
-                ranks = [ranker.rank(rescored(v), row["score"]) for v in (low, high)]
-                if any(r != baseline for r in ranks):
+                simulations = [changed_ranks(row, field, v) for v in (low, high)]
+                ranks = [rank for rank, _ in simulations]
+                if any(changed for _, changed in simulations):
                     row["rank_critical"].append(field)
                     critical_values.append({"facility": row["facility"], "material": row["material"], "field": field,
                                             "value": current, "state": row["value_states"][field],
@@ -194,7 +204,7 @@ def evaluate(project):
     ordered = sorted(rows, key=lambda r: (not r["linked"], r["rank"] or 0, -r["score"], r["facility"], r["material"]))
     return {"rows": ordered, "questions": questions, "critical_values": critical_values, "defaults": defaults,
             "method": "예비 비교지표=최대보유량(kg)×(1+운전압력(MPa))×함량(%)/100. 안전도·피해거리·법적 시나리오 판정이 아니며 성상·독성·차단설비·누출공·주변 영향은 반영하지 않습니다.",
-            "sensitivity": "값이 없거나 충돌·오류인 항목은 한 번에 하나씩 0 및 임시값 2배로, 값이 있는 항목은 0.5배와 2배로 바꾸고 확인된 취급 관계 조합 사이의 상대 순위를 비교합니다. 순위에 영향 없는 결측도 법적·물리적 계산 전에는 확인해야 합니다."}
+            "sensitivity": "값이 없거나 충돌·오류인 항목은 한 번에 하나씩 0 및 임시값 2배로, 값이 있는 항목은 0.5배와 2배로 바꿉니다. 같은 설비·물질의 값을 쓰는 모든 조합을 함께 다시 계산합니다. 순위에 영향 없는 결측도 법적·물리적 계산 전에는 확인해야 합니다."}
 
 
 def critical_slot_keys(project):

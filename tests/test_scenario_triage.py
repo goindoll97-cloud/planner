@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from engine.stage2 import evidence_workspace as ew, evidence_llm, scenario_triage
+from engine.stage2 import evidence_workspace as ew, evidence_llm, scenario_triage, scenario_workup
 from engine.stage2.project import Stage2Project
 
 
@@ -77,7 +77,8 @@ class TriageTests(unittest.TestCase):
         keys = scenario_triage.critical_slot_keys(self.p)
         self.assertIn('facility:T1|inventory', keys)
         self.assertNotIn('facility:T3|inventory', keys)
-        self.assertEqual({k for k in keys if k.endswith('|concentration')}, {'material:P|concentration'})
+        # 모든 설비가 같은 물질을 다루면 함량 변화가 모든 점수를 함께 바꾸므로 상대 순위는 그대로입니다.
+        self.assertEqual({k for k in keys if k.endswith('|concentration')}, set())
 
     def test_single_candidate_has_no_rank_sensitivity(self):
         self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품,64-17-5,100\n', 'material')
@@ -85,6 +86,49 @@ class TriageTests(unittest.TestCase):
         result = scenario_triage.evaluate(self.p)
         self.assertEqual(result['critical_values'], [])
         self.assertEqual(result['questions'], [])
+
+    def test_workup_preserves_source_assumption_and_unlinked_status(self):
+        self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품,64-17-5,100\nQ,다른 제품,67-56-1,80\n', 'material')
+        self.upload('f.csv', '설비번호,취급제품,최대보유량(kg),운전압력(MPa)\nT1,제품,,0\nT2,제품,8000,0\n')
+        triage = scenario_triage.evaluate(self.p)
+        result = scenario_workup.compile_workup(self.p, triage)
+        self.assertEqual(len(result['packets']), 4)
+        packet = next(p for p in result['packets'] if p['facility'] == 'facility:T1' and p['material'] == 'material:P')
+        inventory = next(i for i in packet['inputs'] if i['field'] == 'inventory')
+        pressure = next(i for i in packet['inputs'] if i['field'] == 'pressure')
+        self.assertEqual(inventory['state'], 'assumed')
+        self.assertIsNone(inventory['source'])
+        self.assertEqual(inventory['assumption']['value'], 12000)
+        self.assertEqual(pressure['source']['document'], 'f.csv')
+        self.assertIn('최대보유량', packet['action'])
+        self.assertTrue(packet['next_checks'])
+        self.assertTrue(all(p['rank'] is None and not p['next_checks'] for p in result['packets'] if not p['linked']))
+        text = scenario_workup.markdown(result, self.p.company_name)
+        self.assertIn('가정 · 관측 최고값', text)
+        self.assertIn('SHA256', text)
+        self.assertIn('법적 시나리오 선정 결과가 아닙니다', text)
+
+    def test_workup_conflict_keeps_competing_values_unattributed(self):
+        self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품,64-17-5,100\n', 'material')
+        self.upload('a.csv', '설비번호,취급제품,최대보유량(kg),운전압력(MPa)\nT1,제품,1000,0.1\n')
+        self.upload('b.csv', '설비번호,최대보유량(kg)\nT1,4000\n')
+        packet = next(p for p in scenario_workup.compile_workup(self.p)['packets'] if p['linked'])
+        inventory = next(i for i in packet['inputs'] if i['field'] == 'inventory')
+        self.assertEqual(inventory['assumption']['value'], 4000)
+        self.assertIsNone(inventory['source'])
+        self.assertEqual(packet['state'], '보류')
+
+    def test_shared_material_sensitivity_changes_all_linked_scores_together(self):
+        self.upload('m.csv', '제품코드,제품명,CAS 번호,함량(%)\nP,제품,64-17-5,50\nQ,다른 제품,67-56-1,50\n', 'material')
+        self.upload('f.csv', '설비번호,취급제품,최대보유량(kg),운전압력(MPa)\nT1,제품,1000,0\nT2,제품,900,0\nT3,다른 제품,950,0\n')
+        triage = scenario_triage.evaluate(self.p)
+        p1 = self.row(triage, 'facility:T1', 'material:P')
+        p2 = self.row(triage, 'facility:T2', 'material:P')
+        self.assertEqual(p1['rank'], 1)
+        self.assertEqual(p2['rank'], 3)
+        self.assertIn('concentration', p1['rank_critical'])
+        self.assertIn('concentration', p2['rank_critical'])
+        self.assertIn('material:P|concentration', scenario_triage.critical_slot_keys(self.p))
 
     def test_gate_holds_values_that_could_change_the_result(self):
         # 같은 신뢰도(병합 셀 0.90)라도 순위를 바꾸는 핵심값은 자동 기입하지 않습니다.

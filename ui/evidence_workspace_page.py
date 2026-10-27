@@ -15,7 +15,7 @@ from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import demo_company, evidence_llm, scenario_triage
+from engine.stage2 import demo_company, evidence_llm, scenario_triage, scenario_workup
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
@@ -492,7 +492,7 @@ def _card_rank(project, question, names) -> None:
     with st.container(border=True):
         other = question["material"] if entity == question["facility"] else question["facility"]
         st.markdown(f"**{names(entity)}의 {_j(_name(field), '이', '가')} 자료에 없어요.**")
-        st.caption(f"이 값에 따라 ‘{names(entity)} × {names(other)}’ 시나리오 후보의 순서가 달라져서 꼭 필요해요. {HELP.get(field, '')}")
+        st.caption(f"‘{names(entity)} × {names(other)}’를 포함한 후보들의 순서에 영향을 줄 수 있어요. {HELP.get(field, '')}")
         typed = _value_input(field, key + "_in")
         if st.button("저장", key=key + "_ok", disabled=not typed):
             _confirm_manual(project, entity, field, typed, "")
@@ -589,6 +589,7 @@ def _step_questions(project, found) -> None:
 
 def _step_scenarios(project, found, triage) -> None:
     pid, names = project.project_id, found["names"]
+    workup = scenario_workup.compile_workup(project, triage)
     st.write("물질과 설비를 짝지어 **어느 조합부터 사고시나리오로 검토할지** 순서를 매겼어요. "
              "질문에 답하기 전에도 자료에서 읽은 값으로 먼저 계산해요.")
     with st.expander("순서는 어떻게 매기나요?"):
@@ -597,12 +598,14 @@ def _step_scenarios(project, found, triage) -> None:
                     "이건 **검토 순서**예요. 독성·인화성, 누출량, 날씨, 주변 주민까지 따지는 실제 사고시나리오 선정과 "
                     "피해 범위 계산은 화학사고예방관리계획서 작성 화면에서 해요.")
     linked = [r for r in triage["rows"] if r["linked"]]
+    packets = [p for p in workup["packets"] if p["linked"]]
     if not linked:
         st.info("설비가 어떤 제품을 다루는지 자료에서 찾으면 순서가 나와요. 설비 목록에 ‘취급제품’ 열이 있는지 확인해 주세요.")
     else:
         st.dataframe([{"순서": r["rank"], "설비": names(r["facility"]), "물질": names(r["material"]),
                        "비교 점수": round(r["score"], 1), "상태": TRIAGE_STATE.get(r["state"], r["state"])} for r in linked],
                      hide_index=True, width="stretch")
+        st.caption(f"검토할 조합 {len(packets)}개 · 자료 확인이 남은 조합 {sum(p['state'] != '예비 검토' for p in packets)}개")
         if found["rank"]:
             st.warning(f"순서를 확실히 하려면 답해 주실 값이 {len(found['rank'])}개 있어요.")
             st.button("② 질문에 답하러 가기", key="to_questions_" + pid, on_click=_go, args=(2, pid))
@@ -610,18 +613,27 @@ def _step_scenarios(project, found, triage) -> None:
             pick = st.selectbox("조합", range(len(linked)), key="combo_" + pid,
                                 format_func=lambda i: f"{linked[i]['rank']}번 · {names(linked[i]['facility'])} × {names(linked[i]['material'])}")
             row = linked[pick]
+            packet = packets[pick]
+            st.info("다음 할 일: " + packet["action"])
             for field in scenario_triage.SCORED_FIELDS:
                 value = row["values"].get(field)
                 state = VALUE_STATE.get(row["value_states"].get(field), "")
                 source = row["sources"].get(field)
                 where = f" — {source['document']}" if source else ""
                 st.write(f"• {_name(field)}: {_value(field, value) if value is not None else '없음'} ({state}{where})")
+                if field in row["assumptions"]:
+                    st.caption("가정한 이유: " + row["assumptions"][field]["basis"] + " · 실제 계산에는 사용하지 않아요.")
             if row["rank_critical"]:
-                st.caption("다음 값이 조금만 달라져도 이 조합의 순서가 바뀌어요: " + ", ".join(_name(f) for f in row["rank_critical"])
+                st.caption("다음 값이 달라지면 후보들 사이의 순서가 바뀔 수 있어요: " + ", ".join(_name(f) for f in row["rank_critical"])
                            + ". ④에서 보내기 전에 한 번 더 확인해요.")
             for blocker in row["blockers"]:
                 st.caption("아직 필요한 것: " + blocker.replace(": 담당자 확인", " 확인").replace(": 값 충돌", " (자료마다 다름)")
                            .replace("설비 운전온도 미확인", "운전온도"))
+            st.markdown("**사고시나리오를 만들기 전에 추가로 확인할 것**")
+            for check in packet["next_checks"]:
+                st.write("• " + check)
+        st.download_button("시나리오 후보 검토 초안 내려받기", scenario_workup.markdown(workup, project.company_name).encode(),
+                           file_name="scenario_candidate_review.md", mime="text/markdown", key="scenario_review_" + pid)
     unlinked = [r for r in triage["rows"] if not r["linked"]]
     if unlinked:
         with st.expander(f"어떤 물질을 쓰는지 자료로 확인되지 않은 조합 {len(unlinked)}개"):
