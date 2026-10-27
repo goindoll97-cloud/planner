@@ -64,6 +64,10 @@ TEXT_FIELDS = frozenset(LABELS) - CORE_FIELDS
 TEXT_OPTIONS = {f.evidence_field: f.options for f in catalog.all_facts()
                 if f.evidence_field in TEXT_FIELDS and f.format == "choice" and f.options}
 CATALOG_HEADERS = {kind: catalog.header_map(kind) for kind in ("facility", "material", "detector", "site")}
+# 공정안전보고서 표(별지 제14·16·17호 등): 서식 번호 → 머리글 → 항목, 그리고 한 줄을 구별하는 열
+PSM_TABLE_HEADERS = {table: catalog.table_header_map(table) for table in catalog.psm_tables()}
+PSM_TABLE_KEYS = {table: catalog.table_key_fields(table) for table in catalog.psm_tables()}
+PSM_KNOWN_HEADERS = frozenset(h for headers in PSM_TABLE_HEADERS.values() for h in headers)
 DETECTOR_ID_HEADERS = frozenset(catalog.identifier_headers("detector"))
 ID_HEADERS |= set(catalog.identifier_headers("facility")) | set(catalog.identifier_headers("material"))
 ENTITY_ID_HEADERS = frozenset(ID_HEADERS)            # 설비·물질 표의 번호 열
@@ -420,7 +424,25 @@ def read_document(name, content):
 def _is_known_header(cell):
     key = norm(cell or "")
     return (key in ALIASES or key in ID_HEADERS or key in CATALOG_HEADERS["facility"]
-            or key in CATALOG_HEADERS["material"] or key in CATALOG_HEADERS["detector"])
+            or key in CATALOG_HEADERS["material"] or key in CATALOG_HEADERS["detector"] or key in PSM_KNOWN_HEADERS)
+
+
+def _psm_table_of(headings):
+    """머리글이 공정안전보고서 표 하나와 맞으면 그 서식 번호. 구별 열이 모두 있고, 그 표의 열이 가장 많이 겹치는 표를 고릅니다."""
+    best, best_score, tie = None, 0, False
+    for table, headers in PSM_TABLE_HEADERS.items():
+        keys = {h for h, field in headers.items() if field in PSM_TABLE_KEYS[table]}
+        key_fields = {headers[h] for h in headings & keys}
+        if key_fields != set(PSM_TABLE_KEYS[table]):
+            continue
+        score = len({headers[h] for h in headings if h in headers})
+        if score < 2:
+            continue
+        if score > best_score:
+            best, best_score, tie = table, score, False
+        elif score == best_score:
+            tie = True
+    return None if tie else best
 
 
 def find_header_row(rows):
@@ -455,6 +477,9 @@ def _classify_table(headings):
         return "facility"
     if material_id:
         return "material"
+    table = _psm_table_of(headings)          # 공정안전보고서 표(인터록 표에도 감지기번호 열이 있어 감지기보다 먼저 봅니다)
+    if table:
+        return "psm:" + table
     if headings & DETECTOR_ID_HEADERS:
         return "detector"
     facility = sum(any(h.startswith(p) for p in FACILITY_HINTS) for h in headings)
@@ -562,11 +587,12 @@ def _document_kind(tables, passages):
     kinds = _table_kinds(tables)
     if "both" in kinds or None in kinds:
         return None
-    core = set(kinds) - {"site", "detector"}
-    if len(core) == 1:
+    psm = {k for k in kinds if k.startswith("psm:")}
+    core = set(kinds) - {"site", "detector"} - psm
+    if len(core) == 1 and not psm:
         return core.pop()
-    if len(core) > 1:
-        return "mixed"          # 시트마다 종류가 분명한 묶음 파일(업로드 양식 등): 표마다 따로 읽습니다
+    if core or psm:
+        return "mixed"          # 시트마다 종류가 분명한 묶음 파일(업로드 양식·공정안전 자료 표 등): 표마다 따로 읽습니다
     if set(kinds) == {"detector"}:
         return "detector"
     if "site" in kinds or len({norm(label) for _, label, _ in _site_lines(passages)}) >= 2:
@@ -687,6 +713,35 @@ def _link_materials(data):
     return len(moves)
 
 
+def _ingest_psm_table(table, number, header_at, headers, add, unknown):
+    """공정안전보고서 표 하나를 읽습니다. 한 줄 = 한 항목(동력기계·배관·안전밸브 등), 구별 열의 값으로 줄을 이어 붙입니다.
+    구별 열이 빈 줄은 건너뛰고 알려 줍니다. 건너뛴 줄 목록을 돌려줍니다."""
+    fields = [PSM_TABLE_HEADERS[number].get(norm(h)) for h in headers]
+    key_columns = [fields.index(f) for f in PSM_TABLE_KEYS[number] if f in fields]
+    key_names = [headers[i] for i in key_columns]
+    skipped = []
+    for r in range(header_at + 1, len(table.rows)):
+        row = table.rows[r]
+        if not any(str(c or "").strip() for c in row):
+            continue
+        keys = [str(row[i] or "").strip() if i < len(row) else "" for i in key_columns]
+        if not all(keys):
+            text = next((str(c).strip() for c in row if str(c or "").strip()), "")
+            skipped.append({"row": r + 1, "text": text[:40], "reason": "‘" + "·".join(key_names) + "’ 칸이 비어 있음"})
+            continue
+        entity = f"{number}/" + " · ".join(keys)
+        for i, field in enumerate(fields):
+            if i >= len(row) or row[i] is None or not str(row[i]).strip():
+                continue
+            if field:
+                flag = table.flags.get((r, i))
+                add("table", entity, field, row[i], f"{table.location} 행 {r + 1} 열 {i + 1}", headers[i],
+                    confidence=STRICT_CONFIDENCE, flags=tuple(f for f in (flag,) if f))
+            elif headers[i]:
+                unknown(headers[i])
+    return skipped
+
+
 def ingest(project, name, content, kind="facility", entity_hint=""):
     if kind not in {"facility", "material", "site", "detector", "mixed"}:
         raise ValueError("자료 종류를 확인하세요.")
@@ -752,6 +807,14 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
             continue
         headers = [str(h or "").strip() for h in rows[header_at]]
         own = _classify_table({norm(h) for h in headers if h})
+        if own and own.startswith("psm:"):
+            skipped = _ingest_psm_table(table, own[4:], header_at, headers, add, unknown)
+            skipped_total += len(skipped)
+            table_info.append({"location": table.location, "header_row": header_at + 1, "rows": len(rows) - header_at - 1,
+                               "kind": own, "columns": [{"header": h, "field": PSM_TABLE_HEADERS[own[4:]].get(norm(h))}
+                                                        for h in headers if h],
+                               "skipped": skipped[:50], "skipped_count": len(skipped)})
+            continue
         table_kind = _table_kind(kind, own)
         if table_kind is None:
             for h in headers:
@@ -1520,38 +1583,121 @@ def file_linked(record):
     return record is not None and str(record.note).startswith("공통정보 연결")
 
 
+F12_KEY = "psm.business.form12_details"           # 공정안전보고서 별지 제12호: 한 행짜리 표
+PSM_EQUIPMENT_KEY = "psm.psi.equipment_specs"       # 공정안전보고서 별지 제15호 전용 칸
+APPLICABILITY_KEY = "psm.psi.form_applicability"    # 공정안전보고서 조건부 서식 적용여부
+PSM_GAS_KEY = "psm.psi.gas_detection_table"         # 공정안전보고서 별지 제17호의5(가스감지기 사실로 채움)
+SINGLE_ROW_KEYS = {F12_KEY}
+
+
+def _site_targets(item):
+    """사업장 사실이 들어갈 (작성자료 키, 칸) 목록. 칸이 빈 것은 한 값짜리 키입니다."""
+    pairs = [(item.field_key, item.column)] + list(item.targets)
+    return [(key, column) for key, column in pairs if key and not key.startswith("@")]
+
+
 def _site_values(project, chosen):
     """사업장 사실 → {작성자료 키: (값, 근거 사실들, 이름)}. 칸 이름(column)이 있는 사실은 한 키 아래 묶음(dict)으로 둡니다
-    (확산방지설비 공통 기준, 서술형 결정사항 등). 다른 곳에서 적은 값과 다르면 보내지 않습니다(catalog_preview)."""
+    (확산방지설비 공통 기준, 서술형 결정사항, 공정안전보고서 별지 제12호 등). 다른 곳에서 적은 값과 다르면 보내지 않습니다
+    (catalog_preview). 공정안전보고서 조건부 서식 적용여부는 따로 만듭니다(_applicability_values)."""
     site = chosen.get(SITE_ENTITY, {})
     out, groups = {}, {}
     for item in catalog.facts(kinds=["site", "narrative"], company=True):
-        if not item.field_key or item.field_key.startswith("@"):
-            continue
-        if item.column:
-            groups.setdefault(item.field_key, []).append(item)
-            continue
-        fact = site.get(item.evidence_field)
-        if fact is None:
-            continue
-        value = str(fact["value"]).strip()
-        if item.id == "site.loading_facility_count":
-            lorries = sum(1 for e, v in chosen.items() if e.startswith("facility:") and v.get("facility_type")
-                          and v["facility_type"]["value"] == LORRY_TYPE)
-            count = re.sub(r"\s*기$", "", value)
-            value = f"입·출하 시설 {count}기" + (f", 보유 탱크로리 {lorries}기" if lorries else "")
-        out[item.field_key] = (value, [fact], item.name)
+        for key, column in _site_targets(item):
+            if key == APPLICABILITY_KEY:
+                continue
+            if column:
+                groups.setdefault(key, []).append((item, column))
+                continue
+            fact = site.get(item.evidence_field)
+            if fact is None:
+                continue
+            value = str(fact["value"]).strip()
+            if item.id == "site.loading_facility_count":
+                lorries = sum(1 for e, v in chosen.items() if e.startswith("facility:") and v.get("facility_type")
+                              and v["facility_type"]["value"] == LORRY_TYPE)
+                count = re.sub(r"\s*기$", "", value)
+                value = f"입·출하 시설 {count}기" + (f", 보유 탱크로리 {lorries}기" if lorries else "")
+            out[key] = (value, [fact], item.name)
     for key, items in groups.items():
-        found = {item.column: site[item.evidence_field] for item in items if item.evidence_field in site}
+        found = {column: site[item.evidence_field] for item, column in items if item.evidence_field in site}
         if not found:
             continue
         if key == DIKE_RULE_KEY:          # 계산 엔진이 두 칸을 모두 읽으므로 빈 칸도 둡니다
-            value = {item.column: (str(found[item.column]["value"]).strip() if item.column in found else "") for item in items}
+            value = {column: (str(found[column]["value"]).strip() if column in found else "") for _, column in items}
             label = "확산방지설비 공통 필요용량 기준"
         else:
             value = {column: str(fact["value"]).strip() for column, fact in found.items()}
             label = _group_label(key)
+        if key in SINGLE_ROW_KEYS:
+            value = [value]
         out[key] = (value, list(found.values()), label)
+    return out
+
+
+def _applicability_values(project, chosen, tables):
+    """공정안전보고서 조건부 서식(제17호의2~5·18~20호)의 적용여부. 파일에 ‘적용여부’를 적었으면 그 값을,
+    그 서식의 표를 올렸으면 ‘적용’을 씁니다. 파일이 정하지 않은 서식의 예전 기록은 그대로 둡니다."""
+    from . import psm_table_workspace as pt
+
+    site = chosen.get(SITE_ENTITY, {})
+    decided, used = {}, []
+    for spec in pt.SPECS.values():
+        if not spec.conditional:
+            continue
+        decision = site.get(f"psm_applies_{spec.form_no}")
+        basis = site.get(f"psm_applies_basis_{spec.form_no}")
+        if decision is not None:
+            decided[spec.form_no] = {"서식번호": spec.form_no, "적용여부": str(decision["value"]).strip(),
+                                     "확인근거": str(basis["value"]).strip() if basis else f"회사 파일: {decision['document']}"}
+            used += [f for f in (decision, basis) if f]
+        elif tables.get(spec.form_no):
+            rows, facts = tables[spec.form_no]
+            files = ", ".join(dict.fromkeys(f["document"] for f in facts))
+            decided[spec.form_no] = {"서식번호": spec.form_no, "적용여부": pt.APPLICABLE,
+                                     "확인근거": f"회사 파일에 이 서식의 표가 있음({files})"}
+            used += facts
+    if not decided:
+        return {}
+    record = project.get_field(APPLICABILITY_KEY)
+    kept = [dict(r) for r in (record.value if record is not None and isinstance(record.value, list) else [])
+            if isinstance(r, dict) and str(r.get("서식번호") or "") not in decided]
+    return {APPLICABILITY_KEY: (kept + list(decided.values()), used, "공정안전보고서 조건부 서식 적용여부")}
+
+
+def _psm_table_rows(chosen):
+    """공정안전보고서 표 서식 번호 → (행 목록, 근거 사실들). 제17호의5는 가스감지기 사실로 만듭니다."""
+    out = {}
+    for table, items in catalog.psm_tables().items():
+        columns = {item.evidence_field: item.column for item in items}
+        rows, used = [], []
+        for entity, values in chosen.items():
+            if not entity.startswith(f"table:{table}/"):
+                continue
+            row = {column: "" for column in columns.values()}
+            for field, column in columns.items():
+                if field in values:
+                    row[column] = str(values[field]["value"]).strip()
+                    used.append(values[field])
+            rows.append(row)
+        if rows:
+            out[table] = (rows, used)
+    detector_columns = {item.evidence_field: use.cell for item in catalog.facts(kinds=["detector"])
+                        for use in item.used_in if use.doc == "PSM" and use.form == "17-5"}
+    detector_id = next(item for item in catalog.facts(kinds=["detector"]) if item.identifier)
+    id_cell = next(use.cell for use in detector_id.used_in if use.doc == "PSM")
+    rows, used = [], []
+    for entity, values in chosen.items():
+        if not entity.startswith("detector:"):
+            continue
+        row = {id_cell: entity.split(":", 1)[1]}
+        for field, column in detector_columns.items():
+            if field in values:
+                row[column] = str(values[field]["value"]).strip()
+                used.append(values[field])
+        rows.append(row)
+    if rows:
+        out["17-5"] = (rows, used)
     return out
 
 
@@ -1632,6 +1778,29 @@ def _table_values(project, chosen):
         out[GAS_KEY] = (_merge_rows(lambda r: norm(r.get("감지기 번호") or ""), existing, gas_rows, managed),
                         used, "고정식 유해감지시설 명세(별지 제11호, 회사 파일)")
 
+    psm_rows, used = _entity_rows(chosen, "facility", _columns_for("facility", PSM_EQUIPMENT_KEY), "설비번호",
+                                  lambda e, v: {"설비명": names.get(e, "")})
+    if psm_rows:
+        record = project.get_field(PSM_EQUIPMENT_KEY)
+        existing = record.value if record and isinstance(record.value, list) else []
+        managed = tuple(_columns_for("facility", PSM_EQUIPMENT_KEY).values())
+        out[PSM_EQUIPMENT_KEY] = (_merge_rows(lambda r: norm(r.get("설비번호") or ""), existing, psm_rows, managed),
+                                  used, "장치 및 설비 명세(공정안전보고서 전용 칸, 회사 파일)")
+
+    from . import psm_table_workspace as pt
+
+    tables = _psm_table_rows(chosen)
+    for table, (rows, facts) in tables.items():
+        spec = pt.SPECS[table]
+        keys = [next(i.column for i in catalog.psm_tables().get(table, ()) if i.evidence_field == f) for f in
+                catalog.table_key_fields(table)] if table != "17-5" else [spec.unique]
+        record = project.get_field(spec.key)
+        existing = record.value if record and isinstance(record.value, list) else []   # 예전에 적은 다른 줄은 지우지 않음
+        new = [{c: row.get(c, "") for c in spec.column_ids()} for row in rows]
+        out[spec.key] = (_merge_rows(lambda r, keys=keys: " · ".join(norm(r.get(k) or "") for k in keys), existing, new,
+                                     tuple(spec.column_ids())), facts, f"{spec.title}(회사 파일)")
+    out.update(_applicability_values(project, chosen, tables))
+
     hazard_columns = _columns_for("material", HAZARD_KEY)
     representatives = {e: v for e, v in chosen.items() if e.startswith("material:") and "representative_reason" in v}
     hazard_rows, used = _entity_rows(representatives, "material", hazard_columns, "물질코드",
@@ -1654,7 +1823,8 @@ def catalog_preview(project):
     out = {}
     for key, (value, facts, label) in {**_site_values(project, chosen), **_table_values(project, chosen)}.items():
         record = project.get_field(key)
-        if record is not None and not file_linked(record) and record.value not in (None, "", []) and not isinstance(value, list):
+        single = not isinstance(value, list) or key in SINGLE_ROW_KEYS
+        if record is not None and not file_linked(record) and record.value not in (None, "", []) and single:
             continue        # 사람이 적은 한 값은 그대로 둡니다. 다르면 사실 표에서 ‘저장된 값과 다름’으로 알립니다.
         out[key] = (value, facts, label)
     return out

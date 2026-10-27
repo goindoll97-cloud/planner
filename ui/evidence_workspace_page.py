@@ -461,7 +461,8 @@ def _correction_rows(project, found) -> list[dict]:
 
 KIND_NAMES = {"material": "물질 목록·SDS", "facility": "설비 목록·운전 자료", "site": "사업장 일반정보·공정 설명",
               "detector": "가스감지기 명세", "mixed": "여러 종류가 든 묶음 파일(시트마다 따로 읽음)"}
-FACT_FORMS = (1, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+FACT_FORMS = (1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16)
+DOC_NAMES = {"CAP": "화학사고예방관리계획서", "PSM": "공정안전보고서"}
 FACT_COLUMNS = ("상태", "사실", "값", "출처", "쓰이는 곳", "올릴 파일", "필요", "고칠 점")
 
 
@@ -482,17 +483,26 @@ def _coverage_panel(project) -> None:
     """올린 파일을 어디까지 읽었는지, 화사계에 필요한 사실 중 무엇을 파일에서 찾았는지 사실 표로 보여 줍니다."""
     pid = project.project_id
     _file_panel(project)
-    st.markdown("**화학사고예방관리계획서에 필요한 사실**")
+    docs = cap_fact_status.project_docs(project)
+    st.markdown("**" + " · ".join(DOC_NAMES[d] for d in docs) + "에 필요한 사실**")
     st.caption("한 줄에 사실 하나예요. O는 파일에서 찾은 값(출처를 함께 보여 줘요), 빈칸은 아직 못 찾은 값, "
-               "⚠ 충돌은 파일끼리 값이 달라 초안에 넣지 않은 값, △ 확인은 읽었지만 그대로 쓸 수 없는 값이에요.")
-    cols = st.columns(3)
-    groups = ["전체", "1군", "2군"]
-    default = groups.index(project.cap_group) if project.cap_group in groups else 0
-    group = cols[0].radio("작성수준", groups, index=default, horizontal=True, key="fact_group_" + pid)
-    forms = cols[1].multiselect("별지", FACT_FORMS, default=[], format_func=lambda n: f"제{n}호", key="fact_forms_" + pid,
-                                placeholder="모든 별지")
+               "⚠ 충돌은 파일끼리 값이 달라 초안에 넣지 않은 값, △ 확인은 읽었지만 그대로 쓸 수 없는 값이에요. "
+               "두 문서에 같이 쓰이는 사실은 한 번만 보여 줘요.")
+    cols = st.columns(4 if len(docs) > 1 else 3)
+    if len(docs) > 1:
+        picked = cols[3].radio("문서", ["두 문서", *docs], horizontal=True, key="fact_doc_" + pid,
+                               format_func=lambda d: DOC_NAMES.get(d, d))
+        docs = docs if picked == "두 문서" else (picked,)
+    group = ""
+    if "CAP" in docs:
+        groups = ["전체", "1군", "2군"]
+        default = groups.index(project.cap_group) if project.cap_group in groups else 0
+        picked_group = cols[0].radio("작성수준", groups, index=default, horizontal=True, key="fact_group_" + pid)
+        group = "" if picked_group == "전체" else picked_group
+    forms = cols[1].multiselect("화학사고예방관리계획서 별지", FACT_FORMS, default=[], format_func=lambda n: f"제{n}호",
+                                key="fact_forms_" + pid, placeholder="모든 별지") if "CAP" in docs else []
     view = cols[2].radio("보기", ["빈칸·충돌만", "전체"], horizontal=True, key="fact_view_" + pid)
-    rows = cap_fact_status.fact_rows(project, group="" if group == "전체" else group, forms=forms)
+    rows = cap_fact_status.fact_rows(project, group=group, forms=forms, docs=docs)
     info = cap_fact_status.summary(rows)
     metrics = st.columns(5)
     metrics[0].metric("파일에서 찾은 사실", f"{info['filled']}/{info['company']}")
@@ -527,7 +537,7 @@ def _template_download(project, group: str) -> None:
     count = cap_upload_template.blank_count(project, group)
     label = "엑셀 업로드 양식 내려받기 (모든 사실)" if full else f"엑셀 업로드 양식 내려받기 (빈 사실 {count}개)"
     st.download_button(label, cap_upload_template.build(project, only_blank=not full, group=group),
-                       file_name=cap_upload_template.FILENAME, key="template_" + pid, disabled=not full and not count,
+                       file_name=cap_upload_template.filename(project), key="template_" + pid, disabled=not full and not count,
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
@@ -699,7 +709,7 @@ def _auto_publish(project) -> None:
             changed = True
         except ValueError:
             pass
-    if project.cap_in_scope:
+    if project.cap_in_scope or project.psm_in_scope:
         try:
             changed = cap_fact_drafting.refresh_rule_drafts(project) > 0 or changed
         except Exception:          # 서술형 초안 문제로 화면이 멈추지 않게
@@ -710,16 +720,20 @@ def _auto_publish(project) -> None:
 
 def _narrative_drafts(project) -> None:
     """사전관리방침·비상대응계획 서술형: 회사 파일의 사실로 쓴 초안 현황과 다시 만들기."""
-    if not project.cap_in_scope:
+    systems = cap_fact_drafting.systems(project)
+    if not systems:
         return
     pid = project.project_id
-    rows = cap_fact_drafting.rows(project)
-    if not rows:
+    tables = [(system, cap_fact_drafting.rows(project, system)) for system in systems]
+    if not any(rows for _, rows in tables):
         return
     st.subheader("서술형 항목")
-    st.caption("사전관리방침·비상대응계획 같은 글은 회사 파일에서 읽은 사실만으로 초안을 써요. 근거가 없는 부분은 "
+    st.caption("사전관리방침·비상대응계획·안전운전계획 같은 글은 회사 파일에서 읽은 사실만으로 초안을 써요. 근거가 없는 부분은 "
                "‘[확인 필요]’로 남기고, 초안 문서에 ‘AI 초안’ 표시와 함께 들어가요. 내려받은 문서에서 고쳐 쓰세요.")
-    st.dataframe([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows], hide_index=True, width="stretch")
+    for system, rows in tables:
+        if rows:
+            st.markdown(f"**{DOC_NAMES[system]}**")
+            st.dataframe([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows], hide_index=True, width="stretch")
     use_ai = st.checkbox("이 PC의 로컬 AI로 문장 다듬기 (회사 정보는 밖으로 보내지 않아요)", key="fact_ai_" + pid)
     client = None
     if use_ai:
@@ -738,7 +752,7 @@ def _narrative_drafts(project) -> None:
             f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
         st.rerun()
     with st.expander("서술형 초안 보기"):
-        for item in cap_fact_drafting.items(project):
+        for item in [i for system in systems for i in cap_fact_drafting.items(project, system)]:
             text = item.company_text or item.draft
             if text:
                 st.markdown(f"**{item.label}** — {item.state}")

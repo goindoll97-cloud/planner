@@ -36,14 +36,6 @@ class Form14Tests(unittest.TestCase):
         tables.save(project, "14", [dict(ROW, 비고="")])
         self.assertEqual(tables.needs(project, "14"), [])  # 비고는 선택
 
-    def test_screen_renders_and_shows_what_is_missing(self):
-        project = _project()
-        tables.save(project, "14", [dict(ROW, 전동기용량="")])
-        at = _run(project, "14")
-        self.assertFalse(at.exception)
-        self.assertTrue(any("더 필요" in i.value for i in at.info))
-        self.assertTrue(any("전동기용량" in w.value for w in at.markdown))
-
 
 if __name__ == "__main__":
     unittest.main()

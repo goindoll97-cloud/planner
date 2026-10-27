@@ -1,4 +1,4 @@
-"""화학사고예방관리계획서 사실 카탈로그 읽기.
+"""화학사고예방관리계획서·공정안전보고서 사실 카탈로그 읽기.
 
 사실 하나 = 회사 파일에서 한 번 읽어 여러 별지 칸에 쓰는 값 하나입니다.
 내용은 data/stage2/cap_fact_catalog.json에만 있고, 이 모듈은 그 파일을 읽어 검사하고 찾기 쉽게 돌려줍니다.
@@ -19,13 +19,17 @@ from typing import Any, Iterable
 CATALOG_PATH = Path(__file__).resolve().parents[2] / "data" / "stage2" / "cap_fact_catalog.json"
 SCHEMA_VERSION = "cap-fact-catalog-v1"
 
-KINDS = ("site", "narrative", "facility", "material", "detector", "target", "computed", "legal")
+KINDS = ("site", "narrative", "facility", "material", "detector", "psm_table", "target", "computed", "legal")
 SOURCES = ("company", "project", "survey", "computed", "legal")
 COMPANY_SOURCES = ("company", "project")
 ENTITY_KINDS = ("facility", "material", "detector")      # 표의 한 줄이 대상 하나인 사실
 SITE_KINDS = ("site", "narrative")                       # 사업장에 하나뿐인 사실
 FORMATS = ("text", "number", "choice")
 GROUPS = ("1군", "2군")
+DOCS = ("CAP", "PSM")
+DOC_NAMES = {"CAP": "화학사고예방관리계획서", "PSM": "공정안전보고서"}
+PSM_FORMS = ("12", "13", "14", "15", "16", "17", "17-2", "17-3", "17-4", "17-5", "18", "19", "19-2", "20", "21",
+             "admin1", "admin9", "body")
 
 
 def header_key(value: object) -> str:
@@ -35,8 +39,9 @@ def header_key(value: object) -> str:
 
 @dataclass(frozen=True)
 class Use:
-    form: int
+    form: Any            # 화학사고예방관리계획서: 별지 번호(int, 0=본문 서술형) / 공정안전보고서: "12"·"17-2"·"admin1"·"body"
     cell: str
+    doc: str = "CAP"
 
 
 @dataclass(frozen=True)
@@ -60,6 +65,7 @@ class Fact:
     required: bool = True
     condition: str = ""
     note: str = ""
+    table: str = ""          # 공정안전보고서 표 사실(psm_table)이면 그 서식 번호
 
     @property
     def from_company(self) -> bool:
@@ -82,11 +88,24 @@ class Fact:
 
     @property
     def forms(self) -> tuple[int, ...]:
-        return tuple(sorted({use.form for use in self.used_in}))
+        """화학사고예방관리계획서에서 쓰이는 별지 번호."""
+        return tuple(sorted({use.form for use in self.used_in if use.doc == "CAP"}))
+
+    @property
+    def psm_forms(self) -> tuple[str, ...]:
+        """공정안전보고서에서 쓰이는 서식."""
+        return tuple(sorted({str(use.form) for use in self.used_in if use.doc == "PSM"}, key=PSM_FORMS.index))
+
+    @property
+    def docs(self) -> tuple[str, ...]:
+        return tuple(d for d in DOCS if any(use.doc == d for use in self.used_in))
 
     @property
     def used_in_text(self) -> str:
-        return forms_text(self.forms)
+        parts = [forms_text(self.forms)] if self.forms else []
+        if self.psm_forms:
+            parts.append(psm_forms_text(self.psm_forms))
+        return " / ".join(parts)
 
 
 BODY_FORM = 0          # used_in의 form 0: 계획서 본문의 서술형 장(사전관리방침·비상대응계획)
@@ -102,6 +121,28 @@ def forms_text(forms: Iterable[int]) -> str:
     return ", ".join(parts)
 
 
+def psm_forms_text(forms: Iterable[str]) -> str:
+    """("12", "17-2", "admin1", "body") → ‘공정안전보고서 별지 제12호·제17호의2, 심사신청서, 본문 서술형’."""
+    forms = list(dict.fromkeys(forms))
+    annex = [f for f in forms if f[0].isdigit()]
+    parts = []
+    if annex:
+        names = [f"제{f.split('-')[0]}호" + (f"의{f.split('-')[1]}" if "-" in f else "") for f in annex]
+        parts.append("별지 " + "·".join(names))
+    if "admin1" in forms:
+        parts.append("심사신청서")
+    if "admin9" in forms:
+        parts.append("확인요청서")
+    if "body" in forms:
+        parts.append("본문 서술형")
+    return "공정안전보고서 " + ", ".join(parts)
+
+
+def _use(raw: dict[str, Any]) -> Use:
+    doc = str(raw.get("doc") or "CAP")
+    return Use(int(raw["form"]) if doc == "CAP" else str(raw["form"]), str(raw["cell"]), doc)
+
+
 def _fact(raw: dict[str, Any]) -> Fact:
     return Fact(
         id=str(raw["id"]), name=str(raw["name"]), kind=str(raw["kind"]), source=str(raw["source"]),
@@ -112,9 +153,9 @@ def _fact(raw: dict[str, Any]) -> Fact:
         evidence_field=str(raw.get("evidence_field") or ""), identifier=bool(raw.get("identifier")),
         headers=tuple(str(h) for h in raw.get("headers") or ()), file=str(raw.get("file") or ""),
         groups=tuple(str(g) for g in raw.get("groups") or GROUPS),
-        used_in=tuple(Use(int(u["form"]), str(u["cell"])) for u in raw.get("used_in") or ()),
+        used_in=tuple(_use(u) for u in raw.get("used_in") or ()),
         required=bool(raw.get("required", True)), condition=str(raw.get("condition") or ""),
-        note=str(raw.get("note") or ""),
+        note=str(raw.get("note") or ""), table=str(raw.get("table") or ""),
     )
 
 
@@ -143,11 +184,15 @@ def get(fact_id: str) -> Fact:
     raise KeyError(fact_id)
 
 
-def facts(*, group: str = "", kinds: Iterable[str] = (), forms: Iterable[int] = (), company: bool | None = None) -> list[Fact]:
-    """조건에 맞는 사실(카탈로그 순서). group=‘1군’·‘2군’, company=True면 회사 자료만, False면 계산·조회만."""
-    kinds, forms = set(kinds), set(forms)
+def facts(*, group: str = "", kinds: Iterable[str] = (), forms: Iterable[int] = (), company: bool | None = None,
+          docs: Iterable[str] = ()) -> list[Fact]:
+    """조건에 맞는 사실(카탈로그 순서). group=‘1군’·‘2군’(화학사고예방관리계획서), company=True면 회사 자료만,
+    False면 계산·조회만, docs=("CAP",)·("PSM",)이면 그 문서에 쓰이는 사실만."""
+    kinds, forms, docs = set(kinds), set(forms), set(docs)
     out = []
     for item in all_facts():
+        if docs and not docs & set(item.docs):
+            continue
         if group and group not in item.groups:
             continue
         if kinds and item.kind not in kinds:
@@ -199,7 +244,31 @@ def header_map(kind: str) -> dict[str, str]:
 
 
 def identifier_headers(kind: str) -> frozenset[str]:
-    return frozenset(header_key(h) for item in all_facts() if item.kind == kind and item.identifier for h in item.headers)
+    return frozenset(header_key(h) for item in all_facts()
+                     if item.kind == kind and item.identifier and kind != "psm_table" for h in item.headers)
+
+
+def psm_tables() -> dict[str, list[Fact]]:
+    """공정안전보고서 표 서식 번호 → 그 표의 사실(열 순서)."""
+    out: dict[str, list[Fact]] = {}
+    for item in all_facts():
+        if item.kind == "psm_table":
+            out.setdefault(item.table, []).append(item)
+    return out
+
+
+def table_header_map(table: str) -> dict[str, str]:
+    """공정안전보고서 표 하나의 머리글 표기 → 읽을 항목(식별자 열 포함)."""
+    out: dict[str, str] = {}
+    for item in psm_tables().get(table, ()):
+        for header in item.headers:
+            out.setdefault(header_key(header), item.evidence_field)
+    return out
+
+
+def table_key_fields(table: str) -> list[str]:
+    """그 표의 한 줄을 구별하는 열(식별자 사실)의 항목 이름."""
+    return [item.evidence_field for item in psm_tables().get(table, ()) if item.identifier]
 
 
 def by_evidence_field(kind: str) -> dict[str, Fact]:
@@ -243,8 +312,12 @@ def validate(items: Iterable[Fact], raw: dict[str, Any] | None = None) -> list[s
         if not item.used_in:
             problems.append(f"{where}: 쓰이는 별지(used_in)가 없습니다")
         for use in item.used_in:
-            if not BODY_FORM <= use.form <= 16 or not use.cell:
-                problems.append(f"{where}: 쓰이는 칸이 잘못됐습니다 ({use.form}, {use.cell})")
+            bad_form = (use.doc == "CAP" and not (isinstance(use.form, int) and BODY_FORM <= use.form <= 16)) or \
+                (use.doc == "PSM" and use.form not in PSM_FORMS) or use.doc not in DOCS
+            if bad_form or not use.cell:
+                problems.append(f"{where}: 쓰이는 칸이 잘못됐습니다 ({use.doc} {use.form}, {use.cell})")
+        if item.kind == "psm_table" and not item.table:
+            problems.append(f"{where}: 공정안전보고서 표 번호(table)가 없습니다")
         if not set(item.groups) or not set(item.groups) <= set(GROUPS):
             problems.append(f"{where}: 작성수준(1군·2군)이 잘못됐습니다")
         if files and item.file and item.file not in files:
@@ -258,17 +331,23 @@ def validate(items: Iterable[Fact], raw: dict[str, Any] | None = None) -> list[s
                 problems.append(f"{where}: 작성자료 키(field_key)가 없습니다")
             if not (item.evidence_field or item.identifier):
                 problems.append(f"{where}: 읽은 값을 담을 항목(evidence_field)이 없습니다")
-        if item.kind in ENTITY_KINDS and item.from_company and not item.column:
+        if item.kind in ENTITY_KINDS + ("psm_table",) and item.from_company and not item.column:
             problems.append(f"{where}: 표 열 이름(column)이 없습니다")
-        group_kind = "site" if item.kind in SITE_KINDS or item.kind == "legal" else item.kind
+        group_kind = "site" if item.kind in SITE_KINDS or item.kind == "legal" else (
+            "psm_table:" + item.table if item.kind == "psm_table" else item.kind)
         for header in item.headers:
             key = (group_kind, header_key(header))
             owner = by_kind_header.get(key)
-            target = item.evidence_field or ("#id:" + item.id)
+            target = item.evidence_field if item.kind == "psm_table" else (item.evidence_field or ("#id:" + item.id))
+            if item.identifier and item.kind != "psm_table":
+                target = "#id:" + item.kind
             if owner is not None and owner != target:
                 problems.append(f"{where}: 머리글 ‘{header}’를 다른 사실도 씁니다")
             by_kind_header[key] = target
     for kind in ENTITY_KINDS:
         if not any(i.kind == kind and i.identifier for i in items):
             problems.append(f"{kind}: 대상을 구별할 식별자 사실이 없습니다")
+    for table in {i.table for i in items if i.kind == "psm_table"}:
+        if not any(i.kind == "psm_table" and i.table == table and i.identifier for i in items):
+            problems.append(f"공정안전보고서 표 {table}: 한 줄을 구별할 열(identifier)이 없습니다")
     return problems

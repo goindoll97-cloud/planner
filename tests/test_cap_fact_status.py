@@ -42,7 +42,7 @@ class EmptyProjectTests(unittest.TestCase):
         representative = _row(rows, "site.representative")
         self.assertIn("사업장 일반정보", representative["고칠 점"])
         self.assertIn("‘대표자’", representative["고칠 점"])
-        self.assertEqual(representative["쓰이는 곳"], "별지 제3·16호")
+        self.assertEqual(representative["쓰이는 곳"], "별지 제3·16호 / 공정안전보고서 별지 제12호, 심사신청서, 확인요청서")
         # 등록할 때 넣은 이름·주소는 파일이 아니어도 채워진 값으로 보여 줍니다
         self.assertEqual(_row(rows, "site.company_name")["_state"], fs.O)
         self.assertEqual(_row(rows, "site.address")["출처"], "파일 아님: 직접 입력한 값")

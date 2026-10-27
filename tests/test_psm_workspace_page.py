@@ -59,14 +59,18 @@ class PsmWorkspacePageTests(unittest.TestCase):
         frame = at.dataframe[0].value
         self.assertIn("독성-ERPG 2", list(frame["항목"]))
 
-    def test_form12_admin_and_files_render_without_errors(self):
+    def test_every_view_renders_without_input_widgets(self):
         project = _project()
-        for key in ("12", "admin", "files"):
+        for key in ("status", "12", "14", "17-2", "17-5", "admin", "narrative", "files"):
             at = _run(project, key)
             self.assertFalse(at.exception, key)
+            if key not in ("files",):
+                self.assertEqual(len(at.text_input), 0, key)          # 서식을 화면에서 쓰지 않음
+                self.assertEqual(len(at.get("data_editor") if hasattr(at, "get") else []), 0, key)
         at = _run(project, "12")
-        self.assertTrue(any("가져왔습니다" in s.value for s in at.success))
         self.assertTrue(any("비어 있는 칸" in i.value for i in at.info))
+        at = _run(project, "status")
+        self.assertIn("서식", at.dataframe[0].value.columns)
 
     def test_navigation_always_offers_the_psm_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")

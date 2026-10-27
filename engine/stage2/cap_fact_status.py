@@ -25,7 +25,8 @@ CHECK = "확인"
 DONE = "계산됨"
 NOT_DONE = "계산 전"
 MARK = {O: "O", BLANK: "", CONFLICT: "⚠ 충돌", CHECK: "△ 확인", DONE: "계산됨", NOT_DONE: "계산 전"}
-ENTITY_NOUN = {"facility": ("설비", "대"), "material": ("물질", "종"), "detector": ("감지기", "개")}
+ENTITY_NOUN = {"facility": ("설비", "대"), "material": ("물질", "종"), "detector": ("감지기", "개"), "psm_table": ("", "줄")}
+ENTITY_PREFIX = {"facility": "facility:", "material": "material:", "detector": "detector:", "psm_table": "table:"}
 
 
 # ---------------------------------------------------------------- 사람 말
@@ -97,11 +98,18 @@ def _cell(slot: dict[str, Any] | None) -> dict[str, Any]:
             "fix": _plain(reasons[0])}
 
 
-def entities(project: Stage2Project, kind: str) -> list[str]:
-    """그래프에 있는 이 종류의 대상(제외한 대상 빼고), 번호순."""
+def entities(project: Stage2Project, kind: str, table: str = "") -> list[str]:
+    """그래프에 있는 이 종류의 대상(제외한 대상 빼고), 번호순. 공정안전보고서 표는 table로 그 서식의 줄만 고릅니다(읽은 순서)."""
     excluded = set(ew.excluded(project))
-    found = {slot["entity"] for slot in ew.slots(project) if slot["entity"].startswith(kind + ":")}
-    return sorted(found - excluded)
+    prefix = ENTITY_PREFIX.get(kind, kind + ":") + (f"{table}/" if table else "")
+    found = list(dict.fromkeys(slot["entity"] for slot in ew.slots(project) if slot["entity"].startswith(prefix)))
+    found = [e for e in found if e not in excluded]
+    return found if kind == "psm_table" else sorted(found)
+
+
+def _table_title(table: str) -> str:
+    from . import psm_table_workspace as pt
+    return pt.SPECS[table].title if table in pt.SPECS else table
 
 
 def _display_names(project: Stage2Project) -> dict[str, str]:
@@ -120,6 +128,8 @@ def display(entity: str, names: dict[str, str]) -> str:
     kind, code = entity.split(":", 1)
     if kind == "detector":
         return "감지기 " + code
+    if kind == "table":
+        return code.split("/", 1)[1]
     name = names.get(entity)
     return f"{name} ({code})" if name and name != code else code
 
@@ -246,10 +256,7 @@ def _site_row(project, item, slots) -> dict[str, Any]:
         return cell
     cell = _cell(slots.get(f"{ew.SITE_ENTITY}|{item.evidence_field}"))
     record = project.get_field(item.field_key) if item.field_key else None
-    if item.column and record is not None and isinstance(record.value, dict):
-        stored = record.value.get(item.column)
-    else:
-        stored = record.value if record is not None else None
+    stored = _stored_value(record, item)
     elsewhere = record is not None and not ew.file_linked(record) and record.status in CONFIRMED_STATUSES \
         and stored not in (None, "", [])
     if cell["state"] == O and elsewhere and str(stored).strip() != str(cell["value"]).strip() \
@@ -263,9 +270,30 @@ def _site_row(project, item, slots) -> dict[str, Any]:
     return cell
 
 
+def _stored_value(record, item):
+    """작성자료에 이미 있는 이 사실의 값(묶음·한 행짜리 표·조건부 서식 적용여부 칸까지 찾아봄)."""
+    if record is None:
+        return None
+    value = record.value
+    if not item.column:
+        return value
+    if item.field_key == ew.APPLICABILITY_KEY:
+        form, _, part = item.column.partition("#")
+        row = next((r for r in value or [] if isinstance(r, dict) and str(r.get("서식번호")) == form), {})
+        return row.get("확인근거" if part else "적용여부")
+    if isinstance(value, list) and value and isinstance(value[0], dict) and item.field_key in ew.SINGLE_ROW_KEYS:
+        return value[0].get(item.column)
+    if isinstance(value, dict):
+        return value.get(item.column)
+    return None
+
+
 def _entity_row(project, item, slots, kind_entities) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     noun, counter = ENTITY_NOUN[item.kind]
-    targets = kind_entities[item.kind]
+    targets = kind_entities.get(item.kind, [])
+    if item.kind == "psm_table":
+        noun = _table_title(item.table)
+        targets = kind_entities.get(("psm_table", item.table), [])
     if item.kind == "material" and item.field_key == ew.HAZARD_KEY and item.evidence_field != "representative_reason":
         chosen = {s["entity"] for s in slots.values() if s["field"] == "representative_reason" and s["chosen"]}
         targets = [e for e in targets if e in chosen] or targets
@@ -303,16 +331,46 @@ def _entity_row(project, item, slots, kind_entities) -> tuple[dict[str, Any], di
             "fix": f"{', '.join(missing[:5])}{' 외' if len(missing) > 5 else ''}: " + _fix_blank(item)}, cells
 
 
-def fact_rows(project: Stage2Project, *, group: str = "", forms=()) -> list[dict[str, Any]]:
-    """사실 표. 회사 사실을 먼저, 그다음 계산값·법령 조회값·지도 조사값을 보여 줍니다."""
+def _not_applicable(project, table: str) -> bool:
+    from . import psm_table_workspace as pt
+    return table in pt.SPECS and pt.SPECS[table].conditional and pt.applicability(project, table)[0] == pt.NOT_APPLICABLE
+
+
+def project_docs(project: Stage2Project) -> tuple[str, ...]:
+    """이 사업장이 작성하는 문서(작성범위). 정해지지 않았으면 두 문서 모두."""
+    docs = tuple(d for d, on in (("CAP", project.cap_in_scope), ("PSM", project.psm_in_scope)) if on)
+    return docs or catalog.DOCS
+
+
+def fact_rows(project: Stage2Project, *, group: str = "", forms=(), docs=None) -> list[dict[str, Any]]:
+    """사실 표. 회사 사실을 먼저, 그다음 계산값·법령 조회값·지도 조사값을 보여 줍니다.
+    docs=("PSM",)이면 공정안전보고서에 쓰이는 사실만. 공정안전보고서 표는 줄이 없으면 구별 열 한 줄로만 알립니다."""
+    docs = project_docs(project) if docs is None else docs
     slots = _slot_index(project)
-    kind_entities = {kind: entities(project, kind) for kind in ENTITY_NOUN}
+    kind_entities = {kind: entities(project, kind) for kind in ENTITY_NOUN if kind != "psm_table"}
+    for table in catalog.psm_tables():
+        kind_entities[("psm_table", table)] = entities(project, "psm_table", table)
     checks = _derived_checks(project)
     rows = []
-    for item in catalog.facts(group=group, forms=forms):
+    shown_tables: set[str] = set()
+    for item in catalog.facts(group=group, forms=forms, docs=docs):
         if item.source in ("company", "project"):
             if item.kind in catalog.SITE_KINDS:
                 cell = _site_row(project, item, slots)
+            elif item.kind == "psm_table" and (_not_applicable(project, item.table) or
+                                               not kind_entities[("psm_table", item.table)]):
+                if item.table in shown_tables:
+                    continue                     # 줄이 없는 표는 한 줄로만 알립니다
+                shown_tables.add(item.table)
+                if _not_applicable(project, item.table):
+                    cell = {"state": O, "value": "해당 없음", "source": "적용여부: 해당 없음", "fix": ""}
+                else:
+                    cell = {"state": BLANK, "value": "", "source": "",
+                            "fix": f"‘{_table_title(item.table)}’ 표를 올려 주세요(한 줄에 하나, 구별 열: "
+                                   + ", ".join(i.template_header for i in catalog.psm_tables()[item.table] if i.identifier) + ")."
+                                   + (" 해당하지 않으면 사업개요 파일에 ‘적용여부: 해당 없음’과 근거를 적어 주세요."
+                                      if _conditional(item.table) else "")}
+                item = next(i for i in catalog.psm_tables()[item.table] if i.identifier)
             elif item.kind in ENTITY_NOUN:
                 cell, _ = _entity_row(project, item, slots, kind_entities)
             else:
@@ -328,8 +386,13 @@ def fact_rows(project: Stage2Project, *, group: str = "", forms=()) -> list[dict
                      "필요": "필수" if item.required else ("해당 시: " + item.condition if item.condition else "선택"),
                      "고칠 점": cell["fix"],
                      "_id": item.id, "_state": cell["state"], "_company": item.from_company, "_kind": item.kind,
-                     "_forms": item.forms, "_groups": item.groups, "_required": item.required})
+                     "_forms": item.forms, "_groups": item.groups, "_required": item.required, "_docs": item.docs})
     return rows
+
+
+def _conditional(table: str) -> bool:
+    from . import psm_table_workspace as pt
+    return table in pt.SPECS and pt.SPECS[table].conditional
 
 
 def matrix(project: Stage2Project, kind: str, *, forms=(), required_only: bool = False) -> dict[str, Any]:
@@ -358,12 +421,12 @@ def snapshot(project: Stage2Project) -> dict[str, set]:
     """O인 칸과 충돌인 칸의 모음(사업장 사실 1칸, 대상별 사실은 대상마다 1칸)."""
     slots = _slot_index(project)
     filled, conflicts = set(), set()
-    for item in catalog.facts(company=True):
+    for item in catalog.facts(company=True, docs=project_docs(project)):
         if not item.evidence_field or item.identifier:
             continue
         prefix = ew.SITE_ENTITY if item.kind in catalog.SITE_KINDS else None
         keys = [f"{prefix}|{item.evidence_field}"] if prefix else \
-            [f"{e}|{item.evidence_field}" for e in entities(project, item.kind)] if item.kind in ENTITY_NOUN else []
+            [f"{e}|{item.evidence_field}" for e in entities(project, item.kind, item.table)] if item.kind in ENTITY_NOUN else []
         for key in keys:
             state = _cell(slots.get(key))["state"]
             if state == O:

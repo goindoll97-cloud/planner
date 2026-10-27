@@ -35,7 +35,7 @@ class CatalogShapeTests(unittest.TestCase):
             seen[key] = fact.id
         representative = cat.get("site.representative")
         self.assertEqual(representative.forms, (3, 16))
-        self.assertEqual(cat.get("material.cas").used_in_text, "별지 제1·4·5·6·7·9호")
+        self.assertEqual(cat.get("material.cas").used_in_text, "별지 제1·4·5·6·7·9호 / 공정안전보고서 별지 제13호")
 
     def test_derived_values_are_kept_apart_from_company_facts(self):
         derived = cat.facts(company=False)
@@ -134,6 +134,46 @@ class CatalogCoversFormSourcesTests(unittest.TestCase):
         self.assertEqual({s.key for s in specs}, wanted)
         keys = {k for s in specs for k in s.field_keys} - {"business.company_name"}
         self.assertEqual(keys - self._known_keys(), set())
+
+
+class PsmCatalogTests(unittest.TestCase):
+    """공정안전보고서 사실이 화면·서식 코드의 표 정의, 별지 제12호, 행정서식과 어긋나지 않는지."""
+
+    def test_table_facts_match_the_table_specs(self):
+        from engine.stage2 import psm_table_workspace as pt
+
+        tables = cat.psm_tables()
+        self.assertEqual(set(tables), {no for no in pt.SPECS if not no.startswith("cap-") and no != "17-5"})
+        for table, items in tables.items():
+            self.assertEqual([i.column for i in items], pt.SPECS[table].column_ids(), table)
+            self.assertTrue(cat.table_key_fields(table), table)
+            self.assertTrue(all(i.field_key == pt.SPECS[table].key for i in items), table)
+
+    def test_form12_facts_cover_every_cell_not_taken_from_other_facts(self):
+        from engine.stage2 import psm_form12_workspace as f12
+        from engine.stage2.psm_form12_consequence_engine import FORM12_HEADERS
+
+        columns = {i.column for i in cat.facts(docs=["PSM"]) if i.field_key == f12.KEY}
+        prefilled = set(f12.PREFILL) | {"사업장명"}
+        self.assertEqual(set(FORM12_HEADERS) - prefilled - columns, set())
+        prefill_keys = {k for keys in f12.PREFILL.values() for k in keys}
+        used = {i.field_key for i in cat.all_facts()} | {k for i in cat.all_facts() for k, _ in i.targets}
+        for header, keys in f12.PREFILL.items():
+            self.assertTrue(set(keys) & used, header)
+        self.assertTrue(prefill_keys)
+
+    def test_admin_form_fields_are_facts(self):
+        from engine.stage2 import psm_admin_forms as admin
+
+        keys = {i.field_key for i in cat.facts(docs=["PSM"])}
+        self.assertEqual(set(admin.ADMIN_LABELS) - keys, set())
+
+    def test_detector_facts_feed_psm_gas_alarm_columns(self):
+        from engine.stage2 import psm_table_workspace as pt
+
+        cells = {use.cell for i in cat.facts(kinds=["detector"]) for use in i.used_in if use.doc == "PSM"}
+        self.assertTrue(cells <= set(pt.GAS_ALARM.column_ids()))
+        self.assertIn(pt.GAS_ALARM.unique, cells)
 
 
 if __name__ == "__main__":

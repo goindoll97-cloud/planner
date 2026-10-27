@@ -1,13 +1,14 @@
-"""회사 파일에서 알아본 사실만으로 화학사고예방관리계획서 서술형 초안을 씁니다.
+"""회사 파일에서 알아본 사실만으로 서술형 초안을 씁니다(화학사고예방관리계획서·공정안전보고서).
 
-대상은 본문의 서술형 장(사전관리방침, 내부 비상대응계획, 1군의 외부 비상대응계획)입니다.
+대상은 화학사고예방관리계획서 본문의 서술형 장(사전관리방침, 내부 비상대응계획, 1군의 외부 비상대응계획)과
+공정안전보고서의 서술형 항목(안전운전지침서, 설비점검·유지보수, 변경요소 관리, 교육·비상조치·주민홍보 계획 등)입니다.
 - 회사 비상대응계획 파일에 그 항목의 글이 있으면(사실 카탈로그 ‘별지 제16호’ 서술) 그 글을 그대로 씁니다.
 - 없으면 그 항목의 회사 결정사항(책임자·주기·방법 등, 파일에서 읽은 값)만으로 초안을 만듭니다.
   로컬 AI가 있으면 문장을 다듬고, 없으면 규칙으로 문장을 잇습니다.
 - 근거가 없는 부분은 지어내지 않고 ‘[확인 필요: …]’로 남깁니다. AI 문장에 근거 자료에 없는 숫자·설비번호·CAS 번호가
   나오면 그 자리도 ‘[확인 필요]’로 바꿉니다.
 
-초안은 기존 AI 초안 기록(ai_draft.cap.<항목>)에 저장되어 ‘AI 작성 항목’ 점검표·검증정보에 나타나고,
+초안은 기존 AI 초안 기록(ai_draft.cap.<항목>, ai_draft.psm.<항목>)에 저장되어 ‘AI 작성 항목’ 점검표·검증정보에 나타나고,
 초안 문서의 서술형 장에 ‘AI 초안’ 표시와 함께 들어갑니다(사람이 내려받은 문서에서 고칩니다).
 """
 from __future__ import annotations
@@ -49,6 +50,7 @@ class Basis:
 
 @dataclass
 class Item:
+    system: str
     key: str
     label: str
     section: str
@@ -75,6 +77,12 @@ def _site_facts(project: Stage2Project) -> dict[str, dict[str, Any]]:
 def _general(project: Stage2Project, site: dict[str, dict[str, Any]]) -> list[Basis]:
     """모든 서술형 항목이 함께 쓸 수 있는 사업장 사실(파일에서 읽은 것만)."""
     out = [Basis("사업장명", project.company_name, "사업장 만들 때 입력", "site.company_name")]
+    for field_name, label, fact_id in (("operation_pattern", "운전 형태", "psm.operation_pattern"),
+                                       ("shift_pattern", "근무 형태", "psm.shift_pattern"),
+                                       ("employee_count", "근로자 수", "psm.employee_count"),
+                                       ("process_count", "공정 수", "psm.process_count")):
+        if field_name in site:
+            out.append(Basis(label, str(site[field_name]["value"]), where(site[field_name]), fact_id))
     if project.cap_group in {"1군", "2군"}:
         out.append(Basis("작성수준", project.cap_group, "사업장 판정", "legal.writing_level"))
     process = site.get("process_description")
@@ -95,20 +103,42 @@ def _general(project: Stage2Project, site: dict[str, dict[str, Any]]) -> list[Ba
     return out
 
 
-def _draft_record(project, key):
-    return project.get_field(drafting.ai_draft_field_key("CAP", key))
+def _draft_record(project, system, key):
+    return project.get_field(drafting.ai_draft_field_key(system, key))
 
 
-def items(project: Stage2Project) -> list[Item]:
-    """이 사업장(1군·2군)의 서술형 항목과 각각의 근거 사실."""
+def systems(project: Stage2Project) -> tuple[str, ...]:
+    """서술형 초안을 만들 문서(작성범위에 든 것)."""
+    return tuple(s for s, on in (("CAP", project.cap_in_scope), ("PSM", project.psm_in_scope)) if on)
+
+
+def _wanted_spec(project, spec, system) -> bool:
+    if spec.system != system:
+        return False
+    if system == "CAP":
+        return spec.section.startswith(SECTIONS)
+    from .psm_narrative_workspace import PSM_PROFILE
+    return spec.key in PSM_PROFILE.items(project)
+
+
+def _owns(fact, owner: str):
+    """이 결정사항 사실이 항목의 사실 키(owner)에 들어가면 그 칸 이름, 아니면 None."""
+    for key, column in [(fact.field_key, fact.column)] + list(fact.targets):
+        if key == owner and column:
+            return column
+    return None
+
+
+def items(project: Stage2Project, system: str = "CAP") -> list[Item]:
+    """이 사업장의 서술형 항목과 각각의 근거 사실(화학사고예방관리계획서는 1군·2군에 맞춰)."""
     site = _site_facts(project)
     general = _general(project, site)
     narrative = catalog.facts(kinds=["narrative"])
     out = []
     for spec in selected_requirement_specs(project):
-        if spec.system != "CAP" or not spec.section.startswith(SECTIONS):
+        if not _wanted_spec(project, spec, system):
             continue
-        item = Item(spec.key, spec.label, spec.section, spec.field_keys[0], spec.request_text or spec.description,
+        item = Item(system, spec.key, spec.label, spec.section, spec.field_keys[0], spec.request_text or spec.description,
                     general=general)
         for fact in narrative:
             if fact.field_key in spec.field_keys and not fact.column and fact.evidence_field in site:
@@ -117,14 +147,14 @@ def items(project: Stage2Project) -> list[Item]:
                 item.company_source = where(chosen)
         owner = drafting.typed_fact_owner(spec.key)
         for fact in narrative:
-            if fact.field_key != owner or not fact.column:
+            if not owner or _owns(fact, owner) is None:
                 continue
             chosen = site.get(fact.evidence_field)
             if chosen:
                 item.basis.append(Basis(fact.name, str(chosen["value"]).strip(), where(chosen), fact.id))
             else:
                 item.missing.append(fact.name)
-        record = _draft_record(project, spec.key)
+        record = _draft_record(project, system, spec.key)
         if record is not None and isinstance(record.value, dict) and str(record.value.get("draft_text") or "").strip():
             if record.status in ("AI_DRAFT", "USER_CONFIRMED"):
                 item.draft = str(record.value.get("draft_text") or "")
@@ -151,7 +181,8 @@ def rule_draft(item: Item) -> str:
     for label in item.missing:
         lines.append(f"- {label}: " + CHECK.format(label))
     if not item.basis and not item.missing:
-        lines.append(CHECK.format(f"{item.label}에 대한 회사 자료가 없습니다. 안전관리·비상대응계획 파일에 이 항목을 적어 올려 주세요"))
+        where_to = "안전관리·비상대응계획" if item.system == "CAP" else "공정안전 운영·비상조치 계획"
+        lines.append(CHECK.format(f"{item.label}에 대한 회사 자료가 없습니다. {where_to} 파일에 이 항목을 적어 올려 주세요"))
     return "\n".join(lines)
 
 
@@ -162,7 +193,7 @@ def _corpus(item: Item) -> str:
 
 def sanitize(text: str, item: Item) -> tuple[str, list[str]]:
     """근거에 없는 숫자·설비번호·CAS를 [확인 필요]로 바꾸고, 빠진 항목 표시를 보탭니다. (본문, 바꾼 것 목록)"""
-    text = drafting.drop_fabricated_claims(normalize_public_prose(text.strip(), "CAP"))
+    text = drafting.drop_fabricated_claims(normalize_public_prose(text.strip(), item.system))
     source = _corpus(item)
     spans = []          # (시작, 끝, 글자) — CAS·설비번호를 숫자보다 먼저 잡고, 겹치는 것은 한 번만
     for regex in (drafting._CAS_RE, drafting._TAG_RE, drafting._NUMBER_RE):
@@ -193,7 +224,7 @@ def ai_draft(item: Item, client) -> tuple[str, list[str]]:
     payload = {"item": item.label, "section": item.section, "writing_request": item.request,
                "facts": [{"항목": b.label, "값": b.value} for b in item.basis + item.general],
                "missing": item.missing}
-    instructions = drafting._system_prompt("CAP") + _EXTRA_INSTRUCTIONS
+    instructions = drafting._system_prompt(item.system) + _EXTRA_INSTRUCTIONS
     result = client.generate_json(instructions=instructions, prompt=json.dumps(payload, ensure_ascii=False))
     text = str((result or {}).get("draft_text") or "").strip()
     if not text:
@@ -203,11 +234,11 @@ def ai_draft(item: Item, client) -> tuple[str, list[str]]:
 
 def _store(project: Stage2Project, item: Item, text: str, model: str) -> None:
     draft = drafting.AIDraftItem(
-        system="CAP", requirement_key=item.key, section=item.section, label=item.label, draft_text=text,
+        system=item.system, requirement_key=item.key, section=item.section, label=item.label, draft_text=text,
         profile_summary="회사 파일에서 읽은 사실만으로 쓴 서술형 초안", suggested_additions=tuple(item.missing),
         used_fact_keys=tuple(b.fact_id for b in item.basis), legal_basis="", model=model)
     drafting.store_ai_draft(project, draft)
-    record = project.get_field(drafting.ai_draft_field_key("CAP", item.key))
+    record = project.get_field(drafting.ai_draft_field_key(item.system, item.key))
     value = dict(record.value)
     value["basis"] = [{"항목": b.label, "값": b.value, "출처": b.source} for b in item.basis]
     value["from_catalog_facts"] = True
@@ -215,11 +246,12 @@ def _store(project: Stage2Project, item: Item, text: str, model: str) -> None:
                       note="회사 파일에서 읽은 사실만 쓴 서술형 초안. 근거가 없는 부분은 [확인 필요]로 남김.")
 
 
-def generate(project: Stage2Project, client=None, keys: list[str] | None = None, *, refresh: bool = False) -> list[dict[str, Any]]:
+def generate(project: Stage2Project, client=None, keys: list[str] | None = None, *, refresh: bool = False,
+             system: str | None = None) -> list[dict[str, Any]]:
     """근거가 있는 항목의 초안을 만듭니다(회사 문서에서 읽은 항목은 건너뜀). AI가 실패하면 규칙 초안으로 대신합니다.
-    이미 초안이 있는 항목은 refresh=True이거나 keys로 고른 경우에만 다시 만듭니다."""
+    이미 초안이 있는 항목은 refresh=True이거나 keys로 고른 경우에만 다시 만듭니다. system이 없으면 작성범위의 모든 문서."""
     results = []
-    for item in items(project):
+    for item in [i for s in ((system,) if system else systems(project) or ("CAP",)) for i in items(project, s)]:
         if keys is not None and item.key not in keys:
             continue
         if item.state == FROM_FILE or not item.basis:
@@ -244,18 +276,22 @@ def generate(project: Stage2Project, client=None, keys: list[str] | None = None,
 def refresh_rule_drafts(project: Stage2Project) -> int:
     """초안이 없거나(새 근거) 파일을 새로 올려 보류된 항목만 규칙 초안으로 다시 씁니다. 만든 수를 돌려줍니다.
     파일을 올리면 프로그램이 서식을 채우듯, 서술형도 근거 사실이 있으면 바로 초안이 생기게 합니다(AI 다듬기는 따로)."""
-    wanted = [item.key for item in items(project) if item.state == CAN_DRAFT]
-    return len(generate(project, None, keys=wanted)) if wanted else 0
+    made = 0
+    for system in systems(project):
+        wanted = [item.key for item in items(project, system) if item.state == CAN_DRAFT]
+        if wanted:
+            made += len(generate(project, None, keys=wanted, system=system))
+    return made
 
 
 def check_count(text: str) -> int:
     return len(re.findall(r"\[확인 필요", text or ""))
 
 
-def rows(project: Stage2Project, group: str = "") -> list[dict[str, Any]]:
+def rows(project: Stage2Project, system: str = "CAP") -> list[dict[str, Any]]:
     """화면 표: 항목·상태·근거·확인 필요 수."""
     out = []
-    for item in items(project):
+    for item in items(project, system):
         if item.state == FROM_FILE:
             basis = item.company_source
         else:

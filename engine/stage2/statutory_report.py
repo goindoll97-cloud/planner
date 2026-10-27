@@ -524,8 +524,8 @@ def _add_narrative_requirement(doc: Document, spec, project: Stage2Project, *, a
             values.append((rec.label or key, rec.value))
         elif rec.status == "HOLD" and rec.value not in (None, "", [], {}):
             values.append((rec.label or key, "[담당자 확인 필요]"))
-    if not values and getattr(spec, "system", "") == "CAP":
-        draft = _cap_ai_draft_text(project, spec.key)
+    if not values and getattr(spec, "system", "") in ("CAP", "PSM"):
+        draft = _file_fact_draft_text(project, spec.system, spec.key)
         if draft:
             # 화학사고예방관리계획서는 결과물이 늘 초안이므로, 회사 사실로 만든 서술형 초안을 표시와 함께 넣습니다.
             note = doc.add_paragraph()
@@ -547,9 +547,13 @@ def _add_narrative_requirement(doc: Document, spec, project: Stage2Project, *, a
             doc.add_paragraph(str(value))
 
 
-def _cap_ai_draft_text(project: Stage2Project, requirement_key: str) -> str:
-    record = project.get_field(f"ai_draft.cap.{requirement_key}")
+def _file_fact_draft_text(project: Stage2Project, system: str, requirement_key: str) -> str:
+    """회사 파일 사실로 만든 서술형 초안(결과물은 늘 초안이라 ‘AI 초안’ 표시와 함께 넣습니다).
+    공정안전보고서는 예전 방식의 확인 전 AI 초안은 넣지 않고, 파일 사실로 만든 초안만 넣습니다."""
+    record = project.get_field(f"ai_draft.{system.lower()}.{requirement_key}")
     if record is None or record.status not in ("AI_DRAFT", "USER_CONFIRMED") or not isinstance(record.value, Mapping):
+        return ""
+    if system == "PSM" and not record.value.get("from_catalog_facts"):
         return ""
     return str(record.value.get("draft_text") or "").strip()
 
