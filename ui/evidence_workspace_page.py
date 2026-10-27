@@ -15,7 +15,7 @@ from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import demo_company, evidence_llm, scenario_triage, scenario_workup, cap_intake_guide
+from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
@@ -330,23 +330,30 @@ def _step_upload(project, found) -> None:
     with st.expander("어떤 자료를 올리면 되나요?"):
         group = project.cap_group if project.cap_group in {"1군", "2군"} else ""
         st.info(cap_intake_guide.conditional_notice(group))
-        st.caption("회사에 그대로 전달할 자료 요청 목록입니다. 작성수준을 아직 확인하지 않았다면 1·2군 후보 항목을 함께 보여 줍니다. "
-                   "업로드만으로 서식이 완성되지는 않으며, 읽지 못한 자료는 보완 요청에 남습니다.")
-        cols = st.columns(3)
-        cols[0].download_button("전체 준비자료 목록 TXT", cap_intake_guide.guidance_text(group),
-                                file_name="화학사고예방관리계획서_회사자료_요청목록.txt", mime="text/plain", key="cap_request_txt")
-        cols[1].download_button("전체 준비자료 목록 한글(HWPX)", cap_intake_guide.guidance_hwpx(group),
-                                file_name="화학사고예방관리계획서_회사자료_요청목록.hwpx",
-                                mime="application/hwp+zip", key="cap_request_hwpx")
-        cols[2].download_button("전체 준비자료 목록 한글(HWP)", cap_intake_guide.guidance_hwp(group),
+        st.caption("작성수준 판정 전에는 두 군의 자료를 함께 준비하세요. 목록은 작성요건에 맞춘 자료 요청용이며, "
+                   "업로드만으로 서식이 완성되지는 않습니다.")
+        cols = st.columns(2)
+        cols[0].download_button("전체 준비자료 목록 한글(HWP)", cap_intake_guide.guidance_hwp(),
                                 file_name="화학사고예방관리계획서_회사자료_요청목록.hwp",
                                 mime="application/octet-stream", key="cap_request_hwp")
+        try:
+            pdf_content = cap_intake_guide.guidance_pdf()
+        except RuntimeError as exc:
+            st.warning(f"PDF를 만들지 못했습니다: {exc}")
+        else:
+            cols[1].download_button("전체 준비자료 목록 PDF", pdf_content,
+                                    file_name="화학사고예방관리계획서_회사자료_요청목록.pdf",
+                                    mime="application/pdf", key="cap_request_pdf")
         st.markdown("**우선 모을 파일**: 설비목록·설비대장(설비번호·공장·용량·최대보유량), 물질목록·제품별 SDS(CAS·함량), "
                     "운전조건표·설비사양서(압력·온도·단위), 공정설명서, 안전설비·비상대응 자료, 주변현황·평가 근거.")
-        rows = cap_intake_guide.checklist(group)
-        st.dataframe([{"구역": r["section"], "필요한 내용": r["label"],
-                       "준비할 자료 예시": " / ".join(r["evidence"]) or r["details"],
-                       "작성수준": "·".join(r["levels"])} for r in rows], hide_index=True, width="stretch")
+        for label, rows in cap_intake_guide.grouped_checklist():
+            st.markdown(f"#### {label}")
+            if not rows:
+                st.caption("현재 작성요건 목록에는 이 군에만 해당하는 별도 항목이 없습니다.")
+                continue
+            st.dataframe([{"구역": cap_intake_guide.form_zone(r), "필요한 내용": r["label"],
+                           "준비할 자료 예시": " / ".join(r["evidence"]) or r["details"]}
+                          for r in rows], hide_index=True, width="stretch")
         st.caption("HWP 5.0과 HWPX는 읽을 수 있습니다. 암호화·구형 HWP가 열리지 않으면 한글에서 HWPX로 저장하세요. "
                    "사진으로 스캔된 PDF는 문자 인식과 원본 확인이 필요합니다.")
     uploaded = st.file_uploader("파일 선택 (여러 개 가능, 파일당 20MB 이하)",
@@ -404,36 +411,11 @@ def _step_upload(project, found) -> None:
         _next_button(2, pid, "다음: 파일별 보완 요청 →")
     st.divider()
     st.markdown("**연습용 가상 회사 자료**")
-    cols = st.columns(3)
-    cols[0].download_button("작은 자료 (파일 4개)", ew.demo_zip(), file_name="synthetic_company_evidence.zip",
-                            mime="application/zip", key="demo_small")
-    cols[0].caption("처음 써 볼 때. 설비 4대, 제품 2개, 일부러 넣은 문제 2개.")
-    cols[1].download_button("실제와 비슷한 큰 자료 (파일 7개)", demo_company.large_demo_zip(),
-                            file_name="synthetic_company_evidence_large.zip", mime="application/zip", key="demo_large")
-    cols[1].caption("설비 40대, 제품 26개. 여러 시트·숨김 시트·병합 칸·단위가 다른 시트·옛 자료·한글 사양서·스캔본과 "
-                    "일부러 넣은 문제 30가지. 정답표(answer_key.json)가 들어 있어요.")
-    from engine.stage2 import demo_full_company
-
-    with cols[2]:
-        real_address = st.text_input("실제 주소로 해 보기 (선택)", key="demo_full_address",
-                                     placeholder="예: 도로명주소",
-                                     help="넣으면 이 가상 회사가 그 주소에 있다고 보고 자료를 만들어요. 별지 제8호 주변 보호대상은 "
-                                          "지어낸 목록 대신 그 주소로 지도 조회를 해서 채워요(브이월드 키 필요). 회사·설비 값은 그대로 허구예요.")
-        complex_name = st.text_input("그 주소의 산업단지 (선택)", key="demo_full_complex", placeholder="없으면 비워 두세요 → 해당 없음",
-                                     disabled=not real_address.strip())
-        package = demo_full_company.full_demo_zip(real_address, complex_name if real_address.strip() else "")
-        count = len(demo_full_company.files(real_address, complex_name if real_address.strip() else ""))
-        st.download_button(f"계획서 끝까지 연습 자료 (파일 {count}개)", package,
-                           file_name="synthetic_company_full_plan.zip", mime="application/zip", key="demo_full")
-        st.caption("제품 3개·설비 4대의 가상 회사. 회사 근거자료와 정답표가 들어 있습니다. "
-                   "현재 자동 추출 범위는 일부 공통정보뿐입니다. 파일별 보완 요청과 서식 미연결 항목을 확인하세요."
-                   + (" 주소를 넣었으니 별지 제8호는 실제 지도 조회로 채워요." if real_address.strip() else ""))
-    with st.expander("회사 자료처럼 복잡한 파일로 별도 시험하기"):
-        st.caption("두 공장의 같은 설비번호, 한 제품의 여러 CAS 성분, 구버전·개정 자료의 충돌을 넣었어요. "
-                   "위 계획서 작성용 자료와 섞지 말고 새 연습 사업장에 올리세요. 정답표와 비교해 누락·합침을 확인합니다.")
-        st.download_button("현장형 예외 자료와 정답표 받기", demo_full_company.stress_demo_zip(),
-                           file_name="synthetic_company_stress_audit.zip", mime="application/zip", key="stress_audit")
-    _local_llm(project)
+    st.download_button("실제와 비슷한 큰 가상자료 받기", demo_company.combined_demo_zip(),
+                       file_name="synthetic_company_evidence_large_combined.zip", mime="application/zip", key="demo_combined")
+    st.caption("제품·설비 목록과 운전조건, HWPX 사양서, 스캔본, 두 공장의 중복 설비번호, 혼합물 성분, "
+               "구버전·개정 자료의 충돌을 한 묶음에 넣었습니다. ZIP의 01~12번 회사자료를 한 번에 올리고 "
+               "README와 answer_key.json으로 오류·누락을 확인하세요. 실제 주소·주변시설 자료는 포함하지 않았습니다.")
 
 
 def _reading_report(project, doc, facts, names, reasons) -> None:
@@ -503,25 +485,6 @@ def _remap_columns(project, picked) -> None:
     if missing:
         note += " 원본이 없어 다시 읽지 못한 파일: " + ", ".join(missing) + " (같은 파일을 다시 올려 주세요)"
     _save(project, note)
-
-
-def _local_llm(project) -> None:
-    with st.expander("고급: 서술형 문서에서 AI로 값 찾기 (선택)"):
-        readable = {d["sha256"]: d for d in ew.documents(project) if d.get("hint") and any(p.get("text", "").strip() for p in d.get("passages", []))}
-        st.caption("내 컴퓨터에서 돌아가는 AI만 써요. 문서를 밖으로 보내지 않아요. AI가 찾은 값은 원문과 맞는지 검사하고, "
-                   "그래도 사람이 하나씩 확인하기 전에는 쓰지 않아요.")
-        if not readable:
-            st.info("번호가 없는 문서 칸에 설비번호·제품코드를 적고 PDF·워드·한글·TXT 문서를 먼저 올려 주세요.")
-            return
-        doc_id = st.selectbox("읽을 문서", list(readable), format_func=lambda k: readable[k]["name"])
-        if st.button("AI로 값 찾기"):
-            try:
-                from engine.stage2.local_llm import build_local_llm_client, local_llm_config_from_sources
-                outcome = evidence_llm.propose(project, doc_id, build_local_llm_client(local_llm_config_from_sources()))
-                save_project(project)
-                st.success(f"원문과 맞는 값 {outcome['accepted']}개를 찾았어요 (맞지 않아 버린 값 {outcome['rejected']}개). 파일별 보완 요청에서 확인해 주세요.")
-            except Exception as exc:
-                st.error(f"AI 연결에 실패했어요: {exc}")
 
 
 # ---------------------------------------------------------------- ② 파일별 보완 요청

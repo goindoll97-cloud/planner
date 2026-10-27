@@ -402,3 +402,31 @@ def large_demo_zip():   # 화면이 다시 그려질 때마다 파일 7개를 �
         archive.writestr("README.txt", README.encode("utf-8"))
         archive.writestr("answer_key.json", json.dumps(answer_key(), ensure_ascii=False, indent=2).encode("utf-8"))
     return out.getvalue()
+
+
+@lru_cache(maxsize=1)
+def combined_demo_zip():
+    """화면에서 제공하는 하나의 큰 자료 묶음: 기본 7개 + 현장 예외 5개."""
+    from . import demo_full_company
+    normal = files()
+    stress = demo_full_company.stress_files()
+    out = BytesIO()
+    with ZipFile(out, "w", ZIP_DEFLATED) as archive:
+        for name, content in normal.items():
+            archive.writestr(name, content)
+        for name, content in stress.items():
+            prefix, rest = name.split("_", 1)
+            archive.writestr(f"{int(prefix) + 7:02d}_{rest}", content)
+        archive.writestr("README.txt", (README + "\n[추가 현장 예외 자료: 08~12]\n"
+            "08~12도 위 회사의 다른 공장·제품에 관한 가상 자료입니다. 01~12를 한 번에 올려 보고 파일별 보완 요청을 확인하세요.\n"
+            "08: A·B 공장에 같은 T-01 번호가 존재합니다. 프로그램이 합치면 결함입니다.\n"
+            "09: MIX-01은 두 CAS 성분으로 구성되어 있습니다. 하나만 남으면 결함입니다.\n"
+            "10·11: T-02 사양의 구버전과 개정본이 충돌합니다. 날짜만으로 자동 확정하지 마세요.\n"
+            "12: T-02 운전기록입니다. 본문에 번호가 있어도 자동 연결 여부를 확인하세요.\n"
+            "answer_key.json은 업로드하지 말고 검토용으로 사용하세요. 회사·운전값은 모두 허구입니다.\n"
+        ).encode("utf-8"))
+        archive.writestr("answer_key.json", json.dumps({"company": COMPANY,
+            "large_company": answer_key(), "additional_cases": demo_full_company.STRESS_TRUTH,
+            "note": "08~12는 같은 가상 회사의 별도 공장·성분·개정 사례로 추가했습니다. 정답표는 업로드하지 마세요."},
+            ensure_ascii=False, indent=2).encode("utf-8"))
+    return out.getvalue()

@@ -5,6 +5,7 @@ requests==2.32.5
 pdfplumber==0.11.9
 python-docx==1.1.2
 python-hwpx==6.9.0
+reportlab==4.4.9
 shapely==2.1.2
 pyproj==3.7.2
 folium==0.20.0
