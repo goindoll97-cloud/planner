@@ -20,7 +20,8 @@ import re
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 from xml.etree import ElementTree
 
-from .project import Stage2Project
+from . import cap_fact_catalog as catalog
+from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 KEY = "workspace.evidence_graph"
 LABELS = {"name": "명칭", "product": "취급제품", "cas": "CAS 번호", "capacity": "용량(m³)",
@@ -51,6 +52,28 @@ ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비�
            "밀도ton/m3": "density", "비중또는밀도": "density", "비중또는밀도kg/l=ton/m3": "density",
            "공정유형": "process_type", "공정구분": "process_type"}
 ID_HEADERS = {"설비번호", "시설번호", "설비id", "제품코드", "물질코드", "설비코드", "장치번호", "tagno", "tag번호"}
+
+# ---------------------------------------------------------------- 사실 카탈로그에서 더한 항목
+# 위 기본 항목(설비·물질의 법적 계산값) 밖의 회사 사실 — 사업장 일반정보, 공정 설명, 설계온도·연결구, SDS 물성·유해성,
+# 확산방지설비·가스감지기 명세 — 은 data/stage2/cap_fact_catalog.json의 머리글 표기로 알아보고 적힌 글자 그대로 둡니다.
+# 단위·형식 확인은 그 값을 쓰는 서식 계산 엔진이 다시 합니다.
+CORE_FIELDS = frozenset(LABELS)
+for _field, _label in catalog.evidence_labels().items():
+    LABELS.setdefault(_field, _label)
+TEXT_FIELDS = frozenset(LABELS) - CORE_FIELDS
+TEXT_OPTIONS = {f.evidence_field: f.options for f in catalog.all_facts()
+                if f.evidence_field in TEXT_FIELDS and f.format == "choice" and f.options}
+CATALOG_HEADERS = {kind: catalog.header_map(kind) for kind in ("facility", "material", "detector", "site")}
+DETECTOR_ID_HEADERS = frozenset(catalog.identifier_headers("detector"))
+ID_HEADERS |= set(catalog.identifier_headers("facility")) | set(catalog.identifier_headers("material"))
+ENTITY_ID_HEADERS = frozenset(ID_HEADERS)            # 설비·물질 표의 번호 열
+ID_HEADERS |= DETECTOR_ID_HEADERS
+IGNORED_HEADERS = catalog.ignored_headers()
+SITE_ENTITY = "site:사업장"
+KINDS = ("facility", "material", "site", "detector")
+LABEL_CONFIDENCE = 0.95      # 사업장 자료의 ‘항목: 값’ 문장(사업장은 하나뿐이라 대상이 모호하지 않음)
+# 사람 확인 없이 쓸 수 있는 읽기 방식: 표의 칸(table), 사업장 자료의 항목·값(label). 지정 번호 문서의 문장(literal)과 AI 추출은 제외.
+READ_METHODS = frozenset({"table", "label"})
 
 NUMERIC_FIELDS = {"capacity", "pressure", "design_pressure", "temperature", "inventory", "concentration", "density"}
 BOUNDS = {"capacity": (0, 1e6), "pressure": (0, 100), "design_pressure": (0, 100),
@@ -149,8 +172,19 @@ def cas_valid(text):
     return sum(int(n) * (i + 1) for i, n in enumerate(digits[-2::-1])) % 10 == int(digits[-1])
 
 
+def _text_value(field, text):
+    """카탈로그 항목은 적힌 그대로 둡니다. 선택지가 있으면 띄어쓰기·기호만 다른 표기를 선택지로 맞춥니다."""
+    squeezed = norm(text)
+    for option in TEXT_OPTIONS.get(field, ()):
+        if squeezed == norm(option):
+            return option
+    return text
+
+
 def normalize_value(field, raw, header):
     text = str(raw).strip()
+    if field in TEXT_FIELDS:
+        return _text_value(field, text)
     if field in CHOICES:
         squeezed = re.sub(r"\s+", "", text)
         for option in CHOICES[field]:
@@ -179,7 +213,7 @@ def normalize_value(field, raw, header):
 
 def value_problem(field, value):
     """승인할 수 없는 값이면 이유를, 괜찮으면 None을 돌려줍니다."""
-    if field in {"name", "product"}:
+    if field in {"name", "product"} or field in TEXT_FIELDS:
         return None if str(value).strip() else "빈 값"
     if field in CHOICES:
         return None if value in CHOICES[field] else "허용 값: " + ", ".join(CHOICES[field])
@@ -385,7 +419,8 @@ def read_document(name, content):
 
 def _is_known_header(cell):
     key = norm(cell or "")
-    return key in ALIASES or key in ID_HEADERS
+    return (key in ALIASES or key in ID_HEADERS or key in CATALOG_HEADERS["facility"]
+            or key in CATALOG_HEADERS["material"] or key in CATALOG_HEADERS["detector"])
 
 
 def find_header_row(rows):
@@ -398,7 +433,11 @@ def find_header_row(rows):
     return best
 
 
-FACILITY_ID_HEADERS = {"설비번호", "시설번호", "설비id", "설비코드", "장치번호", "tagno", "tag번호"}
+def _header_score(row):
+    return sum(1 for cell in row if _is_known_header(cell))
+
+
+FACILITY_ID_HEADERS = {"설비번호", "시설번호", "설비id", "설비코드", "장치번호", "tagno", "tag번호"} | set(catalog.identifier_headers("facility"))
 MATERIAL_ID_HEADERS = {"제품코드", "물질코드"}
 # 단위 표기가 붙어도 인정하도록 접두어로 비교합니다 (예: 용량(m3) → 용량m3).
 FACILITY_HINTS = ("설비명", "시설명", "용량", "최대보유량", "운전압력", "운전온도", "설계압력", "시설유형", "설비유형", "공정유형")
@@ -407,7 +446,8 @@ MATERIAL_HINTS = ("cas", "제품명", "물질명", "함량", "성상", "비중",
 
 def _classify_table(headings):
     """표 하나의 종류. 식별자 열이 한쪽에만 있으면 그쪽으로 정합니다.
-    설비대장에 물질명·CAS 열이 함께 있는 것은 흔하므로 항목명은 보조 근거로만 씁니다."""
+    설비대장에 물질명·CAS 열이 함께 있는 것은 흔하므로 항목명은 보조 근거로만 씁니다.
+    감지기 번호 열만 있는 표는 가스감지기 명세입니다."""
     facility_id, material_id = headings & FACILITY_ID_HEADERS, headings & MATERIAL_ID_HEADERS
     if facility_id and material_id:
         return "both"          # 설비-제품 대응표처럼 두 대상을 잇는 표: 사람에게 묻습니다
@@ -415,6 +455,8 @@ def _classify_table(headings):
         return "facility"
     if material_id:
         return "material"
+    if headings & DETECTOR_ID_HEADERS:
+        return "detector"
     facility = sum(any(h.startswith(p) for p in FACILITY_HINTS) for h in headings)
     material = sum(any(h.startswith(p) for p in MATERIAL_HINTS) for h in headings)
     if facility >= 2 and facility >= 2 * material:
@@ -424,30 +466,113 @@ def _classify_table(headings):
     return None
 
 
+def _compact_cells(row):
+    """(열 번호, 글자). 병합 셀처럼 바로 옆에 같은 글자가 반복되면 한 번만 둡니다."""
+    out = []
+    for column, cell in enumerate(row):
+        text = str(cell or "").strip()
+        if out and out[-1][1] == text:
+            continue
+        out.append((column, text))
+    return out
+
+
+def site_pairs(rows):
+    """사업장 일반정보·공정 설명처럼 ‘항목 | 값’으로 적은 표에서 (행, 열, 항목 표기, 값)을 고릅니다.
+
+    사실 카탈로그의 사업장 항목 이름과 같은 칸만 항목으로 봅니다. 한 줄에 항목·값이 여러 쌍 있어도 읽고,
+    항목 이름이 한 줄에 모이고 그 아래 줄에 값이 있는 가로 표도 읽습니다."""
+    site = CATALOG_HEADERS["site"]
+    pairs = []
+    for r, row in enumerate(rows):
+        cells = _compact_cells(row)
+        i = 0
+        while i < len(cells) - 1:
+            column, text = cells[i]
+            next_column, value = cells[i + 1]
+            if norm(text) in site and value and norm(value) not in site:
+                pairs.append((r, next_column, text, value))
+                i += 2
+                continue
+            i += 1
+    if pairs:
+        return pairs
+    for r, row in enumerate(rows[:HEADER_SCAN_ROWS]):
+        labels = [(c, str(cell).strip()) for c, cell in enumerate(row) if norm(cell or "") in site]
+        if len(labels) >= 2 and r + 1 < len(rows):
+            below = rows[r + 1]
+            return [(r + 1, c, text, str(below[c]).strip()) for c, text in labels
+                    if c < len(below) and str(below[c] or "").strip()]
+    return []
+
+
+def _is_site_table(rows, pairs):
+    fields = {CATALOG_HEADERS["site"][norm(label)] for _, _, label, _ in pairs}
+    if len(fields) >= 2:
+        return True
+    return len(fields) == 1 and len(rows) <= 2        # 공정개요 한 칸만 적은 작은 표
+
+
+def _site_lines(passages):
+    """문서 문장 중 ‘대표자: 홍길동’처럼 사업장 항목 이름으로 시작하는 줄."""
+    site = CATALOG_HEADERS["site"]
+    lines = []
+    for passage in passages:
+        for line in passage.get("text", "").splitlines():
+            parts = re.split(r"[:：]", line, maxsplit=1)
+            if len(parts) == 2 and norm(parts[0]) in site and parts[1].strip():
+                lines.append((passage["location"], parts[0].strip(), parts[1].strip()))
+    return lines
+
+
+def _table_kinds(tables):
+    """표마다 종류(facility·material·detector·site·both) 또는 None(머리글은 있으나 모름). 머리글이 없는 표는 빼고 셉니다."""
+    kinds = []
+    for table in tables:
+        pairs = site_pairs(table.rows)
+        at = find_header_row(table.rows)
+        if pairs and _is_site_table(table.rows, pairs) and (at is None or len(pairs) >= _header_score(table.rows[at])):
+            kinds.append("site")
+            continue
+        if at is None:
+            continue
+        kinds.append(_classify_table({norm(cell) for cell in table.rows[at] if str(cell).strip()}))
+    return kinds
+
+
 _CLASSIFY_CACHE: OrderedDict = OrderedDict()   # (내용 해시, 확장자) → 종류 또는 None
 CLASSIFY_CACHE_LIMIT = 256
+
+
+def _document_kind(tables, passages):
+    kinds = _table_kinds(tables)
+    if "both" in kinds or None in kinds:
+        return None
+    core = set(kinds) - {"site", "detector"}
+    if len(core) == 1:
+        return core.pop()
+    if len(core) > 1:
+        return "mixed"          # 시트마다 종류가 분명한 묶음 파일(업로드 양식 등): 표마다 따로 읽습니다
+    if set(kinds) == {"detector"}:
+        return "detector"
+    if "site" in kinds or len({norm(label) for _, label, _ in _site_lines(passages)}) >= 2:
+        return "site" if "detector" not in kinds else "mixed"
+    return None
 
 
 def classify_document(name, content):
     """식별자와 항목명이 가리키는 자료 종류를 결정합니다. 모호하면 확인을 요청합니다.
 
-    화면은 다시 그려질 때마다 이 함수를 부르므로, 파일 내용 해시(+확장자)로 결과를 보관해
-    같은 파일을 다시 읽지 않습니다. 판별 실패도 보관합니다."""
+    종류: facility(설비)·material(물질)·site(사업장 일반정보·공정 설명)·detector(가스감지기)·
+    mixed(시트마다 종류가 분명한 묶음 파일). 화면은 다시 그려질 때마다 이 함수를 부르므로,
+    파일 내용 해시(+확장자)로 결과를 보관해 같은 파일을 다시 읽지 않습니다. 판별 실패도 보관합니다."""
     key = (sha256(content).hexdigest(), str(name).rsplit(".", 1)[-1].lower())
     if key in _CLASSIFY_CACHE:
         _CLASSIFY_CACHE.move_to_end(key)
         kind = _CLASSIFY_CACHE[key]
     else:
-        tables, _ = read_document(name, content)
-        kinds = set()
-        for table in tables:
-            at = find_header_row(table.rows)
-            if at is None:
-                continue
-            found = _classify_table({norm(cell) for cell in table.rows[at] if str(cell).strip()})
-            if found:
-                kinds.add(found)
-        kind = kinds.pop() if len(kinds) == 1 and "both" not in kinds else None
+        tables, passages = read_document(name, content)
+        kind = _document_kind(tables, passages)
         _CLASSIFY_CACHE[key] = kind
         if len(_CLASSIFY_CACHE) > CLASSIFY_CACHE_LIMIT:
             _CLASSIFY_CACHE.popitem(last=False)
@@ -493,7 +618,7 @@ def _reapply(data):
     rules = _rules(data)
     changed = 0
     for fact in data["facts"]:
-        if fact.get("method") not in {"table", "literal"}:
+        if fact.get("method") not in {"table", "literal", "label"}:
             continue
         value, used = _normalize(fact["field"], fact["raw"], fact["header"], rules, fact["sha256"])
         flags = [f for f in fact.get("flags", []) if f != "rule"] + (["rule"] if used else [])
@@ -503,13 +628,53 @@ def _reapply(data):
     return changed
 
 
-def _field_of(header, rules):
+def _field_of(header, rules, kind="facility"):
+    """머리글 → 읽을 항목. 설비·물질 표는 기본 항목(ALIASES)을 먼저, 그다음 사실 카탈로그 표기를 봅니다."""
     key = norm(header)
-    return ALIASES.get(key) or rules["columns"].get(key)
+    if kind in ("facility", "material"):
+        return ALIASES.get(key) or CATALOG_HEADERS[kind].get(key) or rules["columns"].get(key)
+    return CATALOG_HEADERS.get(kind, {}).get(key)
+
+
+def _table_kind(kind, own):
+    """파일 종류(사람이 고르거나 자동 판별)와 표 자체의 종류로 이 표를 어떤 대상으로 읽을지 정합니다.
+    감지기 표는 언제나 감지기로, 묶음 파일(mixed)과 사업장 파일은 표 자체의 종류를 따릅니다."""
+    if own == "detector":
+        return "detector"
+    if kind in ("facility", "material"):
+        return kind
+    return own if own in ("facility", "material") else None
+
+
+def _link_materials(data):
+    """제품코드 없이 이름으로 읽은 물질 줄(SDS 물성표 등)을, CAS 번호가 같은 제품코드 물질 하나에 이어 붙입니다.
+    같은 CAS를 가진 제품이 둘 이상이면(혼합물 등) 추측하지 않고 그대로 둡니다. 이어 붙인 수를 돌려줍니다."""
+    coded, named = {}, {}
+    for fact in data["facts"]:
+        if fact.get("kind") != "material" or fact["field"] != "cas" or value_problem("cas", fact["value"]):
+            continue
+        cas = str(fact["value"]).strip()
+        if "by_name" in fact.get("flags", []):
+            named.setdefault(fact["entity"], set()).add(cas)
+        else:
+            coded.setdefault(cas, set()).add(fact["entity"])
+    moves = {}
+    for entity, numbers in named.items():
+        if len(numbers) != 1:
+            continue
+        targets = coded.get(next(iter(numbers)), set()) - {entity}
+        if len(targets) == 1:
+            moves[entity] = next(iter(targets))
+    for fact in data["facts"]:
+        if fact["entity"] in moves and "by_name" in fact.get("flags", []):
+            fact["entity"] = moves[fact["entity"]]
+            fact["flags"] = [f for f in fact["flags"] if f != "by_name"] + ["cas_link"]
+            fact["confidence"] = max(fact.get("confidence", 0), STRICT_CONFIDENCE)
+    return len(moves)
 
 
 def ingest(project, name, content, kind="facility", entity_hint=""):
-    if kind not in {"facility", "material"}:
+    if kind not in {"facility", "material", "site", "detector", "mixed"}:
         raise ValueError("자료 종류를 확인하세요.")
     data = graph(project)
     rules = _rules(data)
@@ -519,17 +684,26 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
         return 0
     tables, passages = read_document(name, content)
     added, unmapped, table_info, skipped_total = [], [], [], 0
+    seen_unmapped = set()
 
-    def add(entity, field, raw, location, header, *, method="table", confidence=0.78, flags=()):
+    def add(entity_kind, entity, field, raw, location, header, *, method="table", confidence=0.78, flags=()):
         if "merged" in flags or "formula" in flags:
             confidence = min(confidence, RELAXED_CONFIDENCE)
-        identifier = sha256(json.dumps([digest, kind, entity, field, location, str(raw)], ensure_ascii=False).encode()).hexdigest()[:24]
+        identifier = sha256(json.dumps([digest, entity_kind, entity, field, location, str(raw)], ensure_ascii=False).encode()).hexdigest()[:24]
         value, used = _normalize(field, raw, header, rules, digest)
-        added.append({"id": identifier, "entity": kind + ":" + str(entity).strip(), "kind": kind, "field": field,
+        added.append({"id": identifier, "entity": entity_kind + ":" + str(entity).strip(), "kind": entity_kind, "field": field,
                       "value": value, "raw": str(raw), "header": str(header),
                       "document": name, "sha256": digest, "location": location, "method": method,
                       "confidence": confidence, "flags": list(flags) + (["rule"] if used else [])})
 
+    def unknown(header, *, everything=False):
+        """읽지 못한 열을 알립니다. 표를 읽었으면 비고·연번 같은 일반 열은 빼고, 표를 통째로 못 읽었으면 모두 알립니다."""
+        key = norm(header)
+        if header and (everything or key not in IGNORED_HEADERS) and key not in seen_unmapped:
+            seen_unmapped.add(key)
+            unmapped.append(header)
+
+    site_found = False
     for table in tables:
         rows = table.rows
         if not rows:
@@ -537,15 +711,36 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
         if len(rows) > MAX_ROWS:
             raise ValueError("한 표에 10,000행 이하로 나눠 주세요.")
         header_at = find_header_row(rows)
+        pairs = site_pairs(rows)
+        if pairs and _is_site_table(rows, pairs) and (header_at is None or len(pairs) >= _header_score(rows[header_at])):
+            site_found = True
+            for r, c, label, value in pairs:
+                add("site", SITE_ENTITY.split(":", 1)[1], CATALOG_HEADERS["site"][norm(label)], value,
+                    f"{table.location} 행 {r + 1} 열 {c + 1}", label, method="label", confidence=STRICT_CONFIDENCE)
+            table_info.append({"location": table.location, "header_row": None, "rows": len(rows), "kind": "site",
+                               "columns": [{"header": label, "field": CATALOG_HEADERS["site"][norm(label)]} for _, _, label, _ in pairs],
+                               "skipped": [], "skipped_count": 0})
+            continue
         if header_at is None:
-            unmapped.extend(str(h).strip() for h in rows[0] if str(h or "").strip())
+            for h in rows[0]:
+                unknown(str(h or "").strip(), everything=True)
             table_info.append({"location": table.location, "header_row": None, "rows": len(rows), "columns": [],
                                "skipped": [], "skipped_count": 0,
                                "problem": f"앞 {HEADER_SCAN_ROWS}줄에서 설비번호·용량·CAS 같은 항목 이름이 있는 줄을 찾지 못함"})
             continue
         headers = [str(h or "").strip() for h in rows[header_at]]
-        fields = [_field_of(h, rules) for h in headers]
-        id_col = next((i for i, h in enumerate(headers) if norm(h) in ID_HEADERS), None)
+        own = _classify_table({norm(h) for h in headers if h})
+        table_kind = _table_kind(kind, own)
+        if table_kind is None:
+            for h in headers:
+                unknown(h, everything=True)
+            table_info.append({"location": table.location, "header_row": header_at + 1, "rows": len(rows) - header_at - 1,
+                               "columns": [], "skipped": [], "skipped_count": 0,
+                               "problem": "설비번호·제품코드·감지기 번호처럼 대상을 가리키는 열을 찾지 못함"})
+            continue
+        fields = [_field_of(h, rules, table_kind) for h in headers]
+        id_headers = DETECTOR_ID_HEADERS if table_kind == "detector" else ENTITY_ID_HEADERS
+        id_col = next((i for i, h in enumerate(headers) if norm(h) in id_headers), None)
         columns = [{"header": h, "field": "id" if i == id_col else f} for i, (h, f) in enumerate(zip(headers, fields)) if h]
         skipped = []
         for r in range(header_at + 1, len(rows)):
@@ -554,10 +749,12 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
                 continue
             id_value = str(row[id_col] or "").strip() if id_col is not None and id_col < len(row) else ""
             # 지정한 번호는 번호 열이 없는 표(사양서 등)에만 씁니다.
-            hinted = not id_value and id_col is None and bool(entity_hint)
+            hinted = not id_value and id_col is None and bool(entity_hint) and table_kind != "detector"
             entity = id_value or (entity_hint if hinted else "")
+            by_name = False
             if not entity and id_col is None:
                 entity = next((str(row[i]).strip() for i, f in enumerate(fields) if f == "name" and i < len(row) and row[i]), "")
+                by_name = bool(entity)
             if not entity:
                 # 번호 열이 있는 표에서 번호가 빈 줄(합계·메모·번호를 안 적은 설비 등)은 추측하지 않고 건너뛰고 알려 줍니다.
                 text = next((str(c).strip() for c in row if str(c or "").strip()), "")
@@ -568,28 +765,37 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
             id_flags = ("merged",) if id_value and table.flags.get((r, id_col)) == "merged" else ()
             if hinted:
                 id_flags += ("hint",)
+            if by_name:
+                id_flags += ("by_name",)
             for i, field in enumerate(fields):
                 if i >= len(row) or row[i] is None or not str(row[i]).strip():
                     continue
                 if field:
                     flag = table.flags.get((r, i))
                     cell_flags = tuple(f for f in (flag,) if f) + id_flags
-                    add(entity, field, row[i], f"{table.location} 행 {r + 1} 열 {i + 1}", headers[i],
+                    add(table_kind, entity, field, row[i], f"{table.location} 행 {r + 1} 열 {i + 1}", headers[i],
                         confidence=base, flags=cell_flags)
                 elif headers[i] and i != id_col:
-                    unmapped.append(headers[i])
+                    unknown(headers[i])
         skipped_total += len(skipped)
         table_info.append({"location": table.location, "header_row": header_at + 1, "rows": len(rows) - header_at - 1,
-                           "columns": columns, "skipped": skipped[:50], "skipped_count": len(skipped)})
+                           "kind": table_kind, "columns": columns, "skipped": skipped[:50], "skipped_count": len(skipped)})
     # 식별 대상을 지정한 명확한 '항목: 값' 문장만 후보로 추출합니다.
     for passage in passages:
         if not entity_hint:
             continue
         for line in passage["text"].splitlines():
             parts = re.split(r"[:：]", line, maxsplit=1)
-            if len(parts) == 2 and _field_of(parts[0], rules):
-                add(entity_hint, _field_of(parts[0], rules), parts[1].strip(), passage["location"], parts[0],
+            hint_kind = kind if kind in ("facility", "material") else "facility"
+            if len(parts) == 2 and _field_of(parts[0], rules, hint_kind):
+                add(hint_kind, entity_hint, _field_of(parts[0], rules, hint_kind), parts[1].strip(), passage["location"], parts[0],
                     method="literal", confidence=0.88)
+    # 사업장 일반정보·공정 설명 문서의 ‘대표자: 홍길동’ 같은 줄(사업장 자료로 볼 근거가 있을 때만)
+    lines = _site_lines(passages)
+    if lines and (kind == "site" or site_found or len({norm(label) for _, label, _ in lines}) >= 2):
+        for location, label, value in lines:
+            add("site", SITE_ENTITY.split(":", 1)[1], CATALOG_HEADERS["site"][norm(label)], value, location, label,
+                method="label", confidence=LABEL_CONFIDENCE)
     has_text = any(p["text"].strip() for p in passages)
     needs_ocr = bool(passages) and not has_text
     problem = ""
@@ -597,7 +803,8 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
         if needs_ocr:
             problem = "글자가 없는 문서예요. 스캔본이면 글자를 읽을 수 없어요."
         elif not tables and has_text and not entity_hint:
-            problem = "표가 없고 문장만 있어요. 어느 설비·제품의 문서인지 번호를 적으면 ‘항목: 값’ 문장을 읽어요."
+            problem = ("표가 없고 문장만 있어요. 사업장 정보는 ‘대표자: 홍길동’처럼 항목 이름과 값을 한 줄에 적고, "
+                       "설비·제품 문서라면 어느 설비·제품의 문서인지 번호를 적으면 ‘항목: 값’ 문장을 읽어요.")
         elif tables and all(t["header_row"] is None for t in table_info):
             problem = "표는 있지만 설비번호·용량·CAS 같은 항목 이름이 있는 줄을 찾지 못했어요."
         else:
@@ -607,6 +814,7 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
                               "tables": table_info, "rows_without_id": skipped_total,
                               "needs_reading": not added, "needs_ocr": needs_ocr, "problem": problem})
     data["facts"].extend(added)
+    _link_materials(data)
     _store(project, data)
     _invalidate(project)
     auto_approve_safe(project)
@@ -785,7 +993,7 @@ def review_gate(slot, critical=frozenset()):
         problem = value_problem(field, fact["value"])
         if problem:
             return [problem]
-    if any(f.get("method") != "table" for f in facts):
+    if any(f.get("method") not in READ_METHODS for f in facts):
         return ["문장 또는 AI 추출값"]
     # 담당자가 열의 단위를 정했으면(규칙) 단위가 있는 것으로 봅니다.
     if field in UNIT_SUFFIXES and any(not has_unit(field, f.get("header", "")) and "rule" not in f.get("flags", []) for f in facts):
@@ -848,7 +1056,7 @@ def approve_bulk(project, keys=None):
         reason = None
         if len(_usable_values(facts)) > 1:
             reason = "값 충돌"
-        elif any(f.get("method") != "table" for f in facts):
+        elif any(f.get("method") not in READ_METHODS for f in facts):
             reason = "문장 또는 AI 추출값"
         else:
             reason = next((value_problem(slot["field"], f["value"]) for f in facts if value_problem(slot["field"], f["value"])), None)
@@ -994,19 +1202,44 @@ def form1_needs(project):
 
 # ---------------------------------------------------------------- 연결·보고서
 
+MATERIAL_CORE_COLUMNS = {"name": "물질명", "cas": "CAS 번호", "concentration": "함량(%)", "substance_state": "물질상태", "density": "비중"}
+FACILITY_CORE_COLUMNS = {"name": "설비명", "product": "취급물질", "capacity": "용량", "pressure": "운전압력(MPa)",
+                         "design_pressure": "설계압력(MPa)", "temperature": "운전온도(℃)", "inventory": "최대보유량(kg)",
+                         "facility_type": "시설유형", "substance_state": "물질성상", "density": "비중", "process_type": "공정유형"}
+
+
+def _catalog_columns(kind, key, core=None):
+    """사실 카탈로그에서 이 표(key)에 들어가는 열: 읽은 항목 → 열 이름들. core에 이미 있는 (항목, 열)은 뺍니다."""
+    core = core or {}
+    out = {}
+    for item in catalog.facts(kinds=[kind]):
+        if item.identifier or not item.evidence_field:
+            continue
+        columns = ([item.column] if item.field_key == key and item.column else []) + [c for k, c in item.targets if k == key]
+        for column in columns:
+            if core.get(item.evidence_field) != column and column not in out.get(item.evidence_field, ()):
+                out.setdefault(item.evidence_field, []).append(column)
+    return out
+
+
+MATERIAL_EXTRA_COLUMNS = _catalog_columns("material", "inventory.chemicals", MATERIAL_CORE_COLUMNS)
+FACILITY_EXTRA_COLUMNS = _catalog_columns("facility", "inventory.facilities", FACILITY_CORE_COLUMNS)
+
+
 def publishing_plan(project):
-    mapping = {"name": "물질명", "cas": "CAS 번호", "concentration": "함량(%)", "substance_state": "물질상태", "density": "비중"}
-    facilities = {"name": "설비명", "product": "취급물질", "capacity": "용량", "pressure": "운전압력(MPa)",
-                  "design_pressure": "설계압력(MPa)", "temperature": "운전온도(℃)", "inventory": "최대보유량(kg)",
-                  "facility_type": "시설유형", "substance_state": "물질성상", "density": "비중", "process_type": "공정유형"}
+    mapping, facilities = MATERIAL_CORE_COLUMNS, FACILITY_CORE_COLUMNS
     entities = confirmed_entities(project)
     plans = {}
-    for kind, target, columns in [("material", "inventory.chemicals", mapping), ("facility", "inventory.facilities", facilities)]:
+    for kind, target, columns, extra in [("material", "inventory.chemicals", mapping, MATERIAL_EXTRA_COLUMNS),
+                                         ("facility", "inventory.facilities", facilities, FACILITY_EXTRA_COLUMNS)]:
         rows = []
         for identifier, values in entities.items():
             if not identifier.startswith(kind + ":"):
                 continue
             row = {columns[k]: v for k, v in values.items() if k in columns}
+            for field, names in extra.items():       # 카탈로그 항목(설계온도·연결구·SDS 물성 등)과 서식 엔진이 읽는 다른 열 이름
+                if field in values:
+                    row.update({name: values[field] for name in names})
             row["물질코드" if kind == "material" else "시설번호"] = identifier.split(":", 1)[1]
             if kind == "facility":
                 row["설비번호"] = identifier.split(":", 1)[1]
@@ -1170,17 +1403,30 @@ WORKSPACE_FACILITIES_KEY = "cap.workspace.facilities"
 MATERIAL_TABLE_COLUMNS = ("물질명", "CAS 번호", "함량(%)", "물질상태", "비중")
 FACILITY_TABLE_COLUMNS = ("설비번호", "설비명", "취급물질", "CAS 번호", "용량", "용량단위", "시설유형", "물질성상", "비중",
                           "운전압력(MPa)", "운전온도(℃)", "공정유형", "설계압력(MPa)")
+MATERIAL_MANAGED = MATERIAL_TABLE_COLUMNS + tuple(c for cs in MATERIAL_EXTRA_COLUMNS.values() for c in cs)
+FACILITY_MANAGED = FACILITY_TABLE_COLUMNS + tuple(c for cs in FACILITY_EXTRA_COLUMNS.values() for c in cs)
+# 확정되지 않은(충돌·확인 전) 값이 있으면 지울 열: 기본 열 + 카탈로그 열
+PENDING_COLUMNS = {"facility": {f: tuple(FACILITY_ROW_COLUMNS.get(f, ())) + tuple(FACILITY_EXTRA_COLUMNS.get(f, ()))
+                                for f in set(FACILITY_ROW_COLUMNS) | set(FACILITY_EXTRA_COLUMNS)},
+                   "material": {f: tuple(MATERIAL_ROW_COLUMNS.get(f, ())) + tuple(MATERIAL_EXTRA_COLUMNS.get(f, ()))
+                                for f in set(MATERIAL_ROW_COLUMNS) | set(MATERIAL_EXTRA_COLUMNS)}}
+LINK_NOTE = "공통정보 연결(회사 파일에서 자동 기입한 초안)"
 
 
 def _merge(kind, existing, new, managed, removed, pending=None):
     """같은 번호의 행은 그래프가 아는 열만 바꾸고 나머지 열(별지에서만 적는 값)은 그대로 둡니다.
     새 번호는 뒤에 붙이고, 제외한 대상의 행은 뺍니다. pending(번호 → 열): 그래프에서 아직 확정되지 않은(충돌·확인 전) 값은
     옛 값을 그대로 두지 않고 비웁니다 — 다툼이 있는 값을 조용히 남기지 않기 위해서입니다."""
-    pending = pending or {}
-    by_id = {_row_id(kind, row): row for row in new if _row_id(kind, row)}
+    return _merge_rows(lambda row: _row_id(kind, row), existing, new, managed, removed, pending,
+                       aliases={"CAS 번호": MATERIAL_ID_COLUMNS[1:]})
+
+
+def _merge_rows(row_id_of, existing, new, managed, removed=(), pending=None, aliases=None):
+    pending, aliases = pending or {}, aliases or {}
+    by_id = {row_id_of(row): row for row in new if row_id_of(row)}
     out, seen = [], set()
     for row in existing or []:
-        row_id = _row_id(kind, row)
+        row_id = row_id_of(row)
         if row_id and row_id in removed:
             continue
         merged = dict(row)
@@ -1192,7 +1438,7 @@ def _merge(kind, existing, new, managed, removed, pending=None):
             for column in managed:
                 value = by_id[row_id].get(column)
                 if value not in (None, ""):
-                    for name in (column,) + ((MATERIAL_ID_COLUMNS[1:] if column == "CAS 번호" else ())):
+                    for name in (column,) + tuple(aliases.get(column, ())):
                         if name in merged or name == column:
                             merged[name] = value
         out.append(merged)
@@ -1200,8 +1446,166 @@ def _merge(kind, existing, new, managed, removed, pending=None):
     return out
 
 
+# ---------------------------------------------------------------- 카탈로그 사실을 서식 작성자료로
+#
+# 사업장 일반정보·공정 설명(한 값), 설비 사양(별지 제9호), 확산방지설비(제10호), 가스감지기(제11호), 대표물질 유해성(제7호)을
+# 작성자료 키에 그대로 적습니다. 파일에서 읽어 정해진 값만 보내고(충돌·확인 전 값은 보내지 않음), 사람이 다른 곳에서 적은 값이
+# 이미 있으면 덮어쓰지 않고 사실 표에서 ‘저장된 값과 다름’으로 알립니다.
+
+SPEC_KEY = "cap.workspace.equipment_specs"
+DIKE_KEY = "cap.safety.dike_calculation"
+DIKE_RULE_KEY = "cap.workspace.dike_rule"
+GAS_KEY = "cap.safety.gas_detection"
+HAZARD_KEY = "cap.chemical.hazard_information"
+LORRY_TYPE = "탱크로리·운송차량"
+FIXED_DETECTOR = "고정식"
+
+
+def _chosen_facts(project):
+    """대상 → 항목 → 정해진(자동 기입·확인 완료) 사실."""
+    out = {}
+    for slot in slots(project):
+        if slot["chosen"]:
+            out.setdefault(slot["entity"], {})[slot["field"]] = slot["chosen"]
+    return out
+
+
+def _refs(facts):
+    refs, seen = [], set()
+    for fact in facts:
+        if fact.get("method") == "manual" or fact["document"] in seen:
+            continue
+        seen.add(fact["document"])
+        refs.append(EvidenceRef(source_type="COMPANY_EVIDENCE", source_name=fact["document"], sha256=fact["sha256"],
+                                location=str(fact["location"])))
+    return refs
+
+
+def file_linked(record):
+    """회사 파일에서 자동 기입한 작성자료인지(사람이 다른 곳에서 적은 값과 구분)."""
+    return record is not None and str(record.note).startswith("공통정보 연결")
+
+
+def _site_values(project, chosen):
+    """사업장 사실 → {작성자료 키: (값, 근거 사실들, 이름)}. 다른 곳에서 적은 값과 다르면 보내지 않습니다."""
+    site = chosen.get(SITE_ENTITY, {})
+    out = {}
+    for item in catalog.facts(kinds=["site", "narrative"], company=True):
+        fact = site.get(item.evidence_field)
+        if fact is None or not item.field_key or item.field_key.startswith("@") or item.field_key == DIKE_RULE_KEY:
+            continue
+        value = str(fact["value"]).strip()
+        if item.id == "site.loading_facility_count":
+            lorries = sum(1 for e, v in chosen.items() if e.startswith("facility:") and v.get("facility_type")
+                          and v["facility_type"]["value"] == LORRY_TYPE)
+            count = re.sub(r"\s*기$", "", value)
+            value = f"입·출하 시설 {count}기" + (f", 보유 탱크로리 {lorries}기" if lorries else "")
+        out[item.field_key] = (value, [fact], item.name)
+    rule = {name: site.get(field) for name, field in (("비율(%)", "dike_required_ratio"), ("근거", "dike_required_basis"))}
+    if any(rule.values()):
+        out[DIKE_RULE_KEY] = ({k: (str(f["value"]).strip() if f else "") for k, f in rule.items()},
+                              [f for f in rule.values() if f], "확산방지설비 공통 필요용량 기준")
+    return out
+
+
+def _entity_rows(chosen, kind, columns, id_column, extra=None):
+    """대상마다 한 행. columns: 항목 → 열 이름. 값이 하나도 없으면 행을 만들지 않습니다."""
+    rows, used = [], []
+    for entity, values in chosen.items():
+        if not entity.startswith(kind + ":"):
+            continue
+        row = {}
+        for field, column in columns.items():
+            if field in values:
+                row[column] = values[field]["value"]
+                used.append(values[field])
+        if not row:
+            continue
+        row[id_column] = entity.split(":", 1)[1]
+        if extra:
+            row.update(extra(entity, values))
+        rows.append(row)
+    return rows, used
+
+
+def _columns_for(kind, key):
+    return {item.evidence_field: (item.column if item.field_key == key else next(c for k, c in item.targets if k == key))
+            for item in catalog.facts(kinds=[kind])
+            if item.evidence_field and not item.identifier and (item.field_key == key or any(k == key for k, _ in item.targets))}
+
+
+def _table_values(project, chosen):
+    """설비 사양·확산방지설비·감지기·대표물질 표 → {작성자료 키: (행 목록, 근거 사실들, 이름)}. 같은 번호의 행에 합칩니다."""
+    out = {}
+    names = {e: v["name"]["value"] for e, v in chosen.items() if "name" in v}
+
+    spec_rows, used = _entity_rows(chosen, "facility", _columns_for("facility", SPEC_KEY), "설비번호",
+                                   lambda e, v: {"설비명": names.get(e, "")})
+    if spec_rows:
+        record = project.get_field(SPEC_KEY)
+        existing = record.value if record and isinstance(record.value, list) else []
+        managed = tuple(_columns_for("facility", SPEC_KEY).values()) + ("설비명",)
+        out[SPEC_KEY] = (_merge_rows(lambda r: norm(r.get("설비번호") or r.get("설비명") or ""), existing, spec_rows, managed),
+                         used, "장치·설비 명세(별지 제9호, 회사 파일)")
+
+    dike_columns = _columns_for("facility", DIKE_KEY)
+    dike_rows, used = _entity_rows(chosen, "facility", dike_columns, "구분기호")
+    if dike_rows:
+        from .cap_form10_workspace import stored_rows
+
+        rule = chosen.get(SITE_ENTITY, {})
+        ratio = str(rule["dike_required_ratio"]["value"]) if "dike_required_ratio" in rule else ""
+        basis = str(rule["dike_required_basis"]["value"]) if "dike_required_basis" in rule else ""
+        for row in dike_rows:
+            capacity = chosen.get("facility:" + row["구분기호"], {}).get("capacity")
+            row["설계용량(m3)"] = capacity["value"] if capacity else ""
+        record = project.get_field(DIKE_KEY)
+        existing = record.value if record and isinstance(record.value, list) else []
+        new = stored_rows(dike_rows, ratio, basis)
+        managed = tuple(sorted({c for r in new for c in r}))
+        out[DIKE_KEY] = (_merge_rows(lambda r: norm(r.get("대상 설비번호") or ""), existing, new, managed),
+                         used, "확산방지설비 계산자료(별지 제10호, 회사 파일)")
+
+    gas_rows, used = _entity_rows(chosen, "detector", _columns_for("detector", GAS_KEY), "감지기 번호")
+    if gas_rows:
+        for row in gas_rows:
+            row.setdefault("설치형태", FIXED_DETECTOR)
+        record = project.get_field(GAS_KEY)
+        existing = record.value if record and isinstance(record.value, list) else []
+        managed = tuple(_columns_for("detector", GAS_KEY).values())
+        out[GAS_KEY] = (_merge_rows(lambda r: norm(r.get("감지기 번호") or ""), existing, gas_rows, managed),
+                        used, "고정식 유해감지시설 명세(별지 제11호, 회사 파일)")
+
+    hazard_columns = _columns_for("material", HAZARD_KEY)
+    representatives = {e: v for e, v in chosen.items() if e.startswith("material:") and "representative_reason" in v}
+    hazard_rows, used = _entity_rows(representatives, "material", hazard_columns, "물질코드",
+                                     lambda e, v: {"물질명": v["name"]["value"] if "name" in v else "",
+                                                   "CAS 번호": v["cas"]["value"] if "cas" in v else "",
+                                                   "SDS 파일명": v["sds_file"]["value"] if "sds_file" in v else "",
+                                                   "SDS 개정일": v["sds_revision"]["value"] if "sds_revision" in v else ""})
+    if hazard_rows:
+        record = project.get_field(HAZARD_KEY)
+        existing = record.value if record and isinstance(record.value, list) else []
+        managed = tuple(hazard_columns.values()) + ("물질명", "SDS 파일명", "SDS 개정일")
+        out[HAZARD_KEY] = (_merge_rows(lambda r: str(r.get("CAS 번호") or r.get("물질명") or "").strip(), existing,
+                                       hazard_rows, managed), used, "유해화학물질 유해성 정보(별지 제7호, 회사 파일)")
+    return out
+
+
+def catalog_preview(project):
+    """카탈로그 사실로 채울 작성자료: {키: (값, 근거 사실들, 이름)}. 사람이 다른 곳에서 적은 다른 값은 덮어쓰지 않습니다."""
+    chosen = _chosen_facts(project)
+    out = {}
+    for key, (value, facts, label) in {**_site_values(project, chosen), **_table_values(project, chosen)}.items():
+        record = project.get_field(key)
+        if record is not None and not file_linked(record) and record.value not in (None, "", []) and not isinstance(value, list):
+            continue        # 사람이 적은 한 값은 그대로 둡니다. 다르면 사실 표에서 ‘저장된 값과 다름’으로 알립니다.
+        out[key] = (value, facts, label)
+    return out
+
+
 def publish_preview(project):
-    """보낼 때 각 표가 어떻게 바뀌는지(합친 결과). {필드 키: 행 목록}. 화면 미리보기와 publish가 같은 결과를 씁니다."""
+    """보낼 때 각 표가 어떻게 바뀌는지(합친 결과). {필드 키: 행 목록 또는 값}. 화면 미리보기와 publish가 같은 결과를 씁니다."""
     plans = publishing_plan(project)
     data = _read(project)
     removed_material = {_row_id("material", {"CAS 번호": e.split(":", 1)[1]}) for e in data.get("excluded", []) if e.startswith("material:")}
@@ -1218,13 +1622,13 @@ def publish_preview(project):
         row_id = slot["entity"].split(":", 1)[1] if kind == "facility" else (values.get("cas") or slot["entity"].split(":", 1)[1])
         if str(row_id) not in plan_ids[kind]:
             continue
-        columns = (FACILITY_ROW_COLUMNS if kind == "facility" else MATERIAL_ROW_COLUMNS).get(slot["field"], ())
+        columns = PENDING_COLUMNS[kind].get(slot["field"], ())
         pending[kind].setdefault(str(row_id), set()).update(columns)
     out = {}
-    targets = [("inventory.chemicals", "material", plans.get("inventory.chemicals", []), MATERIAL_TABLE_COLUMNS, removed_material),
-               (CHEMICAL_DETAILS_KEY, "material", plans.get("inventory.chemicals", []), MATERIAL_TABLE_COLUMNS, removed_material),
-               ("inventory.facilities", "facility", plans.get("inventory.facilities", []), FACILITY_TABLE_COLUMNS + ("최대보유량(kg)", "시설번호", "시설명", "제품명"), removed_facility),
-               (WORKSPACE_FACILITIES_KEY, "facility", plans.get("inventory.facilities", []), FACILITY_TABLE_COLUMNS, removed_facility)]
+    targets = [("inventory.chemicals", "material", plans.get("inventory.chemicals", []), MATERIAL_MANAGED, removed_material),
+               (CHEMICAL_DETAILS_KEY, "material", plans.get("inventory.chemicals", []), MATERIAL_MANAGED, removed_material),
+               ("inventory.facilities", "facility", plans.get("inventory.facilities", []), FACILITY_MANAGED + ("최대보유량(kg)", "시설번호", "시설명", "제품명"), removed_facility),
+               (WORKSPACE_FACILITIES_KEY, "facility", plans.get("inventory.facilities", []), FACILITY_MANAGED, removed_facility)]
     for key, kind, rows, managed, removed in targets:
         record = project.get_field(key)
         if key in (CHEMICAL_DETAILS_KEY, WORKSPACE_FACILITIES_KEY) and record is None:
@@ -1233,6 +1637,8 @@ def publish_preview(project):
             continue
         existing = record.value if record and isinstance(record.value, list) else []
         out[key] = _merge(kind, existing, rows, managed, removed, pending[kind])
+    for key, (value, _, _) in catalog_preview(project).items():
+        out[key] = value
     return out
 
 
@@ -1240,7 +1646,8 @@ def publish(project, *, replace_existing=False):
     """회사 파일에서 읽은 사실을 작성자료(초안)로 보냅니다. 사람의 승인 없이 반영하며, 같은 번호의 행에 합칩니다.
 
     충돌·값 오류로 정해지지 않은 값은 포함되지 않고, 어느 파일을 고쳐야 하는지 안내로만 남습니다."""
-    if not publishing_plan(project):
+    extended = catalog_preview(project)
+    if not publishing_plan(project) and not extended:
         raise ValueError("연결할 확인 완료 사실이 없습니다.")
     preview = publish_preview(project)
     for key, rows in preview.items():
@@ -1255,10 +1662,24 @@ def publish(project, *, replace_existing=False):
             old = project.get_field(key)
             project.set_field(key, old.label if old else "화학물질 상세(별지 제6호 작성대)", rows, "USER_CONFIRMED",
                               note="회사 파일에서 자동 기입(초안): 물질명·CAS·함량·성상·비중을 같은 CAS 행에 합침")
+        elif key in extended:
+            _, facts, label = extended[key]
+            old = project.get_field(key)
+            project.set_field(key, label, rows, "USER_CONFIRMED", evidence=_refs(facts) or (list(old.evidence) if old else None),
+                              note=LINK_NOTE + ": 사실 카탈로그 항목을 파일에서 읽은 그대로 적음")
         else:
             project.set_field(key, "공통정보에서 연결한 " + key, rows, "USER_CONFIRMED",
-                              note="공통정보 연결(회사 파일에서 자동 기입한 초안): 출처와 필드별 결정은 workspace.evidence_graph에 보존")
+                              note=LINK_NOTE + ": 출처와 필드별 결정은 workspace.evidence_graph에 보존")
     return list(preview)
+
+
+def needs_publish(project):
+    """보낼 값이 있는데 작성자료가 그와 다르거나 아직 확정 상태가 아니면 True(파일을 다시 올린 뒤 등)."""
+    for key, value in publish_preview(project).items():
+        record = project.get_field(key)
+        if record is None or record.value != value or record.status not in CONFIRMED_STATUSES:
+            return True
+    return False
 
 
 def report(project):

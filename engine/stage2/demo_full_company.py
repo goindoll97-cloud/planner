@@ -382,15 +382,18 @@ def _files(address="", complex_name=""):
                        [{"물질명": p["name"], "CAS 번호": p["cas"], **p["hazard"], "SDS 파일명": p["props"]["SDS 파일명"],
                          "SDS 개정일": p["props"]["SDS 개정일"]} for p in products if p["code"] in ("P-01", "P-03")]),
     })
-    spec_headers = ("설비번호", "설비명", "최대 연결구 크기(mm)", "설계압력", "운전압력", "설계온도", "운전온도", "비고")
+    # 머리글에 단위를 적어 두면 프로그램이 단위를 묻지 않습니다(설계압력 → 설계압력(MPa)).
+    spec_units = {"설계압력": "설계압력(MPa)", "운전압력": "운전압력(MPa)", "설계온도": "설계온도(℃)", "운전온도": "운전온도(℃)"}
+    spec_headers = ("설비번호", "설비명", "최대 연결구 크기(mm)", "설계압력(MPa)", "운전압력(MPa)", "설계온도(℃)", "운전온도(℃)", "비고")
     dike_headers = ("설비번호", "적용여부", "설비형태", "확산방지설비 종류", "내부 길이(m)", "내부 폭(m)", "유효높이(m)", "내부 차감용적(m3)", "비고")
     form1_headers = ("설비번호", "별표4 기준함량(%)", "함량근거", "직접확인 최대보유량", "질량단위", "직접확인 근거", "보관계획도 최대량", "일일최대보관량")
     files["06_설비사양_안전설비.xlsx"] = _book({
         "별지1_추가입력": (form1_headers, [{"설비번호": f["id"], **f["form1"]} for f in facilities if f["form1"]]),
-        "별지9_설비사양": (spec_headers, [{"설비번호": f["id"], "설비명": f["name"], **f["spec"]} for f in facilities]),
-        "별지10_확산방지설비": (dike_headers, [{"설비번호": f["id"], **f["dike"]} for f in facilities]
-                          + [{"설비번호": "(공통 기준)", "적용여부": f"필요용량 비율 {DATA['dike_rule']['비율(%)']}%",
-                              "비고": DATA["dike_rule"]["근거"]}]),
+        "별지9_설비사양": (spec_headers, [{"설비번호": f["id"], "설비명": f["name"],
+                                       **{spec_units.get(k, k): v for k, v in f["spec"].items()}} for f in facilities]),
+        "별지10_확산방지설비": (dike_headers, [{"설비번호": f["id"], **f["dike"]} for f in facilities]),
+        "별지10_공통기준": (("항목", "값"), [{"항목": "공통 필요용량 비율(%)", "값": DATA["dike_rule"]["비율(%)"]},
+                                         {"항목": "공통 필요용량 근거", "값": DATA["dike_rule"]["근거"]}]),
         "별지11_가스감지기": (tuple(DATA["detectors"][0]), DATA["detectors"]),
     })
     survey = DATA["survey"] if not real else {"source": "", "method": "", "map_numbers": ""}

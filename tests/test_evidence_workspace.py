@@ -155,7 +155,8 @@ class EvidenceTests(unittest.TestCase):
         e.add_manual(self.p, 'facility:RX-01', 'inventory', '2000', '현장 확인(수식 결과 확인)', confirm=True)
         self.assertEqual(e.review_queue(self.p), [])
         self.assertTrue(e.unreviewed_legal(self.p))
-        self.assertEqual(set(e.publish(self.p)), {'inventory.chemicals', 'inventory.facilities'})
+        # 운전압력·온도는 별지 제9호 설비 명세(사실 카탈로그의 다른 저장 위치)에도 함께 보냅니다
+        self.assertEqual(set(e.publish(self.p)), {'inventory.chemicals', 'inventory.facilities', 'cap.workspace.equipment_specs'})
 
     def test_mixed_batch_files_are_classified_before_ingestion(self):
         with ZipFile(BytesIO(e.demo_zip())) as archive:

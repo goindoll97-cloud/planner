@@ -174,6 +174,10 @@ class Names:
                     self.names[slot["entity"]] = str(fact["value"]).strip()
 
     def __call__(self, entity: str) -> str:
+        if entity == ew.SITE_ENTITY:
+            return "사업장"
+        if entity.startswith("detector:"):
+            return "감지기 " + entity.split(":", 1)[1]
         if not entity.startswith(("facility:", "material:")):
             return entity
         code = entity.split(":", 1)[1]
@@ -914,10 +918,8 @@ def _progress_board(project) -> None:
 
 def _auto_publish(project) -> None:
     """회사 파일에서 읽은 값을 작성자료(초안)에 자동으로 반영합니다. 사람의 승인 단계는 없습니다."""
-    if not ew.publishing_plan(project):
-        return
-    preview = ew.publish_preview(project)
-    if all((project.get_field(key) is not None and project.get_field(key).value == rows) for key, rows in preview.items()):
+    # 파일을 새로 올리면 이전에 반영한 값이 보류로 바뀌므로, 값이 같아도 확정 상태가 아니면 다시 반영합니다.
+    if not ew.needs_publish(project):
         return
     try:
         ew.publish(project, replace_existing=True)
