@@ -59,6 +59,19 @@ def guidance_text(group: str = "", *, drawings: bool = True) -> str:
     return "\n".join(lines) + "\n"
 
 
+def conditional_notice(group: str) -> str:
+    """승인된 작성수준에서 달라지는 자료를 구체적으로 안내한다."""
+    if group == "1군":
+        extra = [row["label"] for row in checklist() if row["levels"] == ["1군"]]
+        return ("이 사업장은 1군으로 설정되어 있습니다. 외부 비상대응·지역사회 소통 자료를 추가 제출하세요: "
+                + ", ".join(extra) + ". 물질·함량·최대보유량·일일 취급량과 승인 규정 DB를 대조해 작성수준을 확정하세요.")
+    if group == "2군":
+        return ("이 사업장은 2군으로 설정되어 있습니다. 물질·함량·최대보유량·일일 취급량이 바뀌면 "
+                "승인 규정 DB로 작성수준을 다시 판정하고 1군으로 바뀔 경우 외부 비상대응 자료를 추가하세요.")
+    return ("이 사업장은 작성수준이 확인되지 않았습니다. 물질별 함량·최대보유량·일일 취급량을 원본에 기재하고 "
+            "승인 규정 DB로 1군·2군을 판정하세요. 판정 전에는 두 군의 자료를 함께 준비하세요.")
+
+
 def guidance_hwpx(group: str = "") -> bytes:
     """일반 한글 프로그램에서 열 수 있는 HWPX 요청서를 생성한다."""
     from hwpx import HwpxDocument

@@ -329,6 +329,7 @@ def _step_upload(project, found) -> None:
     st.write("회사 자료를 한 번에 올리세요. 파일별로 읽힌 값과 보완할 부분을 알려 드립니다.")
     with st.expander("어떤 자료를 올리면 되나요?"):
         group = project.cap_group if project.cap_group in {"1군", "2군"} else ""
+        st.info(cap_intake_guide.conditional_notice(group))
         st.caption("회사에 그대로 전달할 자료 요청 목록입니다. 작성수준을 아직 확인하지 않았다면 1·2군 후보 항목을 함께 보여 줍니다. "
                    "업로드만으로 서식이 완성되지는 않으며, 읽지 못한 자료는 보완 요청에 남습니다.")
         cols = st.columns(2)
@@ -754,6 +755,7 @@ def _step_questions(project, found) -> None:
     if not ew.documents(project):
         st.info("먼저 ① 자료 올리기에서 자료를 올려 주세요.")
         return
+    st.info(cap_intake_guide.conditional_notice(project.cap_group))
     rows = _correction_rows(project, found)
     st.markdown("**파일별 수정 요청**")
     st.caption("원본 파일을 고쳐 한 번에 다시 올리세요. ‘작성 항목에 연결되지 않음’은 그 값이 회사 자료에 없다는 뜻이 아닙니다.")
