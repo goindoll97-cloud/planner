@@ -82,9 +82,22 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]]) -> int:
             continue
         item["설치형태"] = _clean(row.get("설치형태")) or FIXED
         cleaned.append(item)
+    previous = project.get_field(GAS_KEY)
     project.set_field(GAS_KEY, "고정식 유해감지시설 명세(별지 제11호 작성대)", cleaned, "USER_CONFIRMED",
+                      evidence=list(previous.evidence) if previous else None,   # 다시 저장해도 붙여 둔 근거를 잃지 않음
                       note="CAP 작성대 별지 제11호에서 감지기 사양 입력")
     return len(cleaned)
+
+
+def attach_evidence(project: Stage2Project, refs: list) -> int:
+    """감지기 사양서·배치도 같은 근거 파일을 별지 제11호 명세에 연결합니다(점검의 ‘근거자료 없음’ 해소). 연결한 수를 돌려줍니다."""
+    record = project.get_field(GAS_KEY)
+    if record is None:
+        raise ValueError("감지기 명세를 먼저 저장해 주세요.")
+    known = {ref.sha256 for ref in record.evidence}
+    added = [ref for ref in refs if ref.sha256 not in known]
+    project.set_field(GAS_KEY, record.label, record.value, record.status, evidence=[*record.evidence, *added], note=record.note)
+    return len(added)
 
 
 def needs(project: Stage2Project) -> list[str]:

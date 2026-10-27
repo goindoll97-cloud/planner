@@ -999,6 +999,8 @@ def publishing_plan(project):
                     row["제품명"] = row["취급물질"]
                     if "cas" in matches[0]:
                         row["CAS 번호"] = matches[0]["cas"]
+                    if "density" not in values and "density" in matches[0]:
+                        row["비중"] = matches[0]["density"]       # 설비대장에 비중이 없으면 취급물질의 비중(별지 제1호 계산에 필요)
             rows.append(row)
         if rows:
             plans[target] = rows

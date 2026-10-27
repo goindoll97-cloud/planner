@@ -182,7 +182,12 @@ def render(project) -> None:
         st.write(iw.summary_text(impacts))
         apply_col, report_col = st.columns(2)
         if apply_col.button("결과를 별지 제12·13호에 반영", type="primary", key=f"cap_form12_apply_{project.project_id}"):
-            counts = iw.apply_to_forms(project, impacts, worst_case=worst)
+            # 반영한 결과의 근거서(프로그램이 만든 분석 근거서)를 프로젝트에 보관하고 결과에 연결합니다.
+            from engine.stage2.storage import save_attachment
+
+            report = save_attachment(project.project_id, f"영향범위_분석_근거서_{project.project_id}.docx",
+                                     iw.report_docx(project, impacts, worst_case=worst), note="별지 제12·13호 반영 결과의 근거서")
+            counts = iw.apply_to_forms(project, impacts, worst_case=worst, evidence_refs=[report])
             save_project(project)
             st.success(f"장외 사고시나리오 {counts['scenarios']}건, 총괄영향범위 보호대상 {counts['targets']}건을 반영했습니다.")
         report_col.download_button(

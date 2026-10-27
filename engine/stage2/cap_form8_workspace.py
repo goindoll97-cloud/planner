@@ -264,6 +264,10 @@ def save_review(project: Stage2Project, checks: Mapping[str, bool], source: str,
         "사용자료·확인일": source.strip(), "경계·거리 확인방법": method.strip(),
         "지도 번호": map_numbers.strip(),
     }, "USER_CONFIRMED", evidence=evidence)
+    # 점검은 보호대상 목록(SITE_KEY)에 근거자료가 붙어 있는지 봅니다. 확인에 쓴 지도·도면을 목록에도 연결합니다.
+    site = project.get_field(SITE_KEY)
+    if site is not None:
+        project.set_field(SITE_KEY, site.label, site.value, site.status, evidence=list(evidence or []), note=site.note)
 
 
 def save(project: Stage2Project, rows: list[Mapping[str, Any]], no_target: bool, evidence: str = "",
@@ -277,7 +281,9 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], no_target: bool,
                        else ("" if r.get(column) is None else r.get(column))) for column in COLUMNS}
             for r in rows if str(r.get("보호대상 명칭") or "").strip()
         ]
+    previous = project.get_field(SITE_KEY)
     project.set_field(SITE_KEY, "사업장 주변 환경 정보(별지 제8호 작성대)", stored, status,
+                      evidence=list(previous.evidence) if previous else None,   # 다시 저장해도 붙여 둔 지도·도면을 잃지 않음
                       note="CAP 작성대 별지 제8호에서 보호대상 목록을 확인·입력")
     return 0 if no_target else len(stored)
 

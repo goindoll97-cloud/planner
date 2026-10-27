@@ -367,7 +367,7 @@ def _step_upload(project, found) -> None:
         _next_button(2, pid, "다음: 질문에 답하기 →")
     st.divider()
     st.markdown("**연습용 가상 회사 자료**")
-    cols = st.columns(2)
+    cols = st.columns(3)
     cols[0].download_button("작은 자료 (파일 4개)", ew.demo_zip(), file_name="synthetic_company_evidence.zip",
                             mime="application/zip", key="demo_small")
     cols[0].caption("처음 써 볼 때. 설비 4대, 제품 2개, 일부러 넣은 문제 2개.")
@@ -375,6 +375,12 @@ def _step_upload(project, found) -> None:
                             file_name="synthetic_company_evidence_large.zip", mime="application/zip", key="demo_large")
     cols[1].caption("설비 40대, 제품 26개. 여러 시트·숨김 시트·병합 칸·단위가 다른 시트·옛 자료·한글 사양서·스캔본과 "
                     "일부러 넣은 문제 30가지. 정답표(answer_key.json)가 들어 있어요.")
+    from engine.stage2 import demo_full_company
+
+    cols[2].download_button("계획서 끝까지 연습 자료 (파일 11개)", demo_full_company.full_demo_zip(),
+                            file_name="synthetic_company_full_plan.zip", mime="application/zip", key="demo_full")
+    cols[2].caption("제품 3개·설비 4대의 작은 가상 회사. 별지 제1~16호와 서술형에 넣을 값이 모두 회사 문서로 들어 있고, "
+                    "README 안내서를 따라 하면 화학사고예방관리계획서 내려받기까지 갈 수 있어요.")
     _local_llm(project)
 
 

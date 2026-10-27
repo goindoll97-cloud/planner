@@ -32,6 +32,25 @@ def _config(project, only: tuple[str, ...]) -> dict:
     return config
 
 
+def _evidence_upload(project) -> None:
+    """점검은 감지기 명세에 근거자료(사양서·배치도)가 붙어 있어야 최종본에 씁니다."""
+    record = project.get_field(f11.GAS_KEY)
+    if record is None:
+        return
+    if record.evidence:
+        st.caption("연결된 근거자료: " + ", ".join(ref.source_name for ref in record.evidence))
+    upload = st.file_uploader("감지기 사양서·배치도 등 근거 파일 연결", type=["pdf", "png", "jpg", "jpeg", "xlsx", "docx"],
+                              key=f"cap_form11_evidence_{project.project_id}",
+                              help="제조사 사양서나 감지기 배치도처럼 위 명세의 근거가 되는 파일입니다. 최종 제출본에는 근거자료가 필요합니다.")
+    if upload is not None and st.button("근거 파일 연결", key=f"cap_form11_evidence_ok_{project.project_id}"):
+        from engine.stage2.storage import save_attachment
+
+        ref = save_attachment(project.project_id, upload.name, upload.getvalue(), note="별지 제11호 감지기 근거자료")
+        f11.attach_evidence(project, [ref])
+        save_project(project)
+        st.success(f"{upload.name}을(를) 연결했습니다.")
+
+
 def render(project) -> None:
     schema = ws.load_form_schema(11)
     steps = schema["steps"]
@@ -77,6 +96,7 @@ def render(project) -> None:
             f11.save(project, merged)
             save_project(project)
             st.success("저장했습니다.")
+        _evidence_upload(project)
     else:
         data = build_cap_form11_data(project)
         if data.rows:

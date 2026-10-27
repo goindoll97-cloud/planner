@@ -105,8 +105,11 @@ def summary_text(impacts: list[ScenarioImpact]) -> str:
     return f"장외 사고시나리오 {len(off_site)}건. 최대 장외거리: 독성 {toxic:.0f} m, 화재·폭발 {fire:.0f} m."
 
 
-def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, worst_case: bool = False) -> dict[str, int]:
-    """Write CALCULATED facts read by the 별지 제12·13호 engines. Returns counts."""
+def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, worst_case: bool = False,
+                   evidence_refs: list | None = None) -> dict[str, int]:
+    """Write CALCULATED facts read by the 별지 제12·13호 engines. Returns counts.
+
+    evidence_refs: 이 결과의 근거 파일(보통 프로그램이 만든 영향범위 분석 근거서). 붙이지 않으면 점검이 ‘근거자료 없음’으로 막습니다."""
     today = date.today().isoformat()
     weather = rw.default_weather(project, worst_case)
     evidence = f"자체 영향범위 분석 근거서 {today}"
@@ -150,7 +153,7 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
         "총괄영향범위 내 근로자수": sum(int(_number(t.get("근로자수")) or 0) for t in union.values()),
     }], "CALCULATED", note="cap_impact_workspace")
     project.set_field(DOCUMENT_KEY, "영향범위 분석 근거서", f"프로그램 생성 자체 분석 근거서({today})", "CALCULATED",
-                      note="내려받은 근거서를 화학사고예방관리계획서에 첨부한다(규정 제23조 ⑥)")
+                      evidence=list(evidence_refs or []), note="내려받은 근거서를 화학사고예방관리계획서에 첨부한다(규정 제23조 ⑥)")
     if not off_site and impacts:
         project.set_field(NO_SCENARIO_KEY, "장외 사고시나리오 없음", "예", "CALCULATED",
                           note="모든 시나리오의 영향범위가 사업장 경계 안(규정 제23조 ⑩)")
