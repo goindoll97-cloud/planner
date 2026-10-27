@@ -8,9 +8,14 @@
 import unittest
 from hashlib import sha256
 from io import BytesIO
+from unittest.mock import patch
 from zipfile import ZipFile
 
 from docx import Document
+from openpyxl import load_workbook
+from pyproj import Transformer
+from shapely.geometry import box, mapping
+from shapely.ops import transform
 
 from engine.stage2 import (cap_form2_workspace as f2, cap_form3_workspace as f3, cap_form4_workspace as f4,
                            cap_form5_workspace as f5, cap_form6_workspace as f6, cap_form7_workspace as f7,
@@ -18,25 +23,69 @@ from engine.stage2 import (cap_form2_workspace as f2, cap_form3_workspace as f3,
                            cap_form11_workspace as f11, cap_form14_workspace as f14, cap_form16_workspace as f16,
                            cap_impact_workspace as iw, cap_narrative_workspace as nw, cap_scenario_workspace as sc,
                            cap_workspace as ws, demo_full_company as d, evidence_workspace as ew,
-                           psm_narrative_workspace as pn, report_export as rx)
+                           psm_narrative_workspace as pn, report_export as rx, cap_surroundings as survey,
+                           cap_site_lookup as kakao, cap_vworld_lookup as vworld)
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.project import EvidenceRef
+from engine.stage2.cap_site_lookup import Candidate
 
 D, C = d.DATA, d.DATA["company"]
 # 승인 DB(법령 기준표)가 있어야 풀리는 것과, 최종 제출 전 사람이 확인하라는 안내
 ALLOWED = ("승인 DB", "법령 DB", "별표 2", "별표 3", "Stage 1 판정", "적용하지 않습니다")
 
 
-def _ref(name):
-    content = d.files()[name]
+REAL = "울산광역시 남구 연습로 1"           # 실제 주소 판 시험용(조회는 가짜 응답으로 대신함)
+CENTER = (129.3589, 35.4779)
+TO_M = Transformer.from_crs(4326, 5179, always_xy=True).transform
+TO_LL = Transformer.from_crs(5179, 4326, always_xy=True).transform
+
+
+def _ref(name, content=None):
+    content = d.files()[name] if content is None else content
     return EvidenceRef(source_type="COMPANY_EVIDENCE", source_name=name, sha256=sha256(content).hexdigest(), location=name)
 
 
-def walk():
+def _box(dx1, dy1, dx2, dy2):
+    x, y = TO_M(*CENTER)
+    return mapping(transform(TO_LL, box(x + dx1, y + dy1, x + dx2, y + dy2)))
+
+
+# 브이월드가 돌려줄 법한 주변 객체(주소점에서 동서남북)
+MAP_OBJECTS = [Candidate("연습 초등학교", "", "", "주소점 남동쪽", None, "브이월드 도로명주소 건물", "b1", _box(250, -300, 330, -240)),
+               Candidate("연습 아파트", "", "", "주소점 남쪽", None, "브이월드 도로명주소 건물", "b2", _box(-40, -260, 60, -200)),
+               Candidate("연습천", "", "", "주소점 서쪽", None, "브이월드 하천망", "r1", _box(-260, -400, -240, 400))]
+
+
+def form8_from_map(p):
+    """실제 주소 판 안내서의 별지 제8호 ①~⑤를 그대로 따라 합니다."""
+    with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
+            patch.object(vworld, "search", return_value=(MAP_OBJECTS, [])), patch.object(kakao, "api_key", return_value=""):
+        survey.collect(p)                                                                           # ①
+    survey.save_boundary(p, _box(-75, -50, 75, 50), "연습용 가상 부지 경계, 2026-10-27", confirmed=True)   # ②
+    for group in survey.group_suggestions(p, 60):                                                   # ③
+        saved = survey.save_group(p, group["name"], group["members"], confirmed=True)
+        survey.import_group(p, saved["group_id"])
+    rows, _, _ = f8.classify_rows(f8.saved_rows(p))                                                 # ④
+    distance = {r["name"]: r["boundary_distance_m"] for r in survey.annotate(p)}
+    kinds = {"연습 초등학교": ("갑종", "교육·연구시설"), "연습 아파트": ("갑종", "주택"), "연습천": ("환경수용체", "하천")}
+    for row in rows:
+        row["보호대상 구분"] = row["보호대상 구분"] or kinds[row["보호대상 명칭"]][0]
+        row["세부유형"] = row["세부유형"] or kinds[row["보호대상 명칭"]][1]
+        row["사업장 경계와 거리(m)"] = round(distance[row["보호대상 명칭"]])
+        row["GIS/현장 근거"] = "브이월드 공간자료 2026-10-27"
+    f8.save(p, rows, False, "", scope_reviewed=True)
+    shot = b"\x89PNG map screenshot"
+    f8.save_review(p, {key: True for key, _ in f8.REVIEW_ITEMS}, "브이월드 공간자료·항공사진, 2026-10-27",   # ⑤
+                   "그린 부지 경계에서 500m 안을 지도로 확인", ",".join(str(i) for i in range(1, len(rows) + 1)),
+                   [_ref("지도_캡처.png", shot)])
+
+
+def walk(address=""):
+    C = d.company(address)
     p = create_direct_cap_project(d.COMPANY, address=C["주소"], cap_group="")
     for name, kind in d.UPLOAD.items():                                              # ① 자료 올리기
-        ew.ingest(p, name, d.files()[name], kind)
+        ew.ingest(p, name, d.files(address)[name], kind)
     questions = [i for i in ew.review_queue(p) if i["kind"] != "확인 필요"] + ew.problems(p)
     ew.approve_bulk(p)                                                                # ② 확인
     ew.confirm_auto(p, [s["key"] for s in ew.slots(p) if s["method"] == "AUTO"])     # ④ 마지막 확인
@@ -57,10 +106,13 @@ def walk():
     reps = [pr for pr in D["products"] if pr["code"] in ("P-01", "P-03")]
     f7.save_rows(p, [{**f7.draft_row(p, pr["cas"], pr["name"], pr["hazard"]["선정 사유"]), **pr["hazard"],
                       "SDS 파일명": pr["props"]["SDS 파일명"], "SDS 개정일": pr["props"]["SDS 개정일"]} for pr in reps])
-    imported, _ = f8.import_company_rows(D["surroundings"], [])                       # 별지 제8호
-    f8.save(p, imported, no_target=False, scope_reviewed=True)
-    f8.save_review(p, {key: True for key, _ in f8.REVIEW_ITEMS}, D["survey"]["source"], D["survey"]["method"],
-                   D["survey"]["map_numbers"], [_ref("07_주변보호대상_지도.png")])
+    if address:                                                                       # 별지 제8호
+        form8_from_map(p)
+    else:
+        imported, _ = f8.import_company_rows(D["surroundings"], [])
+        f8.save(p, imported, no_target=False, scope_reviewed=True)
+        f8.save_review(p, {key: True for key, _ in f8.REVIEW_ITEMS}, D["survey"]["source"], D["survey"]["method"],
+                       D["survey"]["map_numbers"], [_ref("07_주변보호대상_지도.png")])
     specs = {f["id"]: f["spec"] for f in D["facilities"]}                             # 별지 제9·10·11호
     f9.save_specs(p, [{**r, **specs.get(r["구분기호"], {})} for r in f9.rows(p)])
     dikes = {f["id"]: f["dike"] for f in D["facilities"]}
@@ -147,6 +199,44 @@ class FullDemoTests(unittest.TestCase):
         f11.save(self.p, f11.saved_rows(self.p))
         self.assertTrue(self.p.get_field(f8.SITE_KEY).evidence)
         self.assertTrue(self.p.get_field(f11.GAS_KEY).evidence)
+
+
+class RealAddressTests(unittest.TestCase):
+    """주소를 넣어 내려받은 판: 그 주소로 지도 조회해 별지 제8호를 채우고 끝까지 갑니다."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.p, cls.questions = walk(REAL)
+        cls.impacts, cls.applied = scenarios(cls.p)
+
+    def test_package_uses_the_address_and_drops_invented_surroundings(self):
+        with ZipFile(BytesIO(d.full_demo_zip(REAL, "연습 국가산업단지"))) as z:
+            names = set(z.namelist())
+            guide = z.read("README_테스트_안내서.txt").decode("utf-8")
+            general = Document(BytesIO(z.read("03_사업장_일반정보.docx")))
+            survey_sheet = load_workbook(BytesIO(z.read("07_주변보호대상_조사표.xlsx")))["보호대상"]
+        cells = [c.text for t in general.tables for row in t.rows for c in row.cells]
+        self.assertIn(REAL, cells)
+        self.assertIn("연습 국가산업단지", cells)
+        self.assertNotIn("07_주변보호대상_지도.png", names)
+        self.assertEqual(survey_sheet.max_row, 1)                       # 빈 양식(머리글만)
+        for words in (REAL, "주소로 주변자료 조사", "VWORLD_API_KEY", "사업장 경계 저장"):
+            self.assertIn(words, guide)
+        self.assertNotIn("가상 초등학교", guide)
+        self.assertEqual(d.company(REAL)["industrial_complex"], "해당 없음")
+        with ZipFile(BytesIO(d.full_demo_zip())) as z:                 # 주소를 안 넣으면 예전 그대로
+            self.assertIn("07_주변보호대상_지도.png", z.namelist())
+
+    def test_map_lookup_fills_form8_and_the_plan_reaches_the_end(self):
+        self.assertEqual(self.questions, [])
+        self.assertEqual(f8.needs(self.p), [])
+        self.assertEqual(f8.address(self.p), REAL)
+        names = {r["보호대상 명칭"] for r in f8.saved_rows(self.p)}
+        self.assertEqual(names, {"연습 초등학교", "연습 아파트", "연습천"})
+        self.assertTrue(all(i.radius_m and not i.problems for i in self.impacts))
+        state = rx.evaluate(self.p, "CAP")
+        left = [i.message for i in list(state.text_issues) + list(state.manual_issues) if i.status != "PASS"]
+        self.assertEqual([m for m in left if not any(word in m for word in ALLOWED)], [])
 
 
 if __name__ == "__main__":

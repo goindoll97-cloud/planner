@@ -6,6 +6,10 @@
 
 모든 값은 이 파일의 DATA 하나에서 나옵니다. 문서·안내서·자동 점검(tests/test_demo_full_company.py)이 같은 값을 씁니다.
 회사·사람·주소·번호·운전값은 모두 허구입니다(물질명·CAS 번호만 실제). 실제 운전·평가·제출에 쓸 수 없습니다.
+
+주소를 주면(full_demo_zip(address=...)) 그 실제 주소에 이 가상 회사가 있다고 보고 자료를 만듭니다. 이때 별지 제8호 주변
+보호대상은 지어낸 목록 대신 그 주소로 지도 조회(브이월드·카카오)와 확인을 해서 채우도록 안내합니다. 주소는 저장소에 넣지
+않고 내려받는 사람이 그때그때 넣습니다.
 """
 from __future__ import annotations
 
@@ -149,17 +153,55 @@ DATA = {
     },
 }
 
-README = f"""{COMPANY} — 화학사고예방관리계획서 끝까지 연습 자료
+def company(address: str = "", complex_name: str = "") -> dict:
+    """회사 정보. 주소를 주면 그 주소(실제 위치)로 바꾸고 산업단지는 넣은 이름(없으면 ‘해당 없음’)으로 씁니다."""
+    c = dict(DATA["company"])
+    address = " ".join(str(address or "").split())
+    if address:
+        c["주소"] = address
+        c["industrial_complex"] = " ".join(str(complex_name or "").split()) or "해당 없음"
+    return c
 
-모든 회사·사람·주소·번호·운전값은 허구입니다(물질명·CAS 번호만 실제). 실제 운전·평가·제출에 쓸 수 없습니다.
+
+_FORM8_FICTION = f"""\
+ - 별지 제8호: 07_주변보호대상_조사표.xlsx를 그 화면의 ‘기존 보호대상 목록’으로 올려 가져온 뒤 구분하기 → 검토 항목 4개 확인,
+   사용자료·방법은 ‘조사 방법’ 시트, 지도 번호 「{DATA['survey']['map_numbers']}」, ‘확인한 지도·도면 파일’에 07_주변보호대상_지도.png"""
+
+_FORM8_REAL = """\
+ - 별지 제8호 (실제 주소로 조사 — 회사에서 처음 쓸 때와 같은 순서)
+   ① ‘1. 주소 조사·지도 정리’ 단계에서 ‘주소로 주변자료 조사’(카카오 장소명도 같이 보려면 체크).
+   ② 지도에서 사업장 부지 경계를 그립니다. 가상 회사라 실제 부지 도면이 없으니 주소점 둘레에 공장 부지를
+      150m × 100m쯤으로 그리고, ‘경계를 확인한 도면·지도와 날짜’에 「연습용 가상 부지 경계, 오늘 날짜」를 적고
+      확인 체크 → ‘사업장 경계 저장·내외부 분석’.
+   ③ 아래 ‘시설 묶음 후보’에서 학교·아파트·병원·하천처럼 보호대상이 될 만한 것을 골라 ‘시설 묶음 확인·저장’ →
+      ‘별지 제8호에 미검토 후보로 추가’. 지도에 없는데 실제로 있는 대상은 다음 단계 표에 새 행으로 넣습니다.
+   ④ ‘2. 보호대상 목록’에서 ‘갑종·을종·환경수용체 구분하기’. 비어 있는 구분·실제 거리(지도의 최소거리 참고값을 보고
+      확인)·거주민수·근로자수를 채웁니다(모르면 거주민수·근로자수는 비워 두면 0으로 셉니다).
+   ⑤ 지도·현장 확인 기록: 검토 항목 4개, 사용자료 「브이월드 공간자료·항공사진, 조회일」, 방법 「그린 부지 경계에서
+      500m 안을 지도로 확인」, 지도 번호(목록 순번), ‘확인한 지도·도면 파일’에는 번호를 표시한 지도 화면 캡처(PNG).
+   키가 없거나 조회가 안 되면: 07_주변보호대상_조사표.xlsx(빈 양식)에 지도 서비스로 직접 찾은 대상을 적어
+   ‘기존 보호대상 목록’으로 올리고 ④부터 하면 됩니다."""
+
+
+def readme(address: str = "", complex_name: str = "") -> str:
+    """단계별 안내서. 주소를 주면 그 주소로 별지 제8호를 지도 조회해 채우는 안내가 들어갑니다."""
+    c = company(address, complex_name)
+    real = bool(address and address.strip())
+    notice = ("주소만 직접 넣은 실제 주소이고, 회사·사람·번호·운전값·설비는 모두 허구입니다(물질명·CAS 번호만 실제)."
+              if real else "모든 회사·사람·주소·번호·운전값은 허구입니다(물질명·CAS 번호만 실제).")
+    keys = ("\n   주소 조회를 쓰려면 실행 환경(.env 또는 Streamlit secrets)에 VWORLD_API_KEY와 발급 때 등록한 VWORLD_DOMAIN이"
+            "\n   있어야 합니다(카카오 장소명까지 보려면 KAKAO_REST_API_KEY도)." if real else "")
+    return f"""{COMPANY} — 화학사고예방관리계획서 끝까지 연습 자료
+
+{notice} 실제 운전·평가·제출에 쓸 수 없습니다.
 answer_key가 따로 없습니다. 각 문서에 적힌 값이 곧 넣을 값입니다.
 
 [준비]
 0. 왼쪽 ‘참고 > 규정 DB 관리’에서 최신본 업데이트로 법령 기준표(별표 1~4)를 승인해 두세요.
-   이게 없으면 최대보유량 계산·사고시나리오 대상 판정·별지 제6호 물질구분이 ‘승인 DB 필요’로 멈춥니다.
+   이게 없으면 최대보유량 계산·사고시나리오 대상 판정·별지 제6호 물질구분이 ‘승인 DB 필요’로 멈춥니다.{keys}
 
 [1] 자료 접수·확인할 일 (왼쪽 ‘사업장 업무’)
- 1-1. ‘새 사업장 만들기’: 사업장 이름 「{COMPANY}」, 주소 「{DATA['company']['주소']}」
+ 1-1. ‘새 사업장 만들기’: 사업장 이름 「{COMPANY}」, 주소 「{c['주소']}」
  1-2. ① 자료 올리기: 01_제품목록.xlsx, 02_설비대장.xlsx를 한 번에 올리고 ‘자료 읽기’
  1-3. ② 질문에 답하기: 질문이 거의 없어야 정상입니다. 남은 질문은 문서 값으로 답하세요.
  1-4. ④ 보내기·진행 현황: 마지막 확인에서 파일별로 확인 후 저장 → ‘작성자료로 보내기’
@@ -173,8 +215,7 @@ answer_key가 따로 없습니다. 각 문서에 적힌 값이 곧 넣을 값입
  - 별지 제4·5호: 04_공정설명서.docx
  - 별지 제6호: 05_SDS_물성표.xlsx의 ‘별지6_물성’ 시트(물질별 13개 칸. 증기압은 20℃ mmHg, 분자량은 사고시나리오 계산에 씀)
  - 별지 제7호: 05_SDS_물성표.xlsx의 ‘별지7_대표물질’ 시트
- - 별지 제8호: 07_주변보호대상_조사표.xlsx를 그 화면의 ‘기존 보호대상 목록’으로 올려 가져온 뒤 구분하기 → 검토 항목 4개 확인,
-   사용자료·방법은 ‘조사 방법’ 시트, 지도 번호 「{DATA['survey']['map_numbers']}」, ‘확인한 지도·도면 파일’에 07_주변보호대상_지도.png
+{_FORM8_REAL if real else _FORM8_FICTION}
  - 별지 제9호: 06_설비사양_안전설비.xlsx의 ‘별지9_설비사양’ 시트
  - 별지 제10호: 같은 파일 ‘별지10_확산방지설비’ 시트(공통 기준 110%)
  - 별지 제11호: 같은 파일 ‘별지11_가스감지기’ 시트, 저장 후 ‘근거 파일 연결’에 06_가스감지기_배치도.png
@@ -183,7 +224,7 @@ answer_key가 따로 없습니다. 각 문서에 적힌 값이 곧 넣을 값입
  - 별지 제12·13호: 대상 설비가 판정된 뒤 제안된 시나리오 목록에 08_사고시나리오_검토자료.xlsx ‘별지12_추가값’을 넣고 저장,
    아래 계산 결과를 보고 ‘결과를 별지 제12·13호에 반영’(근거서가 자동으로 보관·연결됨)
  - 별지 제14호: 같은 파일 ‘별지14_개시사건’ 시트
- - 별지 제15호: 앞 값으로 자동 계산됩니다(장외거리·주민수는 별지 제8호와 제12호 결과를 씀)
+ - 별지 제15호: 앞 값으로 자동 계산됩니다(장외거리·주민수는 별지 제8호와 제12호 결과를 씀){" — 실제 주변 대상에 따라 결과가 달라집니다" if real else ""}
 
 [4] 비상대응·서술형 (화학사고예방관리계획서 > 비상대응·서술형)
  - 별지 제16호: 09_안전관리_비상대응계획.docx ‘별지 제16호’ 부분
@@ -196,6 +237,9 @@ answer_key가 따로 없습니다. 각 문서에 적힌 값이 곧 넣을 값입
 [6] 점검·내보내기
  - 남은 보완 항목을 보고, 검토용 초안 또는 (모두 해결되면) 제출용 작성본 DOCX를 내려받으세요.
 """
+
+
+README = readme()
 
 
 # ---------------------------------------------------------------- 문서 만들기
@@ -219,11 +263,11 @@ def _book(sheets):
     return out.getvalue()
 
 
-def _doc(title, sections):
+def _doc(title, sections, notice="가상 회사 연습 자료입니다. 모든 내용은 허구입니다."):
     from docx import Document
     doc = Document()
     doc.add_heading(title, level=1)
-    doc.add_paragraph("가상 회사 연습 자료입니다. 모든 내용은 허구입니다.")
+    doc.add_paragraph(notice)
     for heading, rows in sections:
         doc.add_heading(heading, level=2)
         if isinstance(rows, str):
@@ -248,8 +292,9 @@ def _name(code):
     return next(p["name"] for p in DATA["products"] if p["code"] == code)
 
 
-def _files():
-    c, pr = DATA["company"], DATA["process"]
+def _files(address="", complex_name=""):
+    c, pr = company(address, complex_name), DATA["process"]
+    real = c["주소"] != DATA["company"]["주소"]
     products, facilities = DATA["products"], DATA["facilities"]
     files = {}
     files["01_제품목록.xlsx"] = _book({"제품목록": (
@@ -270,7 +315,8 @@ def _files():
             ("작성자 성명", c["writer_name"]), ("담당자 연락처", c["writer_contact"]), ("담당자 메일주소", c["writer_email"])]),
         ("작성수준 · 제출 정보(별지 제1·2호)", [
             ("작성수준", c["작성수준"]), ("제출구분", c["제출구분"]), ("제출 사유", c["제출 사유"]), ("단위공장명", c["단위공장명"])]),
-    ])
+    ], notice="가상 회사 연습 자료입니다. 주소만 실제이고 나머지 내용은 허구입니다." if real else
+       "가상 회사 연습 자료입니다. 모든 내용은 허구입니다.")
     files["04_공정설명서.docx"] = _doc(f"{COMPANY} 공정 설명서", [
         ("별지 제4호 · 총괄 취급시설 개요", [("총괄 취급시설 단위공장 구성", pr["총괄 개요"]), ("공정개요", pr["공정개요"]),
                                      ("입·출하 시설 수(기)", pr["입출하 시설 수"])]),
@@ -296,10 +342,11 @@ def _files():
                               "비고": DATA["dike_rule"]["근거"]}]),
         "별지11_가스감지기": (tuple(DATA["detectors"][0]), DATA["detectors"]),
     })
-    files["07_주변보호대상_조사표.xlsx"] = _book({"보호대상": (tuple(DATA["surroundings"][0]), DATA["surroundings"]),
-                                             "조사 방법": (("항목", "내용"), [{"항목": "근거자료", "내용": DATA["survey"]["source"]},
-                                                                         {"항목": "조사 방법", "내용": DATA["survey"]["method"]},
-                                                                         {"항목": "지도 번호", "내용": DATA["survey"]["map_numbers"]}])})
+    survey = DATA["survey"] if not real else {"source": "", "method": "", "map_numbers": ""}
+    files["07_주변보호대상_조사표.xlsx"] = _book({"보호대상": (tuple(DATA["surroundings"][0]), [] if real else DATA["surroundings"]),
+                                             "조사 방법": (("항목", "내용"), [{"항목": "근거자료", "내용": survey["source"]},
+                                                                         {"항목": "조사 방법", "내용": survey["method"]},
+                                                                         {"항목": "지도 번호", "내용": survey["map_numbers"]}])})
     scen_headers = ("대상 설비번호", "액위(m)", "경계까지 거리(m)", "누출지점 배관길이(m)", "연소열", "비점", "액체비열", "기화열",
                     "증발잠열(kcal/kg)", "액체비열(kcal/kg·℃)", "증기밀도(kg/m3)")
     freq_headers = ("대상 설비번호", "고압용기파열", "배관파열", "배관누출", "상압 탱크 파열 및 누출", "플랜지 등의 가스켓 파손",
@@ -337,34 +384,40 @@ def _picture(title, marks):
     return out.getvalue()
 
 
-def _pictures():
-    return {
+def _pictures(real=False):
+    pictures = {
         "07_주변보호대상_지도.png": _picture("Protected targets within 500 m (numbers = list order)",
                                        [(620, 520, "school 420m"), (450, 560, "apartments 350m"), (640, 300, "warehouse 60m"),
                                         (150, 300, "stream 180m")]),
         "06_가스감지기_배치도.png": _picture("Gas detector layout", [(360, 260, "GD-01 NH3 (CY-01)"), (520, 350, "GD-02 HCl (TK-02)"),
                                                                  (430, 300, "GD-03 toluene (TK-01/RX-01)")]),
     }
+    if real:                       # 실제 주소로 할 때는 지어낸 주변 지도를 주지 않음(지도 조회 화면을 캡처해 씀)
+        pictures.pop("07_주변보호대상_지도.png")
+    return pictures
 
 
-@lru_cache(maxsize=1)
-def _build():
-    return tuple({**_files(), **_pictures()}.items())
+@lru_cache(maxsize=8)
+def _build(address="", complex_name=""):
+    files = _files(address, complex_name)
+    real = company(address, complex_name)["주소"] != DATA["company"]["주소"]
+    return tuple({**files, **_pictures(real)}.items())
 
 
-def files():
+def files(address: str = "", complex_name: str = ""):
     """파일 이름 → 내용(한 번 만든 내용을 계속 씀: 같은 파일 = 같은 지문)."""
-    return dict(_build())
+    return dict(_build(" ".join(str(address or "").split()), " ".join(str(complex_name or "").split())))
 
 
 UPLOAD = {"01_제품목록.xlsx": "material", "02_설비대장.xlsx": "facility"}
 
 
-@lru_cache(maxsize=1)
-def full_demo_zip():
+@lru_cache(maxsize=8)
+def full_demo_zip(address: str = "", complex_name: str = ""):
+    """연습 자료 ZIP. 주소를 주면 그 실제 주소로 별지 제8호를 지도 조회해 채우는 판(지어낸 주변 목록·지도 없음)."""
     out = BytesIO()
     with ZipFile(out, "w", ZIP_DEFLATED) as archive:
-        for name, content in files().items():
+        for name, content in files(address, complex_name).items():
             archive.writestr(name, content)
-        archive.writestr("README_테스트_안내서.txt", README.encode("utf-8"))
+        archive.writestr("README_테스트_안내서.txt", readme(address, complex_name).encode("utf-8"))
     return out.getvalue()

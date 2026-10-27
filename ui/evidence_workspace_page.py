@@ -377,10 +377,20 @@ def _step_upload(project, found) -> None:
                     "일부러 넣은 문제 30가지. 정답표(answer_key.json)가 들어 있어요.")
     from engine.stage2 import demo_full_company
 
-    cols[2].download_button("계획서 끝까지 연습 자료 (파일 11개)", demo_full_company.full_demo_zip(),
-                            file_name="synthetic_company_full_plan.zip", mime="application/zip", key="demo_full")
-    cols[2].caption("제품 3개·설비 4대의 작은 가상 회사. 별지 제1~16호와 서술형에 넣을 값이 모두 회사 문서로 들어 있고, "
-                    "README 안내서를 따라 하면 화학사고예방관리계획서 내려받기까지 갈 수 있어요.")
+    with cols[2]:
+        real_address = st.text_input("실제 주소로 해 보기 (선택)", key="demo_full_address",
+                                     placeholder="예: 도로명주소",
+                                     help="넣으면 이 가상 회사가 그 주소에 있다고 보고 자료를 만들어요. 별지 제8호 주변 보호대상은 "
+                                          "지어낸 목록 대신 그 주소로 지도 조회를 해서 채워요(브이월드 키 필요). 회사·설비 값은 그대로 허구예요.")
+        complex_name = st.text_input("그 주소의 산업단지 (선택)", key="demo_full_complex", placeholder="없으면 비워 두세요 → 해당 없음",
+                                     disabled=not real_address.strip())
+        package = demo_full_company.full_demo_zip(real_address, complex_name if real_address.strip() else "")
+        count = len(demo_full_company.files(real_address, complex_name if real_address.strip() else ""))
+        st.download_button(f"계획서 끝까지 연습 자료 (파일 {count}개)", package,
+                           file_name="synthetic_company_full_plan.zip", mime="application/zip", key="demo_full")
+        st.caption("제품 3개·설비 4대의 작은 가상 회사. 별지 제1~16호와 서술형에 넣을 값이 모두 회사 문서로 들어 있고, "
+                   "README 안내서를 따라 하면 화학사고예방관리계획서 내려받기까지 갈 수 있어요."
+                   + (" 주소를 넣었으니 별지 제8호는 실제 지도 조회로 채워요." if real_address.strip() else ""))
     _local_llm(project)
 
 

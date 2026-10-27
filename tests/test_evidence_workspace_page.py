@@ -67,6 +67,15 @@ class EvidencePageTests(unittest.TestCase):
     def saved(self):
         return ew.confirmed_entities(load_project(self.pid))
 
+    def test_full_practice_package_can_be_made_for_a_real_address(self):
+        at = self.run_page(step=1)
+        self.assertIn("파일 11개", " ".join(b.proto.label for b in at.get("download_button")))
+        at.text_input(key="demo_full_address").input("울산광역시 남구 연습로 1").run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        labels = " ".join(b.proto.label for b in at.get("download_button"))
+        self.assertIn("파일 10개", labels)
+        self.assertIn("실제 지도 조회", " ".join(_texts(at)))
+
     def test_opens_on_questions_step_with_plain_language_only(self):
         at = self.run_page()
         self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 2)
