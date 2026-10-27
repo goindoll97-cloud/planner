@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import importlib
+import re
+from collections import defaultdict
 
 import pandas as pd
 import streamlit as st
@@ -238,6 +240,91 @@ def render_option(project, option) -> None:
         importlib.import_module(f"ui.cap_form{option}_view").render(project)
 
 
+# ---------------------------------------------------------------- 진행 현황
+
+GOTO_KEY = "cap_goto"       # 진행 현황에서 고른 (화면, 서식): 그 화면을 열 때 해당 서식을 바로 펼칩니다
+_FORM_CODE = re.compile(r"CAP-FORM(\d+)")
+# 서식 번호가 붙지 않은 점검 항목이 속한 별지
+_OTHER_CODES = {"CAP-CAS": 6, "CAP-CHEMICAL": 6, "CAP-FACILITY": 1}
+
+
+def _form_of(code: str):
+    match = _FORM_CODE.match(code)
+    if match:
+        number = int(match.group(1))
+        return 12 if number == 13 else number          # 별지 제13호는 제12호 화면에서 함께 작성
+    return next((form for prefix, form in _OTHER_CODES.items() if code.startswith(prefix)), None)
+
+
+def progress(project) -> dict:
+    """화면별로 남은 일. 내보내기 점검(report_export.evaluate)과 같은 기준을 별지별로 나눠 셉니다(0.1초 이내).
+
+    돌려주는 값: {"rows": [화면별 행], "final_ready": 제출용 작성본 가능 여부, "remaining": 보완할 것 수}
+    각 행: group, title, icon, forms(별지 수), open_forms([(별지, 남은 수)]), later(따로 준비할 첨부 수), next(다음 서식), status, done
+    """
+    from engine.stage2 import report_export as rx
+    from engine.stage2 import versioning as ver
+
+    state = rx.evaluate(project, "CAP")
+    remaining, later = defaultdict(int), defaultdict(int)
+    for issue in state.text_issues:
+        if issue.status != "PASS":
+            remaining[_form_of(issue.code)] += 1
+    for issue in state.manual_issues:
+        later[_form_of(issue.code)] += 1
+    rows = []
+    for group, (title, icon, options, _) in GROUPS.items():
+        forms = [o for o in options if isinstance(o, int)]
+        open_forms = [(f, remaining[f]) for f in forms if remaining[f]]
+        row = {"group": group, "title": title, "icon": icon, "forms": len(forms), "open_forms": open_forms,
+               "later": sum(later[f] for f in forms), "next": open_forms[0][0] if open_forms else options[0]}
+        if group == "export":
+            total = state.hold + state.review
+            row["done"] = state.final_ready
+            row["status"] = ("제출용 작성본을 만들 수 있어요" if state.final_ready else
+                             f"보완할 것 {total}건이 남아 있어요 · 검토용 초안은 지금도 내려받을 수 있어요" if total else
+                             "점검을 확정하면 제출용 작성본을 만들 수 있어요")
+        elif group == "submission":
+            versions = ver.list_versions(project.project_id, "CAP")
+            row["done"] = bool(versions) and not open_forms
+            row["status"] = (f"저장한 제출본 {len(versions)}개" if versions else "제출본을 아직 저장하지 않았어요 (버전 관리에서 저장)") + \
+                            (f" · 별지 제2호 보완 {open_forms[0][1]}건" if open_forms else "")
+        else:
+            row["done"] = not open_forms
+            done_forms = len(forms) - len(open_forms)
+            row["status"] = f"서식 {done_forms}/{len(forms)} 완료" + (
+                " · 남은 것: " + ", ".join(f"{registry.label(f)} {n}건" for f, n in open_forms) if open_forms else "")
+            if group == "emergency":
+                row["status"] += " · 서술형은 직접 확인"
+        rows.append(row)
+    return {"rows": rows, "final_ready": state.final_ready, "remaining": state.hold + state.review}
+
+
+def render_progress(project, *, key_prefix: str = "hub") -> None:
+    """화학사고예방관리계획서 진행 현황판: 화면별 남은 일과 ‘이어서 작성’ 버튼(다음 서식을 바로 엽니다)."""
+    try:
+        info = progress(project)
+    except ValueError as exc:      # 작성 범위에 화학사고예방관리계획서가 없을 때
+        st.caption(str(exc))
+        return
+    done = sum(r["done"] for r in info["rows"])
+    st.markdown(f"**화학사고예방관리계획서 진행 현황** — 화면 {done}/{len(info['rows'])} 완료")
+    for row in info["rows"]:
+        with st.container(border=True):
+            cols = st.columns([4, 1])
+            cols[0].markdown(f"{'✅' if row['done'] else row['icon']} **{row['title']}** — {row['status']}")
+            if row["later"]:
+                cols[0].caption(f"첨부·현장 자료로 따로 준비할 것 {row['later']}건")
+            if not row["done"]:
+                cols[0].caption("다음: " + option_label(row["next"]))
+            if cols[1].button("이어서 작성 →" if not row["done"] else "열기", key=f"{key_prefix}_{row['group']}"):
+                st.session_state[GOTO_KEY] = (row["group"], row["next"])
+                try:
+                    st.switch_page(PAGES[row["group"]])
+                except Exception:          # 메뉴 없이 단독 실행되는 경우
+                    st.info(f"왼쪽 메뉴의 ‘{row['title']}’ 화면을 열어 주세요.")
+
+
 def page(group: str) -> None:
     """화면 하나: 제목·사업장 선택·(여러 개면) 별지 선택·본문."""
     title, icon, options, summary = GROUPS[group]
@@ -245,6 +332,10 @@ def page(group: str) -> None:
     st.title(f"{icon} {title}")
     st.caption(summary)
     project = open_project()
+    goto = st.session_state.pop(GOTO_KEY, None)
+    if goto and goto[0] == group and goto[1] in options and len(options) > 1:
+        key = f"cap_form_no_{group}"
+        st.session_state[key] = st.session_state[f"{key}__accepted"] = goto[1]
     if len(options) == 1:
         render_option(project, options[0])
         return

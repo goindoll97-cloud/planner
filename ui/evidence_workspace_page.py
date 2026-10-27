@@ -1,6 +1,6 @@
 """사업장 업무 화면: 신입사원도 따라올 수 있게 단계별로 안내합니다.
 
-① 자료 올리기 → ② 질문에 답하기 → ③ 시나리오 후보 → ④ 작성 화면으로 보내기
+① 자료 올리기 → ② 질문에 답하기 → ③ 시나리오 후보 → ④ 보내기·진행 현황
 
 화면에는 사람 말만 씁니다. 파일 해시·내부 식별자·JSON 같은 기록은 ④의 ‘검토·감사용 기록’에만 둡니다.
 """
@@ -20,7 +20,7 @@ from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import list_projects, load_attachment, load_project, save_attachment, save_project
 
-STEPS = {1: "① 자료 올리기", 2: "② 질문에 답하기", 3: "③ 시나리오 후보", 4: "④ 작성 화면으로 보내기"}
+STEPS = {1: "① 자료 올리기", 2: "② 질문에 답하기", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
 MAX_CARDS = 30
 DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".txt")
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
@@ -740,10 +740,10 @@ def _step_scenarios(project, found, triage) -> None:
             st.caption("지우지 않고 남겨 둬요. 설비 목록의 취급제품과 물질 목록의 제품코드가 맞으면 위 순서에 들어가요.")
             st.dataframe([{"설비": names(r["facility"]), "물질": names(r["material"])} for r in unlinked[:500]],
                          hide_index=True, width="stretch")
-    _next_button(4, pid, "다음: 작성 화면으로 보내기 →")
+    _next_button(4, pid, "다음: 보내기·진행 현황 →")
 
 
-# ---------------------------------------------------------------- ④ 작성 화면으로 보내기
+# ---------------------------------------------------------------- ④ 보내기·진행 현황
 
 def _form1_payoff(project) -> None:
     """보낸 자료로 별지 제1호가 어디까지 채워졌는지, 법정 산정에 더 필요한 값이 무엇인지 보여 줍니다."""
@@ -768,8 +768,39 @@ TARGET_NAME = {"inventory.chemicals": "물질 목록", "inventory.facilities": "
 
 
 def _step_export(project, found) -> None:
+    """확인한 값을 작성자료로 보내고, 문서별로 남은 일을 한곳에서 보여 줍니다(여기만 따라가면 되도록)."""
+    st.write("확인한 값을 **작성자료**로 보내요. 보낸 뒤에는 아래 진행 현황에서 남은 일을 보고 ‘이어서 작성’을 누르면 돼요.")
+    _send(project, found)
+    st.divider()
+    _progress_board(project)
+    _records(project, found["names"])
+
+
+def _progress_board(project) -> None:
+    from engine.stage2 import cap_judgement
+    from ui import cap_common
+
+    shown = False
+    if project.cap_in_scope or cap_judgement.undecided(project):
+        cap_common.render_progress(project, key_prefix="hub_" + project.project_id)
+        shown = True
+    if project.psm_in_scope:
+        from engine.stage2 import report_export as rx
+
+        try:
+            state = rx.evaluate(project, "PSM")
+            left = state.hold + state.review
+            st.markdown("**공정안전보고서** — " + (f"보완할 것 {left}건" if left else "점검을 확정하면 내려받을 수 있어요"))
+        except ValueError:
+            pass
+        st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성 화면으로 가기 →")
+        shown = True
+    if not shown:
+        st.caption("이 사업장은 아직 작성할 문서가 정해지지 않았어요. ‘사업장 판정하기’에서 확인하세요.")
+
+
+def _send(project, found) -> None:
     pid, names = project.project_id, found["names"]
-    st.write("확인한 값을 **화학사고예방관리계획서 작성 화면**으로 보내요. 보낸 뒤에는 작성 화면에서 주변 지도, 사고시나리오, 서식을 이어서 작성해요.")
     pending = _question_count(found)
     if pending:
         st.info(f"② 질문에 아직 답하지 않은 것이 {pending}개 있어요. 답한 값만 보내지고, 나머지는 나중에 다시 보낼 수 있어요.")
@@ -817,23 +848,19 @@ def _step_export(project, found) -> None:
     if changed:
         overwrite = st.checkbox("작성 화면에 이미 저장된 " + ", ".join(TARGET_NAME.get(k, k) for k in changed)
                                 + "이 있어요. 위 내용으로 바꿀게요", key="overwrite_" + pid)
-    if st.button("작성 화면으로 보내기", type="primary", key="publish_" + pid, disabled=not overwrite):
+    if st.button("작성자료로 보내기", type="primary", key="publish_" + pid, disabled=not overwrite):
         try:
             ew.publish(project, replace_existing=bool(changed))
             save_project(project)
-            st.success("보냈어요. 아래 링크로 작성 화면에 가서 이어서 작성하세요.")
+            st.success("보냈어요. 아래 진행 현황에서 ‘이어서 작성’을 누르세요.")
         except ValueError as exc:
             st.error(str(exc))
     _form1_payoff(project)
-    st.page_link("ui/cap_facts_page.py", label="화학사고예방관리계획서 작성으로 가기 (사업장·물질·시설부터) →")
-    st.page_link("ui/cap_scenario_page.py", label="사고시나리오·위험도 작성으로 가기 →")
-    st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성 화면으로 가기 →")
-    _records(project, names)
 
 
 def _records(project, names) -> None:
     with st.expander("검토·감사용 기록 (값마다 어느 파일 어디서 왔는지)"):
-        st.caption("나중에 검토자가 ‘이 값 어디서 왔어요?’라고 물으면 이 기록을 보여 주세요. 파일 지문(SHA256)으로 원본이 바뀌지 않았는지 확인할 수 있어요.")
+        st.caption("나중에 검토자가 ‘이 값 어디서 왔어요?’라고 물으면 이 기록을 보여 주세요. 파일 지문으로 원본이 바뀌지 않았는지 확인할 수 있어요.")
         rows = [{"설비·물질": names(s["entity"]), "항목": _name(s["field"]), "값": _value(s["field"], s["chosen"]["value"]),
                  "누가": "자동" if s["method"] == "AUTO" else "담당자 확인", "읽은 곳": _where(s["chosen"])}
                 for s in ew.slots(project) if s["chosen"]]
