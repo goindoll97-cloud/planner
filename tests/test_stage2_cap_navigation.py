@@ -14,13 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class CAPNavigationTests(unittest.TestCase):
     def test_every_registered_form_has_a_view_with_render(self):
         for number in registry.FORM_NUMBERS:
-            if number == 1:
-                continue  # 별지 제1호는 작성 화면 본문에 있다
             source = (ROOT / f"ui/cap_form{number}_view.py").read_text(encoding="utf-8")
             self.assertIn("def render(project)", source, number)
-        self.assertEqual(registry.label(12), "별지 제12·13호")
-        self.assertEqual(registry.label(3), "별지 제3호")
-        self.assertNotIn(13, registry.FORM_NUMBERS)
+        self.assertEqual(registry.label(2), "별지 제2호")
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn('"implementation": "이행점검 · 자체점검 별지 제1호~제3호"', page)
         self.assertTrue((ROOT / "ui/cap_implementation_self_check_view.py").exists())
@@ -28,7 +24,9 @@ class CAPNavigationTests(unittest.TestCase):
     def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
-        self.assertIn('st.Page("ui/cap_facts_page.py", title="사업장·물질·시설 작성"', app)
+        self.assertIn('st.Page("ui/cap_export_page.py", title="초안 내려받기"', app)
+        for gone in ("cap_facts_page.py", "cap_scenario_page.py", "cap_emergency_page.py"):
+            self.assertNotIn(gone, app)                           # 서식 입력 화면은 없다
         self.assertNotIn("cap_workspace_page.py", app)          # 예전 한 화면은 나눠서 지움
         from ui import cap_common
         listed = [option for _, _, options, _ in cap_common.GROUPS.values() for option in options]
@@ -49,8 +47,6 @@ class CAPNavigationTests(unittest.TestCase):
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertNotIn("cap_excel_panel", page)
         self.assertFalse((ROOT / "ui/cap_excel_panel.py").exists())
-        form6 = (ROOT / "ui/cap_form6_view.py").read_text(encoding="utf-8")
-        self.assertIn("chemical_upload_panel.render", form6)  # 물질 목록만 엑셀·CSV로 올린다
         start = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
         self.assertIn("chemical_upload_panel.render", start)
 

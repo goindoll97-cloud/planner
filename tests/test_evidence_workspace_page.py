@@ -301,22 +301,16 @@ class ProgressBoardTests(unittest.TestCase):
         os.chdir(self.cwd)
         self.tmp.cleanup()
 
-    def test_progress_counts_open_forms_per_screen_with_the_export_check(self):
-        from engine.stage2 import report_export as rx
+    def test_progress_has_a_draft_download_row_and_a_submission_row(self):
         from ui import cap_common
         info = cap_common.progress(self.project)
         rows = {r["group"]: r for r in info["rows"]}
         self.assertEqual(list(rows), list(cap_common.GROUPS))
-        state = rx.evaluate(self.project, "CAP")
-        counted = sum(n for r in info["rows"] for _, n in r["open_forms"])
-        self.assertEqual(counted, state.hold + state.review)                  # 점검과 같은 기준, 빠짐 없이 나눔
-        facts = rows["facts"]
-        self.assertFalse(facts["done"])
-        self.assertEqual(facts["next"], facts["open_forms"][0][0])
-        self.assertIn(3, dict(facts["open_forms"]))                           # 이 시험 사업장은 별지 제3호가 비어 있음
+        self.assertEqual(list(rows), ["export", "submission"])
+        self.assertIn("초안을 내려받을 수 있어요", rows["export"]["status"])
         self.assertIn("저장하지 않았어요", rows["submission"]["status"])
 
-    def test_board_is_shown_in_step_four_and_continue_opens_the_next_form(self):
+    def test_board_is_shown_in_step_four_and_opens_the_draft_download(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)
         at.session_state["_stage2_active_project_id"] = self.pid
         at.session_state["evidence_step_" + self.pid] = 4
@@ -324,14 +318,10 @@ class ProgressBoardTests(unittest.TestCase):
         self.assertFalse(at.exception, [e.value for e in at.exception])
         text = " ".join(m.value for m in at.markdown)
         self.assertIn("화학사고예방관리계획서 진행 현황", text)
-        self.assertIn("사업장·물질·시설 작성", text)
-        at.button(key=f"hub_{self.pid}_facts").click().run()                 # 단독 실행이라 화면 이동 대신 안내가 나옴
-        goto = at.session_state["cap_goto"]
-        self.assertEqual(goto[0], "facts")
-        # 그 화면을 열면 다음 서식이 바로 펼쳐짐
-        page = AppTest.from_file(str(ROOT / "ui" / "cap_facts_page.py"), default_timeout=90)
+        self.assertIn("초안 내려받기", text)
+        self.assertNotIn("사업장·물질·시설 작성", text)
+        page = AppTest.from_file(str(ROOT / "ui" / "cap_export_page.py"), default_timeout=90)
         page.session_state["_stage2_active_project_id"] = self.pid
-        page.session_state["cap_goto"] = goto
         page.run()
         self.assertFalse(page.exception, [e.value for e in page.exception])
-        self.assertEqual(page.selectbox(key="cap_form_no_facts").value, goto[1])
+

@@ -1,45 +1,31 @@
 """화학사고예방관리계획서 화면들이 함께 쓰는 부분.
 
-예전에는 ‘화학사고예방관리계획서 작성’ 한 화면이 별지 15개·서술형·내보내기·제출서식을 모두 담았습니다.
-자료 정리(사업장 업무)와 버전 관리가 따로 나간 뒤, 남은 작성 기능을 하는 일별로 나눠 왼쪽 메뉴의 화면 다섯 개로 둡니다.
-각 화면은 이 모듈의 page()만 부릅니다. 별지별 입력 화면(ui/cap_formN_view.py)은 그대로 씁니다.
+사람은 서식을 쓰지 않고 회사 파일을 올립니다(사업장 업무). 프로그램이 채운 초안은 ‘초안 내려받기’에서 받고,
+행정서식(별지 제2·31·32호)과 이행점검은 ‘제출·변경·이행점검’에서 다룹니다. 각 화면은 이 모듈의 page()만 부릅니다.
 """
 from __future__ import annotations
 
-import importlib
 import re
 from collections import defaultdict
 
-import pandas as pd
 import streamlit as st
 
-from engine.stage2 import cap_workspace as ws
 from engine.stage2 import storage
-from engine.stage2.cap_guideline import form_guidelines
-from ui import cap_facility_editor, cap_frames as frames
 from ui import cap_forms_registry as registry
 from ui import unsaved_guard
 
 ACTIVE_PROJECT_KEY = "_stage2_active_project_id"
 
 SPECIAL = {
-    "narrative": "서술형 항목 · 사전관리방침과 비상대응계획",
-    "export": "점검·내보내기 · 보고서 내려받기",
+    "export": "초안 내려받기",
     "submission": "제출·변경 행정서식 · 별지 제31호·제32호",
     "implementation": "이행점검 · 자체점검 별지 제1호~제3호",
 }
 
-# 화면 → (제목, 아이콘, 다루는 별지·항목, 설명). 별지 번호 순서와 작성 순서를 따릅니다.
+# 화면 → (제목, 아이콘, 다루는 별지·항목, 설명)
 GROUPS = {
-    "facts": ("사업장·물질·시설 작성", "🏷️", [1, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-              "별지 제1호(작성수준)와 제3~11호(사업장·시설·물질·주변환경·설비)를 작성해요. "
-              "‘자료 접수·확인할 일’에서 보낸 물질·설비 값은 미리 채워져 있어요."),
-    "scenario": ("사고시나리오·위험도", "🔥", [12, 14, 15],
-                 "별지 제12·13호(사고시나리오와 주변지역 영향평가), 제14호(시설빈도), 제15호(위험도 분석)를 작성해요."),
-    "emergency": ("비상대응·서술형", "🚨", [16, "narrative"],
-                  "별지 제16호(비상대응분야 요약서)와 사전관리방침·비상대응계획 같은 서술형 항목을 작성해요."),
-    "export": ("점검·내보내기", "📤", ["export"],
-               "작성한 내용을 점검하고 화학사고예방관리계획서를 내려받아요. 최종 제출 확인과 첨부 자료도 여기서 다뤄요."),
+    "export": ("초안 내려받기", "📤", ["export"],
+               "회사 파일에서 프로그램이 채운 화학사고예방관리계획서 초안을 내려받아요. 틀린 곳은 파일을 고쳐 다시 올리거나, 내려받은 문서를 직접 고치세요."),
     "submission": ("제출·변경·이행점검", "📮", [2, "submission", "implementation"],
                    "변경내역 관리대장(별지 제2호), 검토·변경 검토신청서(별지 제31·32호), 이행점검 자체점검을 작성해요. "
                    "저장해 둔 버전을 비교 기준으로 쓰므로 먼저 ‘버전 관리’에서 제출본을 저장해 두세요."),
@@ -50,6 +36,8 @@ PAGES = {group: f"ui/cap_{group}_page.py" for group in GROUPS}
 def option_label(option) -> str:
     if option in SPECIAL:
         return SPECIAL[option]
+    from engine.stage2.cap_guideline import form_guidelines
+
     return f"{registry.label(option)} · {form_guidelines()[option].title}"
 
 
@@ -122,93 +110,6 @@ def open_project():
     return project
 
 
-def _explain(step: dict) -> None:
-    st.caption(step["summary"])
-    for item in step["explain"]:
-        with st.expander(item["term"]):
-            st.write(item["text"])
-
-
-def _render_form1(project) -> None:
-    schema = ws.load_form_schema(1)
-    steps = ws.steps(1)
-    titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
-    step_ids = ["inputs", "result", "export"]
-
-    st.header(schema["title"])
-    step_title = st.radio("단계", titles, horizontal=True, label_visibility="collapsed", key="cap_form01_step")
-    step_id = step_ids[titles.index(step_title)]
-    if step_id == "inputs":
-        st.caption("아래 표에 시설을 한 줄씩 입력하세요. 물질 목록은 시작하기에서 입력한 값이 자동으로 들어와 있고, 최대보유량은 프로그램이 계산합니다.")
-        for part in steps:
-            if part["id"] in ("scope", "facilities", "chemicals"):
-                for item in part["explain"]:
-                    with st.expander(item["term"]):
-                        st.write(item["text"])
-    else:
-        current = next((step for step in steps if step["id"] == step_id), None)
-        if current:
-            _explain(current)
-
-    if step_id == "inputs":
-        st.subheader("취급 물질")
-        chemicals = ws.form1._chemical_identity_rows(project)
-        if chemicals:
-            frames.show(
-                pd.DataFrame([
-                    {
-                        "물질명": ws.form1._row_value(row, "물질명", "유해화학물질명", "제품명"),
-                        "CAS No.": ws.form1._row_value(row, "CAS 번호", "CAS No."),
-                        "함량(%)": ws.form1._row_value(row, "함량(%)", "함량"),
-                    }
-                    for row in chemicals
-                ]),
-                width="stretch", hide_index=True,
-            )
-        else:
-            st.warning("물질 목록이 없습니다. 별지 제6호에서 물질을 직접 추가하거나 엑셀·CSV로 올려 주세요.")
-        st.caption("별지 제6호에서도 같은 물질 정보를 사용합니다. 단일물질은 아래에서 KOSHA 후보를 조회할 수 있습니다.")
-        from ui import cap_kosha_panel
-
-        with st.expander("KOSHA 물질 정보 조회 (참고 후보)"):
-            cap_kosha_panel.render(project, "cap_form01")
-
-
-        st.caption("여기서 고친 설비명·용량·시설유형·성상·비중·운전조건은 ‘자료 접수·확인할 일’ 기록에도 ‘별지 제1호 직접 입력’으로 함께 저장돼 두 곳의 값이 같게 유지돼요. 행을 지우면 자료 접수에서도 제외돼요.")
-        cap_facility_editor.render(project, "cap_form01")
-
-    elif step_id == "result":
-        form = ws.resolve_form1(project)
-        if form.needs:
-            st.warning("아직 필요한 정보가 있습니다")
-            for item in form.needs:
-                st.write(f"• {item}")
-        for blocker in form.blockers:
-            st.error(blocker)
-        for line in ws.result_sentences(list(form.chemical_rows)):
-            st.write("• " + line)
-        hint_label, hint_reason = ws.level_hint(list(form.chemical_rows), form.writing_level)
-        st.metric(
-            "사업장 작성수준", form.writing_level or "미확정",
-            help="사업장 판정하기에서 승계했거나 회사가 직접 확인해 입력한 작성수준입니다.",
-        )
-        st.info(f"이 서식의 물질별 최대보유량으로 본 결과: **{hint_label}** — {hint_reason}")
-        st.caption("직접 시작한 프로젝트는 제출 전 작성수준과 최대보유량을 확인하세요. 별도 사업장 판정 결과가 있는 프로젝트는 해당 결과를 따릅니다.")
-
-    else:
-        form = ws.resolve_form1(project)
-        st.write("입력한 자료로 아래 서식이 채워집니다. 규정서식 표 그대로의 DOCX로 내려받을 수 있습니다.")
-        with st.expander("서식에 채워지는 내용 미리보기"):
-            st.write("**1. 단위공장별 최대보유량 산출**")
-            if form.facility_rows:
-                frames.show(pd.DataFrame(form.facility_rows).drop(columns=["산정근거"], errors="ignore"), width="stretch", hide_index=True)
-            st.write("**2. 유해화학물질별 사업장 내의 최대보유량 산출**")
-            if form.chemical_rows:
-                frames.show(pd.DataFrame(form.chemical_rows), width="stretch", hide_index=True)
-            st.write(f"**3. 작성수준 도출**: {form.writing_level or '미확정'}")
-        st.info("점검하고 보고서를 내려받는 곳은 왼쪽 ‘점검·내보내기’ 화면입니다.")
-
-
 def render_option(project, option) -> None:
     """별지 번호 또는 특별 항목 하나를 그립니다."""
     if option == "submission":
@@ -219,12 +120,6 @@ def render_option(project, option) -> None:
         from ui import cap_implementation_self_check_view
 
         cap_implementation_self_check_view.render(project)
-    elif option == "narrative":
-        from engine.stage2 import cap_narrative_workspace as cap_narrative
-        from ui import narrative_panel
-
-        narrative_panel.render(project, cap_narrative.CAP_PROFILE, ("cap-contacts", "cap-resources"), "cap",
-                               decision_facts=cap_narrative.visible_facts(project))
     elif option == "export":
         from engine.stage2 import psm_attachments
         from ui import attachments_panel, cap_final_evidence_panel, report_export_panel
@@ -235,9 +130,9 @@ def render_option(project, option) -> None:
             attachments_panel.render(project, psm_attachments.CAP_SLOTS, "cap")
         st.markdown("### 점검하고 내려받기")
         report_export_panel.render(project, "CAP")
-    elif option == 1:
-        _render_form1(project)
     else:
+        import importlib
+
         importlib.import_module(f"ui.cap_form{option}_view").render(project)
 
 
@@ -282,21 +177,13 @@ def progress(project) -> dict:
         if group == "export":
             total = state.hold + state.review
             row["done"] = state.final_ready
-            row["status"] = ("제출용 작성본을 만들 수 있어요" if state.final_ready else
-                             f"보완할 것 {total}건이 남아 있어요 · 검토용 초안은 지금도 내려받을 수 있어요" if total else
-                             "점검을 확정하면 제출용 작성본을 만들 수 있어요")
+            row["status"] = (f"초안을 내려받을 수 있어요 · 파일을 보완하면 좋아질 곳 {total}건" if total else
+                             "초안을 내려받을 수 있어요")
         elif group == "submission":
             versions = ver.list_versions(project.project_id, "CAP")
             row["done"] = bool(versions) and not open_forms
             row["status"] = (f"저장한 제출본 {len(versions)}개" if versions else "제출본을 아직 저장하지 않았어요 (버전 관리에서 저장)") + \
                             (f" · 별지 제2호 보완 {open_forms[0][1]}건" if open_forms else "")
-        else:
-            row["done"] = not open_forms
-            done_forms = len(forms) - len(open_forms)
-            row["status"] = f"서식 {done_forms}/{len(forms)} 완료" + (
-                " · 남은 것: " + ", ".join(f"{registry.label(f)} {n}건" for f, n in open_forms) if open_forms else "")
-            if group == "emergency":
-                row["status"] += " · 서술형은 직접 확인"
         rows.append(row)
     return {"rows": rows, "final_ready": state.final_ready, "remaining": state.hold + state.review}
 

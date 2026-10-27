@@ -104,8 +104,6 @@ class Form15WorkspaceTests(unittest.TestCase):
         self.assertEqual(result.reference_grade, "")
         self.assertTrue(result.blockers)
 
-    def test_page_is_wired(self):
-        self.assertIn(15, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

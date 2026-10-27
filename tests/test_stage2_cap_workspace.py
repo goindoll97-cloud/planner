@@ -331,7 +331,7 @@ class CAPWorkspaceTests(unittest.TestCase):
 
     def test_page_is_wired_into_navigation(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn('st.Page("ui/cap_facts_page.py"', app)
+        self.assertIn('st.Page("ui/cap_export_page.py"', app)
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn('report_export_panel.render(project, "CAP")', page)  # 규정서식 DOCX는 공용 내보내기 단계에서 만든다
 

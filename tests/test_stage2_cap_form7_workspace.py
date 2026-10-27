@@ -92,9 +92,6 @@ class CAPForm7WorkspaceTests(unittest.TestCase):
         self.assertEqual(len(picked), 2)
         self.assertEqual({s.cas for s in picked}, {"108-88-3", "71-43-2"})  # 최저 폭발하한 1.2 / 최저 독성구분 2
 
-    def test_page_is_wired(self):
-        root = Path(__file__).resolve().parents[1]
-        self.assertIn(7, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

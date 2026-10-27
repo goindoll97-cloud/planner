@@ -111,7 +111,6 @@ class Form3SuggestionTests(unittest.TestCase):
     def test_pages_use_the_helpers(self):
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn("chem_ws.apply_candidates", (ROOT / "ui/cap_kosha_panel.py").read_text(encoding="utf-8"))
-        self.assertIn("f3.suggestion", (ROOT / "ui/cap_form3_view.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

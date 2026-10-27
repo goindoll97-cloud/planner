@@ -413,8 +413,6 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         f8.save(project, [], no_target=True, evidence="지도 확인 2026-09-19", scope_reviewed=True)
         self.assertEqual(f8.needs(project), [])
 
-    def test_page_is_wired(self):
-        self.assertIn(8, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

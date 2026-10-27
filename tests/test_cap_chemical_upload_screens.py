@@ -140,20 +140,6 @@ class PanelScreenTests(unittest.TestCase):
         self.assertFalse(at2.exception)
         self.assertEqual([r["제품명"] for r in at2.session_state["cap_start_seed"]], ["세척제A"])
 
-    def test_form6_identity_step_accepts_an_upload_into_the_project(self):
-        at = _run([
-            "from unittest.mock import patch",
-            "from ui import cap_form6_view",
-            "project = form6_project()",
-            "with patch('ui.cap_form6_view.save_project'):",
-            "    cap_form6_view.render(project)",
-        ])
-        self.assertFalse(at.exception)
-        at.button(key="cap_form06_upload_add").click().run()
-        self.assertFalse(at.exception)
-        names = [r.get("물질명") for r in chem._rows(at.session_state["project"])[1]]
-        self.assertIn("톨루엔", names)
-        self.assertIn("아세톤", names)
 
 
 if __name__ == "__main__":
