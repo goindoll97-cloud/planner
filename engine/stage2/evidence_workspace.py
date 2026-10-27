@@ -1509,12 +1509,18 @@ def file_linked(record):
 
 
 def _site_values(project, chosen):
-    """사업장 사실 → {작성자료 키: (값, 근거 사실들, 이름)}. 다른 곳에서 적은 값과 다르면 보내지 않습니다."""
+    """사업장 사실 → {작성자료 키: (값, 근거 사실들, 이름)}. 칸 이름(column)이 있는 사실은 한 키 아래 묶음(dict)으로 둡니다
+    (확산방지설비 공통 기준, 서술형 결정사항 등). 다른 곳에서 적은 값과 다르면 보내지 않습니다(catalog_preview)."""
     site = chosen.get(SITE_ENTITY, {})
-    out = {}
+    out, groups = {}, {}
     for item in catalog.facts(kinds=["site", "narrative"], company=True):
+        if not item.field_key or item.field_key.startswith("@"):
+            continue
+        if item.column:
+            groups.setdefault(item.field_key, []).append(item)
+            continue
         fact = site.get(item.evidence_field)
-        if fact is None or not item.field_key or item.field_key.startswith("@") or item.field_key == DIKE_RULE_KEY:
+        if fact is None:
             continue
         value = str(fact["value"]).strip()
         if item.id == "site.loading_facility_count":
@@ -1523,11 +1529,27 @@ def _site_values(project, chosen):
             count = re.sub(r"\s*기$", "", value)
             value = f"입·출하 시설 {count}기" + (f", 보유 탱크로리 {lorries}기" if lorries else "")
         out[item.field_key] = (value, [fact], item.name)
-    rule = {name: site.get(field) for name, field in (("비율(%)", "dike_required_ratio"), ("근거", "dike_required_basis"))}
-    if any(rule.values()):
-        out[DIKE_RULE_KEY] = ({k: (str(f["value"]).strip() if f else "") for k, f in rule.items()},
-                              [f for f in rule.values() if f], "확산방지설비 공통 필요용량 기준")
+    for key, items in groups.items():
+        found = {item.column: site[item.evidence_field] for item in items if item.evidence_field in site}
+        if not found:
+            continue
+        if key == DIKE_RULE_KEY:          # 계산 엔진이 두 칸을 모두 읽으므로 빈 칸도 둡니다
+            value = {item.column: (str(found[item.column]["value"]).strip() if item.column in found else "") for item in items}
+            label = "확산방지설비 공통 필요용량 기준"
+        else:
+            value = {column: str(fact["value"]).strip() for column, fact in found.items()}
+            label = _group_label(key)
+        out[key] = (value, list(found.values()), label)
     return out
+
+
+def _group_label(key):
+    """묶음 사실의 이름(서술형 결정사항은 그 항목 이름)."""
+    try:
+        from .cap_narrative_workspace import DECISION_FACTS
+        return next((f.label for f in DECISION_FACTS if f.key == key), key)
+    except Exception:
+        return key
 
 
 def _entity_rows(chosen, kind, columns, id_column, extra=None):

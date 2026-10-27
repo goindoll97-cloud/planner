@@ -412,7 +412,17 @@ def _files(address="", complex_name=""):
     })
     from .cap_narrative_workspace import DECISION_FACTS
     labels = {f.key.split(".")[-1]: f.label for f in DECISION_FACTS}
-    narrative = [(f"서술형 결정사항 · {labels.get(key, key)}", list(values.items())) for key, values in DATA["narrative"].items()]
+    from . import cap_fact_catalog
+
+    def decision_label(key, name):
+        """프로그램이 알아보는 항목 이름(사실 카탈로그의 표기)으로 적습니다. 예: 책임자 → 안전관리 책임자."""
+        try:
+            return cap_fact_catalog.get(f"narrative.{key}.{name}").template_header
+        except KeyError:
+            return name
+
+    narrative = [(f"서술형 결정사항 · {labels.get(key, key)}", [(decision_label(key, k), v) for k, v in values.items()])
+                 for key, values in DATA["narrative"].items()]
     from .cap_form16_workspace import items as f16_items
     titles = {i["id"]: i["label"] for i in f16_items()}
     files["09_안전관리_비상대응계획.docx"] = _doc(f"{COMPANY} 안전관리·비상대응계획", [

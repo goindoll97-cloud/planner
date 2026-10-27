@@ -16,7 +16,7 @@ from datetime import date
 import streamlit as st
 
 from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_coverage_report
-from engine.stage2 import cap_fact_catalog, cap_fact_status, cap_upload_template
+from engine.stage2 import cap_fact_catalog, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
@@ -955,6 +955,7 @@ def _step_export(project, found) -> None:
     """확인한 값을 작성자료로 보내고, 문서별로 남은 일을 한곳에서 보여 줍니다(여기만 따라가면 되도록)."""
     st.write("확인한 값을 **작성자료**로 보내요. 보낸 뒤에는 아래 진행 현황에서 남은 일을 보고 ‘이어서 작성’을 누르면 돼요.")
     _send(project, found)
+    _narrative_drafts(project)
     st.divider()
     _progress_board(project)
     _records(project, found["names"])
@@ -984,15 +985,60 @@ def _progress_board(project) -> None:
 
 
 def _auto_publish(project) -> None:
-    """회사 파일에서 읽은 값을 작성자료(초안)에 자동으로 반영합니다. 사람의 승인 단계는 없습니다."""
+    """회사 파일에서 읽은 값을 작성자료(초안)에 자동으로 반영합니다. 사람의 승인 단계는 없습니다.
+    서술형 항목도 근거 사실이 있으면 규칙 초안을 바로 만들어 둡니다(AI 다듬기는 ④에서 따로)."""
+    changed = False
     # 파일을 새로 올리면 이전에 반영한 값이 보류로 바뀌므로, 값이 같아도 확정 상태가 아니면 다시 반영합니다.
-    if not ew.needs_publish(project):
+    if ew.needs_publish(project):
+        try:
+            ew.publish(project, replace_existing=True)
+            changed = True
+        except ValueError:
+            pass
+    if project.cap_in_scope:
+        try:
+            changed = cap_fact_drafting.refresh_rule_drafts(project) > 0 or changed
+        except Exception:          # 서술형 초안 문제로 화면이 멈추지 않게
+            pass
+    if changed:
+        save_project(project)
+
+
+def _narrative_drafts(project) -> None:
+    """사전관리방침·비상대응계획 서술형: 회사 파일의 사실로 쓴 초안 현황과 다시 만들기."""
+    if not project.cap_in_scope:
         return
-    try:
-        ew.publish(project, replace_existing=True)
-    except ValueError:
+    pid = project.project_id
+    rows = cap_fact_drafting.rows(project)
+    if not rows:
         return
-    save_project(project)
+    st.subheader("서술형 항목")
+    st.caption("사전관리방침·비상대응계획 같은 글은 회사 파일에서 읽은 사실만으로 초안을 써요. 근거가 없는 부분은 "
+               "‘[확인 필요]’로 남기고, 초안 문서에 ‘AI 초안’ 표시와 함께 들어가요. 내려받은 문서에서 고쳐 쓰세요.")
+    st.dataframe([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows], hide_index=True, width="stretch")
+    use_ai = st.checkbox("이 PC의 로컬 AI로 문장 다듬기 (회사 정보는 밖으로 보내지 않아요)", key="fact_ai_" + pid)
+    client = None
+    if use_ai:
+        from ui.narrative_panel import _local_config
+
+        config, probe, build = _local_config("fact_" + pid)
+        if probe is not None and probe.ready:
+            client = build(config)
+        else:
+            st.warning("로컬 AI를 찾지 못했어요. 사실만 이어 쓴 규칙 초안으로 만들어요.")
+    if st.button("근거 사실로 서술형 초안 다시 만들기", key="fact_drafts_" + pid):
+        results = cap_fact_drafting.generate(project, client, refresh=True)
+        save_project(project)
+        checks = sum(r["checks"] for r in results)
+        st.session_state.setdefault("evidence_notes", []).append(
+            f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
+        st.rerun()
+    with st.expander("서술형 초안 보기"):
+        for item in cap_fact_drafting.items(project):
+            text = item.company_text or item.draft
+            if text:
+                st.markdown(f"**{item.label}** — {item.state}")
+                st.text(text)
 
 
 def _send(project, found) -> None:

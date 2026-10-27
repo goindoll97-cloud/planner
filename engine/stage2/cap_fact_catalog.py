@@ -89,10 +89,17 @@ class Fact:
         return forms_text(self.forms)
 
 
+BODY_FORM = 0          # used_in의 form 0: 계획서 본문의 서술형 장(사전관리방침·비상대응계획)
+
+
 def forms_text(forms: Iterable[int]) -> str:
-    """(3, 4, 16) → ‘별지 제3·4·16호’."""
+    """(3, 4, 16) → ‘별지 제3·4·16호’, (0, 16) → ‘본문 서술형, 별지 제16호’."""
     numbers = sorted(set(int(f) for f in forms))
-    return "별지 제" + "·".join(str(n) for n in numbers) + "호" if numbers else ""
+    parts = ["본문 서술형"] if BODY_FORM in numbers else []
+    annex = [n for n in numbers if n != BODY_FORM]
+    if annex:
+        parts.append("별지 제" + "·".join(str(n) for n in annex) + "호")
+    return ", ".join(parts)
 
 
 def _fact(raw: dict[str, Any]) -> Fact:
@@ -236,7 +243,7 @@ def validate(items: Iterable[Fact], raw: dict[str, Any] | None = None) -> list[s
         if not item.used_in:
             problems.append(f"{where}: 쓰이는 별지(used_in)가 없습니다")
         for use in item.used_in:
-            if not 1 <= use.form <= 16 or not use.cell:
+            if not BODY_FORM <= use.form <= 16 or not use.cell:
                 problems.append(f"{where}: 쓰이는 칸이 잘못됐습니다 ({use.form}, {use.cell})")
         if not set(item.groups) or not set(item.groups) <= set(GROUPS):
             problems.append(f"{where}: 작성수준(1군·2군)이 잘못됐습니다")

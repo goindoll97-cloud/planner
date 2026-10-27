@@ -28,6 +28,18 @@ try:
 finally:
     st.page_link = _saved
 '''
+def _site_doc(rows):
+    from docx import Document
+    doc = Document()
+    table = doc.add_table(rows=0, cols=2)
+    for label, value in rows:
+        cells = table.add_row().cells
+        cells[0].text, cells[1].text = label, value
+    out = BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
 DEVELOPER_TEXT = re.compile(r"[0-9a-f]{40,}|facility:|material:|SHA256|\bCSV 행\b")
 
 
@@ -120,6 +132,21 @@ class EvidencePageTests(unittest.TestCase):
         self.assertIn("엑셀 업로드 양식 내려받기 (빈 사실", labels)
         at.checkbox(key="template_full_" + self.pid).check().run()
         self.assertIn("(모든 사실)", " ".join(b.proto.label for b in at.get("download_button")))
+
+    def test_step_four_lists_narrative_items_and_makes_rule_drafts(self):
+        from engine.stage2 import cap_fact_drafting as fd
+        project = load_project(self.pid)
+        ew.ingest(project, "plan.docx", _site_doc([("교육 대상", "전 직원"), ("대표자", "홍가상")]), "site")
+        save_project(project)
+        at = self.run_page(step=4)
+        self.assertIn("서술형 항목", " ".join(_texts(at)))
+        saved = load_project(self.pid)
+        training = next(i for i in fd.items(saved) if i.key == "cap.prevention.training")
+        self.assertEqual(training.state, fd.HAS_DRAFT)              # 화면을 열면 근거 사실로 규칙 초안을 만들어 둠
+        self.assertIn("[확인 필요: 교육 주기]", training.draft)
+        at.button(key="fact_drafts_" + self.pid).click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        self.assertIn("서술형 초안", " ".join(_texts(at)))
 
     def test_upload_change_message_is_shown_once(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)

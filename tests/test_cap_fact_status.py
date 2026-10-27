@@ -62,13 +62,13 @@ class DemoCompanyTests(unittest.TestCase):
         cls.p = create_direct_cap_project(d.COMPANY, address=d.DATA["company"]["주소"], cap_group="")
         cls.before = fs.snapshot(cls.p)
         for name in ("01_제품목록.xlsx", "02_설비대장.xlsx", "03_사업장_일반정보.docx", "04_공정설명서.docx",
-                     "05_SDS_물성표.xlsx", "06_설비사양_안전설비.xlsx"):
+                     "05_SDS_물성표.xlsx", "06_설비사양_안전설비.xlsx", "09_안전관리_비상대응계획.docx"):
             ew.ingest(cls.p, name, files[name], ew.classify_document(name, files[name]))
         ew.publish(cls.p, replace_existing=True)
         cls.rows = fs.fact_rows(cls.p)
 
     def test_most_company_facts_are_found_with_their_source(self):
-        info = fs.summary(self.rows)
+        info = fs.summary(fs.fact_rows(self.p, group="2군"))       # 연습 회사는 2군(외부 비상대응계획은 1군만)
         self.assertEqual(info["conflicts"], 0)
         self.assertEqual(info["blank_required"], 0)
         self.assertGreater(info["filled"], 70)
@@ -95,7 +95,11 @@ class DemoCompanyTests(unittest.TestCase):
         only3 = fs.fact_rows(self.p, forms=[3])
         self.assertTrue(only3)
         self.assertTrue(all(3 in r["_forms"] for r in only3))
-        self.assertEqual(len(fs.fact_rows(self.p, group="2군")), len(self.rows))   # 별지 1·3~11호는 두 군 모두 필요
+        group2 = fs.fact_rows(self.p, group="2군")
+        only_group1 = {r["_id"] for r in self.rows} - {r["_id"] for r in group2}
+        self.assertTrue(only_group1)                                   # 외부 비상대응계획 사실
+        self.assertTrue(all(r["_groups"] == ("1군",) for r in self.rows if r["_id"] in only_group1))
+        self.assertTrue(all(r["_groups"] == ("1군", "2군") for r in self.rows if 3 in r["_forms"]))
 
     def test_no_developer_text(self):
         for row in self.rows + fs.matrix(self.p, "facility")["rows"] + fs.matrix(self.p, "material")["rows"]:
