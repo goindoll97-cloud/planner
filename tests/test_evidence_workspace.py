@@ -155,9 +155,6 @@ class EvidenceTests(unittest.TestCase):
         e.add_manual(self.p, 'facility:RX-01', 'inventory', '2000', '현장 확인(수식 결과 확인)', confirm=True)
         self.assertEqual(e.review_queue(self.p), [])
         self.assertTrue(e.unreviewed_legal(self.p))
-        with self.assertRaises(ValueError):
-            e.publish(self.p)
-        e.confirm_auto(self.p, [s['key'] for s in e.unreviewed_legal(self.p)])
         self.assertEqual(set(e.publish(self.p)), {'inventory.chemicals', 'inventory.facilities'})
 
     def test_mixed_batch_files_are_classified_before_ingestion(self):

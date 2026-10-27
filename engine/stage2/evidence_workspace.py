@@ -1237,9 +1237,9 @@ def publish_preview(project):
 
 
 def publish(project, *, replace_existing=False):
-    """확인한 사실을 작성자료로 보냅니다. 기존 표를 덮어쓰지 않고 같은 번호의 행에 합칩니다(별지에서만 적은 열은 유지)."""
-    if unreviewed_legal(project):
-        raise ValueError("법적 계산에 쓰이는 자동 기입값을 원자료와 대조해 확인한 뒤 연결하세요.")
+    """회사 파일에서 읽은 사실을 작성자료(초안)로 보냅니다. 사람의 승인 없이 반영하며, 같은 번호의 행에 합칩니다.
+
+    충돌·값 오류로 정해지지 않은 값은 포함되지 않고, 어느 파일을 고쳐야 하는지 안내로만 남습니다."""
     if not publishing_plan(project):
         raise ValueError("연결할 확인 완료 사실이 없습니다.")
     preview = publish_preview(project)
@@ -1254,10 +1254,10 @@ def publish(project, *, replace_existing=False):
         elif key == CHEMICAL_DETAILS_KEY:
             old = project.get_field(key)
             project.set_field(key, old.label if old else "화학물질 상세(별지 제6호 작성대)", rows, "USER_CONFIRMED",
-                              note="별지 제6호 작성대: 자료 접수에서 보낸 물질명·CAS·함량·성상·비중을 같은 CAS 행에 합침")
+                              note="회사 파일에서 자동 기입(초안): 물질명·CAS·함량·성상·비중을 같은 CAS 행에 합침")
         else:
             project.set_field(key, "공통정보에서 연결한 " + key, rows, "USER_CONFIRMED",
-                              note="공통정보 연결: 출처와 필드별 결정은 workspace.evidence_graph에 보존")
+                              note="공통정보 연결(회사 파일에서 자동 기입한 초안): 출처와 필드별 결정은 workspace.evidence_graph에 보존")
     return list(preview)
 
 

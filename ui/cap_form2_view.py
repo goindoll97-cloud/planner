@@ -411,10 +411,10 @@ def render(project) -> None:
                 st.caption("작성 대상이 아니어서 표는 비워 둡니다.")
         try:
             st.download_button(
-                "화학사고예방관리계획서 규정서식 작성본 DOCX 다운로드",
+                "화학사고예방관리계획서 규정서식 DOCX 초안 다운로드",
                 data=build_cap_baseline_draft(project), file_name=cap_baseline_filename(project),
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key=f"cap_form02_download_{project.project_id}",
             )
         except Exception as exc:
-            st.error(f"규정서식 작성본을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+            st.error(f"규정서식 초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")

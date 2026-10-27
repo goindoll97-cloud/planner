@@ -215,13 +215,6 @@ def _question_count(found) -> int:
     return len(found["conflicts"]) + len(found["problems"]) + len(found["held"]) + len(found["rank"]) + len(found["missing"])
 
 
-def _final_check(project) -> list:
-    """보내기 전에 사람이 한 번은 봐야 하는 자동 기입값: 법적 계산 입력 + 순위를 바꾸는 값."""
-    items = {s["key"]: s for s in ew.unreviewed_legal(project)}
-    items.update({s["key"]: s for s in ew.critical_auto(project)})
-    return list(items.values())
-
-
 # ---------------------------------------------------------------- 공통
 
 def _save(project, note: str | None = None) -> None:
@@ -888,86 +881,33 @@ def _progress_board(project) -> None:
         st.caption("이 사업장은 아직 작성할 문서가 정해지지 않았어요. ‘사업장 판정하기’에서 확인하세요.")
 
 
-def _restore_excluded(project) -> None:
-    """별지에서 지워 제외한 대상. 실수로 지웠으면 되살릴 수 있게 합니다."""
-    gone = ew.excluded(project)
-    if not gone:
+def _auto_publish(project) -> None:
+    """회사 파일에서 읽은 값을 작성자료(초안)에 자동으로 반영합니다. 사람의 승인 단계는 없습니다."""
+    if not ew.publishing_plan(project):
         return
-    with st.expander(f"별지에서 지워 제외한 대상 {len(gone)}개"):
-        st.caption("별지 제1·6호에서 행을 지우면 자료 접수에서도 제외돼 다시 보내지 않아요. 실수였다면 되살리세요.")
-        names = Names(ew.slots(project))
-        for entity in gone:
-            cols = st.columns([4, 1])
-            cols[0].write(entity.split(":", 1)[1] + (" (설비)" if entity.startswith("facility:") else " (물질)"))
-            if cols[1].button("되살리기", key=f"restore_{project.project_id}_{entity}"):
-                ew.restore(project, entity)
-                _save(project, f"{names(entity)}을(를) 다시 포함했어요.")
+    preview = ew.publish_preview(project)
+    if all((project.get_field(key) is not None and project.get_field(key).value == rows) for key, rows in preview.items()):
+        return
+    try:
+        ew.publish(project, replace_existing=True)
+    except ValueError:
+        return
+    save_project(project)
 
 
 def _send(project, found) -> None:
-    pid, names = project.project_id, found["names"]
     pending = _question_count(found)
     if pending:
-        st.info(f"② 아직 보완·확인하지 않은 값 {pending}개가 있어요. 확인한 값만 연결되고 나머지는 보류됩니다.")
-    check = _final_check(project)
-    if check:
-        groups = {}
-        for slot in check:
-            source = slot["chosen"]["sha256"]
-            groups.setdefault(source, []).append(slot)
-        st.subheader(f"보내기 전 마지막 확인 · 파일 {len(groups)}개")
-        st.caption("자동으로 채운 중요한 값은 파일별로 확인해요. 지금 모르면 확인하지 않고 원자료를 다시 살펴보세요.")
-        source = st.selectbox("확인할 파일", list(groups), key="final_source_" + pid,
-                              format_func=lambda key: f"{groups[key][0]['chosen']['document']} · {len(groups[key])}개 값")
-        selected = groups[source]
-        st.caption(f"이 파일에서 확인할 값 {len(selected)}개 · 전체 남은 값 {len(check)}개")
-        st.dataframe([{"설비·물질": names(s["entity"]), "항목": _name(s["field"]),
-                       "값": _value(s["field"], s["chosen"]["value"]) + _raw_note(s["chosen"]),
-                       "읽은 곳": _where(s["chosen"])} for s in selected], hide_index=True, width="stretch")
-        checked = st.checkbox("이 파일의 값과 원자료·단위·현재 적용 여부를 확인했어요", key="final_check_" + pid + "_" + source)
-        cols = st.columns([1, 2])
-        if cols[0].button("이 파일의 값 저장", key="final_ok_" + pid, type="primary", disabled=not checked):
-            ew.confirm_auto(project, [s["key"] for s in selected])
-            _save(project, f"{len(selected)}개 값을 확인했어요.")
-        with cols[1].popover("틀린 값이 있어요"):
-            pick = st.selectbox("어느 값인가요?", range(len(selected)), key="final_pick_" + pid,
-                                format_func=lambda i: f"{names(selected[i]['entity'])} · {_name(selected[i]['field'])}")
-            slot = selected[pick]
-            typed = _value_input(slot["field"], f"final_fix_{pid}_{slot['key']}", "맞는 값")
-            if st.button("고치기", key="final_fix_ok_" + pid, disabled=not typed):
-                _confirm_manual(project, slot["entity"], slot["field"], typed, "")
-        return
-
+        st.info(f"② 파일을 고치면 채워질 값 {pending}개가 있어요. 지금은 읽은 값만 초안에 반영돼요.")
     if not ew.publishing_plan(project):
-        st.info("보낼 값이 아직 없어요. ① 자료를 올리고 ② 파일별 보완 요청을 확인해 주세요.")
+        st.info("반영할 값이 아직 없어요. ① 자료를 올리고 ② 파일별 보완 요청을 확인해 주세요.")
         return
-    st.caption("같은 설비번호·CAS 번호의 행에 합쳐요. 별지에서만 적은 칸(분자량·형상 치수 등)은 그대로 두고, "
-               "자료마다 달라 아직 정하지 않은 값은 비워요. 별지 제1·6호에서 고친 값은 이미 여기에 반영돼 있어요.")
-    preview = ew.publish_preview(project)
-    changed = [key for key, rows in preview.items() if (project.get_field(key) or None) is None or project.get_field(key).value != rows]
-    replaced = [key for key in changed if project.get_field(key) is not None]
-    for key in ("inventory.chemicals", "inventory.facilities"):
-        if key in preview:
-            st.markdown(f"**{TARGET_NAME[key]}** — {len(preview[key])}개" + ("" if key in changed else " · 바뀐 것 없음"))
-            st.dataframe(preview[key], hide_index=True, width="stretch")
-    for key in ("cap.workspace.facilities", "cap.chemical.details"):
-        if key in changed:
-            st.caption(f"{TARGET_NAME[key]}에도 같은 값을 합쳐요.")
-    _restore_excluded(project)
-    if not changed:
-        st.success("이미 보낸 내용과 같아요. 보낼 것이 없어요.")
-        return
-    overwrite = True
-    if replaced:
-        overwrite = st.checkbox("이미 저장된 " + ", ".join(TARGET_NAME.get(k, k) for k in replaced)
-                                + "에 위 내용을 합칠게요", key="overwrite_" + pid)
-    if st.button("작성자료로 보내기", type="primary", key="publish_" + pid, disabled=not overwrite):
-        try:
-            ew.publish(project, replace_existing=True)
-            save_project(project)
-            st.success("보냈어요. 아래 진행 현황에서 ‘이어서 작성’을 누르세요.")
-        except ValueError as exc:
-            st.error(str(exc))
+    st.caption("회사 파일에서 읽은 값은 자동으로 초안에 반영돼요. 같은 설비번호·CAS 번호의 행에 합치고, 자료마다 달라 정하지 못한 값은 비워 둬요.")
+    for key, rows in ew.publish_preview(project).items():
+        if key in ("inventory.chemicals", "inventory.facilities"):
+            st.markdown(f"**{TARGET_NAME[key]}** — {len(rows)}개")
+            st.dataframe(rows, hide_index=True, width="stretch")
+    st.success("초안에 반영돼 있어요. 왼쪽 ‘초안 내려받기’에서 받으세요.")
     _form1_payoff(project)
 
 
@@ -992,6 +932,7 @@ st.caption("회사 자료를 올리면 값을 찾아 정리하고, 파일별 수
 _active = _project_header()
 _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
+_auto_publish(_active)
 _status_line(_active, _found)
 for _note in st.session_state.pop("evidence_notes", []):
     (st.error if "읽지 못" in _note else st.warning if "찾지 못" in _note else st.success)(_note)

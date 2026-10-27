@@ -3,8 +3,8 @@ from __future__ import annotations
 """점검·내보내기(화학사고예방관리계획서·공정안전보고서 공용). 기존 4단계(점검)·5단계(보고서 작성)와 같은 엔진·기준을 그대로 쓴다.
 
 - 점검: validate_selected_scope 결과를 '지금 보완할 것'과 '최종 제출 전에 담당자가 따로 준비할 것(첨부)'으로 나눈다.
-- 확정: 보완 필요·담당자 확인 필요가 없을 때만 작성자료를 확정한다. 남은 채로 검토용 초안을 만들 수도 있다.
-- 내보내기: 규정서식 DOCX(작성본/검토용), 출력물 검증정보와 묶음, 내부 검토용 DOCX. 작성본 표시는 문서별 최종 준비 기준을 통과할 때만 한다.
+- 내보내기: 승인 절차 없이 언제든 내려받는다. 결과물은 항상 '초안'이다(규정서식 DOCX, 서술형을 포함한 내부 DOCX, 검증정보와 묶음).
+  내부 DOCX 끝에는 파일을 보완하면 좋아질 곳을 안내하는 페이지가 붙는다.
 """
 
 from dataclasses import dataclass, field
@@ -20,16 +20,7 @@ from .cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
 from .psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from .report_draft import build_report_draft, draft_filename
 from .scope_validation import validate_selected_scope
-from .workflow import (
-    ATTACHMENT_MODE_MANUAL,
-    attachment_mode,
-    draft_authoring_allowed,
-    input_kind_has_attachment,
-    mark_draft_with_holds_acknowledged,
-    mark_intake_confirmed,
-    mark_validation_confirmed,
-    validation_confirmed,
-)
+from .workflow import ATTACHMENT_MODE_MANUAL, attachment_mode, input_kind_has_attachment
 
 SYSTEMS = {"PSM": "공정안전보고서", "CAP": "화학사고예방관리계획서"}
 STATUS_LABELS = {"HOLD": "보완 필요", "REVIEW_REQUIRED": "담당자 확인 필요", "PASS": "확인 완료"}
@@ -95,25 +86,6 @@ def evaluate(project: Stage2Project, system: str = "PSM") -> ExportState:
     )
 
 
-def confirm(project: Stage2Project, state: ExportState) -> bool:
-    """보완·확인할 것이 없을 때만 작성자료를 확정한다."""
-    if not state.can_confirm:
-        return False
-    mark_intake_confirmed(project, True)
-    mark_validation_confirmed(project, True)
-    return True
-
-
-def acknowledge_holds(project: Stage2Project) -> None:
-    """확정하지 않고 검토용 초안만 만들겠다는 표시. 최종 제출 준비 판정에는 영향이 없다."""
-    mark_intake_confirmed(project, True)
-    mark_draft_with_holds_acknowledged(project, True)
-
-
-def downloads_allowed(project: Stage2Project) -> bool:
-    return draft_authoring_allowed(project)
-
-
 @dataclass(frozen=True)
 class Outputs:
     regulation_docx: bytes
@@ -124,7 +96,6 @@ class Outputs:
     provenance_name: str
     bundle: bytes
     bundle_name: str
-    final_ready: bool
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -165,23 +136,62 @@ def build_ai_review_sheet(project: Stage2Project, system: str) -> bytes:
     return out.getvalue()
 
 
-def build_outputs(project: Stage2Project, *, final_ready: bool, system: str = "PSM") -> Outputs:
-    """작성본 표시는 final_ready일 때만. 아니면 파일명·검증정보 모두 '검토용'."""
+def _append_open_items(docx: bytes, project: Stage2Project, system: str) -> bytes:
+    """문서 끝에 ‘파일을 보완하면 좋아질 곳’ 안내 페이지를 붙인다(점검할 수 없으면 그대로 둔다)."""
+    from io import BytesIO
+
+    from docx import Document
+
+    try:
+        state = evaluate(project, system)
+    except ValueError:
+        return docx
+    open_issues = [i for i in state.text_issues if i.status != "PASS"]
+    if not open_issues and not state.manual_issues:
+        return docx
+    doc = Document(BytesIO(docx))
+    doc.add_page_break()
+    doc.add_heading("프로그램 보완 안내 (초안)", level=1)
+    doc.add_paragraph("회사 파일에서 확인되지 않았거나 서로 달라 비워 둔 곳입니다. 해당 파일을 고쳐 다시 올리면 다음 초안에 반영됩니다. "
+                      "이 문서를 직접 고쳐 쓰셔도 됩니다.")
+    if open_issues:
+        table = doc.add_table(rows=1, cols=4)
+        try:
+            table.style = "Table Grid"
+        except KeyError:        # 규정서식 기반 문서에는 이 표 스타일이 없을 수 있다
+            pass
+        for cell, text in zip(table.rows[0].cells, ("상태", "작성항목", "확인할 내용", "근거")):
+            cell.text = text
+        for issue in open_issues:
+            cells = table.add_row().cells
+            cells[0].text = STATUS_LABELS.get(issue.status, issue.status_label)
+            cells[1].text = str(issue.legal_item)
+            cells[2].text = str(issue.message)
+            cells[3].text = str(issue.legal_basis)
+    if state.manual_issues:
+        doc.add_heading("따로 준비할 자료", level=2)
+        for issue in state.manual_issues:
+            doc.add_paragraph(f"• {issue.legal_item}: {issue.message}")
+    out = BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
+def build_outputs(project: Stage2Project, system: str = "PSM") -> Outputs:
+    """결과물은 항상 초안이다. 규정서식·검증정보는 ‘초안’으로 표기하고, 내부 DOCX 끝에 보완 안내를 붙인다."""
     if system == "CAP":
         regulation, name = build_cap_baseline_draft(project), cap_baseline_filename(project)
     elif system == "PSM":
         regulation, name = build_psm_baseline_draft(project), psm_baseline_filename(project)
     else:
         raise ValueError(f"지원하지 않는 보고서 종류입니다: {system}")
-    if not final_ready:
-        name = name.replace("_규정서식_작성본.docx", "_규정서식_검토용.docx")
-    provenance = build_output_provenance(project, system, regulation, file_name=name, final_ready=final_ready)
-    review = build_report_draft(project, system)
-    review_name = draft_filename(project, system).replace("_법정서식_검토용_초안.docx", "_내부_검토용.docx").replace(
-        "_검토용_초안.docx", "_내부_검토용.docx")
+    name = name.replace("_규정서식_작성본.docx", "_규정서식_초안.docx")
+    provenance = build_output_provenance(project, system, regulation, file_name=name, final_ready=False)
+    review = _append_open_items(build_report_draft(project, system), project, system)
+    review_name = draft_filename(project, system).replace("_법정서식_검토용_초안.docx", "_내부_초안.docx").replace(
+        "_검토용_초안.docx", "_내부_초안.docx")
     return Outputs(
         regulation_docx=regulation, regulation_name=name, review_docx=review, review_name=review_name,
         provenance_json=output_provenance_json_bytes(provenance), provenance_name=output_provenance_filename(name),
         bundle=build_verified_output_bundle(regulation, provenance), bundle_name=verified_bundle_filename(name),
-        final_ready=final_ready,
     )

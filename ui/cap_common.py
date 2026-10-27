@@ -155,7 +155,7 @@ def _form_of(code: str):
 def progress(project) -> dict:
     """화면별로 남은 일. 내보내기 점검(report_export.evaluate)과 같은 기준을 별지별로 나눠 셉니다(0.1초 이내).
 
-    돌려주는 값: {"rows": [화면별 행], "final_ready": 제출용 작성본 가능 여부, "remaining": 보완할 것 수}
+    돌려주는 값: {"rows": [화면별 행], "remaining": 보완할 것 수}
     각 행: group, title, icon, forms(별지 수), open_forms([(별지, 남은 수)]), later(따로 준비할 첨부 수), next(다음 서식), status, done
     """
     from engine.stage2 import report_export as rx
@@ -176,7 +176,7 @@ def progress(project) -> dict:
                "later": sum(later[f] for f in forms), "next": open_forms[0][0] if open_forms else options[0]}
         if group == "export":
             total = state.hold + state.review
-            row["done"] = state.final_ready
+            row["done"] = True
             row["status"] = (f"초안을 내려받을 수 있어요 · 파일을 보완하면 좋아질 곳 {total}건" if total else
                              "초안을 내려받을 수 있어요")
         elif group == "submission":
@@ -185,7 +185,7 @@ def progress(project) -> dict:
             row["status"] = (f"저장한 제출본 {len(versions)}개" if versions else "제출본을 아직 저장하지 않았어요 (버전 관리에서 저장)") + \
                             (f" · 별지 제2호 보완 {open_forms[0][1]}건" if open_forms else "")
         rows.append(row)
-    return {"rows": rows, "final_ready": state.final_ready, "remaining": state.hold + state.review}
+    return {"rows": rows, "remaining": state.hold + state.review}
 
 
 def render_progress(project, *, key_prefix: str = "hub") -> None:
