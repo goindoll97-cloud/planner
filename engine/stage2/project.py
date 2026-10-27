@@ -12,13 +12,14 @@ from ..company_intake_contract import seed_company_facts
 EVIDENCE_STATUSES = (
     "VERIFIED",
     "USER_CONFIRMED",
+    "FILE_READ",          # 회사 파일에서 읽어 자동 반영한 값(사람이 확인한 것이 아님). 결과물은 늘 초안이라 서식에는 씀
     "CALCULATED",
     "AI_DRAFT",
     "PROPOSED",
     "HOLD",
 )
 
-CONFIRMED_STATUSES = {"VERIFIED", "USER_CONFIRMED", "CALCULATED"}
+CONFIRMED_STATUSES = {"VERIFIED", "USER_CONFIRMED", "FILE_READ", "CALCULATED"}
 
 
 def _utc_now() -> str:

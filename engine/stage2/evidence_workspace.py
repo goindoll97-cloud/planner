@@ -852,6 +852,16 @@ def remove_document(project, sha):
     _invalidate(project)
 
 
+def replace_same_name(project, name, content):
+    """같은 이름의 예전 파일을 지웁니다. 파일을 고쳐 같은 이름으로 다시 올리면 예전 값과 새 값이 충돌로 남지 않게 합니다.
+    내용이 같은 파일은 그대로 둡니다. 지운 문서 수를 돌려줍니다."""
+    digest = sha256(content).hexdigest()
+    old = [d["sha256"] for d in _read(project)["documents"] if d["name"] == name and d["sha256"] != digest]
+    for sha in old:
+        remove_document(project, sha)
+    return len(old)
+
+
 def reingest(project, sha, content):
     """규칙(머리글 지정 등)이 바뀐 뒤 같은 파일을 다시 읽습니다. 같은 칸의 값은 같은 식별자를 받아 결정이 유지됩니다."""
     doc = next(d for d in _read(project)["documents"] if d["sha256"] == sha)
@@ -1213,7 +1223,7 @@ def tasks(project):
 def form1_needs(project):
     """연결한 설비 자료로 별지 제1호 최대보유량을 계산할 때 아직 부족한 값(계산 엔진이 알려 줌)."""
     record = project.get_field("inventory.facilities")
-    if record is None or record.status not in {"USER_CONFIRMED", "VERIFIED"}:
+    if record is None or record.status not in CONFIRMED_STATUSES:
         return ()
     try:
         from . import cap_workspace
@@ -1433,6 +1443,8 @@ PENDING_COLUMNS = {"facility": {f: tuple(FACILITY_ROW_COLUMNS.get(f, ())) + tupl
                    "material": {f: tuple(MATERIAL_ROW_COLUMNS.get(f, ())) + tuple(MATERIAL_EXTRA_COLUMNS.get(f, ()))
                                 for f in set(MATERIAL_ROW_COLUMNS) | set(MATERIAL_EXTRA_COLUMNS)}}
 LINK_NOTE = "공통정보 연결(회사 파일에서 자동 기입한 초안)"
+# 파일에서 읽어 자동 반영한 작성자료의 상태. 사람이 확인한 값(USER_CONFIRMED)과 구분하되, 서식에는 그대로 씁니다.
+FILE_STATUS = "FILE_READ"
 
 
 def _merge(kind, existing, new, managed, removed, pending=None):
@@ -1704,15 +1716,15 @@ def publish(project, *, replace_existing=False):
             cap_workspace.save_facility_rows(project, rows)      # 최대보유량 다시 계산(그래프와 이미 같아 되돌려 적을 값 없음)
         elif key == CHEMICAL_DETAILS_KEY:
             old = project.get_field(key)
-            project.set_field(key, old.label if old else "화학물질 상세(별지 제6호 작성대)", rows, "USER_CONFIRMED",
+            project.set_field(key, old.label if old else "화학물질 상세(별지 제6호 작성대)", rows, FILE_STATUS,
                               note="회사 파일에서 자동 기입(초안): 물질명·CAS·함량·성상·비중을 같은 CAS 행에 합침")
         elif key in extended:
             _, facts, label = extended[key]
             old = project.get_field(key)
-            project.set_field(key, label, rows, "USER_CONFIRMED", evidence=_refs(facts) or (list(old.evidence) if old else None),
+            project.set_field(key, label, rows, FILE_STATUS, evidence=_refs(facts) or (list(old.evidence) if old else None),
                               note=LINK_NOTE + ": 사실 카탈로그 항목을 파일에서 읽은 그대로 적음")
         else:
-            project.set_field(key, "공통정보에서 연결한 " + key, rows, "USER_CONFIRMED",
+            project.set_field(key, "공통정보에서 연결한 " + key, rows, FILE_STATUS,
                               note=LINK_NOTE + ": 출처와 필드별 결정은 workspace.evidence_graph에 보존")
     return list(preview)
 

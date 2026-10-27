@@ -58,7 +58,8 @@ class SiteFactTests(unittest.TestCase):
         ew.publish(self.p, replace_existing=True)
         record = self.p.get_field("cap.business.representative")
         self.assertEqual(record.value, "홍가상")
-        self.assertEqual(record.status, "USER_CONFIRMED")
+        self.assertEqual(record.status, "FILE_READ")             # 파일에서 읽은 값(사람이 확인한 값과 구분)
+        self.assertTrue(record.confirmed)
         self.assertTrue(record.note.startswith("공통정보 연결"))
         self.assertEqual(record.evidence[0].source_name, "일반정보.docx")
 
@@ -103,7 +104,7 @@ class SiteFactTests(unittest.TestCase):
         self.assertEqual(self.p.get_field("cap.business.representative").status, "HOLD")   # 새 파일을 읽으면 다시 확인
         self.assertTrue(ew.needs_publish(self.p))
         ew.publish(self.p, replace_existing=True)
-        self.assertEqual(self.p.get_field("cap.business.representative").status, "USER_CONFIRMED")
+        self.assertEqual(self.p.get_field("cap.business.representative").status, "FILE_READ")
 
 
 class EntityFactTests(unittest.TestCase):
@@ -160,6 +161,20 @@ class EntityFactTests(unittest.TestCase):
         self.assertEqual(_value(self.p, ew.SITE_ENTITY, "representative"), "홍가상")
         self.assertEqual(_value(self.p, "facility:TK-1", "name"), "탱크")
         self.assertEqual(_value(self.p, "material:P-1", "cas"), "108-88-3")
+
+
+class ReuploadTests(unittest.TestCase):
+    def test_fixed_file_with_the_same_name_replaces_the_old_one(self):
+        p = create_direct_cap_project("가상", address="주소", cap_group="")
+        ew.ingest(p, "eq.csv", "설비번호,용량(m3)\nTK-1,10\n".encode("utf-8"), "facility")
+        ew.ingest(p, "other.csv", "설비번호,용량(m3)\nTK-1,12\n".encode("utf-8"), "facility")
+        self.assertEqual(next(s for s in ew.slots(p) if s["key"] == "facility:TK-1|capacity")["status"], "값 충돌")
+        fixed = "설비번호,용량(m3)\nTK-1,10\nTK-2,5\n".encode("utf-8")
+        self.assertEqual(ew.replace_same_name(p, "other.csv", fixed), 1)
+        ew.ingest(p, "other.csv", fixed, "facility")
+        self.assertEqual([d_["name"] for d_ in ew.documents(p)], ["eq.csv", "other.csv"])
+        self.assertEqual(_value(p, "facility:TK-1", "capacity"), 10)
+        self.assertEqual(ew.replace_same_name(p, "other.csv", fixed), 0)       # 같은 내용이면 그대로
 
 
 class FilesOnlyDemoTests(unittest.TestCase):

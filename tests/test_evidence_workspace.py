@@ -106,7 +106,7 @@ class EvidenceTests(unittest.TestCase):
         self.upload('a.csv', '설비번호,설비명,용량(m3)\nTK,가상 탱크,10\n')
         self.approve_all()
         e.publish(self.p)
-        self.assertEqual(self.p.get_field('inventory.facilities').status, 'USER_CONFIRMED')
+        self.assertEqual(self.p.get_field('inventory.facilities').status, 'FILE_READ')     # 파일에서 읽어 자동 반영
         self.upload('b.csv', '설비번호,용량(m3)\nTK,12\n')
         self.assertEqual(self.p.get_field('inventory.facilities').status, 'HOLD')
         with self.assertRaises(ValueError):

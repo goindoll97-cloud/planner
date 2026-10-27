@@ -1429,7 +1429,7 @@ def attach_company_file(project: Stage2Project, evidence: EvidenceRef) -> tuple[
         refs = list(record.evidence)
         if not any(ref.sha256 == evidence.sha256 for ref in refs):
             refs.append(evidence)
-        status = record.status if record.status in {"VERIFIED", "USER_CONFIRMED", "CALCULATED"} else "HOLD"
+        status = record.status if record.status in {"VERIFIED", "USER_CONFIRMED", "FILE_READ", "CALCULATED"} else "HOLD"
         note = (
             "통합 작성자료의 회사 확정값에 실제 원본 첨부파일이 증빙으로 연결되었습니다."
             if status != "HOLD"

@@ -28,6 +28,7 @@ _DEFAULT_DEVELOPER_TERMS = (
     "Rule Engine",
     "VERIFIED",
     "USER_CONFIRMED",
+    "FILE_READ",
     "CALCULATED",
     "AI_DRAFT",
     "HOLD",
