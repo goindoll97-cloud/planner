@@ -16,7 +16,8 @@ from .intake import selected_requirement_specs
 from .output_bundle import build_verified_output_bundle, verified_bundle_filename
 from .output_provenance import build_output_provenance, output_provenance_filename, output_provenance_json_bytes
 from .project import Stage2Project
-from .cap_baseline_docx import build_cap_baseline_draft, cap_baseline_filename
+from .cap_baseline_docx import cap_baseline_filename
+from .cap_catalog_docx import build_cap_draft
 from .psm_baseline_docx import build_psm_baseline_draft, psm_baseline_filename
 from .report_draft import build_report_draft, draft_filename
 from .scope_validation import validate_selected_scope
@@ -180,7 +181,7 @@ def _append_open_items(docx: bytes, project: Stage2Project, system: str) -> byte
 def build_outputs(project: Stage2Project, system: str = "PSM") -> Outputs:
     """결과물은 항상 초안이다. 규정서식·검증정보는 ‘초안’으로 표기하고, 내부 DOCX 끝에 보완 안내를 붙인다."""
     if system == "CAP":
-        regulation, name = build_cap_baseline_draft(project), cap_baseline_filename(project)
+        regulation, name = build_cap_draft(project), cap_baseline_filename(project)
     elif system == "PSM":
         regulation, name = build_psm_baseline_draft(project), psm_baseline_filename(project)
     else:
