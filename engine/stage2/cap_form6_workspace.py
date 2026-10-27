@@ -85,6 +85,9 @@ def save_properties(project: Stage2Project, edited: list[Mapping[str, Any]]) -> 
             chem.DETAILS_KEY, "화학물질 상세(별지 제6호 작성대)", rows, "USER_CONFIRMED",
             note="CAP 작성대 별지 제6호에서 물성 입력·확인",
         )
+        from . import evidence_workspace as ew
+
+        ew.sync_from_form(project, "material", rows, "별지 제6호 직접 입력")   # 물질상태·비중을 자료 접수 기록에도
     return changed
 
 

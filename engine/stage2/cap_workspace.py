@@ -104,6 +104,8 @@ def save_facility_rows(project: Stage2Project, rows: list[Mapping[str, Any]]) ->
         item["최대보유량(kg)"] = "" if result.ton is None or result.excluded else round(result.ton * 1000.0, 6)
         item["산정방법"] = result.basis or result.problem
     _share_operating_conditions(project, cleaned)
+    previous = project.get_field(FACILITY_FIELD_KEY)
+    previous_ids = {_facility_id(row) for row in (previous.value if previous and isinstance(previous.value, list) else [])}
     project.set_field(
         FACILITY_FIELD_KEY,
         "취급시설 목록(별지 제1호 작성대)",
@@ -111,7 +113,17 @@ def save_facility_rows(project: Stage2Project, rows: list[Mapping[str, Any]]) ->
         "USER_CONFIRMED",
         note="CAP 서식 작업대의 별지 제1호에서 직접 입력·수정",
     )
+    # 같은 설비 사실을 ‘자료 접수’ 기록에도 되돌려 적어 두 곳의 값이 갈라지지 않게 합니다(지운 행은 제외).
+    from . import evidence_workspace as ew
+
+    current_ids = {_facility_id(row) for row in cleaned}
+    ew.sync_from_form(project, "facility", cleaned, "별지 제1호 직접 입력",
+                      removed_ids=sorted(i for i in previous_ids - current_ids if i))
     return len(cleaned)
+
+
+def _facility_id(row: Mapping[str, Any]) -> str:
+    return next((str(row[k]).strip() for k in ("설비번호", "구분기호", "장치번호", "시설번호") if str(row.get(k) or "").strip()), "")
 
 
 def _share_operating_conditions(project: Stage2Project, rows: list[dict[str, Any]]) -> None:

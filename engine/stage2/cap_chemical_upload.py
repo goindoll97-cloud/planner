@@ -570,6 +570,9 @@ def add_to_project(project: Stage2Project, rows: list[Mapping[str, Any]], *, fil
         project.set_field(key, label, [*current, *new_rows], "USER_CONFIRMED", evidence=refs,
                           note=f"엑셀·CSV 업로드로 물질 {len(new_rows)}건 추가({file_name}, SHA-256 {sha256[:12]})")
     project.notes.append(f"물질 목록 업로드: {file_name} (SHA-256 {sha256[:12]}…) {len(new_rows)}건 추가, {skipped}건 제외")
+    from . import evidence_workspace as ew
+
+    ew.sync_from_form(project, "material", new_rows, f"물질 목록 파일 {file_name}")
     return len(new_rows), skipped
 
 
@@ -596,6 +599,7 @@ def remove_rows(project: Stage2Project, row_numbers: list[int]) -> list[str]:
     kept_old_positions = [n for n in range(1, total + 1) if n not in wanted]
     new_position = {old: index + 1 for index, old in enumerate(kept_old_positions)}
     kept_rows = [rows[n - 1] for n in kept_old_positions]
+    removed_cas = [_clean(rows[n - 1].get("CAS 번호") or rows[n - 1].get("CAS No.")) for n in sorted(wanted)]
 
     keys = [chem.INVENTORY_KEY]
     if canonical == chem.DETAILS_KEY:
@@ -622,6 +626,9 @@ def remove_rows(project: Stage2Project, row_numbers: list[int]) -> list[str]:
     entered = chemical_inputs(project)
     kept_inputs = [entered[old - 1] if old - 1 < len(entered) else {} for old in kept_old_positions]
     project.set_field(CHEM_INPUTS_KEY, "법정 판정에 필요한 물질별 확인값(회사 입력)", kept_inputs, "USER_CONFIRMED")
+    from . import evidence_workspace as ew
+
+    ew.sync_from_form(project, "material", [], "별지 제6호 물질 삭제", removed_ids=[c for c in removed_cas if c])
 
     project.notes.append(f"물질 목록에서 {len(wanted)}건 삭제: {', '.join(removed_names)}")
     return removed_names
@@ -663,4 +670,10 @@ def replace_project(project: Stage2Project, rows: list[Mapping[str, Any]], *, fi
         project.set_field(key, label, list(new_rows), "USER_CONFIRMED", evidence=refs,
                           note=f"엑셀·CSV 업로드로 물질 목록 전체 교체({file_name}, SHA-256 {sha256[:12]})")
     project.notes.append(f"물질 목록 전체 교체: {file_name} (SHA-256 {sha256[:12]}…) {len(new_rows)}건, {skipped}건 제외")
+    from . import evidence_workspace as ew
+
+    new_cas = {_clean(r.get("CAS No.") or r.get("CAS 번호")) for r in new_rows}
+    old_cas = {str(f["value"]).strip() for f in ew.graph_facts(project) if f["field"] == "cas"}
+    ew.sync_from_form(project, "material", new_rows, f"물질 목록 파일 {file_name}(전체 교체)",
+                      removed_ids=sorted(old_cas - new_cas))
     return len(new_rows), skipped

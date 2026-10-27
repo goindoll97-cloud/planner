@@ -764,7 +764,8 @@ def _form1_payoff(project) -> None:
             st.write("• " + need)
 
 
-TARGET_NAME = {"inventory.chemicals": "물질 목록", "inventory.facilities": "설비 목록"}
+TARGET_NAME = {"inventory.chemicals": "물질 목록", "inventory.facilities": "설비 목록",
+               "cap.chemical.details": "별지 제6호 물질 표", "cap.workspace.facilities": "별지 제1호 시설 표"}
 
 
 def _step_export(project, found) -> None:
@@ -797,6 +798,22 @@ def _progress_board(project) -> None:
         shown = True
     if not shown:
         st.caption("이 사업장은 아직 작성할 문서가 정해지지 않았어요. ‘사업장 판정하기’에서 확인하세요.")
+
+
+def _restore_excluded(project) -> None:
+    """별지에서 지워 제외한 대상. 실수로 지웠으면 되살릴 수 있게 합니다."""
+    gone = ew.excluded(project)
+    if not gone:
+        return
+    with st.expander(f"별지에서 지워 제외한 대상 {len(gone)}개"):
+        st.caption("별지 제1·6호에서 행을 지우면 자료 접수에서도 제외돼 다시 보내지 않아요. 실수였다면 되살리세요.")
+        names = Names(ew.slots(project))
+        for entity in gone:
+            cols = st.columns([4, 1])
+            cols[0].write(entity.split(":", 1)[1] + (" (설비)" if entity.startswith("facility:") else " (물질)"))
+            if cols[1].button("되살리기", key=f"restore_{project.project_id}_{entity}"):
+                ew.restore(project, entity)
+                _save(project, f"{names(entity)}을(를) 다시 포함했어요.")
 
 
 def _send(project, found) -> None:
@@ -833,24 +850,32 @@ def _send(project, found) -> None:
                 _confirm_manual(project, slot["entity"], slot["field"], typed, "")
         return
 
-    plan = ew.publishing_plan(project)
-    if not plan:
+    if not ew.publishing_plan(project):
         st.info("보낼 값이 아직 없어요. ① 자료를 올리고 ② 질문에 답해 주세요.")
         return
-    changed = []
-    for key, rows in plan.items():
-        st.markdown(f"**{TARGET_NAME.get(key, key)}** — {len(rows)}개")
-        st.dataframe(rows, hide_index=True, width="stretch")
-        old = project.get_field(key)
-        if old and old.value != rows:
-            changed.append(key)
+    st.caption("같은 설비번호·CAS 번호의 행에 합쳐요. 별지에서만 적은 칸(분자량·형상 치수 등)은 그대로 두고, "
+               "자료마다 달라 아직 정하지 않은 값은 비워요. 별지 제1·6호에서 고친 값은 이미 여기에 반영돼 있어요.")
+    preview = ew.publish_preview(project)
+    changed = [key for key, rows in preview.items() if (project.get_field(key) or None) is None or project.get_field(key).value != rows]
+    replaced = [key for key in changed if project.get_field(key) is not None]
+    for key in ("inventory.chemicals", "inventory.facilities"):
+        if key in preview:
+            st.markdown(f"**{TARGET_NAME[key]}** — {len(preview[key])}개" + ("" if key in changed else " · 바뀐 것 없음"))
+            st.dataframe(preview[key], hide_index=True, width="stretch")
+    for key in ("cap.workspace.facilities", "cap.chemical.details"):
+        if key in changed:
+            st.caption(f"{TARGET_NAME[key]}에도 같은 값을 합쳐요.")
+    _restore_excluded(project)
+    if not changed:
+        st.success("이미 보낸 내용과 같아요. 보낼 것이 없어요.")
+        return
     overwrite = True
-    if changed:
-        overwrite = st.checkbox("작성 화면에 이미 저장된 " + ", ".join(TARGET_NAME.get(k, k) for k in changed)
-                                + "이 있어요. 위 내용으로 바꿀게요", key="overwrite_" + pid)
+    if replaced:
+        overwrite = st.checkbox("이미 저장된 " + ", ".join(TARGET_NAME.get(k, k) for k in replaced)
+                                + "에 위 내용을 합칠게요", key="overwrite_" + pid)
     if st.button("작성자료로 보내기", type="primary", key="publish_" + pid, disabled=not overwrite):
         try:
-            ew.publish(project, replace_existing=bool(changed))
+            ew.publish(project, replace_existing=True)
             save_project(project)
             st.success("보냈어요. 아래 진행 현황에서 ‘이어서 작성’을 누르세요.")
         except ValueError as exc:

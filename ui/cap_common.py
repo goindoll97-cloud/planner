@@ -174,6 +174,7 @@ def _render_form1(project) -> None:
             cap_kosha_panel.render(project, "cap_form01")
 
 
+        st.caption("여기서 고친 설비명·용량·시설유형·성상·비중·운전조건은 ‘자료 접수·확인할 일’ 기록에도 ‘별지 제1호 직접 입력’으로 함께 저장돼 두 곳의 값이 같게 유지돼요. 행을 지우면 자료 접수에서도 제외돼요.")
         cap_facility_editor.render(project, "cap_form01")
 
     elif step_id == "result":

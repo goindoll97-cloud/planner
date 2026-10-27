@@ -710,7 +710,10 @@ def _usable_values(facts):
 
 def _slots(data):
     groups = {}
+    excluded = set(data.get("excluded", []))
     for fact in data["facts"]:
+        if fact["entity"] in excluded:
+            continue
         groups.setdefault(fact["entity"] + "|" + fact["field"], []).append(fact)
     result = []
     for key, facts in groups.items():
@@ -971,7 +974,7 @@ def form1_needs(project):
 # ---------------------------------------------------------------- 연결·보고서
 
 def publishing_plan(project):
-    mapping = {"name": "물질명", "cas": "CAS 번호", "concentration": "함량(%)"}
+    mapping = {"name": "물질명", "cas": "CAS 번호", "concentration": "함량(%)", "substance_state": "물질상태", "density": "비중"}
     facilities = {"name": "설비명", "product": "취급물질", "capacity": "용량", "pressure": "운전압력(MPa)",
                   "design_pressure": "설계압력(MPa)", "temperature": "운전온도(℃)", "inventory": "최대보유량(kg)",
                   "facility_type": "시설유형", "substance_state": "물질성상", "density": "비중", "process_type": "공정유형"}
@@ -1006,20 +1009,233 @@ def unreviewed_legal(project):
     return [slot for slot in slots(project) if slot["method"] == "AUTO" and slot["field"] in LEGAL_FIELDS]
 
 
+# ---------------------------------------------------------------- 한 곳의 사실(별지 작성대와 동기화)
+#
+# 같은 물질·설비 사실이 ‘자료 접수’ 기록과 별지 제1·6호 작성대 표에 따로 있으면 값이 갈라집니다.
+# 그래서 자료 접수 기록(이 그래프)을 기준으로 삼고
+# - 별지에서 고친 값은 그래프에 ‘직접 입력’ 사실로 되돌려 적고(sync_rows),
+# - 그래프에서 보낼 때는 별지 표를 덮어쓰지 않고 같은 번호의 행에 합칩니다(publish).
+# 별지에서 행을 지우면 그래프에서도 그 대상을 제외합니다(되살리면 다시 포함).
+
+FACILITY_ID_COLUMNS = ("설비번호", "구분기호", "장치번호", "시설번호")
+MATERIAL_ID_COLUMNS = ("CAS 번호", "CAS No.", "CAS No", "CAS")
+# 그래프 항목 → 별지 표에서 같은 사실을 담는 열 이름들
+FACILITY_ROW_COLUMNS = {"name": ("설비명",), "product": ("취급물질",), "capacity": ("용량",), "facility_type": ("시설유형",),
+                        "substance_state": ("물질성상",), "density": ("비중",), "pressure": ("운전압력(MPa)",),
+                        "temperature": ("운전온도(℃)",), "process_type": ("공정유형",), "design_pressure": ("설계압력(MPa)",)}
+MATERIAL_ROW_COLUMNS = {"name": ("물질명", "화학물질명", "유해화학물질명"), "cas": MATERIAL_ID_COLUMNS,
+                        "concentration": ("함량(%)", "함량"), "substance_state": ("물질상태", "물질성상"), "density": ("비중",)}
+
+
+def _cell(row, names):
+    return next((str(row[n]).strip() for n in names if n in row and row[n] is not None and str(row[n]).strip()), "")
+
+
+def _row_id(kind, row):
+    if kind == "facility":
+        return _cell(row, FACILITY_ID_COLUMNS)
+    return _cell(row, MATERIAL_ID_COLUMNS) or _cell(row, ("물질코드",))     # CAS가 없으면 제품코드로
+
+
+def _material_entities_by_cas(all_slots):
+    by_cas = {}
+    for slot in all_slots:
+        if slot["field"] == "cas":
+            fact = slot["chosen"] or (slot["facts"][0] if len(_usable_values(slot["facts"])) == 1 else None)
+            if fact:
+                by_cas.setdefault(str(fact["value"]).strip(), slot["entity"])
+    return by_cas
+
+
+def _same_product(current, a, b):
+    """취급제품은 제품코드로도 이름으로도 적히므로, 같은 물질을 가리키면 같은 값으로 봅니다."""
+    def resolve(text):
+        text = str(text).strip()
+        hits = {s["entity"] for s in current.values() if s["entity"].startswith("material:") and
+                (s["entity"].split(":", 1)[1] == text or (s["field"] == "name" and s["chosen"] and str(s["chosen"]["value"]).strip() == text))}
+        return hits.pop() if len(hits) == 1 else text
+    return resolve(a) == resolve(b)
+
+
+def _entity_for(kind, row_id, by_cas):
+    if kind == "facility":
+        return "facility:" + row_id
+    return by_cas.get(row_id, "material:" + row_id)
+
+
+def sync_rows(project, kind, rows, source, *, removed_ids=()):
+    """별지 작성대에서 저장한 표를 그래프에 반영합니다. 그래프와 다른 값만 ‘직접 입력’ 사실로 적고 확인 완료로 둡니다.
+    removed_ids: 별지에서 지운 행의 번호(설비번호 또는 CAS). 그래프에 있으면 제외 목록에 넣습니다. 바뀐 값 수를 돌려줍니다.
+
+    별지 작성대가 이미 저장한 값이므로 이미 보낸 작성자료를 다시 보류(HOLD)로 돌리지 않습니다."""
+    if kind not in {"facility", "material"}:
+        raise ValueError("자료 종류를 확인하세요.")
+    columns = FACILITY_ROW_COLUMNS if kind == "facility" else MATERIAL_ROW_COLUMNS
+    data = graph(project)
+    data.setdefault("excluded", [])
+    current = {s["key"]: s for s in _slots(data)}
+    by_cas = _material_entities_by_cas(current.values()) if kind == "material" else {}
+    known = {s["entity"] for s in current.values()} | set(data["excluded"])
+    touched, changed = {}, 0
+    stamp = sha256(source.encode()).hexdigest()
+    for row in rows:
+        row_id = _row_id(kind, row)
+        if not row_id:
+            continue
+        entity = _entity_for(kind, row_id, by_cas)
+        if entity in data["excluded"]:
+            data["excluded"].remove(entity)
+            changed += 1
+        for field, names in columns.items():
+            raw = _cell(row, names)
+            if not raw:
+                continue
+            header = LABELS[field]
+            if field == "capacity":
+                unit = _cell(row, ("용량단위",)).lower()
+                header = "용량(L)" if unit in {"l", "리터"} else "용량(m3)"
+            value = normalize_value(field, raw, header)
+            if value_problem(field, value):
+                continue        # 별지에서 쓸 수 없는 값은 그래프에 옮기지 않습니다(그래프 값을 망가뜨리지 않음)
+            slot = current.get(f"{entity}|{field}")
+            if slot and slot["chosen"] and (slot["chosen"]["value"] == value or
+                                            (field == "product" and _same_product(current, slot["chosen"]["value"], value))):
+                continue
+            fact = {"entity": entity, "kind": kind, "field": field, "value": value, "raw": raw, "header": header,
+                    "document": source, "sha256": stamp, "location": source, "method": "manual", "confidence": 0.9, "flags": []}
+            fact["id"] = sha256(json.dumps(fact, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:24]
+            if fact["id"] not in {f["id"] for f in data["facts"]}:
+                data["facts"].append(fact)
+            touched[f"{entity}|{field}"] = fact["id"]
+            changed += 1
+    for row_id in removed_ids:
+        entity = _entity_for(kind, str(row_id).strip(), by_cas)
+        if entity in known and entity not in data["excluded"]:
+            data["excluded"].append(entity)
+            changed += 1
+    if not changed:
+        return 0
+    for slot in _slots(data):
+        if slot["key"] in touched:
+            data["decisions"][slot["key"]] = {"fact_id": touched[slot["key"]], "signature": slot["signature"], "method": "PERSON"}
+    _store(project, data)
+    return changed
+
+
+def sync_from_form(project, kind, rows, source, *, removed_ids=()):
+    """별지 작성대에서 부르는 쪽. 동기화가 실패해도 별지 저장 자체는 막지 않습니다(바뀐 값 수, 실패하면 0)."""
+    try:
+        return sync_rows(project, kind, list(rows), source, removed_ids=removed_ids)
+    except Exception:
+        return 0
+
+
+def excluded(project):
+    return list(_read(project).get("excluded", []))
+
+
+def restore(project, entity):
+    """별지에서 지워 제외한 대상을 다시 포함합니다."""
+    data = graph(project)
+    if entity in data.get("excluded", []):
+        data["excluded"].remove(entity)
+        _store(project, data)
+
+
+CHEMICAL_DETAILS_KEY = "cap.chemical.details"
+WORKSPACE_FACILITIES_KEY = "cap.workspace.facilities"
+MATERIAL_TABLE_COLUMNS = ("물질명", "CAS 번호", "함량(%)", "물질상태", "비중")
+FACILITY_TABLE_COLUMNS = ("설비번호", "설비명", "취급물질", "CAS 번호", "용량", "용량단위", "시설유형", "물질성상", "비중",
+                          "운전압력(MPa)", "운전온도(℃)", "공정유형", "설계압력(MPa)")
+
+
+def _merge(kind, existing, new, managed, removed, pending=None):
+    """같은 번호의 행은 그래프가 아는 열만 바꾸고 나머지 열(별지에서만 적는 값)은 그대로 둡니다.
+    새 번호는 뒤에 붙이고, 제외한 대상의 행은 뺍니다. pending(번호 → 열): 그래프에서 아직 확정되지 않은(충돌·확인 전) 값은
+    옛 값을 그대로 두지 않고 비웁니다 — 다툼이 있는 값을 조용히 남기지 않기 위해서입니다."""
+    pending = pending or {}
+    by_id = {_row_id(kind, row): row for row in new if _row_id(kind, row)}
+    out, seen = [], set()
+    for row in existing or []:
+        row_id = _row_id(kind, row)
+        if row_id and row_id in removed:
+            continue
+        merged = dict(row)
+        for column in pending.get(row_id, ()):
+            if column in managed and merged.get(column) not in (None, ""):
+                merged[column] = ""
+        if row_id in by_id:
+            seen.add(row_id)
+            for column in managed:
+                value = by_id[row_id].get(column)
+                if value not in (None, ""):
+                    for name in (column,) + ((MATERIAL_ID_COLUMNS[1:] if column == "CAS 번호" else ())):
+                        if name in merged or name == column:
+                            merged[name] = value
+        out.append(merged)
+    out.extend(row for row_id, row in by_id.items() if row_id not in seen)
+    return out
+
+
+def publish_preview(project):
+    """보낼 때 각 표가 어떻게 바뀌는지(합친 결과). {필드 키: 행 목록}. 화면 미리보기와 publish가 같은 결과를 씁니다."""
+    plans = publishing_plan(project)
+    data = _read(project)
+    removed_material = {_row_id("material", {"CAS 번호": e.split(":", 1)[1]}) for e in data.get("excluded", []) if e.startswith("material:")}
+    removed_material |= {str(f["value"]).strip() for f in data["facts"] if f["field"] == "cas" and f["entity"] in data.get("excluded", [])}
+    removed_facility = {e.split(":", 1)[1] for e in data.get("excluded", []) if e.startswith("facility:")}
+    pending = {"material": {}, "facility": {}}
+    plan_ids = {kind: {_row_id(kind, r) for r in plans.get(t, [])} for kind, t in (("material", "inventory.chemicals"), ("facility", "inventory.facilities"))}
+    entities = confirmed_entities(project)
+    for slot in slots(project):
+        kind = slot["entity"].split(":", 1)[0]
+        if slot["chosen"] or kind not in pending:
+            continue
+        values = entities.get(slot["entity"], {})
+        row_id = slot["entity"].split(":", 1)[1] if kind == "facility" else (values.get("cas") or slot["entity"].split(":", 1)[1])
+        if str(row_id) not in plan_ids[kind]:
+            continue
+        columns = (FACILITY_ROW_COLUMNS if kind == "facility" else MATERIAL_ROW_COLUMNS).get(slot["field"], ())
+        pending[kind].setdefault(str(row_id), set()).update(columns)
+    out = {}
+    targets = [("inventory.chemicals", "material", plans.get("inventory.chemicals", []), MATERIAL_TABLE_COLUMNS, removed_material),
+               (CHEMICAL_DETAILS_KEY, "material", plans.get("inventory.chemicals", []), MATERIAL_TABLE_COLUMNS, removed_material),
+               ("inventory.facilities", "facility", plans.get("inventory.facilities", []), FACILITY_TABLE_COLUMNS + ("최대보유량(kg)", "시설번호", "시설명", "제품명"), removed_facility),
+               (WORKSPACE_FACILITIES_KEY, "facility", plans.get("inventory.facilities", []), FACILITY_TABLE_COLUMNS, removed_facility)]
+    for key, kind, rows, managed, removed in targets:
+        record = project.get_field(key)
+        if key in (CHEMICAL_DETAILS_KEY, WORKSPACE_FACILITIES_KEY) and record is None:
+            continue        # 별지 작성대 표가 아직 없으면 만들지 않습니다(작성대는 inventory.*를 읽음)
+        if not rows and record is None:
+            continue
+        existing = record.value if record and isinstance(record.value, list) else []
+        out[key] = _merge(kind, existing, rows, managed, removed, pending[kind])
+    return out
+
+
 def publish(project, *, replace_existing=False):
+    """확인한 사실을 작성자료로 보냅니다. 기존 표를 덮어쓰지 않고 같은 번호의 행에 합칩니다(별지에서만 적은 열은 유지)."""
     if unreviewed_legal(project):
         raise ValueError("법적 계산에 쓰이는 자동 기입값을 원자료와 대조해 확인한 뒤 연결하세요.")
-    plans = publishing_plan(project)
-    if not plans:
+    if not publishing_plan(project):
         raise ValueError("연결할 확인 완료 사실이 없습니다.")
-    for key, rows in plans.items():
+    preview = publish_preview(project)
+    for key, rows in preview.items():
         existing = project.get_field(key)
         if existing and existing.value != rows and not replace_existing:
             raise ValueError("기존 작성자료와 다릅니다. 비교 후 교체 항목을 확인하세요.")
-    for key, rows in plans.items():
-        project.set_field(key, "공통정보에서 연결한 " + key, rows, "USER_CONFIRMED",
-                          note="공통정보 연결: 출처와 필드별 결정은 workspace.evidence_graph에 보존")
-    return list(plans)
+    for key, rows in preview.items():
+        if key == WORKSPACE_FACILITIES_KEY:
+            from . import cap_workspace
+            cap_workspace.save_facility_rows(project, rows)      # 최대보유량 다시 계산(그래프와 이미 같아 되돌려 적을 값 없음)
+        elif key == CHEMICAL_DETAILS_KEY:
+            old = project.get_field(key)
+            project.set_field(key, old.label if old else "화학물질 상세(별지 제6호 작성대)", rows, "USER_CONFIRMED",
+                              note="별지 제6호 작성대: 자료 접수에서 보낸 물질명·CAS·함량·성상·비중을 같은 CAS 행에 합침")
+        else:
+            project.set_field(key, "공통정보에서 연결한 " + key, rows, "USER_CONFIRMED",
+                              note="공통정보 연결: 출처와 필드별 결정은 workspace.evidence_graph에 보존")
+    return list(preview)
 
 
 def report(project):
