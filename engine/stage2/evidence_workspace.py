@@ -119,7 +119,7 @@ def register_reference(project, name, content):
     tables, passages = read_document(name, content)
     has_text = any(p.get("text", "").strip() for p in passages)
     problem = ("글자가 없는 스캔본입니다. OCR 후 원본을 확인해 다시 올려 주세요." if not tables and not has_text else
-               "원본은 보관했습니다. 이 문서의 값은 아직 법정 서식에 자동 연결되지 않았습니다.")
+               "파일의 문자·표는 읽었습니다. 값은 아직 법정 서식에 자동 연결되지 않았습니다.")
     data["documents"].append({"name": name, "sha256": digest, "kind": "reference", "hint": "",
                               "passages": passages, "fact_count": 0, "unmapped_columns": [], "tables": [],
                               "rows_without_id": 0, "needs_reading": True,

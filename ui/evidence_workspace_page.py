@@ -348,9 +348,6 @@ def _step_upload(project, found) -> None:
                     "운전조건표·설비사양서(압력·온도·단위), 공정설명서, 안전설비·비상대응 자료, 주변현황·평가 근거.")
         for label, rows in cap_intake_guide.grouped_checklist():
             st.markdown(f"#### {label}")
-            if not rows:
-                st.caption("현재 작성요건 목록에는 이 군에만 해당하는 별도 항목이 없습니다.")
-                continue
             st.dataframe([{"구역": cap_intake_guide.form_zone(r), "필요한 내용": r["label"],
                            "준비할 자료 예시": " / ".join(r["evidence"]) or r["details"]}
                           for r in rows], hide_index=True, width="stretch")
@@ -383,8 +380,10 @@ def _step_upload(project, found) -> None:
                     ew.register_reference(project, file.name, file.getvalue())
                     save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 자동 추출·서식 연결 미완료")
                     save_project(project)
+                    scanned = next((d.get("needs_ocr") for d in ew.documents(project) if d["name"] == file.name), False)
                     st.session_state.setdefault("evidence_notes", []).append(
-                        f"{file.name}: 원본만 보관했어요. 서식 값으로 연결되지 않았습니다. 파일별 보완 요청을 확인하세요.")
+                        f"{file.name}: 글자가 없어 OCR이 필요합니다." if scanned else
+                        f"{file.name}: 문자·표를 읽어 원본을 보관했어요. 서식 값 연결은 파일별 보완 요청을 확인하세요.")
                     continue
                 count = ew.ingest(project, file.name, file.getvalue(), selected[index], hints.get(index, ""))
                 save_attachment(project.project_id, file.name, file.getvalue(), note="공통정보 추출 원문")
@@ -424,7 +423,8 @@ def _reading_report(project, doc, facts, names, reasons) -> None:
     unusable = [f for f in facts if f["id"] in reasons]
     skipped = sum(t.get("skipped_count", 0) for t in doc.get("tables", []))
     if doc.get("needs_reading"):
-        st.write(f"⚠️ **{doc['name']}** — {doc.get('problem') or '읽을 수 있는 값을 찾지 못했어요.'}")
+        icon = "📎" if doc.get("kind") == "reference" and not doc.get("needs_ocr") else "⚠️"
+        st.write(f"{icon} **{doc['name']}** — {doc.get('problem') or '읽을 수 있는 값을 찾지 못했어요.'}")
     else:
         parts = [f"값 {len(facts)}개"]
         if doc.get("unmapped_columns"):
@@ -670,8 +670,11 @@ def _correction_rows(project, found) -> list[dict]:
 
     for doc in ew.documents(project):
         if doc.get("needs_reading"):
-            add(doc["name"], "문서 읽기", doc.get("problem") or "값을 연결하지 못했습니다.",
-                "스캔본은 OCR을 적용하세요. 근거자료라면 서식에 필요한 내용을 확인하고 해당 문서·원본을 제출하세요.")
+            is_reference = doc.get("kind") == "reference" and not doc.get("needs_ocr")
+            add(doc["name"], "서식 값 연결" if is_reference else "문서 읽기",
+                doc.get("problem") or "값을 연결하지 못했습니다.",
+                "해당 문서의 값을 작성 화면에서 연결·확정하세요." if is_reference else
+                "스캔본은 OCR을 적용하세요. 항목명·번호를 확인해 원본을 다시 제출하세요.")
         for table in doc.get("tables", []):
             for skipped in table.get("skipped", []):
                 add(f"{doc['name']} · {table['location']} {skipped['row']}행", "설비·제품 번호",

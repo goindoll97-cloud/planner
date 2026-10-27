@@ -35,11 +35,13 @@ def form_zone(row: dict) -> str:
 
 
 def grouped_checklist() -> list[tuple[str, list[dict]]]:
-    """표시 순서: 두 군 공통, 1군 전용, 2군 전용. 각 군 안에서 별지 번호순."""
+    """표시 순서: 두 군 공통, 1군 전용, 2군 전용(있을 때만)."""
     rows = list(START_FORMS) + checklist()
     grouped = []
     for label, levels in (("1군·2군 공통", ["1군", "2군"]), ("1군만", ["1군"]), ("2군만", ["2군"])):
         selected = [r for r in rows if r["levels"] == levels]
+        if not selected:
+            continue
         selected.sort(key=lambda r: (int(re.search(r"제(\d+)호", form_zone(r)).group(1))
                                      if re.search(r"제(\d+)호", form_zone(r)) else 999,
                                      form_zone(r), rows.index(r)))
@@ -78,8 +80,6 @@ def guidance_text(group: str = "", *, drawings: bool = True) -> str:
              "사고시나리오 대상, 영향범위, 주민·보호대상 및 지도는 물질·시설·주소를 확인한 뒤 추가 자료를 요청합니다. 지도 후보는 현장과 대조하세요.", ""]
     for label, rows in grouped_checklist():
         lines.extend([f"[{label}]", ""])
-        if not rows:
-            lines.extend(["현재 작성요건 목록에는 이 군에만 해당하는 별도 항목이 없습니다.", ""])
         for row in rows:
             if not drawings and ("도면" in row["section"] or row["key"].startswith("common.pf") or row["key"] == "common.site_plan"):
                 continue
@@ -143,25 +143,23 @@ def guidance_pdf() -> bytes:
     if font_path is None:
         raise RuntimeError("PDF용 한글 글꼴이 없습니다. CAP_PDF_FONT_PATH에 한글 TTF 파일 경로를 설정하세요.")
     pdfmetrics.registerFont(TTFont("CapKorean", str(font_path)))
-    style = ParagraphStyle("body-ko", fontName="CapKorean", fontSize=9, leading=14, textColor=colors.HexColor("#243142"), wordWrap="CJK")
+    style = ParagraphStyle("body-ko", fontName="CapKorean", fontSize=9, leading=12.5, textColor=colors.HexColor("#243142"), wordWrap="CJK")
     title = ParagraphStyle("title-ko", parent=style, fontSize=16, leading=23, spaceAfter=12)
     sub = ParagraphStyle("sub-ko", parent=style, fontSize=12, leading=18, textColor=colors.HexColor("#174d7a"), spaceBefore=14, spaceAfter=5)
-    small = ParagraphStyle("small-ko", parent=style, fontSize=8, leading=12)
+    small = ParagraphStyle("small-ko", parent=style, fontSize=8, leading=10.8)
     out = BytesIO()
     doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=48, leftMargin=48, topMargin=45, bottomMargin=45)
     story = [Paragraph("화학사고예방관리계획서 회사자료 준비 목록", title),
              Paragraph("작성수준 판정 전에는 1군·2군 공통자료와 1군 추가자료를 함께 확인하세요. 자료 접수만으로 법정 서식이 완성되지는 않습니다.", style)]
     for label, rows in grouped_checklist():
         story.append(Paragraph(escape(label), sub))
-        if not rows:
-            story.append(Paragraph("현재 작성요건 목록에는 이 군 전용 항목이 없습니다.", style))
         for row in rows:
             detail = escape(row["details"])
             evidence = escape(" / ".join(row["evidence"]) or "회사 보유자료·계산근거·확인기록")
             story.append(KeepTogether([
                 Paragraph(escape(f"[{form_zone(row)}] {row['label']}"), style),
                 Paragraph(f"필요한 내용: {detail}", small),
-                Paragraph(f"요청할 자료: {evidence}", small), Spacer(1, 7)]))
+                Paragraph(f"요청할 자료: {evidence}", small), Spacer(1, 5)]))
     story.extend([Paragraph("판정과 추가 확인", sub), Paragraph(
         "물질·농도·성상·최대보유량·일일 취급량이 달라지면 승인된 최신 규정 DB로 작성수준과 대상시설을 다시 판정하세요. "
         "실제 주소의 주민·보호대상·논·하천 등 주변 현황은 지도와 현장을 대조해 확인하세요.", style)])

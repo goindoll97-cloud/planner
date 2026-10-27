@@ -26,12 +26,11 @@ class CapIntakeGuideTests(unittest.TestCase):
         self.assertTrue(guide.guidance_hwpx().startswith(b"PK"))
         self.assertTrue(guide.guidance_hwp().startswith(HWP5_MAGIC))
         groups = guide.grouped_checklist()
-        self.assertEqual([name for name, _ in groups], ["1군·2군 공통", "1군만", "2군만"])
+        self.assertEqual([name for name, _ in groups], ["1군·2군 공통", "1군만"])
         self.assertTrue(groups[0][1])
         self.assertTrue(groups[1][1])
-        self.assertEqual(groups[2][1], [])
         self.assertEqual(guide.form_zone(groups[0][1][0]), "별지 제1호")
-        self.assertIn("[2군만]", text)
+        self.assertNotIn("[2군만]", text)
         tables, passages = ew.read_document("요청목록.hwpx", guide.guidance_hwpx())
         self.assertTrue(any("설비" in p["text"] for p in passages))
         _, hwp_passages = ew.read_document("요청목록.hwp", guide.guidance_hwp())
@@ -44,7 +43,7 @@ class CapIntakeGuideTests(unittest.TestCase):
         self.assertGreaterEqual(len(reader.pages), 2)
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
         self.assertIn("1군·2군 공통", text)
-        self.assertIn("2군만", text)
+        self.assertNotIn("2군만", text)
 
     def test_combined_company_is_one_zip_with_one_answer_key(self):
         with ZipFile(BytesIO(demo_company.combined_demo_zip())) as z:
