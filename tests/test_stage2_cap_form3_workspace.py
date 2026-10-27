@@ -61,7 +61,7 @@ class CAPForm3WorkspaceTests(unittest.TestCase):
         self.assertNotIn("총괄영향범위내 주민여부", f3.missing_labels(project))
 
     def test_page_offers_form3(self):
-        page = (Path(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        page = (Path(__file__).resolve().parents[1] / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn(3, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 

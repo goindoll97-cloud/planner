@@ -66,7 +66,7 @@ st.markdown("### 다음 단계")
 if judgement.undecided(project):
     st.caption("판정을 마치면 작성으로 넘어갈 수 있습니다. 판정 전에도 별지 작성은 미리 시작할 수 있습니다.")
 if project.cap_in_scope or judgement.undecided(project):
-    st.page_link("ui/cap_workspace_page.py", label="화학사고예방관리계획서 작성으로 이동", icon="📝")
+    st.page_link("ui/cap_facts_page.py", label="화학사고예방관리계획서 작성으로 이동", icon="📝")
 if project.psm_in_scope:
     st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성으로 이동", icon="🏭")
 if not (project.cap_in_scope or project.psm_in_scope or judgement.undecided(project)):

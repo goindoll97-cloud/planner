@@ -151,7 +151,7 @@ class InlineFacilityTests(unittest.TestCase):
     def test_the_facility_table_is_one_shared_component(self):
         from pathlib import Path as _P
 
-        page = (_P(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        page = (_P(__file__).resolve().parents[1] / "ui/cap_common.py").read_text(encoding="utf-8")
         panel = (_P(__file__).resolve().parents[1] / "ui/judgement_panel.py").read_text(encoding="utf-8")
         self.assertIn('cap_facility_editor.render(project, "cap_form01")', page)
         self.assertIn('cap_facility_editor.render(', panel)

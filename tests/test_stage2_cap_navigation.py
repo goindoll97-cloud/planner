@@ -21,14 +21,22 @@ class CAPNavigationTests(unittest.TestCase):
         self.assertEqual(registry.label(12), "별지 제12·13호")
         self.assertEqual(registry.label(3), "별지 제3호")
         self.assertNotIn(13, registry.FORM_NUMBERS)
-        page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn('"implementation": "이행점검 · 자체점검 별지 제1호~제3호"', page)
         self.assertTrue((ROOT / "ui/cap_implementation_self_check_view.py").exists())
 
     def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
-        self.assertIn('st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성"', app)
+        self.assertIn('st.Page("ui/cap_facts_page.py", title="사업장·물질·시설 작성"', app)
+        self.assertNotIn("cap_workspace_page.py", app)          # 예전 한 화면은 나눠서 지움
+        from ui import cap_common
+        listed = [option for _, _, options, _ in cap_common.GROUPS.values() for option in options]
+        self.assertEqual(sorted(o for o in listed if isinstance(o, int)), sorted(registry.FORM_NUMBERS))   # 별지가 빠짐없이 한 번씩
+        self.assertEqual(len(listed), len(set(listed)))
+        for page in cap_common.PAGES.values():
+            self.assertIn(f'st.Page("{page}"', app)
+            self.assertTrue((ROOT / page).exists(), page)
         self.assertIn('sections["공정안전보고서"]', app)
         self.assertIn('st.Page("ui/judgement_page.py"', app)
         for gone in ("diagnosis_entry.py", "stage2_scope_page.py", "엑셀로 판정하기"):
@@ -38,7 +46,7 @@ class CAPNavigationTests(unittest.TestCase):
             self.assertNotIn(page, app)
 
     def test_big_excel_round_trip_is_gone_and_only_the_chemical_list_upload_remains(self):
-        page = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertNotIn("cap_excel_panel", page)
         self.assertFalse((ROOT / "ui/cap_excel_panel.py").exists())
         form6 = (ROOT / "ui/cap_form6_view.py").read_text(encoding="utf-8")

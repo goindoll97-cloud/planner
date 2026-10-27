@@ -125,10 +125,15 @@ class ScreenTests(unittest.TestCase):
              patch("engine.stage2.storage.load_project", return_value=project), \
              patch("engine.stage2.storage.save_project"), \
              patch("engine.stage2.local_llm.probe_local_llm_runtime", return_value=down):
-            at = AppTest.from_file(str(ROOT / "ui/cap_workspace_page.py"), default_timeout=90)
+            from ui import cap_common
+
+            page = cap_common.page_for(option)
+            at = AppTest.from_file(str(ROOT / page), default_timeout=90)
             at.session_state["_stage2_active_project_id"] = project.project_id
             at.run()
-            at.selectbox(key="cap_form_no").select(option).run()
+            group = page.split("cap_", 1)[1].rsplit("_page.py", 1)[0]
+            if len(cap_common.GROUPS[group][2]) > 1:
+                at.selectbox(key=f"cap_form_no_{group}").select(option).run()
             return at
 
     def test_narrative_and_export_options_render_for_a_cap_project(self):

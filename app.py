@@ -16,8 +16,13 @@ sections: dict[str, list] = {
     "사업장 업무": [st.Page("ui/evidence_workspace_page.py",title="자료 접수·확인할 일",icon="📂",default=True),
                 # 버전은 작성 화면이 아니라 사업장 작성자료 전체의 스냅샷이라 따로 둔다(작성 화면을 바꿔도 남음).
                 st.Page("ui/version_page.py", title="버전 관리", icon="🕘")],
+    # 예전 한 화면(별지 15개·서술형·내보내기·제출서식)을 하는 일별로 나눈 화면들. 내용은 ui/cap_common.py의 GROUPS.
     "화학사고예방관리계획서": [
-        st.Page("ui/cap_workspace_page.py", title="화학사고예방관리계획서 작성", icon="📝"),
+        st.Page("ui/cap_facts_page.py", title="사업장·물질·시설 작성", icon="🏷️"),
+        st.Page("ui/cap_scenario_page.py", title="사고시나리오·위험도", icon="🔥"),
+        st.Page("ui/cap_emergency_page.py", title="비상대응·서술형", icon="🚨"),
+        st.Page("ui/cap_export_page.py", title="점검·내보내기", icon="📤"),
+        st.Page("ui/cap_submission_page.py", title="제출·변경·이행점검", icon="📮"),
     ],
 }
 

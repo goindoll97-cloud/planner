@@ -110,8 +110,8 @@ class CAPForm2WorkspaceTests(unittest.TestCase):
     def test_page_offers_form2(self):
         from pathlib import Path
 
-        page = (Path(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("cap_form{form_no}_view", page)
+        page = (Path(__file__).resolve().parents[1] / "ui/cap_common.py").read_text(encoding="utf-8")
+        self.assertIn("cap_form{option}_view", page)   # 별지별 화면을 번호로 불러옴
 
 
 if __name__ == "__main__":

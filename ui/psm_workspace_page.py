@@ -92,7 +92,7 @@ def _table_13(project) -> None:
     spec = report.PSM_FORMS["13"]
     rows = report._psm_form13_rows(project)
     if not rows:
-        st.warning("가져올 물질 정보가 없습니다. 화학사고예방관리계획서 작성 화면의 별지 제1·6호에서 먼저 입력하세요.")
+        st.warning("가져올 물질 정보가 없습니다. 화학사고예방관리계획서 ‘사업장·물질·시설 작성’ 화면의 별지 제1·6호에서 먼저 입력하세요.")
         return
     _reuse_note(f"물질 {len(rows)}건을 가져왔습니다. 빈 칸은 확인되지 않은 항목입니다.")
     frames.show(pd.DataFrame(rows, columns=list(spec.headers)), width="stretch", hide_index=True)
@@ -104,7 +104,7 @@ def _table_15(project) -> None:
     spec = report.PSM_FORMS["15"]
     rows = report._psm_facility_rows(project)
     if not rows:
-        st.warning("가져올 시설이 없습니다. 화학사고예방관리계획서 작성 화면의 별지 제1호에서 시설을 먼저 입력하세요.")
+        st.warning("가져올 시설이 없습니다. 화학사고예방관리계획서 ‘사업장·물질·시설 작성’ 화면의 별지 제1호에서 시설을 먼저 입력하세요.")
         return
     _reuse_note(f"설비 {len(rows)}건을 가져왔습니다.")
     frames.show(pd.DataFrame(report._psm_form15_rows(project), columns=list(spec.headers)), width="stretch", hide_index=True)
@@ -212,7 +212,7 @@ def _table_19_2(project) -> None:
     st.caption("사고가 났을 때 화재·폭발·독성이 얼마나 멀리 미치는지 적는 서식입니다. 누출량과 확산 계산은 화학사고예방관리계획서와 "
                "같은 계산을 쓰고, 서식이 정한 기준(복사열 4·12.5·37.5, 독성 ERPG 1·2·3)으로 거리를 구합니다.")
     if not sc.saved_scenarios(project):
-        st.warning("사고 시나리오가 없습니다. 화학사고예방관리계획서 작성 화면의 별지 제10·11호에서 시나리오를 먼저 확정하세요.")
+        st.warning("사고 시나리오가 없습니다. 화학사고예방관리계획서 화면의 별지 제10·11호에서 시나리오를 먼저 확정하세요.")
         return
     designations = _scenario_designations(project)
     _auto_weather(project)

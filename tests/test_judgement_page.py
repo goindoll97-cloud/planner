@@ -38,7 +38,7 @@ class WiringTests(unittest.TestCase):
 
     def test_page_reuses_the_start_form_and_the_judgement_panel_and_links_to_writing(self):
         page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
-        for expected in ("cap_start_panel.render", "judgement_panel.render", "ui/cap_workspace_page.py",
+        for expected in ("cap_start_panel.render", "judgement_panel.render", "ui/cap_facts_page.py",
                          "ui/psm_workspace_page.py", "delete_project(", "프로젝트와 저장된 첨부자료를 삭제합니다"):
             self.assertIn(expected, page)
         self.assertNotIn("PSM", page.replace("psm_workspace_page", ""))  # 화면 문구는 정식 명칭만 쓴다

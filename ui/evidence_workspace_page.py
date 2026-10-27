@@ -758,7 +758,7 @@ def _form1_payoff(project) -> None:
                        "계산 근거": r.get("산정근거")} for r in form.chemical_rows], hide_index=True, width="stretch")
     needs = ew.form1_needs(project)
     if needs:
-        st.caption("법에서 정한 방식으로 보유량을 다시 계산하려면 아래 값이 더 필요해요. 작성 화면의 ‘시설 입력’에서 저장하면 계산돼요. "
+        st.caption("법에서 정한 방식으로 보유량을 다시 계산하려면 아래 값이 더 필요해요. ‘사업장·물질·시설 작성’ 화면 별지 제1호의 ‘시설 입력’에서 저장하면 계산돼요. "
                    "읽어 온 시설유형·성상·용량·비중은 미리 채워 두었어요.")
         for need in needs:
             st.write("• " + need)
@@ -825,7 +825,8 @@ def _step_export(project, found) -> None:
         except ValueError as exc:
             st.error(str(exc))
     _form1_payoff(project)
-    st.page_link("ui/cap_workspace_page.py", label="화학사고예방관리계획서 작성 화면으로 가기 →")
+    st.page_link("ui/cap_facts_page.py", label="화학사고예방관리계획서 작성으로 가기 (사업장·물질·시설부터) →")
+    st.page_link("ui/cap_scenario_page.py", label="사고시나리오·위험도 작성으로 가기 →")
     st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성 화면으로 가기 →")
     _records(project, names)
 

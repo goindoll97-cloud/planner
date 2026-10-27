@@ -132,10 +132,10 @@ class GuardTests(unittest.TestCase):
 
 class CapPageTests(unittest.TestCase):
     def test_cap_page_uses_the_guard_for_every_option(self):
-        source = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        source = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn("unsaved_guard.selector(", source)
         self.assertIn("unsaved_guard.finish()", source)
-        self.assertNotIn("st.stop()\nif form_no", source)
+        self.assertNotIn("st.stop()\nif option", source)
 
 
 if __name__ == "__main__":
@@ -213,13 +213,18 @@ class NoFalseAlarmTests(unittest.TestCase):
              patch("engine.stage2.storage.load_project", return_value=project), \
              patch("engine.stage2.storage.save_project"), \
              patch("engine.stage2.local_llm.probe_local_llm_runtime", return_value=down):
-            at = AppTest.from_file(str(ROOT / "ui/cap_workspace_page.py"), default_timeout=90)
-            at.session_state["_stage2_active_project_id"] = project.project_id
-            at.run()
-            from ui import cap_forms_registry as registry
+            from ui import cap_common
 
-            for option in [*registry.FORM_NUMBERS, "narrative", "export"]:
-                at.selectbox(key="cap_form_no").select(option).run()
-                self.assertFalse(at.exception, option)
-                self.assertEqual(at.session_state["cap_form_no__accepted"], option, f"CAP 화면 {option}로 이동하지 못함")
-                self.assertNotIn("이동하면 이 내용은", _texts(at.warning), f"CAP 화면 {option}에서 거짓 경고")
+            for group, (_, _, options, _) in cap_common.GROUPS.items():
+                at = AppTest.from_file(str(ROOT / cap_common.PAGES[group]), default_timeout=90)
+                at.session_state["_stage2_active_project_id"] = project.project_id
+                at.run()
+                self.assertFalse(at.exception, group)
+                if len(options) == 1:
+                    continue
+                key = f"cap_form_no_{group}"
+                for option in options:
+                    at.selectbox(key=key).select(option).run()
+                    self.assertFalse(at.exception, option)
+                    self.assertEqual(at.session_state[f"{key}__accepted"], option, f"CAP 화면 {option}로 이동하지 못함")
+                    self.assertNotIn("이동하면 이 내용은", _texts(at.warning), f"CAP 화면 {option}에서 거짓 경고")

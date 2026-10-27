@@ -112,7 +112,7 @@ class CapExportTests(unittest.TestCase):
 class CapScreenTests(unittest.TestCase):
     def test_cap_workspace_export_step_uses_the_shared_panel(self):
         from pathlib import Path
-        source = (Path(__file__).resolve().parents[1] / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        source = (Path(__file__).resolve().parents[1] / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn('report_export_panel.render(project, "CAP")', source)
         self.assertNotIn("cap_form01_download_", source)  # 항상 '작성본'으로 이름 붙이던 예전 다운로드 제거
 

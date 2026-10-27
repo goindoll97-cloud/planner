@@ -139,7 +139,7 @@ class CapStartTests(unittest.TestCase):
     def test_judgement_page_offers_the_legal_start_and_cap_writing_starts_directly(self):
         page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
         self.assertIn("cap_start_panel.render", page)
-        writing = (ROOT / "ui/cap_workspace_page.py").read_text(encoding="utf-8")
+        writing = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         start = (ROOT / "ui/evidence_workspace_page.py").read_text(encoding="utf-8")
         self.assertIn("create_direct_cap_project", start)       # 작성 시작은 사업장 업무 화면에서
         self.assertNotIn("create_direct_cap_project", writing)  # 작성 화면은 새로 만들지 않고 안내만
