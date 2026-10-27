@@ -33,7 +33,7 @@ def guidance_text(group: str = "", *, drawings: bool = True) -> str:
     lines = ["화학사고예방관리계획서 회사자료 요청 목록", f"적용 범위: {level}",
              "한 번에 여러 파일을 올리세요. 아래 항목은 자료를 모을 때의 목록이며, 업로드만으로 법정 서식이 자동 완성되지는 않습니다.",
              "파일에는 설비번호·제품코드·적용 공장, 단위, 작성·개정일, 출처를 적어 주세요. 실제 최대보유량·취급량은 별도 확인이 필요합니다.",
-             "허용 형식: CSV/XLSX, 텍스트 PDF, DOCX, HWPX, TXT. 구형 HWP는 한글에서 HWPX 또는 텍스트 PDF로 저장해 올려 주세요. 스캔본은 OCR 후 확인하세요.",
+             "허용 형식: CSV/XLSX, 텍스트 PDF, DOCX, HWP 5.0, HWPX, TXT. 암호화·구형 HWP 또는 스캔본은 한글에서 HWPX로 저장하거나 OCR 후 원본과 대조하세요.",
              "작성수준과 물질별 취급량·보유량 판정은 승인된 최신 규정 DB의 계산 결과로 확인합니다. 미확정이면 1·2군 자료를 함께 준비하세요.",
              "사고시나리오 대상, 영향범위, 주민·보호대상 및 지도는 물질·시설·주소를 확인한 뒤 추가 자료를 요청합니다. 지도 후보는 현장과 대조하세요.", ""]
     current = None
@@ -79,3 +79,9 @@ def guidance_hwpx(group: str = "") -> bytes:
     for line in guidance_text(group).splitlines():
         doc.add_paragraph(line or " ")
     return doc.to_bytes()
+
+
+def guidance_hwp(group: str = "") -> bytes:
+    """실제 HWP 5.0 바이너리 요청서."""
+    from .hwp5_binary import from_hwpx
+    return from_hwpx(guidance_hwpx(group))

@@ -306,7 +306,7 @@ def _local(tag):
 
 
 def _read_hwpx(content):
-    """HWPX(zip+XML)의 문단과 표를 읽습니다. 구형 HWP(바이너리)는 지원하지 않습니다."""
+    """HWPX(zip+XML)의 문단과 표를 읽습니다."""
     try:
         archive = ZipFile(BytesIO(content))
     except BadZipFile as exc:
@@ -372,11 +372,14 @@ def read_document(name, content):
         tables, passages = _read_pdf(content)
     elif suffix == "hwpx":
         tables, passages = _read_hwpx(content)
+    elif suffix == "hwp":
+        from .hwp5_binary import to_hwpx
+        tables, passages = _read_hwpx(to_hwpx(content))
     elif suffix == "txt":
         text = content.decode("utf-8-sig", errors="replace")
         passages = [{"location": f"줄 {i}", "text": line} for i, line in enumerate(text.splitlines(), 1)]
     else:
-        raise ValueError("CSV·XLSX·DOCX·HWPX·텍스트 PDF·TXT를 지원합니다. 다른 형식은 변환 후 가져오세요.")
+        raise ValueError("CSV·XLSX·DOCX·HWP 5.0·HWPX·텍스트 PDF·TXT를 지원합니다. 다른 형식은 변환 후 가져오세요.")
     return tables, passages
 
 

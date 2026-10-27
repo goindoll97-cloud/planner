@@ -23,7 +23,7 @@ from engine.stage2.storage import delete_all_projects, list_projects, load_attac
 
 STEPS = {1: "① 자료 올리기", 2: "② 파일별 보완 요청", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
 MAX_CARDS = 30
-DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".txt")
+DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".hwp", ".txt")
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
 
 # 신입사원이 모를 수 있는 항목마다 한 줄 설명
@@ -332,28 +332,27 @@ def _step_upload(project, found) -> None:
         st.info(cap_intake_guide.conditional_notice(group))
         st.caption("회사에 그대로 전달할 자료 요청 목록입니다. 작성수준을 아직 확인하지 않았다면 1·2군 후보 항목을 함께 보여 줍니다. "
                    "업로드만으로 서식이 완성되지는 않으며, 읽지 못한 자료는 보완 요청에 남습니다.")
-        cols = st.columns(2)
+        cols = st.columns(3)
         cols[0].download_button("전체 준비자료 목록 TXT", cap_intake_guide.guidance_text(group),
                                 file_name="화학사고예방관리계획서_회사자료_요청목록.txt", mime="text/plain", key="cap_request_txt")
         cols[1].download_button("전체 준비자료 목록 한글(HWPX)", cap_intake_guide.guidance_hwpx(group),
                                 file_name="화학사고예방관리계획서_회사자료_요청목록.hwpx",
                                 mime="application/hwp+zip", key="cap_request_hwpx")
+        cols[2].download_button("전체 준비자료 목록 한글(HWP)", cap_intake_guide.guidance_hwp(group),
+                                file_name="화학사고예방관리계획서_회사자료_요청목록.hwp",
+                                mime="application/octet-stream", key="cap_request_hwp")
         st.markdown("**우선 모을 파일**: 설비목록·설비대장(설비번호·공장·용량·최대보유량), 물질목록·제품별 SDS(CAS·함량), "
                     "운전조건표·설비사양서(압력·온도·단위), 공정설명서, 안전설비·비상대응 자료, 주변현황·평가 근거.")
         rows = cap_intake_guide.checklist(group)
         st.dataframe([{"구역": r["section"], "필요한 내용": r["label"],
                        "준비할 자료 예시": " / ".join(r["evidence"]) or r["details"],
                        "작성수준": "·".join(r["levels"])} for r in rows], hide_index=True, width="stretch")
-        st.caption("HWPX는 읽을 수 있습니다. 옛 한글 HWP는 한글에서 HWPX 또는 텍스트 PDF로 다시 저장하세요. "
+        st.caption("HWP 5.0과 HWPX는 읽을 수 있습니다. 암호화·구형 HWP가 열리지 않으면 한글에서 HWPX로 저장하세요. "
                    "사진으로 스캔된 PDF는 문자 인식과 원본 확인이 필요합니다.")
     uploaded = st.file_uploader("파일 선택 (여러 개 가능, 파일당 20MB 이하)",
                                 type=["csv", "xlsx", "pdf", "docx", "hwpx", "hwp", "txt"], accept_multiple_files=True)
     selected, hints = {}, {}
     for index, file in enumerate(uploaded or []):
-        if file.name.lower().endswith(".hwp"):
-            st.error(f"{file.name}: 이 파일은 구형 HWP라 읽지 못합니다. 한글에서 HWPX 또는 텍스트 PDF로 저장해 다시 올려 주세요.")
-            selected[index] = "unsupported"
-            continue
         digest, detected = _classify(file.name, file.getvalue())
         if detected:
             st.write(f"✅ {file.name} — {'물질 목록·MSDS' if detected == 'material' else '설비 목록·운전 자료'}로 알아봤어요")
@@ -373,8 +372,6 @@ def _step_upload(project, found) -> None:
     if st.button("자료 읽기", type="primary", disabled=not uploaded, key="read_" + pid):
         for index, file in enumerate(uploaded):
             try:
-                if selected[index] == "unsupported":
-                    continue
                 if selected[index] == "reference":
                     ew.register_reference(project, file.name, file.getvalue())
                     save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 자동 추출·서식 연결 미완료")
