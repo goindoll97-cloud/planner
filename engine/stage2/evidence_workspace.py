@@ -34,9 +34,7 @@ CHOICES = {"facility_type": ("저장탱크", "제조·사용시설", "보관시�
            "process_type": ("변화없음", "단순혼합", "반응")}
 CHOICE_SYNONYMS = {"기체": "기체·고압가스", "고압가스": "기체·고압가스", "기체/고압가스": "기체·고압가스", "기체고압가스": "기체·고압가스",
                    "탱크로리": "탱크로리·운송차량", "운송차량": "탱크로리·운송차량", "제조사용시설": "제조·사용시설",
-                   "제조시설": "제조·사용시설", "사용시설": "제조·사용시설",
-                   # 회사 자료에 흔한 표기: 액상·고상·가스
-                   "액상": "액체", "고상": "고체", "분말": "고체", "가스": "기체·고압가스", "액화가스": "기체·고압가스"}
+                   "제조시설": "제조·사용시설", "사용시설": "제조·사용시설"}
 ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비명": "name", "시설명": "name",
            "화학물질명": "name", "물질명칭": "name", "설비명칭": "name", "품명": "name",
            "취급제품": "product", "취급물질": "product", "취급제품명": "product",
@@ -46,8 +44,7 @@ ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비�
            "설계압력mpa": "design_pressure", "설계압력kpa": "design_pressure",
            "운전온도": "temperature", "운전온도c": "temperature", "운전온도°c": "temperature", "운전온도℃": "temperature",
            "최대보유량kg": "inventory", "최대보유량ton": "inventory", "최대보유량": "inventory",
-           "함량": "concentration", "함량%": "concentration", "함량wt%": "concentration", "함량중량%": "concentration",
-           "함유량%": "concentration", "농도%": "concentration", "농도wt%": "concentration",
+           "함량": "concentration", "함량%": "concentration",
            "시설유형": "facility_type", "설비유형": "facility_type", "시설구분": "facility_type",
            "물질성상": "substance_state", "물질상태": "substance_state", "성상": "substance_state",
            "비중": "density", "밀도": "density", "비중kg/l": "density", "밀도kg/l": "density", "밀도g/cm3": "density",
@@ -64,7 +61,7 @@ UNIT_SUFFIXES = {"capacity": ("m3", "m³", "㎥", "l"), "pressure": ("mpa", "kpa
 LEGAL_FIELDS = {"inventory", "concentration", "cas", "capacity", "facility_type", "substance_state", "density", "process_type"}
 STRICT_CONFIDENCE = 0.98
 HINT_CONFIDENCE = 0.88       # 번호 없는 문서의 표: 사람이 지정한 번호로 연결 (문장과 같은 수준)
-TOTAL_ROWS = {"합계", "소계", "총계", "계", "total", "subtotal", "sum"}
+NUMBER = re.compile(r"[+-]?\d+(?:,\d{3})*(?:\.\d+)?")
 RELAXED_CONFIDENCE = 0.90
 HEADER_SCAN_ROWS = 20
 MAX_ROWS = 10001
@@ -90,7 +87,27 @@ def graph(project):
 
 
 def _store(project, data):
+    data["version"] = data.get("version", 0) + 1
     project.set_field(KEY, "사업장 공통정보와 출처", data, "HOLD", note="추출 후보와 담당자 결정을 분리해 보존")
+
+
+def _memo(project, name, compute):
+    """같은 자료(저장 버전)로 한 번 계산한 결과를 다시 씁니다. 화면 한 번에 같은 계산을 여러 번 하지 않게 합니다.
+    보관 위치는 프로젝트 객체 자체라 다른 프로젝트와 섞이지 않고, 저장하면 버전이 바뀌어 자동으로 새로 계산됩니다."""
+    record = project.get_field(KEY)
+    token = (id(record.value), record.value.get("version")) if record else None
+    cache = project.__dict__.setdefault("_evidence_memo", {})
+    hit = cache.get(name)
+    if hit is not None and token is not None and hit[0] == token:
+        return hit[1]
+    value = compute()
+    cache[name] = (token, value)
+    return value
+
+
+def documents(project):
+    """읽기 전용 문서 목록(복사하지 않음)."""
+    return _read(project)["documents"]
 
 
 def _invalidate(project):
@@ -420,24 +437,77 @@ def classify_document(name, content):
 
 # ---------------------------------------------------------------- 접수
 
+def _rules(data):
+    """담당자가 한 번 답한 것을 같은 경우 전체에 적용하는 규칙(이 사업장 자료에만 적용).
+
+    values: 항목별 표기 → 값 (예: 물질성상 ‘액상’ → 액체, 운전압력 ‘상압’ → 0.1)
+    units: 파일·열별 단위 (예: 03 파일 ‘운전압력’ 열 → MPa)
+    columns: 머리글 → 항목 (예: ‘함량(wt%)’ → 함량)
+    """
+    rules = data.setdefault("rules", {})
+    for key in ("values", "units", "columns"):
+        rules.setdefault(key, {})
+    return rules
+
+
+def _is_number(raw):
+    return bool(NUMBER.fullmatch(str(raw).strip()))
+
+
+def _normalize(field, raw, header, rules, sha):
+    """(값, 규칙을 썼는지). 규칙은 그대로 쓸 수 없는 값에만 적용합니다."""
+    unit = rules["units"].get(f"{sha}|{norm(header)}")
+    effective = f"{header}({unit})" if unit and not has_unit(field, header) else header
+    value = normalize_value(field, raw, effective)
+    used = effective != header
+    if value_problem(field, value) and not _is_number(raw):
+        learned = rules["values"].get(field, {}).get(norm(raw))
+        if learned is not None:
+            value, used = learned, True
+    return value, used
+
+
+def _reapply(data):
+    """규칙이 바뀌면 이미 읽은 값에 다시 적용합니다. 원문(raw)은 그대로 두고 값만 다시 계산합니다."""
+    rules = _rules(data)
+    changed = 0
+    for fact in data["facts"]:
+        if fact.get("method") not in {"table", "literal"}:
+            continue
+        value, used = _normalize(fact["field"], fact["raw"], fact["header"], rules, fact["sha256"])
+        flags = [f for f in fact.get("flags", []) if f != "rule"] + (["rule"] if used else [])
+        if value != fact["value"] or flags != fact.get("flags", []):
+            fact["value"], fact["flags"] = value, flags
+            changed += 1
+    return changed
+
+
+def _field_of(header, rules):
+    key = norm(header)
+    return ALIASES.get(key) or rules["columns"].get(key)
+
+
 def ingest(project, name, content, kind="facility", entity_hint=""):
     if kind not in {"facility", "material"}:
         raise ValueError("자료 종류를 확인하세요.")
     data = graph(project)
+    rules = _rules(data)
     digest = sha256(content).hexdigest()
+    entity_hint = entity_hint.strip()
     if any(d["sha256"] == digest and d["kind"] == kind and d.get("hint", "") == entity_hint for d in data["documents"]):
         return 0
     tables, passages = read_document(name, content)
-    added, unmapped, table_info, skipped_rows = [], [], [], 0
+    added, unmapped, table_info, skipped_total = [], [], [], 0
 
     def add(entity, field, raw, location, header, *, method="table", confidence=0.78, flags=()):
         if "merged" in flags or "formula" in flags:
             confidence = min(confidence, RELAXED_CONFIDENCE)
         identifier = sha256(json.dumps([digest, kind, entity, field, location, str(raw)], ensure_ascii=False).encode()).hexdigest()[:24]
+        value, used = _normalize(field, raw, header, rules, digest)
         added.append({"id": identifier, "entity": kind + ":" + str(entity).strip(), "kind": kind, "field": field,
-                      "value": normalize_value(field, raw, header), "raw": str(raw), "header": str(header),
+                      "value": value, "raw": str(raw), "header": str(header),
                       "document": name, "sha256": digest, "location": location, "method": method,
-                      "confidence": confidence, "flags": list(flags)})
+                      "confidence": confidence, "flags": list(flags) + (["rule"] if used else [])})
 
     for table in tables:
         rows = table.rows
@@ -448,23 +518,30 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
         header_at = find_header_row(rows)
         if header_at is None:
             unmapped.extend(str(h).strip() for h in rows[0] if str(h or "").strip())
-            table_info.append({"location": table.location, "header_row": None, "rows": len(rows)})
+            table_info.append({"location": table.location, "header_row": None, "rows": len(rows), "columns": [],
+                               "skipped": [], "skipped_count": 0,
+                               "problem": f"앞 {HEADER_SCAN_ROWS}줄에서 설비번호·용량·CAS 같은 항목 이름이 있는 줄을 찾지 못함"})
             continue
         headers = [str(h or "").strip() for h in rows[header_at]]
-        fields = [ALIASES.get(norm(h)) for h in headers]
+        fields = [_field_of(h, rules) for h in headers]
         id_col = next((i for i, h in enumerate(headers) if norm(h) in ID_HEADERS), None)
-        table_info.append({"location": table.location, "header_row": header_at + 1, "rows": len(rows) - header_at - 1})
+        columns = [{"header": h, "field": "id" if i == id_col else f} for i, (h, f) in enumerate(zip(headers, fields)) if h]
+        skipped = []
         for r in range(header_at + 1, len(rows)):
             row = rows[r]
+            if not any(str(c or "").strip() for c in row):
+                continue
             id_value = str(row[id_col] or "").strip() if id_col is not None and id_col < len(row) else ""
-            # 지정한 번호는 번호 열이 없는 표(사양서 등)에만 씁니다. 번호 열이 있는 표의 빈 번호 줄(합계 등)에 붙이지 않습니다.
-            hinted = not id_value and id_col is None and bool(entity_hint.strip())
-            entity = id_value or (entity_hint.strip() if hinted else "")
-            if not entity:
+            # 지정한 번호는 번호 열이 없는 표(사양서 등)에만 씁니다.
+            hinted = not id_value and id_col is None and bool(entity_hint)
+            entity = id_value or (entity_hint if hinted else "")
+            if not entity and id_col is None:
                 entity = next((str(row[i]).strip() for i, f in enumerate(fields) if f == "name" and i < len(row) and row[i]), "")
-            if not entity or (not id_value and not hinted and norm(entity) in TOTAL_ROWS):
-                if any(str(c or "").strip() for c in row):
-                    skipped_rows += 1
+            if not entity:
+                # 번호 열이 있는 표에서 번호가 빈 줄(합계·메모·번호를 안 적은 설비 등)은 추측하지 않고 건너뛰고 알려 줍니다.
+                text = next((str(c).strip() for c in row if str(c or "").strip()), "")
+                skipped.append({"row": r + 1, "text": text[:40],
+                                "reason": "번호 칸이 비어 있음" if id_col is not None else "번호·이름 칸이 없음"})
                 continue
             base = STRICT_CONFIDENCE if id_value else (HINT_CONFIDENCE if hinted else 0.78)
             id_flags = ("merged",) if id_value and table.flags.get((r, id_col)) == "merged" else ()
@@ -480,20 +557,34 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
                         confidence=base, flags=cell_flags)
                 elif headers[i] and i != id_col:
                     unmapped.append(headers[i])
+        skipped_total += len(skipped)
+        table_info.append({"location": table.location, "header_row": header_at + 1, "rows": len(rows) - header_at - 1,
+                           "columns": columns, "skipped": skipped[:50], "skipped_count": len(skipped)})
     # 식별 대상을 지정한 명확한 '항목: 값' 문장만 후보로 추출합니다.
     for passage in passages:
-        if not entity_hint.strip():
+        if not entity_hint:
             continue
         for line in passage["text"].splitlines():
             parts = re.split(r"[:：]", line, maxsplit=1)
-            if len(parts) == 2 and ALIASES.get(norm(parts[0])):
-                add(entity_hint, ALIASES[norm(parts[0])], parts[1].strip(), passage["location"], parts[0],
+            if len(parts) == 2 and _field_of(parts[0], rules):
+                add(entity_hint, _field_of(parts[0], rules), parts[1].strip(), passage["location"], parts[0],
                     method="literal", confidence=0.88)
+    has_text = any(p["text"].strip() for p in passages)
+    needs_ocr = bool(passages) and not has_text
+    problem = ""
+    if not added:
+        if needs_ocr:
+            problem = "글자가 없는 문서예요. 스캔본이면 글자를 읽을 수 없어요."
+        elif not tables and has_text and not entity_hint:
+            problem = "표가 없고 문장만 있어요. 어느 설비·제품의 문서인지 번호를 적으면 ‘항목: 값’ 문장을 읽어요."
+        elif tables and all(t["header_row"] is None for t in table_info):
+            problem = "표는 있지만 설비번호·용량·CAS 같은 항목 이름이 있는 줄을 찾지 못했어요."
+        else:
+            problem = "읽을 수 있는 값을 찾지 못했어요."
     data["documents"].append({"name": name, "sha256": digest, "kind": kind, "hint": entity_hint, "passages": passages,
                               "fact_count": len(added), "unmapped_columns": sorted(set(unmapped)),
-                              "tables": table_info, "rows_without_id": skipped_rows,
-                              "needs_reading": not added,
-                              "needs_ocr": bool(passages) and not any(p["text"].strip() for p in passages)})
+                              "tables": table_info, "rows_without_id": skipped_total,
+                              "needs_reading": not added, "needs_ocr": needs_ocr, "problem": problem})
     data["facts"].extend(added)
     _store(project, data)
     _invalidate(project)
@@ -501,7 +592,121 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
     return len(added)
 
 
+def remove_document(project, sha):
+    """문서와 그 문서에서 읽은 값을 지웁니다(다시 읽기 전에 씁니다). 담당자 직접 입력은 남깁니다."""
+    data = graph(project)
+    data["documents"] = [d for d in data["documents"] if d["sha256"] != sha]
+    data["facts"] = [f for f in data["facts"] if f["sha256"] != sha or f.get("method") == "manual"]
+    _store(project, data)
+    _invalidate(project)
+
+
+def reingest(project, sha, content):
+    """규칙(머리글 지정 등)이 바뀐 뒤 같은 파일을 다시 읽습니다. 같은 칸의 값은 같은 식별자를 받아 결정이 유지됩니다."""
+    doc = next(d for d in _read(project)["documents"] if d["sha256"] == sha)
+    name, kind, hint = doc["name"], doc["kind"], doc.get("hint", "")
+    remove_document(project, sha)
+    return ingest(project, name, content, kind, hint)
+
+
+def learn_value(project, field, raw, value):
+    """담당자가 한 칸에 답한 표기를 같은 항목의 같은 표기 전체에 적용합니다. 바뀐 칸 수를 돌려줍니다."""
+    if field not in LABELS or _is_number(raw):
+        raise ValueError("숫자로 적힌 값은 칸마다 따로 확인하세요.")
+    normalized = normalize_value(field, value, LABELS[field])
+    problem = value_problem(field, normalized)
+    if problem:
+        raise ValueError(problem)
+    data = graph(project)
+    _rules(data)["values"].setdefault(field, {})[norm(raw)] = normalized
+    changed = _reapply(data)
+    _store(project, data)
+    _invalidate(project)
+    auto_approve_safe(project)
+    return changed
+
+
+def learn_unit(project, sha, header, unit):
+    """단위가 없는 열에 단위를 정해 그 열의 값 전체에 적용합니다."""
+    data = graph(project)
+    fields = {f["field"] for f in data["facts"] if f["sha256"] == sha and f["header"] == header}
+    if len(fields) != 1 or norm(unit) not in UNIT_SUFFIXES.get(next(iter(fields)), ()):
+        raise ValueError("이 열에 쓸 수 있는 단위를 고르세요.")
+    _rules(data)["units"][f"{sha}|{norm(header)}"] = unit
+    changed = _reapply(data)
+    _store(project, data)
+    _invalidate(project)
+    auto_approve_safe(project)
+    return changed
+
+
+def learn_column(project, header, field):
+    """프로그램이 모르는 머리글을 항목으로 지정합니다. 다시 읽어야 하는 문서의 sha 목록을 돌려줍니다."""
+    if field not in LABELS:
+        raise ValueError("항목을 고르세요.")
+    data = graph(project)
+    _rules(data)["columns"][norm(header)] = field
+    _store(project, data)
+    return [d["sha256"] for d in data["documents"] if header in d.get("unmapped_columns", [])]
+
+
+UNIT_CHOICES = {"capacity": ("m3", "L"), "pressure": ("MPa", "kPa"), "design_pressure": ("MPa", "kPa"),
+                "inventory": ("kg", "ton"), "temperature": ("℃",), "concentration": ("%",)}
+
+
+def problems(project):
+    """그대로 쓸 수 없는 값을, 원인을 추측하지 않고 ‘어떤 검사에 걸렸는지’로 묶어 돌려줍니다.
+
+    묶음 종류
+    - column: 항목 이름에 단위가 없는 열 → 열마다 한 번 묻기
+    - text: 숫자가 아니거나 선택지에 없는 표기 → 같은 항목·같은 표기마다 한 번 묻기(답하면 전체 적용)
+    - single: 계산 결과 없는 계산식·허용 범위 밖 숫자·CAS 검산 실패 → 칸마다 묻기
+    자료끼리 값이 다른 칸(충돌)은 충돌 질문에서 다루므로 넣지 않습니다.
+    """
+    def compute():
+        rules = _rules(deepcopy({"rules": _read(project).get("rules", {})}))
+        groups = {}
+        for slot in slots(project):
+            if slot["chosen"] or slot["status"] == "값 충돌":
+                continue
+            for fact in slot["facts"]:
+                field = fact["field"]
+                problem = value_problem(field, fact["value"])
+                if not problem or fact.get("method") == "manual":
+                    continue
+                raw = str(fact["raw"]).strip()
+                low_high = BOUNDS.get(field)
+                if "formula_uncached" in fact.get("flags", []) or raw.startswith("="):
+                    key, kind, reason = ("single", fact["id"]), "single", "엑셀 계산식만 있고 계산 결과가 파일에 저장돼 있지 않아요"
+                elif field == "cas":
+                    key, kind, reason = ("single", fact["id"]), "single", "CAS 번호의 형식이나 검산 숫자가 맞지 않아요"
+                elif field in UNIT_SUFFIXES and _is_number(raw) and not has_unit(field, fact["header"]) \
+                        and f"{fact['sha256']}|{norm(fact['header'])}" not in rules["units"]:
+                    key, kind, reason = ("column", fact["sha256"], fact["header"]), "column", "항목 이름에 단위가 없어요"
+                elif isinstance(fact["value"], (int, float)) and low_high:
+                    key, kind, reason = ("single", fact["id"]), "single", f"허용 범위({low_high[0]:g}~{low_high[1]:g}) 밖의 숫자예요"
+                elif field in CHOICES:
+                    key, kind, reason = ("text", field, norm(raw)), "text", "선택지에 없는 말이에요"
+                else:
+                    key, kind, reason = ("text", field, norm(raw)), "text", "숫자가 아니에요"
+                group = groups.setdefault(key, {"kind": kind, "field": field, "raw": raw, "reason": reason,
+                                                "sha256": fact["sha256"], "header": fact["header"], "facts": [], "keys": []})
+                group["facts"].append(fact)
+                if slot["key"] not in group["keys"]:
+                    group["keys"].append(slot["key"])
+        order = {"column": 0, "text": 1, "single": 2}
+        return sorted(groups.values(), key=lambda g: (order[g["kind"]], -len(g["facts"]), g["field"], g["raw"]))
+    return _memo(project, "problems", compute)
+
+
 # ---------------------------------------------------------------- 사실 묶음(slot)과 규칙
+
+def _usable_values(facts):
+    """그대로 쓸 수 있는 값들(서로 다른 것만). 충돌은 쓸 수 있는 값끼리 다를 때만입니다.
+    단위가 없거나 글자로 적힌 값은 ‘다른 값’이 아니라 ‘그대로 쓸 수 없는 값’으로 따로 다룹니다."""
+    return {json.dumps(f["value"], ensure_ascii=False, sort_keys=True) for f in facts
+            if value_problem(f["field"], f["value"]) is None}
+
 
 def _slots(data):
     groups = {}
@@ -509,7 +714,7 @@ def _slots(data):
         groups.setdefault(fact["entity"] + "|" + fact["field"], []).append(fact)
     result = []
     for key, facts in groups.items():
-        values = {json.dumps(f["value"], ensure_ascii=False, sort_keys=True) for f in facts}
+        values = _usable_values(facts)
         decision = data["decisions"].get(key) or {}
         signature = sha256(json.dumps(sorted(f["id"] for f in facts)).encode()).hexdigest()
         ids = {f["id"] for f in facts}
@@ -523,7 +728,8 @@ def _slots(data):
 
 
 def slots(project):
-    return _slots(_read(project))
+    """읽기 전용 slot 목록. 같은 저장 버전이면 다시 계산하지 않습니다(돌려받은 목록을 고치지 마세요)."""
+    return _memo(project, "slots", lambda: _slots(_read(project)))
 
 
 def graph_facts(project):
@@ -533,11 +739,13 @@ def graph_facts(project):
 
 def critical_slot_keys(project):
     """결과 순위를 바꿀 수 있는 값의 slot 키. 순위 계산이 불가능하면 빈 집합."""
-    try:
-        from .scenario_triage import critical_slot_keys as compute
-        return compute(project)
-    except Exception:
-        return frozenset()
+    def compute():
+        try:
+            from .scenario_triage import critical_slot_keys as keys
+            return keys(project)
+        except Exception:
+            return frozenset()
+    return _memo(project, "critical", compute)
 
 
 def review_gate(slot, critical=frozenset()):
@@ -547,7 +755,7 @@ def review_gate(slot, critical=frozenset()):
     """
     facts = slot["facts"]
     field = slot["field"]
-    if len({json.dumps(f["value"], ensure_ascii=False, sort_keys=True) for f in facts}) > 1:
+    if len(_usable_values(facts)) > 1:
         return ["자료 간 값 충돌"]
     for fact in facts:
         problem = value_problem(field, fact["value"])
@@ -555,7 +763,8 @@ def review_gate(slot, critical=frozenset()):
             return [problem]
     if any(f.get("method") != "table" for f in facts):
         return ["문장 또는 AI 추출값"]
-    if field in UNIT_SUFFIXES and any(not has_unit(field, f.get("header", "")) for f in facts):
+    # 담당자가 열의 단위를 정했으면(규칙) 단위가 있는 것으로 봅니다.
+    if field in UNIT_SUFFIXES and any(not has_unit(field, f.get("header", "")) and "rule" not in f.get("flags", []) for f in facts):
         return ["항목명에 단위가 없음"]
     strict = field in LEGAL_FIELDS or slot["key"] in critical
     needed = STRICT_CONFIDENCE if strict else RELAXED_CONFIDENCE
@@ -612,9 +821,8 @@ def approve_bulk(project, keys=None):
         if slot["chosen"] or (wanted is not None and slot["key"] not in wanted):
             continue
         facts = slot["facts"]
-        values = {json.dumps(f["value"], ensure_ascii=False, sort_keys=True) for f in facts}
         reason = None
-        if len(values) > 1:
+        if len(_usable_values(facts)) > 1:
             reason = "값 충돌"
         elif any(f.get("method") != "table" for f in facts):
             reason = "문장 또는 AI 추출값"

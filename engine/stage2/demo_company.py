@@ -91,7 +91,8 @@ README = f"""{COMPANY} — 실제와 비슷한 큰 연습 자료
 
 [올리는 방법]
 - 01~07을 한 번에 올리세요. 대부분 종류를 알아서 알아봅니다.
-- 06(설비 사양서)은 표에 설비번호가 없습니다. ‘번호가 없는 문서’ 칸에 RX-205를 적으세요.
+- 06(설비 사양서)은 표에 설비번호가 없습니다. 파일 아래 번호 칸에 RX-205를 적으세요.
+- 01의 ‘함량(wt%)’ 열은 프로그램이 모르는 머리글입니다. ① 읽기 결과에서 이 열을 ‘함량’으로 한 번 지정해 보세요.
 - 07(점검표)은 스캔본입니다. 글자를 읽을 수 없는 것이 정상이며, 종류는 아무거나 골라도 됩니다.
 - answer_key.json은 올리지 마세요. 정답과 일부러 넣은 문제 목록입니다.
 
@@ -99,8 +100,8 @@ README = f"""{COMPANY} — 실제와 비슷한 큰 연습 자료
 01 제품목록(엑셀): 제목 줄, 숨김 시트(단종 제품), 쓰지 않는 열(제조사·UN번호), 함량 범위 표기, CAS 오타, 성상 표기 흔들림
 02 MSDS 요약(워드): 개정된 MSDS라 01과 함량이 다른 제품이 있음
 03 설비대장(엑셀): 시트 5개(숨김 1), 시트마다 다른 단위(L·ton·kPa), 병합 셀, 결과 없는 계산식, 합계 줄, 오타
-04 2024년 설비목록(CSV, 한글 윈도우 인코딩): 옛 값이 섞여 있음
-05 운전조건표(CSV): 03과 같은 값으로 교차 확인되는 값, 다른 값, 03에 빠진 값, 설비번호 없이 이름만 있는 줄
+04 2024년 설비목록(CSV, 한글 윈도우 인코딩): 옛 값이 섞여 있고 운전압력 열에 단위가 없음
+05 운전조건표(CSV): 03과 같은 값으로 교차 확인되는 값, 다른 값, 03에 빠진 값, 설비번호 칸이 빈 줄
 06 설비 사양서(한글 HWPX): 문장으로 적힌 값
 07 정기점검표(PDF): 스캔본
 """
@@ -136,12 +137,13 @@ def truth():
 
 # 일부러 넣은 문제: 파일, 대상, 항목, 종류, 자료에 적힌 값, 기대하는 프로그램 동작
 PLANTED = [
-    ("01", "material:P-05", "concentration", "range", "35~37", "범위라서 물어봄"),
+    ("01", "(함량 열)", "concentration", "unknown_header", "함량(wt%)", "모르는 머리글이라 읽기 결과에 ‘쓰지 않은 열’로 알림 → 한 번 지정하면 다시 읽음"),
+    ("01", "material:P-05", "concentration", "range", "35~37", "숫자가 아니라 물어봄"),
     ("01", "material:P-13", "cas", "cas_typo", "78-93-8", "CAS 검산 실패로 물어봄"),
     ("01", "material:P-16", "substance_state", "unknown_word", "결정", "선택지에 없는 말이라 물어봄"),
     ("01", "material:P-19", "density", "text_number", "1.41(액화)", "숫자가 아니라 물어봄"),
-    ("01", "material:P-19", "substance_state", "synonym", "가스", "기체·고압가스로 알아서 바꿈"),
-    ("01", "material:P-01", "substance_state", "synonym", "액상", "액체로 알아서 바꿈"),
+    ("01", "material:P-19", "substance_state", "unknown_word", "가스", "선택지에 없는 말이라 물어봄"),
+    ("01·03", "물질성상 ‘액상’ 29곳", "substance_state", "same_word", "액상", "같은 표기 29곳을 한 질문으로 묶고, 한 번 답하면 모두 적용"),
     ("02", "material:P-10", "concentration", "conflict", "50 (01에는 35)", "자료마다 달라 물어봄(개정 MSDS가 정답)"),
     ("03", "facility:TK-101~TK-112", "facility_type", "merged", "병합 셀 ‘저장탱크’", "법적 항목이라 자동으로 채우지 않고 확인을 받음"),
     ("03", "facility:TK-104", "product", "link", "가상자일렌 (띄어쓰기 없음)", "물질 목록과 연결되지 않아 알려 줌"),
@@ -151,20 +153,20 @@ PLANTED = [
     ("03", "facility:TK-117", "facility_type", "unknown_word", "저장조", "선택지에 없는 말이라 물어봄"),
     ("03", "facility:TK-118", "pressure", "missing", "", "자료에 없어서 물어봄"),
     ("03", "facility:TK-118", "temperature", "missing", "", "자료에 없어서 물어봄"),
-    ("03", "(합계 줄)", "", "total_row", "합계", "설비로 읽지 않고 건너뜀"),
+    ("03", "(합계 줄)", "", "total_row", "합계", "번호 칸이 빈 줄이라 건너뛰고 읽기 결과에 몇 번째 줄인지 알림"),
     ("03", "facility:RX-203", "pressure", "range", "200~400 kPa (05에는 0.3 MPa)", "범위 값은 버리고 05의 값과 비교해 물어봄"),
     ("03", "facility:RX-204", "substance_state", "unknown_word", "용융", "선택지에 없는 말이라 물어봄"),
     ("03", "facility:RX-206", "inventory", "missing", "", "자료에 없어서 물어봄"),
-    ("03", "facility:DR-401", "pressure", "text", "상압", "숫자가 아니라 물어봄"),
-    ("03", "facility:DR-402", "pressure", "text", "상압", "숫자가 아니라 물어봄"),
+    ("03", "facility:DR-401·DR-402", "pressure", "text", "상압", "숫자가 아니라 물어봄(같은 표기 2곳을 한 질문으로)"),
     ("03", "facility:MX-301~MX-306", "facility_type", "synonym", "사용시설", "제조·사용시설로 알아서 바꿈"),
     ("03", "facility:TK-190", "", "hidden_sheet", "숨김 시트", "숨김 시트도 읽고 위치에 표시"),
+    ("04", "(운전압력 열)", "pressure", "no_unit", "운전압력 (단위 없음)", "열마다 단위를 한 번 물어봄"),
     ("04", "facility:TK-103", "capacity", "conflict", "40 (03에는 45)", "자료마다 달라 물어봄(03이 정답)"),
     ("04", "facility:TK-105", "name", "conflict", "가상 2호 저장탱크 (옛 이름)", "자료마다 달라 물어봄(03이 정답)"),
     ("04", "facility:TK-107", "inventory", "conflict", "15000 (03과 다름)", "자료마다 달라 물어봄(03이 정답)"),
     ("05", "facility:RX-204", "temperature", "conflict", "80 (03에는 85)", "자료마다 달라 물어봄(03이 정답)"),
     ("05", "facility:MX-304", "temperature", "fills_gap", "30 (03에는 빈칸)", "다른 파일 값으로 빈칸을 채움"),
-    ("05", "facility:가상 혼합조 7·8", "", "name_only", "설비번호 없음", "이름만으로 찾은 값이라 확인을 받음"),
+    ("05", "(가상 혼합조 7·8 줄)", "", "no_id", "설비번호 칸이 빈 줄", "추측해 붙이지 않고 건너뛰고 읽기 결과에 알림"),
     ("06", "facility:RX-205", "", "sentence", "‘운전압력(MPa): 0.35’ 같은 문장", "문장에서 찾은 값이라 확인을 받음"),
     ("07", "", "", "scan", "스캔본", "글자를 읽지 못했다고 알려 줌"),
 ]
@@ -288,7 +290,7 @@ def _ledger_xlsx():
 
 
 def _old_list_csv():
-    rows = [["설비번호", "설비명", "용량(m3)", "최대보유량(kg)", "운전압력(MPa)", "비고"]]
+    rows = [["설비번호", "설비명", "용량(m3)", "최대보유량(kg)", "운전압력", "비고"]]   # 옛 목록은 압력 단위를 안 적음
     for tid, name, product, cap, pressure, _ in TANKS[:10]:
         inventory = _tank_inventory(cap, product)
         if tid == "TK-103":
@@ -360,14 +362,20 @@ def _csv(rows):
 
 
 def files():
-    """파일 이름 → 내용. 올릴 때 필요한 종류와 번호는 UPLOAD에 있습니다."""
-    return {"01_제품목록_2026.xlsx": _materials_xlsx(),
+    """파일 이름 → 내용. 올릴 때 필요한 종류와 번호는 UPLOAD에 있습니다.
+    엑셀·워드 파일에는 만든 시각이 들어가므로 한 번 만든 내용을 계속 씁니다(같은 파일 = 같은 지문)."""
+    return dict(_build_files())
+
+
+@lru_cache(maxsize=1)
+def _build_files():
+    return tuple({"01_제품목록_2026.xlsx": _materials_xlsx(),
             "02_MSDS_요약_2026개정.docx": _msds_docx(),
             "03_설비대장_2026.xlsx": _ledger_xlsx(),
             "04_설비목록_2024_구버전.csv": _old_list_csv(),
             "05_운전조건표_2026Q1.csv": _operating_csv(),
             "06_설비사양서_RX-205.hwpx": _spec_hwpx(),
-            "07_정기점검표_스캔.pdf": _scanned_pdf()}
+            "07_정기점검표_스캔.pdf": _scanned_pdf()}.items())
 
 
 # 사람이 올릴 때 고르는 값: 종류, 번호 없는 문서의 대상 번호

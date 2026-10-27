@@ -73,7 +73,8 @@ class EvidencePageTests(unittest.TestCase):
         text = " ".join(_texts(at))
         self.assertIn("자료 4개를 읽었어요", text)
         self.assertIn("가상 저장탱크 (TK-01)의 용량이 자료마다 달라요", text)
-        self.assertIn("엑셀 계산식(`=1500+500`)", text)
+        self.assertIn("가상 반응기 (RX-01)의 최대보유량 칸에 ‘=1500+500’라고 적혀 있어요", text)
+        self.assertIn("엑셀 계산식만 있고 계산 결과가 파일에 저장돼 있지 않아요", text)   # 추측이 아니라 파일에서 확인한 사실
         self.assertEqual(len(at.json), 0)
 
     def test_no_developer_text_on_any_step(self):
@@ -97,8 +98,7 @@ class EvidencePageTests(unittest.TestCase):
 
     def test_formula_cell_offers_computed_value(self):
         at = self.run_page()
-        button = at.button(key=f"formula_{self.pid}_facility:RX-01|inventory")
-        self.assertIn("2,000 kg", button.label)
+        button = next(b for b in at.button if b.label == "2,000 kg로 저장")
         button.click().run()
         self.assertFalse(at.exception)
         self.assertEqual(self.saved()["facility:RX-01"]["inventory"], 2000)
@@ -192,12 +192,51 @@ class LargeDemoPageTests(unittest.TestCase):
             self.assertFalse(at.exception, [e.value for e in at.exception])
             leaked = [t for t in _texts(at) if DEVELOPER_TEXT.search(t)]
             self.assertEqual(leaked, [], f"{step}단계")
+            text = " ".join(_texts(at))
+            if step == 1:
+                self.assertIn("건너뛴 줄: 22번째 줄 ‘합계’ — 번호 칸이 비어 있음", text)
+                self.assertIn("글자가 없는 문서예요", text)
+                self.assertTrue(any(b.label == "‘함량(wt%)’ 열은" for b in at.selectbox))
             if step == 2:
-                text = " ".join(_texts(at))
-                self.assertIn("엑셀 계산식(`=50*0.79*1000*0.85`)", text)
-                self.assertIn("가상 과산화수소 (P-10)의 함량이 자료마다 달라요", text)
-                self.assertIn("상압", text)
-                self.assertTrue(any("33,575 kg" in b.label for b in at.button))
+                # 같은 표기·같은 열은 한 번만 묻고, 원인을 추측하지 않고 걸린 검사만 말합니다
+                self.assertIn("물질성상 칸에 ‘액상’이라고 적힌 곳이 29곳 있어요", text)
+                self.assertIn("운전압력 칸에 ‘상압’이라고 적힌 곳이 2곳 있어요", text)
+                self.assertIn("04_설비목록_2024_구버전.csv의 ‘운전압력’ 열에 단위가 없어요", text)
+                self.assertTrue(any(b.label == "33,575 kg로 저장" for b in at.button))
+                self.assertNotIn("너무 크거나 작아요", text)
+
+    def test_one_answer_fixes_every_cell_with_the_same_spelling(self):
+        at = AppTest.from_string(SCRIPT, default_timeout=120)
+        at.session_state["_stage2_active_project_id"] = self.pid
+        at.session_state["evidence_step_" + self.pid] = 2
+        at.run()
+        group = next(g for g in ew.problems(load_project(self.pid)) if g["raw"] == "액상")
+        box = next(b for b in at.selectbox if b.label == "‘액상’은 무엇인가요?")
+        box.set_value("액체").run()
+        save = [b for b in at.button if b.label == "저장"]
+        # 화면에서 이 묶음 카드의 저장 버튼을 누름 (같은 키 규칙)
+        next(b for b in save if b.key and b.key.startswith("save_") and b.key.endswith(box.key.split("_")[-1])).click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        project = load_project(self.pid)
+        states = [s for s in ew.slots(project) if s["field"] == "substance_state" and s["key"] in group["keys"]]
+        self.assertEqual(len(states), 29)
+        self.assertTrue(all(s["chosen"] and s["chosen"]["value"] == "액체" for s in states))
+
+    def test_unknown_header_is_mapped_once_and_file_is_read_again(self):
+        from engine.stage2 import demo_company as dc
+        from engine.stage2.storage import save_attachment
+        name = "01_제품목록_2026.xlsx"
+        save_attachment(self.pid, name, dc.files()[name])
+        at = AppTest.from_string(SCRIPT, default_timeout=120)
+        at.session_state["_stage2_active_project_id"] = self.pid
+        at.session_state["evidence_step_" + self.pid] = 1
+        at.run()
+        next(b for b in at.selectbox if b.label == "‘함량(wt%)’ 열은").set_value("concentration").run()
+        next(b for b in at.button if b.label == "지정하고 다시 읽기" and not b.disabled).click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        project = load_project(self.pid)
+        conflicts = {(i["entity"], i["field"]) for i in ew.review_queue(project) if i["kind"] == "충돌"}
+        self.assertIn(("material:P-10", "concentration"), conflicts)        # 01(35%)과 개정 MSDS(50%)가 다름이 이제 드러남
 
 
 class FormulaTests(unittest.TestCase):

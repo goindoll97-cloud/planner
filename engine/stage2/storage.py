@@ -128,5 +128,17 @@ def save_attachment(
     )
 
 
+def load_attachment(project_id: str, digest: str, root: Path = DEFAULT_ROOT) -> bytes | None:
+    """save_attachment로 보관한 원본을 내용 해시로 찾아 돌려줍니다. 없으면 None."""
+    folder = project_dir(project_id, root) / "attachments"
+    if not folder.exists():
+        return None
+    for path in folder.glob(f"*__{digest[:12]}*"):
+        content = path.read_bytes()
+        if sha256(content).hexdigest() == digest:
+            return content
+    return None
+
+
 def project_json_bytes(project: Stage2Project) -> bytes:
     return json.dumps(project.to_dict(), ensure_ascii=False, indent=2, default=str).encode("utf-8")

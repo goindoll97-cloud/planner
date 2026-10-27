@@ -73,7 +73,12 @@ def _source(entry):
 
 
 def evaluate(project):
-    """모든 조합, 출처, 값 상태, 상향 가정, 한 변수씩 변화시킨 순위 민감도를 반환."""
+    """모든 조합, 출처, 값 상태, 상향 가정, 한 변수씩 변화시킨 순위 민감도를 반환.
+    같은 저장 버전이면 다시 계산하지 않습니다(돌려받은 결과를 고치지 마세요)."""
+    return ew._memo(project, "triage", lambda: _evaluate(project))
+
+
+def _evaluate(project):
     values = _entity_values(project)
     unchosen = {}
     for slot in ew.slots(project):
