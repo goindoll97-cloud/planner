@@ -142,6 +142,40 @@ class EvidencePageTests(unittest.TestCase):
         self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
 
 
+class LargeDemoPageTests(unittest.TestCase):
+    def setUp(self):
+        from engine.stage2 import demo_company as dc
+        self.cwd = os.getcwd()
+        self.tmp = tempfile.TemporaryDirectory()
+        os.chdir(self.tmp.name)
+        project = create_direct_cap_project("가상 한별정밀화학", address="서울", cap_group="")
+        for name, content in dc.files().items():
+            kind, hint = dc.UPLOAD[name]
+            ew.ingest(project, name, content, kind, hint)
+        save_project(project)
+        self.pid = project.project_id
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmp.cleanup()
+
+    def test_every_step_renders_large_company_in_plain_language(self):
+        for step in (1, 2, 3, 4):
+            at = AppTest.from_string(SCRIPT, default_timeout=120)
+            at.session_state["_stage2_active_project_id"] = self.pid
+            at.session_state["evidence_step_" + self.pid] = step
+            at.run()
+            self.assertFalse(at.exception, [e.value for e in at.exception])
+            leaked = [t for t in _texts(at) if DEVELOPER_TEXT.search(t)]
+            self.assertEqual(leaked, [], f"{step}단계")
+            if step == 2:
+                text = " ".join(_texts(at))
+                self.assertIn("엑셀 계산식(`=50*0.79*1000*0.85`)", text)
+                self.assertIn("가상 과산화수소 (P-10)의 함량이 자료마다 달라요", text)
+                self.assertIn("상압", text)
+                self.assertTrue(any("33,575 kg" in b.label for b in at.button))
+
+
 class FormulaTests(unittest.TestCase):
     def test_only_plain_arithmetic_is_evaluated(self):
         sys.path.insert(0, str(ROOT))

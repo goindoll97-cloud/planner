@@ -34,7 +34,9 @@ CHOICES = {"facility_type": ("저장탱크", "제조·사용시설", "보관시�
            "process_type": ("변화없음", "단순혼합", "반응")}
 CHOICE_SYNONYMS = {"기체": "기체·고압가스", "고압가스": "기체·고압가스", "기체/고압가스": "기체·고압가스", "기체고압가스": "기체·고압가스",
                    "탱크로리": "탱크로리·운송차량", "운송차량": "탱크로리·운송차량", "제조사용시설": "제조·사용시설",
-                   "제조시설": "제조·사용시설", "사용시설": "제조·사용시설"}
+                   "제조시설": "제조·사용시설", "사용시설": "제조·사용시설",
+                   # 회사 자료에 흔한 표기: 액상·고상·가스
+                   "액상": "액체", "고상": "고체", "분말": "고체", "가스": "기체·고압가스", "액화가스": "기체·고압가스"}
 ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비명": "name", "시설명": "name",
            "화학물질명": "name", "물질명칭": "name", "설비명칭": "name", "품명": "name",
            "취급제품": "product", "취급물질": "product", "취급제품명": "product",
@@ -44,7 +46,8 @@ ALIASES = {"명칭": "name", "물질명": "name", "제품명": "name", "설비�
            "설계압력mpa": "design_pressure", "설계압력kpa": "design_pressure",
            "운전온도": "temperature", "운전온도c": "temperature", "운전온도°c": "temperature", "운전온도℃": "temperature",
            "최대보유량kg": "inventory", "최대보유량ton": "inventory", "최대보유량": "inventory",
-           "함량": "concentration", "함량%": "concentration",
+           "함량": "concentration", "함량%": "concentration", "함량wt%": "concentration", "함량중량%": "concentration",
+           "함유량%": "concentration", "농도%": "concentration", "농도wt%": "concentration",
            "시설유형": "facility_type", "설비유형": "facility_type", "시설구분": "facility_type",
            "물질성상": "substance_state", "물질상태": "substance_state", "성상": "substance_state",
            "비중": "density", "밀도": "density", "비중kg/l": "density", "밀도kg/l": "density", "밀도g/cm3": "density",
@@ -60,6 +63,8 @@ UNIT_SUFFIXES = {"capacity": ("m3", "m³", "㎥", "l"), "pressure": ("mpa", "kpa
 # 법적 판정(규정수량·방류벽 용량 등)에 직접 쓰이는 항목은 순위와 관계없이 엄격하게 봅니다.
 LEGAL_FIELDS = {"inventory", "concentration", "cas", "capacity", "facility_type", "substance_state", "density", "process_type"}
 STRICT_CONFIDENCE = 0.98
+HINT_CONFIDENCE = 0.88       # 번호 없는 문서의 표: 사람이 지정한 번호로 연결 (문장과 같은 수준)
+TOTAL_ROWS = {"합계", "소계", "총계", "계", "total", "subtotal", "sum"}
 RELAXED_CONFIDENCE = 0.90
 HEADER_SCAN_ROWS = 20
 MAX_ROWS = 10001
@@ -358,7 +363,7 @@ def find_header_row(rows):
 FACILITY_ID_HEADERS = {"설비번호", "시설번호", "설비id", "설비코드", "장치번호", "tagno", "tag번호"}
 MATERIAL_ID_HEADERS = {"제품코드", "물질코드"}
 # 단위 표기가 붙어도 인정하도록 접두어로 비교합니다 (예: 용량(m3) → 용량m3).
-FACILITY_HINTS = ("설비명", "시설명", "용량", "최대보유량", "운전압력", "운전온도", "시설유형", "설비유형", "공정유형")
+FACILITY_HINTS = ("설비명", "시설명", "용량", "최대보유량", "운전압력", "운전온도", "설계압력", "시설유형", "설비유형", "공정유형")
 MATERIAL_HINTS = ("cas", "제품명", "물질명", "함량", "성상", "비중", "인화점")
 
 
@@ -452,15 +457,19 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
         for r in range(header_at + 1, len(rows)):
             row = rows[r]
             id_value = str(row[id_col] or "").strip() if id_col is not None and id_col < len(row) else ""
-            entity = id_value or entity_hint.strip()
+            # 지정한 번호는 번호 열이 없는 표(사양서 등)에만 씁니다. 번호 열이 있는 표의 빈 번호 줄(합계 등)에 붙이지 않습니다.
+            hinted = not id_value and id_col is None and bool(entity_hint.strip())
+            entity = id_value or (entity_hint.strip() if hinted else "")
             if not entity:
                 entity = next((str(row[i]).strip() for i, f in enumerate(fields) if f == "name" and i < len(row) and row[i]), "")
-            if not entity:
+            if not entity or (not id_value and not hinted and norm(entity) in TOTAL_ROWS):
                 if any(str(c or "").strip() for c in row):
                     skipped_rows += 1
                 continue
-            base = STRICT_CONFIDENCE if id_value else 0.78
+            base = STRICT_CONFIDENCE if id_value else (HINT_CONFIDENCE if hinted else 0.78)
             id_flags = ("merged",) if id_value and table.flags.get((r, id_col)) == "merged" else ()
+            if hinted:
+                id_flags += ("hint",)
             for i, field in enumerate(fields):
                 if i >= len(row) or row[i] is None or not str(row[i]).strip():
                     continue
@@ -554,7 +563,9 @@ def review_gate(slot, critical=frozenset()):
     if low:
         causes = []
         for f in low:
-            if f.get("confidence", 0) < RELAXED_CONFIDENCE:
+            if "hint" in f.get("flags", []):
+                causes.append("번호 없는 문서라 지정한 번호로 연결")
+            elif f.get("confidence", 0) < RELAXED_CONFIDENCE:
                 causes.append("설비번호·제품코드 없이 이름으로 연결")
             elif "formula" in f.get("flags", []):
                 causes.append("수식 계산 결과")
@@ -717,7 +728,7 @@ def tasks(project):
                            "문서를 읽었지만 사실을 연결하지 못했습니다. 표·항목 또는 식별 대상을 확인하세요.", "key": ""})
         elif doc.get("rows_without_id"):
             result.append({"entity": doc["name"],
-                           "task": f"설비번호·제품코드·명칭이 없어 건너뛴 행 {doc['rows_without_id']}개", "key": ""})
+                           "task": f"번호·이름이 없거나 합계 줄이라 건너뛴 행 {doc['rows_without_id']}개", "key": ""})
     by_entity, confirmed = {}, {}
     for s in all_slots:
         by_entity.setdefault(s["entity"], set()).add(s["field"])

@@ -15,13 +15,14 @@ from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import evidence_llm, scenario_triage
+from engine.stage2 import demo_company, evidence_llm, scenario_triage
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import list_projects, load_project, save_attachment, save_project
 
 STEPS = {1: "① 자료 올리기", 2: "② 질문에 답하기", 3: "③ 시나리오 후보", 4: "④ 작성 화면으로 보내기"}
 MAX_CARDS = 30
+DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".txt")
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
 
 # 신입사원이 모를 수 있는 항목마다 한 줄 설명
@@ -308,7 +309,7 @@ def _step_upload(project, found) -> None:
             "스캔한 PDF(사진)와 옛 한글 파일(HWP)은 아직 읽지 못해요.")
     uploaded = st.file_uploader("파일 선택 (여러 개 가능, 파일당 20MB 이하)",
                                 type=["csv", "xlsx", "pdf", "docx", "hwpx", "txt"], accept_multiple_files=True)
-    selected = {}
+    selected, hints = {}, {}
     for index, file in enumerate(uploaded or []):
         digest, detected = _classify(file.name, file.getvalue())
         if detected:
@@ -320,18 +321,23 @@ def _step_upload(project, found) -> None:
                                            format_func={"선택하세요": "선택하세요", "material": "물질 목록·MSDS",
                                                         "facility": "설비 목록·운전 자료"}.get,
                                            key=f"kind_{pid}_{digest[:16]}")
-    with st.expander("번호가 없는 문서라면 (예: 설비 한 대의 사양서, 제품 하나의 MSDS)"):
-        hint = st.text_input("이 문서가 설명하는 설비번호나 제품코드", help="예: TK-01, P-01. 표에 번호가 있는 파일이면 비워 두세요.",
-                             key="hint_" + pid)
+        if file.name.lower().endswith(DOCUMENT_TYPES):
+            # 번호는 파일마다 따로 받습니다. 한 칸을 모든 파일에 쓰면 다른 파일의 값이 엉뚱한 설비로 붙습니다.
+            hints[index] = st.text_input(f"↳ {file.name}이 설비 한 대·제품 하나의 문서라면 그 번호 (선택)",
+                                         placeholder="예: RX-205, P-07", key=f"hint_{pid}_{digest[:16]}",
+                                         help="사양서·MSDS처럼 표에 번호가 없는 문서일 때만 적으세요. "
+                                              "적으면 문서 속 ‘운전압력(MPa): 0.35’ 같은 문장도 읽어요.").strip()
     if st.button("자료 읽기", type="primary", disabled=not uploaded, key="read_" + pid):
         for index, file in enumerate(uploaded):
             try:
                 if selected[index] == "선택하세요":
                     raise ValueError("어떤 자료인지 골라 주세요")
-                count = ew.ingest(project, file.name, file.getvalue(), selected[index], hint)
+                count = ew.ingest(project, file.name, file.getvalue(), selected[index], hints.get(index, ""))
                 save_attachment(project.project_id, file.name, file.getvalue(), note="공통정보 추출 원문")
                 save_project(project)
-                st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 값 {count}개를 찾았어요.")
+                st.session_state.setdefault("evidence_notes", []).append(
+                    f"{file.name}: 값 {count}개를 찾았어요." if count else
+                    f"{file.name}: 값을 찾지 못했어요. 스캔본이면 글자를 읽을 수 없고, 표에 설비번호·제품코드 같은 항목 이름이 있어야 해요.")
             except Exception as exc:
                 why = exc if isinstance(exc, ValueError) else "파일 형식을 확인해 주세요"
                 st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 읽지 못했어요 ({why}). 다른 자료는 그대로예요.")
@@ -357,15 +363,21 @@ def _step_upload(project, found) -> None:
                 if doc.get("unmapped_columns"):
                     st.caption("아직 쓰지 않는 열: " + ", ".join(map(str, doc["unmapped_columns"])))
                 if doc.get("rows_without_id"):
-                    st.caption(f"설비번호·제품코드·이름이 없어 건너뛴 줄 {doc['rows_without_id']}개")
+                    st.caption(f"번호·이름이 없거나 합계 줄이라 건너뛴 줄 {doc['rows_without_id']}개")
                 if facts:
                     st.dataframe([{"설비·물질": names(f["entity"]), "항목": _name(f["field"]), "값": _value(f["field"], f["value"]) + _raw_note(f),
                                    "위치": _where(f)} for f in facts], hide_index=True, width="stretch")
         _next_button(2, pid, "다음: 질문에 답하기 →")
     st.divider()
-    st.download_button("연습용 가상 회사 자료 받기 (ZIP)", ew.demo_zip(), file_name="synthetic_company_evidence.zip",
-                       mime="application/zip")
-    st.caption("처음이라면 이 ZIP을 풀어 네 파일을 한 번에 올려 보세요. 일부러 서로 다른 값과 엑셀 계산식을 넣어 두었어요.")
+    st.markdown("**연습용 가상 회사 자료**")
+    cols = st.columns(2)
+    cols[0].download_button("작은 자료 (파일 4개)", ew.demo_zip(), file_name="synthetic_company_evidence.zip",
+                            mime="application/zip", key="demo_small")
+    cols[0].caption("처음 써 볼 때. 설비 4대, 제품 2개, 일부러 넣은 문제 2개.")
+    cols[1].download_button("실제와 비슷한 큰 자료 (파일 7개)", demo_company.large_demo_zip(),
+                            file_name="synthetic_company_evidence_large.zip", mime="application/zip", key="demo_large")
+    cols[1].caption("설비 40대, 제품 26개. 여러 시트·숨김 시트·병합 칸·단위가 다른 시트·옛 자료·한글 사양서·스캔본과 "
+                    "일부러 넣은 문제 30가지. 정답표(answer_key.json)가 들어 있어요.")
     _local_llm(project, data)
 
 
@@ -396,6 +408,9 @@ def _card_conflict(project, item, names) -> None:
         st.markdown(f"**{names(item['entity'])}의 {_j(_name(field), '이', '가')} 자료마다 달라요.**")
         st.caption("더 최근에 만든 자료의 값을 고르세요. 잘 모르겠으면 현장 담당자에게 물어보세요.")
         facts = {f["id"]: f for f in slot["facts"] if ew.value_problem(field, f["value"]) is None}
+        for bad in (f for f in slot["facts"] if f["id"] not in facts):
+            st.caption(f"{_where(bad)}에는 ‘{bad.get('raw', bad['value'])}’로 적혀 있어 그대로는 고를 수 없어요 "
+                       "(범위·글자·계산식이에요). 맞는 값이 아래에 없으면 직접 적어 주세요.")
         options = list(facts) + ["직접"]
         choice = st.radio("어느 값이 맞나요?", options, key=f"pick_{pid}_{slot['key']}",
                           format_func=lambda i: "둘 다 아니에요 (직접 입력)" if i == "직접"
@@ -698,7 +713,7 @@ _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
 _status_line(_active, _found)
 for _note in st.session_state.pop("evidence_notes", []):
-    (st.error if "읽지 못" in _note else st.success)(_note)
+    (st.error if "읽지 못" in _note else st.warning if "찾지 못" in _note else st.success)(_note)
 
 _step_key = "evidence_step_" + _active.project_id
 if "evidence_goto" in st.session_state:
