@@ -15,7 +15,7 @@ from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide
+from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_coverage_report
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
@@ -699,8 +699,37 @@ def _correction_rows(project, found) -> list[dict]:
         missing = ", ".join(req.missing_labels or (req.label,))
         add(" / ".join(req.suggested_evidence) or "근거 파일 미지정", req.label,
             f"작성 항목에 {missing} 값이 아직 연결되지 않았습니다. 업로드한 자료에 있어도 자동 연결되지 않았을 수 있습니다.",
-            "해당 근거자료와 최신본·적용범위를 확인해 제출하고 작성 화면에서 연결·확정하세요.")
+            "해당 근거자료와 최신본·적용범위를 확인해 파일에 적어 다시 올려 주세요.")
     return rows
+
+
+def _coverage_panel(project) -> None:
+    """올린 파일을 어디까지 읽었는지, 화사계 항목 중 무엇이 비었는지 한눈에 보여 줍니다."""
+    report = cap_coverage_report.summary(project)
+    files = report["files"]
+    st.markdown("**올린 파일을 어디까지 읽었나요**")
+    if files:
+        bad = [f for f in files if not f["_ok"]]
+        if bad:
+            st.warning(f"읽지 못했거나 일부만 읽은 파일이 {len(bad)}개 있어요. ‘읽지 못한 이유’를 보고 파일을 고쳐 다시 올려 주세요.")
+        else:
+            st.success("올린 파일을 모두 읽었어요.")
+        st.dataframe([{k: v for k, v in f.items() if not k.startswith("_")} for f in files], hide_index=True, width="stretch")
+    st.markdown("**화학사고예방관리계획서 항목별 현황**")
+    counts = report["counts"]
+    cols = st.columns(4)
+    cols[0].metric("채워짐", counts.get(cap_coverage_report.FILLED, 0))
+    cols[1].metric("자료에 없음", counts.get(cap_coverage_report.MISSING, 0))
+    cols[2].metric("읽지 못했을 수 있음", counts.get(cap_coverage_report.POSSIBLY_UNREAD, 0))
+    cols[3].metric("프로그램이 계산·조회", counts.get(cap_coverage_report.COMPUTED, 0))
+    only_gaps = st.checkbox("비어 있는 항목만 보기", value=True, key="coverage_gaps_" + project.project_id)
+    rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in report["items"]
+            if not only_gaps or r["현황"] in {cap_coverage_report.MISSING, cap_coverage_report.POSSIBLY_UNREAD}]
+    if rows:
+        st.dataframe(rows, hide_index=True, width="stretch")
+    else:
+        st.success("비어 있는 항목이 없어요.")
+    st.caption("‘자료에 없음’은 올린 파일에서 찾지 못했다는 뜻이에요. 해당 내용을 ‘필요한 자료’에 맞춰 파일에 적어 다시 올리면 초안에 채워져요.")
 
 
 def _step_questions(project, found) -> None:
@@ -709,6 +738,8 @@ def _step_questions(project, found) -> None:
         st.info("먼저 ① 자료 올리기에서 자료를 올려 주세요.")
         return
     st.info(cap_intake_guide.conditional_notice(project.cap_group))
+    _coverage_panel(project)
+    st.divider()
     rows = _correction_rows(project, found)
     st.markdown("**파일별 수정 요청**")
     st.caption("원본 파일을 고쳐 한 번에 다시 올리세요. ‘작성 항목에 연결되지 않음’은 그 값이 회사 자료에 없다는 뜻이 아닙니다.")
