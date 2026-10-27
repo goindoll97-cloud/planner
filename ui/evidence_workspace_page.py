@@ -16,7 +16,7 @@ from datetime import date
 import streamlit as st
 
 from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_coverage_report
-from engine.stage2 import cap_fact_catalog, cap_fact_status
+from engine.stage2 import cap_fact_catalog, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
@@ -767,8 +767,21 @@ def _coverage_panel(project) -> None:
             st.dataframe([{k: r[k] for k in ("상태", "사실", "쓰이는 곳", "올릴 파일", "고칠 점")} for r in derived],
                          hide_index=True, width="stretch")
     _matrix_panel(project, forms)
-    st.caption("빈칸은 ‘올릴 파일’에 ‘고칠 점’의 항목 이름으로 적어 다시 올리면 채워져요. "
-               "‘엑셀 업로드 양식’을 받으면 빈 사실의 열 이름이 미리 들어 있어요.")
+    _template_download(project, "" if group == "전체" else group)
+
+
+def _template_download(project, group: str) -> None:
+    """빈 사실의 열 이름을 넣은 엑셀 양식. 채워서 ‘① 자료 올리기’에 그대로 올리면 됩니다."""
+    pid = project.project_id
+    st.markdown("**엑셀 업로드 양식**")
+    st.caption("빈칸은 ‘올릴 파일’에 ‘고칠 점’의 항목 이름으로 적어 다시 올리면 채워져요. 회사 파일에 적기 어려우면 "
+               "아래 양식을 받아 빈칸을 채워 올려도 돼요. 열 이름은 프로그램이 알아보는 이름이라 바꾸지 마세요.")
+    full = st.checkbox("이미 찾은 사실의 열도 모두 넣기", key="template_full_" + pid)
+    count = cap_upload_template.blank_count(project, group)
+    label = "엑셀 업로드 양식 내려받기 (모든 사실)" if full else f"엑셀 업로드 양식 내려받기 (빈 사실 {count}개)"
+    st.download_button(label, cap_upload_template.build(project, only_blank=not full, group=group),
+                       file_name=cap_upload_template.FILENAME, key="template_" + pid, disabled=not full and not count,
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 def _matrix_panel(project, forms) -> None:

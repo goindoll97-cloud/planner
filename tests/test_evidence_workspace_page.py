@@ -116,6 +116,10 @@ class EvidencePageTests(unittest.TestCase):
         self.assertFalse(at.exception, [e.value for e in at.exception])
         at.radio(key="fact_group_" + self.pid).set_value("1군").run()
         self.assertFalse(at.exception, [e.value for e in at.exception])
+        labels = " ".join(b.proto.label for b in at.get("download_button"))
+        self.assertIn("엑셀 업로드 양식 내려받기 (빈 사실", labels)
+        at.checkbox(key="template_full_" + self.pid).check().run()
+        self.assertIn("(모든 사실)", " ".join(b.proto.label for b in at.get("download_button")))
 
     def test_upload_change_message_is_shown_once(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)

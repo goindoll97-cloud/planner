@@ -506,6 +506,17 @@ def site_pairs(rows):
     return []
 
 
+def site_label_count(rows):
+    """값이 비어 있어도 사업장 항목 이름이 줄 첫 칸에 몇 개 있는지(채우지 않은 업로드 양식도 사업장 표로 알아보기 위해)."""
+    site = CATALOG_HEADERS["site"]
+    return sum(1 for row in rows if (cells := _compact_cells(row)) and norm(cells[0][1]) in site)
+
+
+def _prose_only(rows):
+    """한 줄에 글이 한 칸뿐인 표(안내문·목록). 값 표가 아니므로 모르는 열로 알리지 않습니다."""
+    return all(sum(1 for c in row if str(c or "").strip()) <= 1 for row in rows)
+
+
 def _is_site_table(rows, pairs):
     fields = {CATALOG_HEADERS["site"][norm(label)] for _, _, label, _ in pairs}
     if len(fields) >= 2:
@@ -533,6 +544,9 @@ def _table_kinds(tables):
         at = find_header_row(table.rows)
         if pairs and _is_site_table(table.rows, pairs) and (at is None or len(pairs) >= _header_score(table.rows[at])):
             kinds.append("site")
+            continue
+        if at is None and site_label_count(table.rows) >= 2:
+            kinds.append("site")          # 값을 아직 적지 않은 사업장 항목 표
             continue
         if at is None:
             continue
@@ -720,6 +734,14 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
             table_info.append({"location": table.location, "header_row": None, "rows": len(rows), "kind": "site",
                                "columns": [{"header": label, "field": CATALOG_HEADERS["site"][norm(label)]} for _, _, label, _ in pairs],
                                "skipped": [], "skipped_count": 0})
+            continue
+        if header_at is None and site_label_count(rows) >= 2:
+            table_info.append({"location": table.location, "header_row": None, "rows": len(rows), "kind": "site", "columns": [],
+                               "skipped": [], "skipped_count": 0, "problem": "사업장 항목 이름은 있지만 값이 적혀 있지 않음"})
+            continue
+        if header_at is None and _prose_only(rows):
+            table_info.append({"location": table.location, "header_row": None, "rows": len(rows), "columns": [],
+                               "skipped": [], "skipped_count": 0, "problem": "안내문처럼 한 칸짜리 글만 있는 표라 값을 읽지 않음"})
             continue
         if header_at is None:
             for h in rows[0]:
