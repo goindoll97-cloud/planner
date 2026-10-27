@@ -67,6 +67,22 @@ class EvidencePageTests(unittest.TestCase):
     def saved(self):
         return ew.confirmed_entities(load_project(self.pid))
 
+    def test_reset_all_removes_every_project_but_keeps_other_runtime_data(self):
+        from engine.stage2.storage import list_projects
+        other = create_direct_cap_project("다른 사업장", address="부산", cap_group="")
+        save_project(other)
+        keep = Path("data/runtime/law_old_new/keep.txt")
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        keep.write_text("x")
+        at = self.run_page(step=1)
+        self.assertTrue(at.button(key="evidence_reset_all").disabled)
+        at.checkbox(key="evidence_reset_all_confirm").check().run()
+        at.button(key="evidence_reset_all").click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        self.assertEqual(list_projects(), [])
+        self.assertTrue(keep.exists())
+        self.assertIn("사업장 2곳을 모두 지웠어요", " ".join(_texts(at)))
+
     def test_full_practice_package_can_be_made_for_a_real_address(self):
         at = self.run_page(step=1)
         self.assertIn("파일 11개", " ".join(b.proto.label for b in at.get("download_button")))

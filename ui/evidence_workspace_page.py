@@ -18,7 +18,7 @@ import streamlit as st
 from engine.stage2 import demo_company, evidence_llm, scenario_triage, scenario_workup
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
-from engine.stage2.storage import list_projects, load_attachment, load_project, save_attachment, save_project
+from engine.stage2.storage import delete_all_projects, list_projects, load_attachment, load_project, save_attachment, save_project
 
 STEPS = {1: "① 자료 올리기", 2: "② 질문에 답하기", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
 MAX_CARDS = 30
@@ -259,6 +259,9 @@ def _next_button(step: int, pid: str, label: str) -> None:
 
 def _project_header():
     projects = list_projects()
+    done = st.session_state.pop("evidence_reset_done", None)
+    if done is not None:
+        st.success(f"사업장 {done}곳을 모두 지웠어요. 새 사업장을 만들어 처음부터 시작하세요.")
     with st.expander("새 사업장 만들기", expanded=not projects):
         with st.form("evidence_new_project"):
             name = st.text_input("사업장 이름")
@@ -274,12 +277,26 @@ def _project_header():
     if not projects:
         st.info("먼저 사업장을 만들어 주세요. 이름과 주소만 있으면 돼요.")
         st.stop()
+    _reset_all(len(projects))
     options = {p["project_id"]: p["company_name"] for p in projects}
     current = st.session_state.get("_stage2_active_project_id")
     project_id = st.selectbox("사업장", list(options), index=list(options).index(current) if current in options else 0,
                               format_func=options.get)
     st.session_state["_stage2_active_project_id"] = project_id
     return load_project(project_id)
+
+
+def _reset_all(count) -> None:
+    """연습을 처음부터 다시 할 때: 사업장을 모두 지웁니다(승인한 규정 DB·법령 자료는 그대로)."""
+    with st.expander("사업장 모두 지우고 처음부터 하기"):
+        st.warning(f"저장된 사업장 {count}곳과 그 안의 올린 파일·답변·작성 내용·버전이 모두 지워지고 되돌릴 수 없어요. "
+                   "승인해 둔 규정 DB와 내려받은 법령 자료는 지우지 않아요.")
+        sure = st.checkbox("모두 지우는 것을 확인했어요", key="evidence_reset_all_confirm")
+        if st.button("사업장 모두 지우기", disabled=not sure, key="evidence_reset_all"):
+            removed = delete_all_projects()
+            st.session_state.clear()
+            st.session_state["evidence_reset_done"] = removed
+            st.rerun()
 
 
 def _status_line(project, found) -> None:

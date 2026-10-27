@@ -101,6 +101,23 @@ def delete_project(project_id: str, root: Path = DEFAULT_ROOT) -> bool:
     return True
 
 
+def delete_all_projects(root: Path = DEFAULT_ROOT) -> int:
+    """Delete every Stage 2 project (with its attachments and versions) and return how many were removed.
+
+    Only the ``projects`` folder under the Stage 2 root is touched: approved
+    regulatory DBs, law caches and other runtime data stay.
+    """
+    base = root / "projects"
+    if not base.is_dir():
+        return 0
+    removed = 0
+    for target in sorted(base.iterdir()):
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+            removed += 1
+    return removed
+
+
 def save_attachment(
     project_id: str,
     file_name: str,
