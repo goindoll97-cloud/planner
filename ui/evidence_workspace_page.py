@@ -15,7 +15,7 @@ from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide
+from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_evidence_links
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
@@ -378,12 +378,15 @@ def _step_upload(project, found) -> None:
             try:
                 if selected[index] == "reference":
                     ew.register_reference(project, file.name, file.getvalue())
-                    save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 자동 추출·서식 연결 미완료")
+                    save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 항목·값 표의 서식 연결 결과 확인")
                     save_project(project)
-                    scanned = next((d.get("needs_ocr") for d in ew.documents(project) if d["name"] == file.name), False)
+                    doc = next((d for d in ew.documents(project) if d["sha256"] == hashlib.sha256(file.getvalue()).hexdigest()), None)
+                    scanned = bool(doc and doc.get("needs_ocr"))
+                    linked = len(doc.get("links", [])) if doc else 0
                     st.session_state.setdefault("evidence_notes", []).append(
                         f"{file.name}: 글자가 없어 OCR이 필요합니다." if scanned else
-                        f"{file.name}: 문자·표를 읽어 원본을 보관했어요. 서식 값 연결은 파일별 보완 요청을 확인하세요.")
+                        f"{file.name}: 서식 항목 {linked}개를 연결했어요. 확인할 값과 충돌 여부를 읽기 결과에서 확인하세요." if linked else
+                        f"{file.name}: 원본은 읽었지만 서식에 연결할 항목·값 표를 찾지 못했어요.")
                     continue
                 count = ew.ingest(project, file.name, file.getvalue(), selected[index], hints.get(index, ""))
                 save_attachment(project.project_id, file.name, file.getvalue(), note="공통정보 추출 원문")
@@ -435,6 +438,22 @@ def _reading_report(project, doc, facts, names, reasons) -> None:
             parts.append(f"그대로 쓸 수 없는 칸 {len(unusable)}개")
         st.write(f"📄 **{doc['name']}** — " + " · ".join(parts))
     with st.expander("읽기 결과 보기"):
+        for link_no, link in enumerate(doc.get("links", [])):
+            record = project.get_field(link["key"])
+            if record is None:
+                continue
+            source = f"{link['location']} · {link['label']}: {link['value']}"
+            if record.status == "HOLD" or (record.note != cap_evidence_links.NOTE and
+                                             str(record.value) != str(link["value"])):
+                st.warning(f"{source} — 다른 자료 또는 확정값과 다릅니다. 원본을 확인하고 수정해 다시 올려 주세요.")
+            elif record.status == "AI_DRAFT":
+                st.write(f"🔎 {source} — 원본 확인 후 서식에 반영")
+                if st.button(f"원본 확인하고 ‘{link['label']}’ 반영", key=f"link_{pid}_{sha[:12]}_{link_no}"):
+                    if cap_evidence_links.confirm(project, link["key"]):
+                        _save(project, f"{link['label']}: 원본 확인 후 서식에 반영했어요.")
+                        st.rerun()
+            else:
+                st.write(f"✅ {source} — 법정서식에 연결됨")
         for table in doc.get("tables", []):
             place = "" if table["location"] == "CSV" else f"‘{table['location']}’ "
             if table.get("header_row") is None:
@@ -675,6 +694,17 @@ def _correction_rows(project, found) -> list[dict]:
                 doc.get("problem") or "값을 연결하지 못했습니다.",
                 "해당 문서의 값을 작성 화면에서 연결·확정하세요." if is_reference else
                 "스캔본은 OCR을 적용하세요. 항목명·번호를 확인해 원본을 다시 제출하세요.")
+        for link in doc.get("links", []):
+            record = project.get_field(link["key"])
+            if record and record.status == "AI_DRAFT":
+                add(f"{doc['name']} · {link['location']}", link["label"],
+                    "원본을 읽어 서식 초안을 만들었습니다. 담당자 확인이 필요합니다.",
+                    "① 자료 올리기 → 읽기 결과 보기에서 원본과 대조한 뒤 ‘반영’을 누르세요.")
+            if record and (record.status == "HOLD" or
+                           (record.note != cap_evidence_links.NOTE and str(record.value) != str(link["value"]))):
+                add(f"{doc['name']} · {link['location']}", link["label"],
+                    "같은 항목의 값이 다른 자료 또는 이미 확정한 값과 다릅니다.",
+                    "적용할 값을 원본에서 확인하고 잘못된 파일을 수정해 다시 올려 주세요.")
         for table in doc.get("tables", []):
             for skipped in table.get("skipped", []):
                 add(f"{doc['name']} · {table['location']} {skipped['row']}행", "설비·제품 번호",
