@@ -593,12 +593,27 @@ def _narrative_drafts(project) -> None:
             client = build(config)
         else:
             st.warning("로컬 AI 연결을 확인해 주세요.")
+    progress_key = "narrative_progress_" + pid
+    previous = st.session_state.get(progress_key)
+    if previous and previous[1]:
+        st.progress(previous[0] / previous[1], text=f"서술형 {previous[0]}/{previous[1]}개 완료 (100%)")
     if st.button("AI로 서술형 작성하기" if use_ai else "서술형 작성하기", key="fact_drafts_" + pid, disabled=use_ai and client is None):
-        results = cap_fact_drafting.generate(project, client, refresh=True)
+        bar = st.progress(0, text="작성할 서술형 항목을 확인하고 있어요.")
+
+        def report_progress(done, total, label):
+            percent = round(done / total * 100) if total else 0
+            text = f"서술형 {done}/{total}개 완료 ({percent}%)"
+            if label:
+                text += f" · {done + 1}번째 작성 중: {label}"
+            bar.progress(done / total if total else 0, text=text)
+
+        results = cap_fact_drafting.generate(project, client, refresh=True, on_progress=report_progress)
+        st.session_state[progress_key] = (len(results), len(results))
         save_project(project)
         checks = sum(r["checks"] for r in results)
         st.session_state.setdefault("evidence_notes", []).append(
-            f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
+            (f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
+            if results else "작성할 서술형이 없어요. 완성 문서는 그대로 사용하며, 근거가 없는 항목은 ②에서 필요한 자료를 확인해 주세요.")
         st.rerun()
     with st.expander("서술형 초안 보기"):
         for item in [i for system in systems for i in cap_fact_drafting.items(project, system)]:

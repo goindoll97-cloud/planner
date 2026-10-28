@@ -130,6 +130,42 @@ class AIDraftTests(unittest.TestCase):
         self.assertIn("교육 대상:", _item(p, "cap.prevention.training").draft)
 
 
+class ProgressTests(unittest.TestCase):
+    def test_progress_counts_only_eligible_items_and_reports_before_ai_call(self):
+        p = _project()
+        events = []
+        class Client(BrokenClient):
+            def generate_json(self, **kwargs):
+                self_test.assertTrue(events[-1][2])
+                return super().generate_json(**kwargs)
+        self_test = self
+        expected = [i for i in fd.items(p) if i.state != fd.FROM_FILE and i.basis]
+        results = fd.generate(p, Client(), refresh=True, on_progress=lambda *args: events.append(args))
+        self.assertGreater(len(expected), 0)
+        self.assertEqual(events[0], (0, len(expected), ""))
+        self.assertEqual(events[-1], (len(expected), len(expected), ""))
+        self.assertEqual([e[0] for e in events if e[2]], list(range(len(expected))))
+        self.assertEqual(len(results), len(expected))
+        self.assertTrue(all(r["note"] for r in results))  # AI 실패 시 규칙 초안으로 완료
+
+    def test_empty_run_does_not_claim_completed_work(self):
+        p = _project(files=("02_설비대장.xlsx",))
+        events = []
+        self.assertEqual(fd.generate(p, on_progress=lambda *args: events.append(args)), [])
+        self.assertEqual(events, [(0, 0, "")])
+
+    def test_group_one_external_plans_can_use_ai_with_company_basis(self):
+        p = create_direct_cap_project("가상", address="주소", cap_group="1군")
+        ew.ingest(p, "plan.docx", _doc([("지역사회 소통 대상", "인근 주민"),
+                  ("협력 기관", "관할 소방서"), ("대피 장소", "지정 집결지")]), "site")
+        ew.publish(p, replace_existing=True)
+        candidates = [i for i in fd.items(p) if i.key.startswith("cap.external.") and i.basis]
+        self.assertEqual(len(candidates), 3)
+        results = fd.generate(p, FakeClient("회사 자료에 따라 계획을 운영한다."), keys=[i.key for i in candidates])
+        self.assertEqual(len(results), 3)
+        self.assertTrue(all(r["model"] == "fake-local" for r in results))
+
+
 class OutputTests(unittest.TestCase):
     def test_drafts_are_listed_and_put_into_the_internal_draft(self):
         from engine.stage2 import report_export as rx

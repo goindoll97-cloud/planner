@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 from . import ai_drafting as drafting
 from . import cap_fact_catalog as catalog
@@ -247,17 +247,20 @@ def _store(project: Stage2Project, item: Item, text: str, model: str) -> None:
 
 
 def generate(project: Stage2Project, client=None, keys: list[str] | None = None, *, refresh: bool = False,
-             system: str | None = None) -> list[dict[str, Any]]:
+             system: str | None = None,
+             on_progress: Callable[[int, int, str], None] | None = None) -> list[dict[str, Any]]:
     """근거가 있는 항목의 초안을 만듭니다(회사 문서에서 읽은 항목은 건너뜀). AI가 실패하면 규칙 초안으로 대신합니다.
     이미 초안이 있는 항목은 refresh=True이거나 keys로 고른 경우에만 다시 만듭니다. system이 없으면 작성범위의 모든 문서."""
     results = []
-    for item in [i for s in ((system,) if system else systems(project) or ("CAP",)) for i in items(project, s)]:
-        if keys is not None and item.key not in keys:
-            continue
-        if item.state == FROM_FILE or not item.basis:
-            continue
-        if item.state == HAS_DRAFT and not refresh and keys is None:
-            continue
+    pending = [i for s in ((system,) if system else systems(project) or ("CAP",)) for i in items(project, s)
+               if (keys is None or i.key in keys) and i.state != FROM_FILE and i.basis
+               and not (i.state == HAS_DRAFT and not refresh and keys is None)]
+    total = len(pending)
+    if on_progress:
+        on_progress(0, total, "")
+    for index, item in enumerate(pending):
+        if on_progress:
+            on_progress(index, total, item.label)
         model, replaced, note = RULE_MODEL, [], ""
         text = rule_draft(item)
         if client is not None:
@@ -270,6 +273,8 @@ def generate(project: Stage2Project, client=None, keys: list[str] | None = None,
         _store(project, item, text, model)
         results.append({"key": item.key, "label": item.label, "model": model, "replaced": replaced, "note": note,
                         "checks": text.count("[확인 필요")})
+        if on_progress:
+            on_progress(index + 1, total, "")
     return results
 
 

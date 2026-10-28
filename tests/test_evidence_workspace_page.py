@@ -139,6 +139,9 @@ class EvidencePageTests(unittest.TestCase):
         self.assertIn("빈칸 전용 엑셀 양식 내려받기", [b.proto.label for b in at.get("download_button")])
 
     def test_step_four_lists_narrative_items_and_makes_rule_drafts(self):
+        project = load_project(self.pid)
+        ew.ingest(project, "plan.docx", _site_doc([("교육 대상", "전 직원")]), "site")
+        save_project(project)
         at = self.run_page(4)
         self.assertFalse(at.exception)
         self.assertEqual(len(at.dataframe), 0)
@@ -147,6 +150,9 @@ class EvidencePageTests(unittest.TestCase):
         self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
         at.button(key="fact_drafts_" + self.pid).click().run()
         self.assertFalse(at.exception)
+        self.assertEqual(len(at.get("progress")), 1)
+        self.assertEqual(at.get("progress")[0].proto.value, 100)
+        self.assertIn("개 완료", at.get("progress")[0].proto.text)
 
     def test_upload_change_message_is_shown_once(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)
