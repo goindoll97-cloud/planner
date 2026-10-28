@@ -128,7 +128,7 @@ class OutputProvenanceTests(unittest.TestCase):
         self.assertEqual(payload["system"], "CAP")
         self.assertEqual(
             payload["baseline_sha256"],
-            "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d",
+            "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4",
         )
         self.assertEqual(payload["baseline_schema_version"], "cap-statutory-form-layout-baseline-v1")
         self.assertIn("generated_at_utc", payload)

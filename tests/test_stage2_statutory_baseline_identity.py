@@ -30,7 +30,7 @@ class StatutoryBaselineIdentityTests(unittest.TestCase):
         self.assertEqual(identity.role, "LAYOUT_BASELINE")
         self.assertEqual(
             identity.sha256,
-            "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d",
+            "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4",
         )
         self.assertTrue(identity.schema_version.startswith("cap-"))
         self.assertIn("법적 최신성", identity.authority_note)

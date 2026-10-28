@@ -3,8 +3,8 @@
   "role": "LAYOUT_BASELINE",
   "template_file": "cap_statutory_forms_baseline.docx.b64.00",
   "encoding": "base64",
-  "sha256": "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d",
-  "source_description": "사용자가 국가 규정의 HWP 서식 원본을 DOCX로 변환한 뒤 규정서식 외 내용을 제거하여 제공한 CAP 별표·별지 서식 묶음",
+  "sha256": "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4",
+  "source_description": "2026-10-28 사용자가 다시 제공한 260409 DOCX 서식. 별지 제7호의 작성 예는 입력 칸 위치만 참고하고 예시 값은 제거하여 재사용.",
   "authority_note": "이 파일은 표·병합셀·폰트·페이지 배치의 작성 baseline이다. 법적 최신성·효력의 권위는 기존 law.go.kr 규정 업데이트 및 승인 상태가 담당한다.",
   "required_table_count": 44,
   "required_markers": [
@@ -22,5 +22,8 @@
     "별지 제12호서식",
     "별지 제15호서식",
     "별지 제16호서식"
-  ]
+  ],
+  "source_document_name": "「화학사고예방관리계획서 작성 등에 관한 규정」 일부 개정_별표, 별지 서식_260409.docx",
+  "source_document_sha256": "875daf8654e477fe66925b57addd877e166e6951a4c8ae70eaab4ca750d627ae",
+  "input_rule": "색이 있는 셀은 명칭·머리글로 보존한다. 값은 지정된 흰색 입력 칸에만 기재한다."
 }

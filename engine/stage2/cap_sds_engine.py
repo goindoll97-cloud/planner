@@ -237,6 +237,20 @@ def build_cap_form7_data(project: Stage2Project) -> CAPForm7Data:
     legal_index = _index_rows(list(legal.rows))
     form1_index = _index_rows(list(form1.chemical_rows))
     built = [_form7_row(dict(source), legal_index, form1_index, blockers) for source in hazard_rows[:MAX_REPRESENTATIVES]]
+    # 별지 제1호는 CAS별 합계여서 함량이 없을 수 있습니다. 같은 제품의 회사 사실에서만 보완합니다.
+    company_rows = _confirmed_rows(project, "cap.chemical.details", "inventory.chemicals")
+    for row in built:
+        if _clean(row.get("함량(%)")):
+            continue
+        name = _norm(_row_value(row, "물질명", "유해화학물질명", "제품명"))
+        cas = _clean(_row_value(row, "CAS 번호", "CAS No.", "CAS"))
+        candidates = [r for r in company_rows
+                      if (not cas or cas == _clean(_row_value(r, "CAS 번호", "CAS No.", "CAS")))
+                      and (not name or name == _norm(_row_value(r, "물질명", "유해화학물질명", "제품명")))]
+        values = {_clean(_row_value(r, "함량(%)", "농도", "함량")) for r in candidates}
+        values.discard("")
+        if len(values) == 1:
+            row["함량(%)"] = values.pop()
 
     messages.append(
         "별지 제7호의 고유번호·최대보유량은 회사가 재입력하지 않고 별지 제6호 법령판정과 별지 제1호 계산결과를 재사용합니다."

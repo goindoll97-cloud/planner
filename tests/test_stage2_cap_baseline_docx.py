@@ -18,7 +18,7 @@ from engine.stage2.cap_baseline_docx import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_SHA256 = "f41c3b26c72fb3e0186d5d25b99004ed7a8d3644527c12844a6a7f2c36112d2d"
+EXPECTED_SHA256 = "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4"
 
 
 def _project() -> Stage2Project:
@@ -166,7 +166,7 @@ class CAPBaselineDocxTests(unittest.TestCase):
         site_name_cells = context_table.rows[0].cells[:2]
         runs = [run for cell in site_name_cells for paragraph in cell.paragraphs for run in paragraph.runs]
 
-        self.assertTrue(any("1. 사업장명" in run.text for run in runs))
+        self.assertIn("1. 사업장명", "".join(run.text for run in runs))
         self.assertTrue(any(project.company_name in run.text for run in runs))
         self.assertTrue(all(run.font.size is not None and run.font.size.pt == 10 for run in runs))
 

@@ -432,7 +432,8 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
         self.assertIn("35.0000,129.0000", form12)
 
         form13_14 = self._table_text(doc, 24, 25, 26, 27, 28)
-        self.assertIn("KORA-ALL-01", form13_14)
+        self.assertNotIn("KORA-ALL-01", self._table_text(doc, 24))
+        self.assertIn("KORA-ALL-01", "\n".join(p.text for p in doc.paragraphs))
         self.assertIn("○○초등학교", form13_14)
         self.assertIn("배관누출", form13_14)
         self.assertIn("2", form13_14)

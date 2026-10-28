@@ -21,6 +21,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from docx import Document
+from docx.oxml.ns import qn
 
 from . import statutory_report as base
 from .cap_form1_engine import build_cap_form1_data
@@ -186,8 +187,22 @@ def _fill_text_block(table, value: object, *, header_rows: int = 1) -> None:
         _append_value(target, text)
 
 
+def _is_label_cell(cell) -> bool:
+    """원본의 음영 칸은 항목명/표 머리글이며 입력 대상이 아닙니다."""
+    for shading in cell._tc.xpath('./w:tcPr/w:shd'):
+        fill = (shading.get(qn("w:fill")) or "").upper()
+        theme = shading.get(qn("w:themeFill"))
+        if fill not in ("", "AUTO", "FFFFFF") or theme:
+            return True
+    return False
+
+
 def _write_cell(cell, value: object) -> None:
     text = _clean(value)
+    if _is_label_cell(cell):
+        if cell.text.strip() == text:
+            return
+        raise ValueError("규정서식의 색 있는 명칭 칸에 값을 쓰려고 했습니다: " + cell.text[:60])
     runs = [run for paragraph in cell.paragraphs for run in paragraph.runs]
     if runs:
         runs[0].text = text
@@ -275,7 +290,7 @@ def _fill_label_rows(table, mapping: Mapping[str, object], *, start: int = 0) ->
             continue
         label = cells[0].text.strip()
         value = normalized.get(base._norm(label))
-        if value not in (None, "", MISSING):
+        if value not in (None, "", MISSING) and not _is_label_cell(cells[-1]):
             _append_value(cells[-1], value)
 
 
@@ -297,24 +312,8 @@ def _fill_label_rows_replace(table, mapping: Mapping[str, object], *, start: int
             continue
         for index, cell in enumerate(cells[:-1]):
             value = normalized.get(base._norm(cell.text.strip()))
-            if value not in (None, "", MISSING):
+            if value not in (None, "", MISSING) and not _is_label_cell(cells[index + 1]):
                 _write_cell(cells[index + 1], value)
-
-
-def _fill_single_column_labels(table, mapping: Mapping[str, object]) -> None:
-    """별지 제7호서식-style tables: one column, each row starts with a label
-    like "가. 물질명" and the answer is appended after it in the same cell."""
-    normalized = {base._norm(key): value for key, value in mapping.items()}
-    for row in table.rows:
-        cells = _unique_cells(row)
-        if not cells:
-            continue
-        label = cells[0].text.strip()
-        for alias, value in normalized.items():
-            if alias and alias in base._norm(label):
-                if value not in (None, "", MISSING):
-                    _append_value(cells[0], value)
-                break
 
 
 def _fill_form1(tables, project: Stage2Project) -> None:
@@ -658,10 +657,54 @@ def _clone_table_after(table):
     from docx.table import Table
 
     spacer = OxmlElement("w:p")
+    run = OxmlElement("w:r")
+    page_break = OxmlElement("w:br")
+    page_break.set(qn("w:type"), "page")
+    run.append(page_break)
+    spacer.append(run)
+    # 복제된 표도 해당 별지의 표제·소제목과 함께 새 페이지에 놓습니다.
+    captions = []
+    sibling = table._tbl.getprevious()
+    while sibling is not None and sibling.tag == qn("w:p"):
+        text = "".join(sibling.xpath('.//w:t/text()'))
+        paragraph = deepcopy(sibling)
+        for section in paragraph.xpath('./w:pPr/w:sectPr'):
+            section.getparent().remove(section)
+        captions.insert(0, paragraph)
+        if "■" in text and "별지" in text:
+            break
+        sibling = sibling.getprevious()
+    else:
+        captions = []
     table._tbl.addnext(spacer)
+    anchor = spacer
+    for paragraph in captions:
+        num_pr = paragraph.xpath('./w:pPr/w:numPr')
+        if num_pr and num_pr[0].numId is not None:
+            numbering = table.part.numbering_part.element
+            old_num = next(n for n in numbering.num_lst if n.numId == num_pr[0].numId.val)
+            num = numbering.add_num(old_num.abstractNumId.val)
+            override = num.add_lvlOverride(ilvl=num_pr[0].ilvl.val if num_pr[0].ilvl is not None else 0)
+            override.add_startOverride(1)
+            num_pr[0].numId.val = num.numId
+        anchor.addnext(paragraph)
+        anchor = paragraph
     clone = deepcopy(table._tbl)
-    spacer.addnext(clone)
-    return Table(clone, table._parent)
+    anchor.addnext(clone)
+    target = Table(clone, table._parent)
+    # 별지 제7호의 자동 번호 '1. 취급물질의 일반정보'는 물질마다 1부터 시작합니다.
+    if "취급물질의 일반정보" in target.cell(0, 0).text:
+        paragraph = target.cell(0, 0).paragraphs[0]
+        num_pr = paragraph._p.xpath('./w:pPr/w:numPr')
+        if num_pr:
+            old_id = num_pr[0].numId.val
+            numbering = table.part.numbering_part.element
+            old_num = next(n for n in numbering.num_lst if n.numId == old_id)
+            num = numbering.add_num(old_num.abstractNumId.val)
+            override = num.add_lvlOverride(ilvl=0)
+            override.add_startOverride(1)
+            num_pr[0].numId.val = num.numId
+    return target
 
 
 def _fill_form7(table, project: Stage2Project) -> None:
@@ -705,7 +748,20 @@ def _fill_form7_table(table, row) -> None:
         "출처": " / ".join(source_parts),
         "선정 사유": base._row_value(row, "선정 사유", "선정사유"),
     }
-    _fill_single_column_labels(table, mapping)
+    # 색 있는 제목은 그대로 두고, 사용자 예시와 같은 흰색 칸에 기재합니다.
+    positions = {1: ("가.", "물질명"), 2: ("나.", "화학물질식별번호(CAS 번호)"),
+                 3: ("다.", "유해화학물질 고유번호"), 4: ("라.", "농도(또는 함량 %)"),
+                 5: ("마.", "최대보유량"), 7: ("", "인체유해성"), 9: ("", "물리적 위험성"),
+                 11: ("", "환경유해성"), 13: ("", "출처"), 15: ("", "선정 사유")}
+    for row in table.rows:
+        if _is_label_cell(row.cells[0]):
+            for paragraph in row.cells[0].paragraphs:
+                paragraph.paragraph_format.keep_with_next = True
+    for index, (prefix, key) in positions.items():
+        value = _clean(mapping[key])
+        if key == "농도(또는 함량 %)" and value and not re.search(r"%|ppm|mg|g/", value, re.I):
+            value += " %"
+        _write_cell(table.cell(index, 0), (prefix + " " + value).strip())
 
 
 def _fill_form8(tables, project: Stage2Project) -> None:
@@ -962,30 +1018,15 @@ def _fill_form13(tables, project: Stage2Project) -> None:
     form14 = build_cap_form14_data(project)
     form15 = build_cap_form15_data(project)
 
-    if form13.summary:
-        summary = form13.summary
-        _fill_label_rows(
-            overall_table,
-            {
-                "총괄영향범위 산출방법": summary.get("총괄영향범위 산출방법", ""),
-                "총괄영향범위 결과 요약": summary.get("총괄영향범위 결과 요약", ""),
-                "거주민수": summary.get("총괄영향범위 내 거주민수", ""),
-                "근로자수": summary.get("총괄영향범위 내 근로자수", ""),
-                "보호대상 없음 여부": summary.get("보호대상 없음 여부", ""),
-                "GIS/KORA 근거": summary.get("GIS/KORA 근거", ""),
-            },
-            start=1,
-        )
-        _fill_text_block(
-            overall_table,
-            " / ".join(
-                f"{key}: {value}"
-                for key, value in summary.items()
-                if _clean(value)
-            ),
-            header_rows=1,
-        )
-
+    # 별지 제13호 첫 표는 보호대상 선택과 위치도 입력란입니다. 요약문으로 대체하지 않습니다.
+    selected = {base._norm(row.get("보호대상 종류", "")) for row in form13.protected_targets}
+    for row in overall_table.rows[:10]:
+        for cell in _unique_cells(row):
+            if _is_label_cell(cell):
+                continue
+            label = cell.text.strip()
+            if label.startswith("□") and base._norm(label[1:]) in selected:
+                _write_cell(cell, label.replace("□", "☒", 1))
     target_rows = [
         [
             row.get("일련번호", ""),
@@ -997,23 +1038,32 @@ def _fill_form13(tables, project: Stage2Project) -> None:
     if form13.no_protected_targets and not target_rows:
         target_rows = [["-", "해당 없음", "-"]]
     _fill_table_rows(list_table, _sanitize_rows(target_rows), header_rows=1)
+    if form13.summary:
+        from docx.oxml import OxmlElement
+        from docx.text.paragraph import Paragraph
+        note = OxmlElement("w:p")
+        list_table._tbl.addnext(note)
+        paragraph = Paragraph(note, list_table._parent)
+        paragraph.add_run("총괄영향범위 산출 근거: " + " / ".join(
+            f"{key}: {value}" for key, value in form13.summary.items() if _clean(value)
+        )).font.size = base.Pt(9)
 
-    event_rows = [
-        [
-            str(index),
-            (
-                f"[{_clean(row.get('사고시나리오명'))}] {_clean(row.get('개시사건'))}"
-                if len(form14.scenario_rows) > 1
-                else row.get("개시사건", "")
-            ),
-            row.get("기준빈도(/연)", ""),
-            row.get("개수", ""),
-            row.get("사고빈도(/연)", ""),
-        ]
-        for index, row in enumerate(form14.event_rows, 1)
-    ]
-    _fill_table_rows(freq_table, _sanitize_rows(event_rows), header_rows=1)
-
+    # 빈도표는 머리글 2행 + 고정 개시사건 10행 + 합계행. 시나리오마다 원형 표를 복제합니다.
+    previous = freq_table
+    for index, scenario in enumerate(form14.scenario_rows, 1):
+        target = freq_table if index == 1 else _clone_table_after(previous)
+        previous = target
+        name = _clean(scenario.get("사고시나리오명"))
+        _write_cell(target.cell(0, 0), f"{index}) ({name}) 사고시나리오")
+        events = {base._norm(event.get("개시사건", "")): event for event in form14.event_rows
+                  if _clean(event.get("사고시나리오명")) == name}
+        for row in target.rows[2:12]:
+            cells = _unique_cells(row)
+            event = events.get(base._norm(cells[1].text))
+            if event:
+                _write_cell(cells[3], event.get("개수", ""))
+                _write_cell(cells[4], event.get("사고빈도(/연)", ""))
+        _write_cell(_unique_cells(target.rows[12])[-1], scenario.get("시설빈도(/연)", ""))
     safety_lines = []
     for row in form14.scenario_rows:
         parts = [
@@ -1025,22 +1075,22 @@ def _fill_form13(tables, project: Stage2Project) -> None:
         safety_lines.append(" / ".join(part for part in parts if not part.endswith(": ")))
     _fill_text_block(safety_table, "\n".join(safety_lines), header_rows=1)
 
-    protected_lines = []
-    for row in form15.scenario_rows:
-        protected_lines.append(
-            " / ".join(
-                part for part in (
-                    f"시나리오: {_clean(row.get('사고시나리오 명'))}",
-                    f"갑종: {_clean(row.get('갑종 보호대상 수'))}",
-                    f"을종: {_clean(row.get('을종 보호대상 수'))}",
-                    f"환경수용체: {_clean(row.get('환경수용체 수'))}",
-                    f"장외거리: {_clean(row.get('사고시나리오 거리(장외)'))} m",
-                    f"주민수: {_clean(row.get('위험도 주민수'))}",
-                )
-                if not part.endswith(": ")
-            )
-        )
-    _fill_text_block(protected_summary_table, "\n".join(protected_lines), header_rows=1)
+    # 보호대상 명세: 체크 행과 머리글은 보존하고 흰색 데이터 행만 채웁니다.
+    categories = {str(row.get("보호대상 구분", "")) for row in form13.protected_targets}
+    has_workers = any(float(row.get("근로자수", 0) or 0) > 0 for row in form15.scenario_rows)
+    has_residents = any(float(row.get("거주민수", 0) or 0) > 0 for row in form15.scenario_rows)
+    choices = {"갑종 보호대상": "갑종" in categories, "을종 보호대상": "을종" in categories,
+               "환경수용체": "환경수용체" in categories, "근로자": has_workers, "거주민": has_residents}
+    cell = protected_summary_table.cell(1, 0)
+    text = cell.text
+    for label, checked in choices.items():
+        if checked:
+            text = re.sub(r"□(\s*)" + re.escape(label), r"☒\1" + label, text)
+    _write_cell(cell, text)
+    values = [[row.get("보호대상 종류", ""), row.get("보호대상 명칭", ""),
+               row.get("사업장 경계와 거리(m)", ""), row.get("인원수", "")]
+              for row in form13.protected_targets]
+    _fill_table_rows(protected_summary_table, _sanitize_rows(values), header_rows=3)
 
 def _fill_form15(tables, project: Stage2Project) -> None:
     list_table, total_table, score_table = tables
