@@ -1150,6 +1150,9 @@ def _cap_form1(doc: Document, project: Stage2Project) -> None:
 
 def _cap_form3(doc: Document, project: Stage2Project) -> None:
     level = project.cap_group or _text(project, "cap.business.writing_level", default=MISSING)
+    writer_parts = [_text(project, key, default="") for key in
+                    ("cap.business.writer_department", "cap.business.writer_name")]
+    writer = " ".join(part for part in writer_parts if part) or _text(project, "cap.business.writer_info", default=MISSING)
     rows = (
         ("사업장명", project.company_name or MISSING),
         ("단위공장명", _text(project, "cap.business.unit_plant_name", default=MISSING)),
@@ -1164,7 +1167,7 @@ def _cap_form3(doc: Document, project: Stage2Project) -> None:
         ("유사제도 심사결과 활용", _text(project, "cap.business.other_system_review", default=MISSING)),
         ("총괄영향범위내 주민여부", _text(project, "cap.business.residents_in_overall_range", default=MISSING)),
         ("최근 3년간 화학사고 발생 여부", _text(project, "cap.business.recent_accident", default=MISSING)),
-        ("화학사고예방관리계획서 작성자", _text(project, "cap.business.writer_info", default=MISSING)),
+        ("화학사고예방관리계획서 작성자", writer),
         ("담당자 연락처", _text(project, "cap.business.writer_contact", default=MISSING)),
         ("담당자 메일주소", _text(project, "cap.business.writer_email", default=MISSING)),
     )
@@ -1180,7 +1183,7 @@ def _cap_facility_overview(doc: Document, project: Stage2Project, *, detailed: b
             f"{_row_value(row, '물질명', '유해화학물질명')} / {_row_value(row, 'CAS 번호', '화학물질식별번호')} / {_row_value(row, '최대보유량', '최대보유량(kg)')}"
         )
     rows = (
-        ("단위공장 구성", _text(project, "cap.basic.unit_facility_overview", default=MISSING)),
+        ("단위공장 구성", _text(project, "cap.basic.unit_facility_overview" if detailed else "cap.basic.total_facility_overview", default=MISSING)),
         ("공정개요", _text(project, "process.description", default=MISSING)),
         ("장치·설비 종류 및 수량", _facility_counts(facilities)),
         ("입·출하 및 운반시설", _text(project, "cap.basic.loading_transport", default=MISSING)),

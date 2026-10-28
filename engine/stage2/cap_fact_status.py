@@ -268,6 +268,10 @@ def _site_row(project, item, slots) -> dict[str, Any]:
                 "fix": f"파일 값 ‘{_short(cell['value'])}’이 이미 저장된 값 ‘{_short(stored)}’과 달라요. 맞는 값을 확인해 주세요."}
     if cell["state"] == BLANK and elsewhere:
         return {"state": O, "value": stored, "source": "파일 아님: 직접 입력한 값", "fix": ""}
+    if cell["state"] == BLANK and record is not None and str(record.note).startswith("업로드 문서의 항목·값 자동 연결") \
+            and record.status in CONFIRMED_STATUSES and stored not in (None, "", []):
+        files = ", ".join(dict.fromkeys(ref.source_name for ref in record.evidence)) or "근거자료"
+        return {"state": O, "value": stored, "source": f"{files} (항목·값 표)", "fix": ""}
     if cell["state"] == BLANK:
         cell["fix"] = _fix_blank(item)
     return cell

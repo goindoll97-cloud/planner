@@ -140,27 +140,31 @@ def documents(project):
 
 
 def register_reference(project, name, content):
-    """서식 근거자료를 원본과 연결한다. 표준 사실로 추출하지 않았음을 명시한다."""
+    """근거자료의 명시적인 항목·값을 법정서식에 연결하고 원본 위치를 남긴다."""
+    from . import cap_evidence_links
     digest = sha256(content).hexdigest()
     data = graph(project)
     if any(d["sha256"] == digest for d in data["documents"]):
         return False
     tables, passages = read_document(name, content)
     has_text = any(p.get("text", "").strip() for p in passages)
+    links = cap_evidence_links.extract(tables, name, digest)
     problem = ("글자가 없는 스캔본입니다. OCR 후 원본을 확인해 다시 올려 주세요." if not tables and not has_text else
-               "원본은 보관했습니다. 이 문서의 값은 아직 법정 서식에 자동 연결되지 않았습니다.")
+               "파일의 문자·표는 읽었지만 연결할 수 있는 항목·값 표를 찾지 못했습니다." if not links else "")
     data["documents"].append({"name": name, "sha256": digest, "kind": "reference", "hint": "",
-                              "passages": passages, "fact_count": 0, "unmapped_columns": [], "tables": [],
-                              "rows_without_id": 0, "needs_reading": True,
+                              "passages": passages, "fact_count": len(links), "links": links,
+                              "unmapped_columns": [], "tables": [],
+                              "rows_without_id": 0, "needs_reading": not bool(links),
                               "needs_ocr": not tables and not has_text, "problem": problem})
     _store(project, data)
+    cap_evidence_links.synchronize(project, data["documents"])
     return True
 
 
 def _invalidate(project):
     for record in project.fields.values():
         if record.note.startswith("공통정보 연결") or record.status == "AI_DRAFT":
-            record.status = "HOLD"
+            record.status = "HOLD"          # 새 파일로 다시 반영·다시 쓸 초안
 
 
 # ---------------------------------------------------------------- 값 검증
@@ -916,11 +920,16 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
 
 def remove_document(project, sha):
     """문서와 그 문서에서 읽은 값을 지웁니다(다시 읽기 전에 씁니다). 담당자 직접 입력은 남깁니다."""
+    from . import cap_evidence_links
+
     data = graph(project)
+    removed = [d for d in data["documents"] if d["sha256"] == sha]
     data["documents"] = [d for d in data["documents"] if d["sha256"] != sha]
     data["facts"] = [f for f in data["facts"] if f["sha256"] != sha or f.get("method") == "manual"]
     _store(project, data)
     _invalidate(project)
+    if any(d.get("links") for d in removed):
+        cap_evidence_links.forget(project, data["documents"], removed)
 
 
 def replace_same_name(project, name, content):
@@ -1590,7 +1599,7 @@ def _refs(facts):
 
 def file_linked(record):
     """회사 파일에서 자동 기입한 작성자료인지(사람이 다른 곳에서 적은 값과 구분)."""
-    return record is not None and str(record.note).startswith("공통정보 연결")
+    return record is not None and str(record.note).startswith(("공통정보 연결", "업로드 문서의 항목·값 자동 연결"))
 
 
 F12_KEY = "psm.business.form12_details"           # 공정안전보고서 별지 제12호: 한 행짜리 표
