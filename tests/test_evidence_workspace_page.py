@@ -101,10 +101,19 @@ class EvidencePageTests(unittest.TestCase):
         self.assertTrue(keep.exists())
         self.assertIn("사업장 2곳을 모두 지웠어요", " ".join(_texts(at)))
 
+    def test_training_project_does_not_forge_a_legal_decision_or_address(self):
+        at = self.run_page(step=1)
+        next(b for b in at.button if b.label == "가상 1군 사업장으로 연습 시작").click().run()
+        self.assertFalse(at.exception)
+        p = load_project(at.session_state["_stage2_active_project_id"])
+        self.assertEqual(p.cap_group, "1군")
+        self.assertFalse(p.stage1_snapshot["legal_applicability_confirmed"])
+        self.assertIsNone(p.get_field("business.address"))
+
     def test_single_combined_practice_package_is_available(self):
         at = self.run_page(step=1)
         labels = " ".join(b.proto.label for b in at.get("download_button"))
-        self.assertIn("실제와 비슷한 큰 가상자료 받기", labels)
+        self.assertIn("정상 작성 연습자료 받기", labels)
         self.assertIn("전체 준비자료 목록 한글(HWP)", labels)
 
     def test_opens_on_questions_step_with_plain_language_only(self):

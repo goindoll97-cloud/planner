@@ -56,11 +56,22 @@ def _category(value: object) -> int | None:
 
 def _facility_rows(project: Stage2Project) -> list[dict[str, Any]]:
     record = project.get_field(WORKSPACE_FACILITY_KEY)
-    if record is None or record.status not in CONFIRMED_STATUSES or not isinstance(record.value, list):
+    if record is None:
+        # 새 사업장도 파일 접수의 설비를 사용합니다. 작성대를 먼저 열거나 수동 승인할 필요가 없습니다.
+        from . import cap_workspace as ws
+        inventory = project.get_field("inventory.facilities")
+        if inventory is None or inventory.status not in CONFIRMED_STATUSES:
+            return []
+        source = ws.facility_editor_rows(project)
+        for row, holding in zip(source, ws.compute_holdings(project, source)):
+            row["최대보유량(kg)"] = "" if holding.ton is None or holding.excluded else holding.ton * 1000
+    elif record.status in CONFIRMED_STATUSES and isinstance(record.value, list):
+        source = record.value
+    else:
         return []
     specs = equipment_specs(project)
     rows = []
-    for row in record.value:
+    for row in source:
         if isinstance(row, Mapping) and _clean(row.get("시설유형")) not in NON_EQUIPMENT_TYPES:
             merged = dict(row)
             merged.update({k: v for k, v in specs.get(spec_key(row), {}).items() if _clean(v)})

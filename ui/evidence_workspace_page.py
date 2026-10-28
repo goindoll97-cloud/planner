@@ -11,7 +11,7 @@ import re
 
 import streamlit as st
 
-from engine.stage2 import demo_company, scenario_triage, cap_intake_guide
+from engine.stage2 import demo_authoring_company, scenario_triage, cap_intake_guide
 from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
@@ -175,6 +175,14 @@ def _project_header():
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
+            if st.form_submit_button("가상 1군 사업장으로 연습 시작", help="주소 없이 정상 작성 연습자료를 쓰는 전용 사업장을 만듭니다. 1군은 연습 설정이며 법적 대상 판정이 아닙니다."):
+                project = create_direct_cap_project(demo_authoring_company.COMPANY, cap_group="1군")
+                project.notes.append("주소·도면 제외 가상 작성 연습: 1군은 연습 설정이며 실제 법적 대상 판정이 아님")
+                save_project(project)
+                st.session_state["_stage2_active_project_id"] = project.project_id
+                st.session_state["evidence_goto"] = 1
+                st.session_state.setdefault("evidence_notes", []).append("가상 1군 연습 사업장을 만들었어요. 연습자료를 내려받아 01~15 파일을 올리세요. 실제 법적 대상 판정은 수행하지 않았어요.")
+                st.rerun()
     if not projects:
         st.info("먼저 사업장을 만들어 주세요. 이름과 주소만 있으면 돼요.")
         st.stop()
@@ -321,11 +329,11 @@ def _step_upload(project, found) -> None:
         _next_button(2, pid, "다음: 파일별 보완 요청 →")
     st.divider()
     st.markdown("**연습용 가상 회사 자료**")
-    st.download_button("실제와 비슷한 큰 가상자료 받기", demo_company.combined_demo_zip(),
-                       file_name="synthetic_company_evidence_large_combined.zip", mime="application/zip", key="demo_combined")
-    st.caption("제품·설비 목록과 운전조건, HWPX 사양서, 스캔본, 두 공장의 중복 설비번호, 혼합물 성분, "
-               "구버전·개정 자료의 충돌을 한 묶음에 넣었습니다. ZIP의 01~12번 회사자료를 한 번에 올리고 "
-               "README와 answer_key.json으로 오류·누락을 확인하세요. 실제 주소·주변시설 자료는 포함하지 않았습니다.")
+    st.download_button("정상 작성 연습자료 받기", demo_authoring_company.archive(),
+                       file_name=demo_authoring_company.ZIP_NAME, mime="application/zip", key="demo_combined")
+    st.caption("주소·도면·이미지 없이 XLSX·CSV·DOCX·HWPX·HWP·텍스트 PDF·TXT를 섞은 가상 회사 자료입니다. "
+               "ZIP을 풀어 회사자료의 01~15 파일을 올리세요. 소통·공조·대피계획은 단답형 사실로 작성합니다. "
+               "승인 규정 DB·주소·현장 확인이 필요한 항목은 보완으로 남습니다.")
 
 
 def _reading_report(project, doc, facts, names, reasons) -> None:
