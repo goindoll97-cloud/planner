@@ -92,9 +92,7 @@ class PanelRenderTests(unittest.TestCase):
             "with patch('engine.stage2.storage.save_project'):\n"
             "    result = nw.generate(project, FakeClient())\n"
             "nw.adopt(project, result.generated[0].requirement_key)\n"
-            "export.acknowledge_holds(project)\n"
-            "with patch('ui.report_export_panel.save_project'):\n"
-            "    report_export_panel.render(project, 'PSM')\n"
+            "report_export_panel.render(project, 'PSM')\n"
         ) % str(Path(__file__).resolve().parents[1])
         at = AppTest.from_string(code, default_timeout=120).run()
         self.assertFalse(at.exception)

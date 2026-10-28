@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from . import report_export as _shared
 from .report_export import (  # noqa: F401  (호환용 재노출)
-    DOCX_MIME, STATUS_LABELS, ExportState, Outputs, acknowledge_holds, confirm, downloads_allowed,
+    DOCX_MIME, STATUS_LABELS, ExportState, Outputs,
 )
 from .project import Stage2Project
 
@@ -15,5 +15,5 @@ def evaluate(project: Stage2Project) -> ExportState:
     return _shared.evaluate(project, SYSTEM)
 
 
-def build_outputs(project: Stage2Project, *, final_ready: bool) -> Outputs:
-    return _shared.build_outputs(project, final_ready=final_ready, system=SYSTEM)
+def build_outputs(project: Stage2Project) -> Outputs:
+    return _shared.build_outputs(project, system=SYSTEM)

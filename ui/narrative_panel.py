@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-"""서술형 항목 화면(사실 입력 + 예시 고르기 + AI 초안 확인). 화학사고예방관리계획서·공정안전보고서 공용.
+"""로컬 AI 설정과 AI 초안 진행 표시 부품.
 
-위젯 키는 f"{prefix}_..." 형태다. 공정안전보고서는 prefix "psm", 화학사고예방관리계획서는 "cap"을 쓴다.
+예전에는 서술형 사실을 화면에서 적는 화면(render)이 여기 있었지만, 이제 사실은 회사 파일에서 읽으므로 없앴습니다
+(engine/stage2/cap_fact_drafting.py가 파일 사실로 초안을 씀). 로컬 AI 설정(_local_config)과 진행 표시, 예전 AI 초안 확인 부품만 남깁니다.
+위젯 키는 f"{prefix}_..." 형태다.
 """
 
 import streamlit as st
 
 from engine.stage2 import narrative_examples as examples
 from engine.stage2 import psm_narrative_workspace as narrative
-from engine.stage2 import psm_table_workspace as tables
 from engine.stage2.storage import save_project
-from ui.example_picker import text_with_examples
-from ui.table_grid import grid
 
 
 def _local_config(prefix: str):
@@ -125,60 +124,3 @@ def _drafts(project, profile, prefix: str) -> None:
                         st.rerun()
                     except ValueError as exc:
                         st.error(str(exc))
-
-
-def render(project, profile, table_forms, prefix: str, defaults: dict | None = None, decision_facts=None) -> None:
-    """profile: PSM_PROFILE 또는 CAP_PROFILE. table_forms: 이 문서에서 사실로 받는 표 서식 키 목록."""
-    defaults = defaults or {}
-    st.caption("글로 쓰는 항목은 AI가 초안을 만듭니다. 사람은 프로그램이 알 수 없는 사실만 적고, 완성된 글을 한 번 확인합니다.")
-    st.markdown("### 1. 먼저 적을 사실")
-    values = {}
-    for fact in profile.basic_facts:
-        current = narrative.facts_value(project, fact) or defaults.get(fact.key, "")
-        values[fact.key] = text_with_examples(
-            fact.label, f"{prefix}_fact_{fact.key}", value=current, help_text=fact.help, long=fact.long,
-            choices=examples.choices(fact.key), template=examples.template(fact.key), checks=examples.checks(fact.key))
-    if st.button("사실 저장", type="primary", key=f"{prefix}_fact_save"):
-        problems = []
-        for fact in profile.basic_facts:
-            try:
-                narrative.save_fact(project, fact, values[fact.key])
-            except narrative.ExampleMarkLeft as exc:
-                problems.append(str(exc))
-        save_project(project)
-        if problems:
-            for problem in problems:
-                st.error(problem)
-        else:
-            st.rerun()
-    missing = narrative.missing_basics(project, profile)
-    if missing:
-        st.info("아직 적지 않은 사실: " + ", ".join(missing))
-    as_is = narrative.chosen_as_is(project, profile)
-    if as_is:
-        st.warning("예시 문구를 고치지 않고 그대로 저장한 항목이 있습니다. 우리 회사 실제와 같은지 확인하세요: " + ", ".join(as_is))
-
-    st.markdown("### 2. 회사가 정한 사항")
-    for fact in (decision_facts if decision_facts is not None else profile.decision_facts):
-        with st.expander(fact.label):
-            st.caption(fact.help)
-            current = narrative.facts_value(project, fact)
-            entered = {name: text_with_examples(label, f"{prefix}_fact_{fact.key}_{name}", value=current.get(name, ""),
-                                                help_text=help_text, choices=examples.choices(fact.key, name))
-                       for name, label, help_text in fact.fields}
-            if st.button("저장", key=f"{prefix}_fact_save_{fact.key}"):
-                try:
-                    narrative.save_fact(project, fact, entered)
-                except narrative.ExampleMarkLeft as exc:
-                    st.error(str(exc))
-                else:
-                    save_project(project)
-                    st.rerun()
-
-    st.markdown("### 3. 연락체계·장비 등 표로 적는 사실")
-    for form_no in table_forms:
-        with st.expander(tables.SPECS[form_no].title):
-            grid(form_no)(project)
-
-    st.markdown("### 4. AI가 만든 글 확인")
-    _drafts(project, profile, prefix)

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import re
 import unittest
-from unittest.mock import patch
 
 from engine.stage2 import narrative_examples as ex
 from engine.stage2 import psm_narrative_workspace as nw
-from tests.test_psm_workspace_page import _project, _run
+from tests.test_psm_workspace_page import _project
 
 
 class ExampleDataTests(unittest.TestCase):
@@ -82,51 +81,6 @@ class MarkTests(unittest.TestCase):
         nw.save_fact(project, fact, ex.strip_mark(ex.labelled(ex.choices(fact.key)[0])))
         self.assertEqual(nw.chosen_as_is(project), [fact.label])
         self.assertTrue(ex.is_example(fact.key, "", ex.labelled(ex.choices(fact.key)[0])))
-
-
-class ScreenTests(unittest.TestCase):
-    def _facts_screen(self, interact=None):
-        from engine.stage2.local_llm import LocalLLMProbe
-
-        down = LocalLLMProbe(False, "ollama", "http://127.0.0.1:11434", message="연결되지 않았습니다.")
-        project = _project()
-        with patch("engine.stage2.local_llm.probe_local_llm_runtime", return_value=down):
-            return project, _run(project, "facts", interact)
-
-    def test_choosing_an_example_fills_the_box_without_saving(self):
-        sample = ex.choices("process.description")[0]
-
-        def click(at):
-            at.radio(key="psm_fact_process.description__pick").set_value(ex.labelled(sample)).run()
-            at.button(key="psm_fact_process.description__use").click().run()
-        project, at = self._facts_screen(click)
-        self.assertFalse(at.exception)
-        self.assertEqual(at.text_area(key="psm_fact_process.description").value, ex.labelled(sample))  # 앞에 (예시) 표시
-        self.assertIsNone(project.get_field("process.description"))  # 저장은 사용자가 눌러야 한다
-
-    def test_example_cards_carry_the_mark_and_saving_with_it_shows_an_error(self):
-        sample = ex.choices("business.shift_pattern")[0]
-
-        def click_and_save(at):
-            at.radio(key="psm_fact_business.shift_pattern__pick").set_value(ex.labelled(sample)).run()
-            at.button(key="psm_fact_business.shift_pattern__use").click().run()
-            at.button(key="psm_fact_save").click().run()
-        project, at = self._facts_screen(click_and_save)
-        self.assertFalse(at.exception)
-        self.assertTrue(all("(예시)" in o for o in at.radio(key="psm_fact_business.shift_pattern__pick").options))  # 예시 항목에 표시
-        self.assertTrue(any("'(예시)' 표시가 남아 있습니다" in e.value for e in at.error))
-        self.assertIsNone(project.get_field("business.shift_pattern"))
-
-    def test_the_screen_shows_the_template_and_the_notice(self):
-        _project_, at = self._facts_screen()
-        self.assertFalse(at.exception)
-        self.assertTrue(any("문장 틀" in c.value for c in at.caption))
-        self.assertTrue(any("예시입니다" in c.value for c in at.caption))
-        self.assertTrue(any("확인할 점" in c.value for c in at.caption))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class HelpTextMarkTests(unittest.TestCase):

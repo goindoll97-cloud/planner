@@ -1,0 +1,134 @@
+{
+ "schema_version": "cap-docx-cells-v1",
+ "title": "화학사고예방관리계획서 규정서식 칸 연결",
+ "about": "사실 카탈로그의 사실(또는 그 사실로 계산한 값)이 규정서식 DOCX의 어느 표·칸에 들어가는지 적은 파일입니다. engine/stage2/cap_catalog_docx.py가 이 파일 순서대로 서식을 채웁니다. delegate가 true인 별지와, fallback_when_empty의 행이 하나도 없을 때는 예전 렌더러(cap_baseline_docx.py)가 그 별지를 채웁니다. table은 그 별지 안의 몇 번째 표인지(0부터)입니다.",
+ "forms": [
+  {"form": 1, "fallback_when_empty": "form1.facility_rows", "sections": [
+   {"table": 0, "type": "rows", "header_rows": 1, "source": "form1.facility_rows", "columns": [
+    {"key": "단위공장", "fact": "facility.unit_plant"},
+    {"key": "유해화학물질", "fact": "facility.product"},
+    {"key": "CAS No.", "fact": "material.cas"},
+    {"key": "함량(%)", "fact": "material.concentration"},
+    {"key": "구분기호", "fact": "facility.id"},
+    {"key": "취급시설", "fact": "facility.name"},
+    {"key": "설계용량(m3)", "fact": "facility.capacity"},
+    {"key": "취급량(ton)", "fact": "computed.facility_handling_ton"}]},
+   {"table": 1, "type": "rows", "header_rows": 2, "source": "form1.chemical_rows", "columns": [
+    {"key": "물질명", "fact": "material.name"},
+    {"key": "CAS No.", "fact": "material.cas"},
+    {"key": "물질구분", "fact": "legal.substance_category"},
+    {"key": "사업장 내 최대보유량(ton)", "fact": "computed.material_max_holding_ton"},
+    {"key": "작성수준", "fact": "legal.writing_level", "or": "cap_group"},
+    {"key": "하위규정수량(ton)", "fact": "legal.lower_threshold"},
+    {"key": "상위규정수량(ton)", "fact": "legal.upper_threshold"}]},
+   {"table": 2, "type": "cell", "row": 0, "cell": 1, "value": "cap_group", "fact": "legal.writing_level"}
+  ]},
+  {"form": 2, "delegate": true},
+  {"form": 3, "sections": [
+   {"table": 0, "type": "labels", "start": 1, "cells": [
+    {"label": "사업장명", "value": "company_name", "fact": "site.company_name"},
+    {"label": "단위공장명", "fact": "site.unit_plant_name", "default": "site_name"},
+    {"label": "사업자 등록번호", "fact": "site.registration_no"},
+    {"label": "대표자", "fact": "site.representative"},
+    {"label": "우편번호/주소", "fact": "site.address"},
+    {"label": "산업단지", "fact": "site.industrial_complex"},
+    {"label": "대표전화", "fact": "site.contact"},
+    {"label": "제출구분", "facts": ["site.submission_type", "site.submission_reason"], "render": "submission_type"},
+    {"label": "작성수준", "facts": ["legal.writing_level"], "render": "writing_level"},
+    {"label": "공동비상대응계획 수립 여부", "facts": ["site.joint_emergency_plan"], "render": "joint_emergency"},
+    {"label": "유사제도 심사결과 활용", "facts": ["site.other_system_review"], "render": "other_system_review"},
+    {"label": "총괄영향범위내 주민여부", "facts": ["site.residents_in_overall_range"], "render": "residents"},
+    {"label": "최근 3년간 화학사고 발생 여부", "facts": ["site.recent_accident"], "render": "yes_no"},
+    {"label": "화학사고예방관리계획서 작성자", "facts": ["site.writer_department", "site.writer_name"], "render": "writer"},
+    {"label": "담당자 연락처", "fact": "site.writer_contact"},
+    {"label": "담당자 메일주소", "fact": "site.writer_email"}]}
+  ]},
+  {"form": 4, "sections": [
+   {"table": 0, "type": "labels", "start": 1, "cells": [
+    {"label": "단위공장 구성", "fact": "narrative.total_facility_overview"},
+    {"label": "공정개요", "fact": "narrative.process_description"}]},
+   {"table": 0, "type": "call", "name": "facility_type_choices", "facts": ["computed.facility_type_counts"]},
+   {"table": 0, "type": "call", "name": "loading_choices", "facts": ["site.loading_facility_count", "computed.lorry_count"]},
+   {"table": 0, "type": "call", "name": "facility_chemicals", "facts": ["material.name", "material.cas", "computed.material_max_holding_ton"]}
+  ]},
+  {"form": 5, "unit_plant": true, "sections": [
+   {"table": 0, "type": "labels", "start": 1, "cells": [
+    {"label": "단위공장 구성", "fact": "narrative.unit_facility_overview"},
+    {"label": "공정개요", "fact": "narrative.process_description"}]},
+   {"table": 0, "type": "call", "name": "facility_type_choices", "facts": ["computed.facility_type_counts"]},
+   {"table": 0, "type": "call", "name": "loading_choices", "facts": ["site.loading_facility_count", "computed.lorry_count"]},
+   {"table": 0, "type": "call", "name": "facility_chemicals", "facts": ["material.name", "material.cas", "computed.material_max_holding_ton"]}
+  ]},
+  {"form": 6, "sections": [
+   {"table": 0, "type": "rows", "header_rows": 2, "source": "form6.rows", "columns": [
+    {"index": true},
+    {"keys": ["물질명", "화학물질명", "유해화학물질명", "물질명(알면 입력)", "제품명", "상품명"], "fact": "material.name"},
+    {"keys": ["물질구분"], "fact": "legal.substance_category"},
+    {"keys": ["CAS 번호", "CAS No.", "CAS No", "CAS", "화학물질식별번호(CAS 번호)", "화학물질식별번호"], "fact": "material.cas"},
+    {"keys": ["고유번호"], "fact": "legal.unique_number"},
+    {"keys": ["물리적 상태", "물질상태"], "fact": "material.substance_state"},
+    {"keys": ["함량(%)", "함량"], "fact": "material.concentration"},
+    {"keys": ["비중"], "fact": "material.density"},
+    {"keys": ["폭발한계 하한", "폭발하한"], "fact": "material.lel"},
+    {"keys": ["폭발한계 상한", "폭발상한"], "fact": "material.uel"},
+    {"keys": ["독성구분 항목", "독성구분-항목"], "fact": "material.toxicity_route"},
+    {"keys": ["독성구분", "독성구분-구분"], "fact": "material.toxicity_category"},
+    {"keys": ["위험노출수준", "ERPG", "AEGL", "PAC", "IDLH"], "fact": "material.exposure_level"},
+    {"keys": ["허용농도값", "TWA", "노출기준"], "fact": "material.twa"},
+    {"keys": ["증기압", "증기압(20℃, mmHg)"], "fact": "material.vapor_pressure"},
+    {"keys": ["부식성", "부식성(유, 무)"], "fact": "material.corrosive"}]}
+  ]},
+  {"form": 7, "delegate": true},
+  {"form": 8, "delegate": true},
+  {"form": 9, "fallback_when_empty": "form9.rows", "sections": [
+   {"table": 0, "type": "rows", "header_rows": 2, "source": "form9.rows", "columns": [
+    {"key": "연번"},
+    {"key": "구분기호", "fact": "facility.id"},
+    {"key": "장치·설비명", "fact": "facility.name"},
+    {"key": "취급물질", "fact": "facility.product"},
+    {"key": "CAS No.", "fact": "material.cas"},
+    {"key": "물질상태", "fact": "material.substance_state"},
+    {"key": "함량(%)", "fact": "material.concentration"},
+    {"key": "연결구 크기(mm)", "fact": "facility.connection_size"},
+    {"key": "압력(MPa)-설계", "fact": "facility.design_pressure"},
+    {"key": "압력(MPa)-운전", "fact": "facility.pressure"},
+    {"key": "온도(℃)-설계", "fact": "facility.design_temperature"},
+    {"key": "온도(℃)-운전", "fact": "facility.temperature"},
+    {"key": "설계용량(m3)", "fact": "facility.capacity"},
+    {"key": "취급량(ton)", "fact": "computed.facility_handling_ton"},
+    {"key": "비고", "fact": "facility.pid_number"}]}
+  ]},
+  {"form": 10, "fallback_when_empty": "form10.rows", "sections": [
+   {"table": 0, "type": "rows", "header_rows": 2, "source": "form10.rows", "columns": [
+    {"key": "연번"},
+    {"key": "설비형태", "fact": "facility.dike_form"},
+    {"key": "구분기호", "fact": "facility.id"},
+    {"key": "장치·설비명", "fact": "facility.name"},
+    {"key": "설계용량", "fact": "facility.capacity"},
+    {"key": "설비종류", "fact": "facility.dike_type"},
+    {"key": "필요용량", "fact": "computed.dike_required_volume"},
+    {"key": "유효용량", "fact": "computed.dike_effective_volume"},
+    {"key": "검토결과", "fact": "computed.dike_review"},
+    {"key": "비고"}]}
+  ]},
+  {"form": 11, "fallback_when_empty": "form11.rows", "sections": [
+   {"table": 0, "type": "rows", "header_rows": 1, "source": "form11.rows", "columns": [
+    {"key": "연번"},
+    {"key": "구분기호", "fact": "detector.id"},
+    {"key": "감지대상", "fact": "detector.target"},
+    {"key": "설치위치", "fact": "detector.location"},
+    {"key": "작동시간", "fact": "detector.response_time"},
+    {"key": "측정방식", "fact": "detector.method"},
+    {"key": "경보설정값", "fact": "detector.alarm_setting"},
+    {"key": "경보기 설치장소", "fact": "detector.alarm_location"},
+    {"key": "연동여부", "fact": "detector.interlock"},
+    {"key": "정밀도", "fact": "detector.accuracy"},
+    {"key": "유지관리", "fact": "detector.maintenance"},
+    {"key": "비고"}]}
+  ]},
+  {"form": 12, "delegate": true},
+  {"form": 13, "delegate": true},
+  {"form": 15, "delegate": true},
+  {"form": 16, "delegate": true}
+ ]
+}

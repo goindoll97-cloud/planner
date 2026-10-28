@@ -1,8 +1,7 @@
 """‘계획서 끝까지 연습 자료’(demo_full_company)로 안내서대로 처음부터 내려받기까지 가 봅니다.
 
 사람이 문서를 보고 화면에 적는 일을 엔진 함수로 흉내 냅니다. 이 환경에는 법령 기준표(별표 1~4) 승인 DB가 없으므로
-- 사고시나리오 대상 판정(별지 제12호 제안 목록)은 승인 DB가 있어야 나옵니다. 여기서는 그 다음 단계부터 보려고
-  시나리오 목록을 직접 저장합니다(화면에서는 제안된 목록에 같은 값을 넣고 저장하는 단계).
+- 사고시나리오는 07 조사표·08 검토자료 파일을 올리면 프로그램이 규정수량(내장 별표 2 수량)으로 대상 설비를 정하고 계산합니다.
 - 끝에 남는 것은 승인 DB가 필요한 항목과 검토 안내뿐이어야 합니다.
 """
 import json
@@ -25,7 +24,7 @@ from engine.stage2 import (cap_form2_workspace as f2, cap_form3_workspace as f3,
                            cap_impact_workspace as iw, cap_narrative_workspace as nw, cap_scenario_workspace as sc,
                            cap_workspace as ws, demo_full_company as d, evidence_workspace as ew,
                            psm_narrative_workspace as pn, report_export as rx, cap_surroundings as survey,
-                           cap_site_lookup as kakao, cap_vworld_lookup as vworld)
+                           cap_site_lookup as kakao, cap_vworld_lookup as vworld, scenario_pipeline as sp)
 from engine.stage2.cap_baseline_docx import build_cap_baseline_draft
 from engine.stage2.completeness import evaluate_project_completeness
 from engine.stage2.direct_template import create_direct_cap_project
@@ -108,13 +107,8 @@ def walk(address=""):
     reps = [pr for pr in D["products"] if pr["code"] in ("P-01", "P-03")]
     f7.save_rows(p, [{**f7.draft_row(p, pr["cas"], pr["name"], pr["hazard"]["선정 사유"]), **pr["hazard"],
                       "SDS 파일명": pr["props"]["SDS 파일명"], "SDS 개정일": pr["props"]["SDS 개정일"]} for pr in reps])
-    if address:                                                                       # 별지 제8호
-        form8_from_map(p)
-    else:
-        imported, _ = f8.import_company_rows(D["surroundings"], [])
-        f8.save(p, imported, no_target=False, scope_reviewed=True)
-        f8.save_review(p, {key: True for key, _ in f8.REVIEW_ITEMS}, D["survey"]["source"], D["survey"]["method"],
-                       D["survey"]["map_numbers"], [_ref("07_주변보호대상_지도.png")])
+    if address:                                                                       # 별지 제8호(주소판: 지도 조회)
+        form8_from_map(p)                                                             # 가상판은 07 조사표 파일에서 읽음
     specs = {f["id"]: f["spec"] for f in D["facilities"]}                             # 별지 제9·10·11호
     f9.save_specs(p, [{**r, **specs.get(r["구분기호"], {})} for r in f9.rows(p)])
     dikes = {f["id"]: f["dike"] for f in D["facilities"]}
@@ -132,19 +126,10 @@ def walk(address=""):
 
 
 def scenarios(p):
-    names = {pr["code"]: pr["name"] for pr in D["products"]}
-    rows = []
-    for f in D["facilities"]:
-        kind = sc.FIRE if f["product"] == "P-01" else sc.TOXIC
-        rows.append({"단위공장": C["단위공장명"], "사고시나리오명": f"{f['id']} {names[f['product']]} {'화재' if kind == sc.FIRE else '누출'}",
-                     "대상 설비번호": f["id"], "유해화학물질명": names[f["product"]], "사고유형": kind,
-                     "취급량(kg)": f["inventory_kg"], **D["scenario_inputs"][f["id"]], "선정 근거": "연습"})
-    sc.save_scenarios(p, rows)
-    f14.save(p, [{**r, **D["frequency"][r["사고시나리오명"].split()[0]]} for r in f14.rows(p)])
-    impacts = iw.evaluate(p)
-    report = iw.report_docx(p, impacts)
-    ref = EvidenceRef(source_type="PROGRAM_OUTPUT", source_name="영향범위_분석_근거서.docx", sha256=sha256(report).hexdigest())
-    return impacts, iw.apply_to_forms(p, impacts, evidence_refs=[ref])
+    """화면이 하는 일: 올린 파일로 시나리오를 다시 계산합니다(사람은 고르지 않음)."""
+    outcome = sp.refresh(p)
+    rows = p.get_field(iw.IMPACT_TABLE_KEY).value
+    return outcome.impacts, {"scenarios": len(rows), "problems": [(x.where, x.what) for x in outcome.problems]}
 
 
 class FullDemoTests(unittest.TestCase):
@@ -187,6 +172,9 @@ class FullDemoTests(unittest.TestCase):
         self.assertEqual(len(self.impacts), 4)
         self.assertTrue(all(i.radius_m and not i.problems for i in self.impacts), [(i.name, i.problems) for i in self.impacts])
         self.assertGreaterEqual(self.applied["scenarios"], 1)
+        self.assertEqual(self.applied["problems"], [])
+        kinds = {s["대상 설비번호"]: s["사고유형"] for s in sc.saved_scenarios(self.p)}
+        self.assertEqual(kinds, {"TK-01": sc.FIRE, "TK-02": sc.TOXIC, "RX-01": sc.FIRE, "CY-01": sc.TOXIC})   # 08 파일의 선정
 
     def test_only_legal_db_items_remain(self):
         state = rx.evaluate(self.p, "CAP")
@@ -197,7 +185,7 @@ class FullDemoTests(unittest.TestCase):
     def test_docx_contains_the_company_values(self):
         doc = Document(BytesIO(build_cap_baseline_draft(self.p)))
         text = "\n".join(c.text for t in doc.tables for row in t.rows for c in row.cells)
-        for value in (C["representative"], C["registration_no"], "GD-01", "가상 아파트 단지", "TK-01", "CY-01 가상 액화암모니아 누출"):
+        for value in (C["representative"], C["registration_no"], "GD-01", "가상 아파트 단지", "TK-01", "CY-01 가상 액화암모니아 독성 누출"):
             self.assertIn(value, text)
 
     def test_evidence_survives_resave(self):
@@ -228,7 +216,7 @@ class RealAddressTests(unittest.TestCase):
         self.assertEqual(survey_sheet.max_row, 1)                       # 빈 양식(머리글만)
         with ZipFile(BytesIO(d.full_demo_zip(REAL))) as z:
             self.assertIsNone(json.loads(z.read("answer_key.json"))["surroundings"])
-        for words in (REAL, "주소로 주변자료 조사", "VWORLD_API_KEY", "사업장 경계 저장"):
+        for words in (REAL, "주소로 찾기", "VWORLD_API_KEY", "이 경계로 확인", "주변 보호대상 조사표 내려받기"):
             self.assertIn(words, guide)
         self.assertNotIn("가상 초등학교", guide)
         self.assertEqual(d.company(REAL)["industrial_complex"], "해당 없음")

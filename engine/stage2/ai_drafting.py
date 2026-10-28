@@ -720,7 +720,8 @@ def ai_written_items(project: Stage2Project, system: str) -> list[dict[str, Any]
             "requirement_key": requirement_key,
             "label": spec.label,
             "section": spec.section,
-            "state": "담당자 확인 완료" if approved else "확인 전 초안(문서에 반영되지 않음)",
+            "state": "담당자 확인 완료" if approved else (
+                "확인 전 초안(초안 문서에 ‘AI 초안’으로 표시)" if system == "CAP" else "확인 전 초안(문서에 반영되지 않음)"),
             "approved": approved,
             "model": str(value.get("model") or ""),
             "generated_at": str(value.get("generated_at") or ""),

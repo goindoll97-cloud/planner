@@ -108,10 +108,11 @@ class Form3SuggestionTests(unittest.TestCase):
         f3.save_fields(project, {"representative": "박대표"})
         self.assertEqual(f3.suggestion(project, self._item("representative")), ("", ""))
 
-    def test_pages_use_the_helpers(self):
-        page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
-        self.assertIn("chem_ws.apply_candidates", (ROOT / "ui/cap_kosha_panel.py").read_text(encoding="utf-8"))
-        self.assertIn("f3.suggestion", (ROOT / "ui/cap_form3_view.py").read_text(encoding="utf-8"))
+    def test_kosha_candidates_stay_an_engine_helper_without_a_writing_screen(self):
+        # 물성 칸을 화면에서 채우던 KOSHA 조회 패널은 서식 입력 화면과 함께 없앴습니다(회사 SDS 파일에서 읽음).
+        from engine.stage2 import cap_chemical_workspace as chem_ws
+        self.assertTrue(callable(chem_ws.apply_candidates))
+        self.assertFalse((ROOT / "ui/cap_kosha_panel.py").exists())
 
 
 if __name__ == "__main__":

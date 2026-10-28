@@ -45,28 +45,32 @@ class PsmWorkspacePageTests(unittest.TestCase):
             self.assertFalse(at.exception, key)
             self.assertTrue(any("가져왔습니다" in s.value for s in at.success), key)
 
-    def test_form19_2_shows_results_after_a_scenario_is_chosen(self):
+    def test_form19_2_shows_the_saved_scenario_results_read_only(self):
+        from engine.stage2 import psm_form19_2_workspace as f19
+
         project = _project()
-
-        def choose(at):
-            at.selectbox(key="psm19_kind_0").select("최악의사고시나리오").run()
-            at.text_input(key="psm19_temp").input("30").run()
-            at.text_input(key="psm19_humidity").input("70").run()
-
-        at = _run(project, "19-2", choose)
+        at = _run(project, "19-2")
         self.assertFalse(at.exception)
-        self.assertEqual(len(at.dataframe), 1)
-        frame = at.dataframe[0].value
-        self.assertIn("독성-ERPG 2", list(frame["항목"]))
+        self.assertTrue(any("아직 계산된" in i.value for i in at.info))
+        results = f19.build(project, {LIQUID["사고시나리오명"]: f19.WORST}, {"대기온도(℃)": "30", "습도(%)": "70"})
+        f19.save(project, results)
+        at = _run(project, "19-2")
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.text_input) + len(at.selectbox), 2)          # 프로젝트·서식 고르기뿐
+        self.assertIn("독성-ERPG 2", list(at.dataframe[0].value["항목"]))
 
-    def test_form12_admin_and_files_render_without_errors(self):
+    def test_every_view_renders_without_input_widgets(self):
         project = _project()
-        for key in ("12", "admin", "files"):
+        for key in ("status", "12", "14", "17-2", "17-5", "admin", "narrative", "files"):
             at = _run(project, key)
             self.assertFalse(at.exception, key)
+            if key not in ("files",):
+                self.assertEqual(len(at.text_input), 0, key)          # 서식을 화면에서 쓰지 않음
+                self.assertEqual(len(at.get("data_editor") if hasattr(at, "get") else []), 0, key)
         at = _run(project, "12")
-        self.assertTrue(any("가져왔습니다" in s.value for s in at.success))
         self.assertTrue(any("비어 있는 칸" in i.value for i in at.info))
+        at = _run(project, "status")
+        self.assertIn("서식", at.dataframe[0].value.columns)
 
     def test_navigation_always_offers_the_psm_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")

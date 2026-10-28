@@ -70,9 +70,6 @@ class CAPForm4WorkspaceTests(unittest.TestCase):
         project = _project()
         self.assertEqual(f4.missing(project), ["단위공장 구성", "공정개요"])
 
-    def test_page_offers_form4(self):
-        page = (Path(__file__).resolve().parents[1] / "ui/cap_common.py").read_text(encoding="utf-8")
-        self.assertIn(4, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
 
 
 if __name__ == "__main__":

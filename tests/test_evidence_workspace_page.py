@@ -28,7 +28,25 @@ try:
 finally:
     st.page_link = _saved
 '''
+def _site_doc(rows):
+    from docx import Document
+    doc = Document()
+    table = doc.add_table(rows=0, cols=2)
+    for label, value in rows:
+        cells = table.add_row().cells
+        cells[0].text, cells[1].text = label, value
+    out = BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
 DEVELOPER_TEXT = re.compile(r"[0-9a-f]{40,}|facility:|material:|SHA256|\bCSV 행\b")
+
+
+def _correction_table(at):
+    """② 화면의 ‘파일별 수정 요청’ 표를 글자 하나로."""
+    frame = next(d.value for d in at.dataframe if "수정 요청" in d.value.columns)
+    return " ".join(" | ".join(str(v) for v in row) for row in frame.itertuples(index=False))
 
 
 def _texts(at):
@@ -94,10 +112,64 @@ class EvidencePageTests(unittest.TestCase):
         self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 2)
         text = " ".join(_texts(at))
         self.assertIn("자료 4개를 읽었어요", text)
-        self.assertIn("가상 저장탱크 (TK-01)의 용량이 자료마다 달라요", text)
-        self.assertIn("가상 반응기 (RX-01)의 최대보유량 칸에 ‘=1500+500’라고 적혀 있어요", text)
-        self.assertIn("엑셀 계산식만 있고 계산 결과가 파일에 저장돼 있지 않아요", text)   # 추측이 아니라 파일에서 확인한 사실
+        self.assertNotIn("직접 확인·입력", text)                 # 화면에서 값을 대신 고르거나 적는 길은 두지 않음
+        requests = _correction_table(at)
+        self.assertIn("가상 저장탱크 (TK-01) · 용량", requests)
+        self.assertIn("‘=1500+500’: 엑셀 계산식만 있고 계산 결과가 파일에 저장돼 있지 않아요", requests)   # 파일에서 확인한 사실
         self.assertEqual(len(at.json), 0)
+
+    def test_remove_file_button_drops_its_values(self):
+        at = self.run_page(step=1)
+        name = "03_old_equipment.csv"
+        sha = next(d["sha256"] for d in ew.documents(self.project) if d["name"] == name)
+        at.button(key=f"remove_{self.pid}_{sha[:12]}").click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        project = load_project(self.pid)
+        self.assertNotIn(name, [d["name"] for d in ew.documents(project)])
+        self.assertEqual(ew.confirmed_entities(project)["facility:TK-01"]["capacity"], 10)   # 충돌하던 값이 빠져 바로 정해짐
+
+    def test_questions_step_shows_fact_table_with_filters_and_matrix(self):
+        at = self.run_page(step=2)
+        text = " ".join(_texts(at))
+        self.assertIn("화학사고예방관리계획서에 필요한 사실", text)
+        self.assertIn("대상별 표", text)
+        labels = [m.label for m in at.metric]
+        self.assertIn("파일에서 찾은 사실", labels)
+        self.assertIn("충돌", labels)
+        conflicts = next(m for m in at.metric if m.label == "충돌")
+        self.assertNotEqual(str(conflicts.value), "0")              # 연습 자료의 TK-01 용량 충돌
+        at.radio(key="fact_view_" + self.pid).set_value("전체").run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        at.radio(key="fact_group_" + self.pid).set_value("1군").run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        labels = " ".join(b.proto.label for b in at.get("download_button"))
+        self.assertIn("엑셀 업로드 양식 내려받기 (빈 사실", labels)
+        at.checkbox(key="template_full_" + self.pid).check().run()
+        self.assertIn("(모든 사실)", " ".join(b.proto.label for b in at.get("download_button")))
+
+    def test_step_four_lists_narrative_items_and_makes_rule_drafts(self):
+        from engine.stage2 import cap_fact_drafting as fd
+        project = load_project(self.pid)
+        ew.ingest(project, "plan.docx", _site_doc([("교육 대상", "전 직원"), ("대표자", "홍가상")]), "site")
+        save_project(project)
+        at = self.run_page(step=4)
+        self.assertIn("서술형 항목", " ".join(_texts(at)))
+        saved = load_project(self.pid)
+        training = next(i for i in fd.items(saved) if i.key == "cap.prevention.training")
+        self.assertEqual(training.state, fd.HAS_DRAFT)              # 화면을 열면 근거 사실로 규칙 초안을 만들어 둠
+        self.assertIn("[확인 필요: 교육 주기]", training.draft)
+        at.button(key="fact_drafts_" + self.pid).click().run()
+        self.assertFalse(at.exception, [e.value for e in at.exception])
+        self.assertIn("서술형 초안", " ".join(_texts(at)))
+
+    def test_upload_change_message_is_shown_once(self):
+        at = AppTest.from_string(SCRIPT, default_timeout=60)
+        at.session_state["_stage2_active_project_id"] = self.pid
+        at.session_state["evidence_change"] = "이번에 올린 파일로 O가 3개 늘었고 새 충돌 1개."
+        at.run()
+        self.assertTrue(any("O가 3개 늘었고" in str(w.value) for w in at.warning))
+        at.run()
+        self.assertFalse(any("O가 3개 늘었고" in str(w.value) for w in at.warning))
 
     def test_no_developer_text_on_any_step(self):
         for step in (1, 2, 3, 4):
@@ -105,44 +177,6 @@ class EvidencePageTests(unittest.TestCase):
             leaked = [t for t in _texts(at) if DEVELOPER_TEXT.search(t)]
             self.assertEqual(leaked, [], f"{step}단계")
             self.assertEqual(len(at.json), 0, f"{step}단계")
-
-    def test_conflict_explains_unit_conversion_and_is_resolved_in_one_click(self):
-        at = self.run_page()
-        self.assertIn("파일 이름이나 날짜만으로 정하지 마세요", " ".join(_texts(at)))
-        slot = next(s for s in ew.slots(self.project) if s["status"] == "값 충돌")
-        radio = at.radio(key=f"pick_{self.pid}_{slot['key']}")
-        self.assertIn("10 m³ — 02_equipment.csv 2번째 줄 (자료에는 ‘10,000 L’로 적혀 있음)", radio.options)   # 화면에 보이는 문구
-        ten = next(f["id"] for f in slot["facts"] if f["value"] == 10)
-        radio.set_value(ten).run()
-        at.button(key=f"ok_{self.pid}_{slot['key']}").click().run()
-        self.assertFalse(at.exception)
-        self.assertEqual(self.saved()["facility:TK-01"]["capacity"], 10)
-
-    def test_formula_cell_offers_computed_value(self):
-        at = self.run_page()
-        button = next(b for b in at.button if b.label == "2,000 kg로 저장")
-        button.click().run()
-        self.assertFalse(at.exception)
-        self.assertEqual(self.saved()["facility:RX-01"]["inventory"], 2000)
-
-    def test_rank_changing_missing_value_is_asked_once(self):
-        at = self.run_page()
-        text = " ".join(_texts(at))
-        self.assertEqual(text.count("가상 예비 반응기 (RX-02)의 최대보유량이 자료에 없어요"), 1)
-        # 같은 값을 ‘자료에 없는 정보’에서 다시 묻지 않음
-        self.assertFalse(any(t.label.startswith("최대보유량") and "missing_" in (t.key or "") for t in at.text_input))
-        at.text_input(key=f"rank_{self.pid}_facility:RX-02_inventory_in").input("3000").run()
-        at.button(key=f"rank_{self.pid}_facility:RX-02_inventory_ok").click().run()
-        self.assertEqual(self.saved()["facility:RX-02"]["inventory"], 3000)
-
-    def test_missing_information_uses_choices_not_internal_ids(self):
-        at = self.run_page()
-        box = at.selectbox(key=f"missing_{self.pid}_facility:TK-01_facility_type")
-        self.assertIn("저장탱크", box.options)
-        box.set_value("저장탱크").run()
-        submit = next(b for b in at.button if b.label == "저장" and "facility:TK-01" in str(b.form_id or ""))
-        submit.click().run()
-        self.assertEqual(self.saved()["facility:TK-01"]["facility_type"], "저장탱크")
 
     def test_scenarios_rank_before_answers_and_explain_values_in_words(self):
         at = self.run_page(3)
@@ -169,17 +203,6 @@ class EvidencePageTests(unittest.TestCase):
         at.button(key="publish_" + self.pid).click().run()
         self.assertFalse(at.exception)
         self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
-
-    def test_more_than_thirty_conflicts_are_reachable(self):
-        old = "설비번호,용량(m3)\n" + "".join(f"EX-{i},10\n" for i in range(35))
-        new = "설비번호,용량(m3)\n" + "".join(f"EX-{i},12\n" for i in range(35))
-        ew.ingest(self.project, "old.csv", old.encode())
-        ew.ingest(self.project, "new.csv", new.encode())
-        save_project(self.project)
-        at = self.run_page(2)
-        self.assertTrue(any("전체 36개" in t for t in _texts(at)))
-        at.selectbox(key="conflict_page_" + self.pid).set_value(1).run()
-        self.assertTrue(any("EX-9의 용량이 자료마다 달라요" in t for t in _texts(at)))
 
     def test_unread_document_is_visible_in_status(self):
         ew.ingest(self.project, "scan.txt", b"Unstructured text", "facility", "EX")
@@ -220,29 +243,13 @@ class LargeDemoPageTests(unittest.TestCase):
                 self.assertIn("글자가 없는 문서예요", text)
                 self.assertTrue(any(b.label == "‘함량(wt%)’ 열은" for b in at.selectbox))
             if step == 2:
-                # 같은 표기·같은 열은 한 번만 묻고, 원인을 추측하지 않고 걸린 검사만 말합니다
-                self.assertIn("물질성상 칸에 ‘액상’이라고 적힌 곳이 29곳 있어요", text)
-                self.assertIn("운전압력 칸에 ‘상압’이라고 적힌 곳이 2곳 있어요", text)
-                self.assertIn("04_설비목록_2024_구버전.csv의 ‘운전압력’ 열에 단위가 없어요", text)
-                self.assertTrue(any(b.label == "33,575 kg로 저장" for b in at.button))
-                self.assertNotIn("너무 크거나 작아요", text)
-
-    def test_one_answer_fixes_every_cell_with_the_same_spelling(self):
-        at = AppTest.from_string(SCRIPT, default_timeout=120)
-        at.session_state["_stage2_active_project_id"] = self.pid
-        at.session_state["evidence_step_" + self.pid] = 2
-        at.run()
-        group = next(g for g in ew.problems(load_project(self.pid)) if g["raw"] == "액상")
-        box = next(b for b in at.selectbox if b.label == "‘액상’은 무엇인가요?")
-        box.set_value("액체").run()
-        save = [b for b in at.button if b.label == "저장"]
-        # 화면에서 이 묶음 카드의 저장 버튼을 누름 (같은 키 규칙)
-        next(b for b in save if b.key and b.key.startswith("save_") and b.key.endswith(box.key.split("_")[-1])).click().run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        project = load_project(self.pid)
-        states = [s for s in ew.slots(project) if s["field"] == "substance_state" and s["key"] in group["keys"]]
-        self.assertEqual(len(states), 29)
-        self.assertTrue(all(s["chosen"] and s["chosen"]["value"] == "액체" for s in states))
+                # 같은 표기·같은 열은 한 줄로 모으고, 원인을 추측하지 않고 걸린 검사와 파일 위치만 말합니다
+                requests = _correction_table(at)
+                self.assertIn("‘액상’: 선택지에 없는 말이에요", requests)
+                self.assertIn("‘상압’: 숫자가 아니에요", requests)
+                self.assertIn("04_설비목록_2024_구버전.csv", requests)
+                self.assertIn("항목 이름에 단위가 없어요", requests)
+                self.assertNotIn("너무 크거나 작아요", requests)
 
     def test_unknown_header_is_mapped_once_and_file_is_read_again(self):
         from engine.stage2 import demo_company as dc
@@ -259,23 +266,6 @@ class LargeDemoPageTests(unittest.TestCase):
         project = load_project(self.pid)
         conflicts = {(i["entity"], i["field"]) for i in ew.review_queue(project) if i["kind"] == "충돌"}
         self.assertIn(("material:P-10", "concentration"), conflicts)        # 01(35%)과 개정 MSDS(50%)가 다름이 이제 드러남
-
-
-class FormulaTests(unittest.TestCase):
-    def test_only_plain_arithmetic_is_evaluated(self):
-        sys.path.insert(0, str(ROOT))
-        import importlib.util
-        source = PAGE.read_text(encoding="utf-8")
-        start, end = source.index("_SAFE_OPS ="), source.index("class Names")
-        namespace = {}
-        exec("import ast, operator, re\n" + source[start:end], namespace)
-        formula = namespace["_formula_result"]
-        self.assertEqual(formula("=1500+500"), 2000)
-        self.assertEqual(formula("=2*(1,000+500)"), 3000)
-        self.assertIsNone(formula("=A1+B2"))
-        self.assertIsNone(formula("=__import__('os')"))
-        self.assertIsNone(formula("=1/0"))
-        self.assertIsNotNone(importlib.util)
 
 
 if __name__ == "__main__":
@@ -298,22 +288,16 @@ class ProgressBoardTests(unittest.TestCase):
         os.chdir(self.cwd)
         self.tmp.cleanup()
 
-    def test_progress_counts_open_forms_per_screen_with_the_export_check(self):
-        from engine.stage2 import report_export as rx
+    def test_progress_has_a_draft_download_row_and_a_submission_row(self):
         from ui import cap_common
         info = cap_common.progress(self.project)
         rows = {r["group"]: r for r in info["rows"]}
         self.assertEqual(list(rows), list(cap_common.GROUPS))
-        state = rx.evaluate(self.project, "CAP")
-        counted = sum(n for r in info["rows"] for _, n in r["open_forms"])
-        self.assertEqual(counted, state.hold + state.review)                  # 점검과 같은 기준, 빠짐 없이 나눔
-        facts = rows["facts"]
-        self.assertFalse(facts["done"])
-        self.assertEqual(facts["next"], facts["open_forms"][0][0])
-        self.assertIn(3, dict(facts["open_forms"]))                           # 이 시험 사업장은 별지 제3호가 비어 있음
+        self.assertEqual(list(rows), ["export", "submission"])
+        self.assertIn("초안을 내려받을 수 있어요", rows["export"]["status"])
         self.assertIn("저장하지 않았어요", rows["submission"]["status"])
 
-    def test_board_is_shown_in_step_four_and_continue_opens_the_next_form(self):
+    def test_board_is_shown_in_step_four_and_opens_the_draft_download(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)
         at.session_state["_stage2_active_project_id"] = self.pid
         at.session_state["evidence_step_" + self.pid] = 4
@@ -321,14 +305,10 @@ class ProgressBoardTests(unittest.TestCase):
         self.assertFalse(at.exception, [e.value for e in at.exception])
         text = " ".join(m.value for m in at.markdown)
         self.assertIn("화학사고예방관리계획서 진행 현황", text)
-        self.assertIn("사업장·물질·시설 작성", text)
-        at.button(key=f"hub_{self.pid}_facts").click().run()                 # 단독 실행이라 화면 이동 대신 안내가 나옴
-        goto = at.session_state["cap_goto"]
-        self.assertEqual(goto[0], "facts")
-        # 그 화면을 열면 다음 서식이 바로 펼쳐짐
-        page = AppTest.from_file(str(ROOT / "ui" / "cap_facts_page.py"), default_timeout=90)
+        self.assertIn("초안 내려받기", text)
+        self.assertNotIn("사업장·물질·시설 작성", text)
+        page = AppTest.from_file(str(ROOT / "ui" / "cap_export_page.py"), default_timeout=90)
         page.session_state["_stage2_active_project_id"] = self.pid
-        page.session_state["cap_goto"] = goto
         page.run()
         self.assertFalse(page.exception, [e.value for e in page.exception])
-        self.assertEqual(page.selectbox(key="cap_form_no_facts").value, goto[1])
+

@@ -76,10 +76,6 @@ class CAPForm6WorkspaceTests(unittest.TestCase):
     def test_legal_identity_is_not_asked(self):
         self.assertFalse({"물질구분", "고유번호"} & set(f6.COLUMN_IDS))
 
-    def test_pages_are_wired(self):
-        root = Path(__file__).resolve().parents[1]
-        self.assertIn(6, __import__("ui.cap_forms_registry", fromlist=["x"]).FORM_NUMBERS)
-        self.assertIn("cap_kosha_panel", (root / "ui/cap_form6_view.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

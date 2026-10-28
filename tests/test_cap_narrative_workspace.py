@@ -138,20 +138,9 @@ class ScreenTests(unittest.TestCase):
 
     def test_narrative_and_export_options_render_for_a_cap_project(self):
         project = _project("1군")
-        for option in ("narrative", "export"):
-            at = self._run(project, option)
-            self.assertFalse(at.exception, option)
-        at = self._run(project, "narrative")
-        labels = [e.label for e in at.expander]
-        self.assertTrue(any("안전관리 운영" in label for label in labels))
-        self.assertTrue(any("주민 보호" in label for label in labels))  # 1군은 외부 비상대응 사실도 받는다
-
-    def test_second_group_does_not_ask_for_external_plan_facts(self):
-        at = self._run(_project("2군"), "narrative")
+        at = self._run(project, "export")
         self.assertFalse(at.exception)
-        labels = " ".join(e.label for e in at.expander)
-        self.assertIn("안전관리 운영", labels)
-        self.assertNotIn("주민 보호", labels)
+
 
 
 if __name__ == "__main__":

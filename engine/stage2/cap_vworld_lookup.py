@@ -14,6 +14,7 @@ import re
 from typing import Any, Callable
 
 import requests
+from urllib.parse import urlencode
 
 from .cap_environment_lookup import _distance
 from .cap_site_lookup import Candidate, SEARCH_RADIUS_M
@@ -250,3 +251,59 @@ def search(lat: float, lon: float, *, get: Callable = _default_get,
         if malformed:
             notices.append(f"브이월드 {title}: 도형/속성을 해석하지 못한 {malformed}건이 있어 검토가 필요합니다.")
     return sorted(found.values(), key=lambda item: item.distance_m or 0), notices
+
+
+PARCEL_LAYER = "LP_PA_CBND_BUBUN"     # 연속지적도(필지 경계). 사업장 경계의 ‘초안’으로만 씁니다.
+
+
+def parcel_feature(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[dict | None, str]:
+    """주소점·클릭한 점이 들어 있는 필지: ({"id", "label", "geometry"}, 설명). 실패하면 (None, 이유).
+
+    공장 부지는 여러 필지인 경우가 많으므로 사람이 지도에서 필지를 더하거나 고쳐 그리는 출발점일 뿐입니다."""
+    key = api_key()
+    if not key:
+        return None, f"{ENV_KEY}가 없어 필지 경계를 불러오지 않았습니다. 지도에 직접 그리거나 경계 파일을 올려 주세요."
+    if not (33 <= lat <= 39 and 124 <= lon <= 132):
+        return None, "좌표가 대한민국 범위에 있지 않습니다."
+    try:
+        payload = get({"service": "data", "request": "GetFeature", "version": "2.0", "data": PARCEL_LAYER, "key": key,
+                       "format": "json", "crs": "EPSG:4326", "geomFilter": f"POINT({lon} {lat})", "geometry": "true",
+                       "attribute": "true", "size": 10, "page": 1})
+        body = (payload or {}).get("response") or {}
+        if body.get("status") == "NOT_FOUND":
+            return None, "이 위치에서 필지 경계를 찾지 못했습니다. 지도에 직접 그려 주세요."
+        if body.get("status") != "OK":
+            status = body.get("status")
+            status = status if isinstance(status, str) and re.fullmatch(r"[A-Z_]{1,32}", status) else "UNKNOWN"
+            return None, f"브이월드 필지 경계 조회 실패(응답 상태 {status}). 지도에 직접 그려 주세요."
+        features = ((body.get("result") or {}).get("featureCollection") or {}).get("features") or []
+    except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+        return None, f"브이월드 필지 경계 조회 실패({type(exc).__name__}). 지도에 직접 그려 주세요."
+    polygons = [f for f in features if isinstance(f, dict) and (f.get("geometry") or {}).get("type") in ("Polygon", "MultiPolygon")]
+    if not polygons:
+        return None, "이 위치에서 필지 경계를 찾지 못했습니다. 지도에 직접 그려 주세요."
+    chosen = next((f for f in polygons if _geometry_distance(lat, lon, f["geometry"]) == 0.0), polygons[0])
+    props = _properties(chosen)
+    label = str(props.get("addr") or props.get("jibun") or props.get("pnu") or "").strip()
+    identifier = str(props.get("pnu") or "").strip() or _feature_identifier(chosen)
+    return {"id": identifier, "label": label or identifier, "geometry": chosen["geometry"]}, \
+        f"브이월드 연속지적도 필지{(' ' + label) if label else ''}"
+
+
+def parcel_boundary(lat: float, lon: float, *, get: Callable = _default_get) -> tuple[dict | None, str]:
+    """필지 경계 도형만(예전 호출용)."""
+    feature, note = parcel_feature(lat, lon, get=get)
+    return (feature["geometry"] if feature else None), note
+
+
+def tile_layers(key: str | None = None) -> dict[str, str]:
+    """지도 배경(항공사진·지명)과 지적선 WMS 주소. 키가 없으면 빈 dict(오픈스트리트맵만 씀).
+    브이월드 키는 발급 때 등록한 도메인에서만 동작하므로 브라우저에 보여도 다른 곳에서 쓰기 어렵습니다."""
+    key = api_key() if key is None else key
+    if not key:
+        return {}
+    base = f"https://api.vworld.kr/req/wmts/1.0.0/{key}"
+    domain = api_domain()
+    return {"satellite": base + "/Satellite/{z}/{y}/{x}.jpeg", "hybrid": base + "/Hybrid/{z}/{y}/{x}.png",
+            "base": base + "/Base/{z}/{y}/{x}.png",
+            "cadastral_wms": "https://api.vworld.kr/req/wms?" + urlencode({"key": key, **({"domain": domain} if domain else {})})}

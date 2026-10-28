@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from unittest.mock import patch
 import unittest
+from unittest.mock import patch
 
 from engine.stage2 import ai_drafting as drafting
 from engine.stage2 import psm_narrative_workspace as nw
 from engine.stage2 import statutory_report as report
 from engine.stage2 import psm_table_workspace as tables
-from tests.test_psm_workspace_page import _project, _run
+from tests.test_psm_workspace_page import _project
 
 
 class FakeClient:
@@ -97,22 +97,6 @@ class FactTablesTests(unittest.TestCase):
         tables.save(project, "emergency-contacts", [{"연락처 구분": "소방서", "기관·부서·담당자": "관할 소방서",
                                                      "전화번호": "119", "연락 순서": "1"}])
         self.assertEqual(tables.needs(project, "emergency-contacts"), [])
-
-
-class ScreenTests(unittest.TestCase):
-    def test_facts_screen_renders_with_and_without_a_local_ai(self):
-        project = _with_facts(_project())
-        from engine.stage2.local_llm import LocalLLMProbe
-        down = LocalLLMProbe(False, "ollama", "http://127.0.0.1:11434", message="연결되지 않았습니다.")
-        with patch("engine.stage2.local_llm.probe_local_llm_runtime", return_value=down):
-            at = _run(project, "facts")
-        self.assertFalse(at.exception)
-        self.assertTrue(any("연결" in w.value for w in at.warning))
-        self.assertTrue(any(b.label == "초안 만들기" and b.disabled for b in at.button))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class FinalDocumentTests(unittest.TestCase):

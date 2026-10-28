@@ -1,7 +1,8 @@
 """읽힌 회사 문서의 명시적 항목을 CAP 법정서식의 필드로 연결한다.
 
 두 칸짜리 항목/값 표만 연결한다. 제목이나 파일 이름만 보고 값을 추측하지 않는다.
-판정·대응계획은 원문과 대조하기 전에는 서식의 확정값으로 취급하지 않는다.
+프로그램 안에 승인 단계는 두지 않는다: 읽은 값은 바로 초안(FILE_READ)에 넣고, 파일끼리 값이 다르면 보류(HOLD)해
+어느 파일을 고칠지 알린다. 사람이 다른 곳에서 확정한 값(USER_CONFIRMED)은 바꾸지 않는다.
 """
 from __future__ import annotations
 
@@ -81,17 +82,21 @@ def synchronize(project, documents):
         evidence = [EvidenceRef("upload", candidate["document"], sha256=candidate["sha256"],
                                 location=candidate["location"]) for candidate in candidates]
         first = candidates[0]
-        status = "HOLD" if len(distinct) > 1 else "VERIFIED" if all(c["auto"] for c in candidates) else "AI_DRAFT"
+        status = "HOLD" if len(distinct) > 1 else "FILE_READ"
         project.set_field(key, first["label"], first["value"] if len(distinct) == 1 else "", status,
                           evidence=evidence, note=NOTE)
     return grouped
 
 
-def confirm(project, key):
-    """원본과 대조한 초안만 확정할 수 있다. 충돌값은 문서를 고쳐야 한다."""
-    record = project.get_field(key)
-    if not record or record.note != NOTE or record.status != "AI_DRAFT":
-        return False
-    project.set_field(key, record.label, record.value, "USER_CONFIRMED", evidence=record.evidence,
-                      note=f"{NOTE}; 담당자가 원본 확인")
-    return True
+def linked(record) -> bool:
+    """근거자료의 항목·값 표에서 연결한 값인지(사람이 다른 곳에서 적은 값과 구분)."""
+    return record is not None and str(record.note).startswith(NOTE)
+
+
+def forget(project, documents, removed):
+    """파일을 빼면 그 파일에서만 연결한 칸을 지우고 남은 파일로 다시 맞춥니다."""
+    keys = {c["key"] for doc in removed for c in doc.get("links", [])}
+    for key in keys:
+        if linked(project.get_field(key)):
+            project.fields.pop(key, None)
+    return synchronize(project, documents)

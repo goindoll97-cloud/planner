@@ -1,8 +1,7 @@
-"""화학사고예방관리계획서 화면들이 다루는 별지 번호(별지 제13호는 제12호 화면에서 함께 작성)."""
+"""화면이 남아 있는 화학사고예방관리계획서 별지 번호. 나머지 별지는 회사 파일에서 프로그램이 채우므로 입력 화면이 없습니다."""
 
-FORM_NUMBERS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16)
-COMBINED_LABELS = {12: "별지 제12·13호"}
+FORM_NUMBERS = (2,)
 
 
 def label(number: int) -> str:
-    return COMBINED_LABELS.get(number, f"별지 제{number}호")
+    return f"별지 제{number}호"

@@ -90,6 +90,15 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], ratio: str, basi
     project.set_field(RULE_KEY, "확산방지설비 필요용량 기준(별지 제10호 작성대)",
                       {"비율(%)": _clean(ratio), "근거": _clean(basis)}, "USER_CONFIRMED",
                       note="사용자가 확인한 설비별 기준 또는 공통 비율·근거")
+    stored = stored_rows(rows, ratio, basis)
+    project.set_field(DIKE_KEY, "확산방지설비 계산자료(별지 제10호 작성대)", stored, "USER_CONFIRMED",
+                      note="별지 제10호에서 적용 대상·필요용량·유효용량 입력")
+    return len(stored)
+
+
+def stored_rows(rows: list[Mapping[str, Any]], ratio: str, basis: str) -> list[dict[str, Any]]:
+    """설비별 입력 행(구분기호·적용여부·설계용량(m3)·치수 등)을 엔진이 읽는 형식으로 바꿉니다.
+    필요용량을 직접 적지 않은 설비는 설계용량 × 공통 비율로 계산합니다(파일에서 읽은 값도 같은 규칙)."""
     percent = _number(ratio)
     stored = []
     for row in rows:
@@ -115,9 +124,7 @@ def save(project: Stage2Project, rows: list[Mapping[str, Any]], ratio: str, basi
             for column in ("직접확인 유효용량(m3)", "내부 길이(m)", "내부 폭(m)", "유효높이(m)", "내부 차감용적(m3)"):
                 item[column] = _clean(row.get(column))
         stored.append(item)
-    project.set_field(DIKE_KEY, "확산방지설비 계산자료(별지 제10호 작성대)", stored, "USER_CONFIRMED",
-                      note="별지 제10호에서 적용 대상·필요용량·유효용량 입력")
-    return len(stored)
+    return stored
 
 
 def needs(project: Stage2Project) -> list[str]:

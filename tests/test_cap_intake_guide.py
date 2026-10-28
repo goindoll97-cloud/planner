@@ -99,8 +99,8 @@ class CapIntakeGuideTests(unittest.TestCase):
             tables, _ = ew.read_document(name, files[name])
             self.assertTrue(tables)
             self.assertTrue(ew.register_reference(project, name, files[name]))
-            self.assertEqual(ew.documents(project)[-1]["fact_count"], 0)
-            self.assertTrue(ew.documents(project)[-1]["needs_reading"])
+            self.assertGreater(ew.documents(project)[-1]["fact_count"], 0)       # 항목·값 표를 서식 칸에 연결
+            self.assertFalse(ew.documents(project)[-1]["needs_reading"])
 
     def test_invalid_hwp_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "HWP 5.0"):

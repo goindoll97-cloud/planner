@@ -324,9 +324,9 @@ def build_statutory_report_draft(project: Stage2Project, system: str, status) ->
         doc = Document(BytesIO(build_psm_baseline_draft(project)))
         base._render_psm_narrative(doc, project)
     else:
-        from .cap_baseline_docx import build_cap_baseline_draft
+        from .cap_catalog_docx import build_cap_draft
 
-        doc = Document(BytesIO(build_cap_baseline_draft(project)))
+        doc = Document(BytesIO(build_cap_draft(project)))
         _render_cap_narrative(doc, project)
     base._add_review_appendix(doc, project, system, status)
     out = BytesIO()

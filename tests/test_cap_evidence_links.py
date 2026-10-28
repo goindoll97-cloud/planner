@@ -32,21 +32,19 @@ class EvidenceLinksTests(unittest.TestCase):
         for name in ("03_사업장_일반정보.docx", "04_공정설명서.docx", "09_안전관리_비상대응계획.docx"):
             self.assertTrue(ew.register_reference(self.project, name, files[name]))
         registration = self.project.get_field("cap.business.registration_no")
-        self.assertEqual(registration.status, "VERIFIED")
+        self.assertEqual(registration.status, "FILE_READ")                     # 승인 단계 없이 바로 초안
         self.assertEqual(registration.evidence[0].source_name, "03_사업장_일반정보.docx")
         self.assertIn("행", registration.evidence[0].location)
-        self.assertEqual(self.project.get_field("process.description").status, "VERIFIED")
-        self.assertEqual(self.project.get_field("cap.basic.unit_facility_overview").status, "VERIFIED")
-        self.assertEqual(self.project.get_field("cap.prevention.emergency_contact_system").status, "AI_DRAFT")
-        self.assertTrue(links.confirm(self.project, "cap.prevention.emergency_contact_system"))
-        self.assertEqual(self.project.get_field("cap.prevention.emergency_contact_system").status, "USER_CONFIRMED")
+        self.assertEqual(self.project.get_field("process.description").status, "FILE_READ")
+        self.assertEqual(self.project.get_field("cap.basic.unit_facility_overview").status, "FILE_READ")
+        self.assertEqual(self.project.get_field("cap.prevention.emergency_contact_system").status, "FILE_READ")
+        self.assertTrue(links.linked(self.project.get_field("cap.prevention.emergency_contact_system")))
 
     def test_one_company_file_reuses_facts_in_forms_2_3_16(self):
         files = demo._files()
         ew.register_reference(self.project, "03_사업장_일반정보.docx", files["03_사업장_일반정보.docx"])
         self.assertEqual(form2.submission(self.project)["unit_plant"], demo.DATA["company"]["단위공장명"])
-        self.assertEqual(self.project.get_field(form2.SUBMISSION_TYPE_KEY).status, "AI_DRAFT")
-        self.assertTrue(links.confirm(self.project, form2.SUBMISSION_TYPE_KEY))
+        self.assertEqual(self.project.get_field(form2.SUBMISSION_TYPE_KEY).status, "FILE_READ")
         self.assertEqual(form2.submission(self.project)["type"], demo.DATA["company"]["제출구분"])
         self.assertEqual(form16.build_cap_form16_data(self.project).business["대표자"],
                          demo.DATA["company"]["representative"])
@@ -88,6 +86,12 @@ class EvidenceLinksTests(unittest.TestCase):
         self.project.set_field(record.key, record.label, "052-333-3333", "USER_CONFIRMED")
         ew.register_reference(self.project, "third.docx", document([("대표전화", "052-444-4444")]))
         self.assertEqual(self.project.get_field(record.key).value, "052-333-3333")
+
+    def test_removing_the_file_removes_the_values_it_alone_supplied(self):
+        ew.register_reference(self.project, "a.docx", document([("대표전화", "052-111-1111")]))
+        sha = ew.documents(self.project)[0]["sha256"]
+        ew.remove_document(self.project, sha)
+        self.assertIsNone(self.project.get_field("cap.business.contact"))
 
     def test_unstructured_and_invalid_choice_never_confirm(self):
         ew.register_reference(self.project, "other.docx", document([
