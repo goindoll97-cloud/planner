@@ -41,7 +41,7 @@ def _fill(content: bytes, new_ids: dict[str, list[str]]) -> bytes:
         if title not in book.sheetnames:
             continue
         sheet = book[title]
-        headers = [c.value for c in sheet[1]]
+        headers = [c.value for c in sheet[1] if c.value != "예시 (입력하지 마세요)"]
         for code in new_ids.get(kind, []):
             sheet.append([code] + [""] * (len(headers) - 1))
         for r in range(2, sheet.max_row + 1):
@@ -66,7 +66,8 @@ class TemplateTests(unittest.TestCase):
         self.assertNotIn("사업장명", site_headers)           # 사업장을 만들 때 이미 입력
         self.assertNotIn("우편번호/주소", site_headers)        # 직접 입력한 주소가 있음
         book = load_workbook(BytesIO(tpl.build(p)))
-        self.assertEqual(book.sheetnames[-1], tpl.GUIDE_SHEET)
+        self.assertNotIn(tpl.GUIDE_SHEET, book.sheetnames)
+        self.assertEqual(book[tpl.SITE_SHEET]["C1"].value, "예시 (입력하지 마세요)")
         self.assertEqual([c.value for c in book["설비"][1]][:3], ["설비번호", "설비명", "단위공장·공정"])
         self.assertEqual(book["가스감지기"]["A1"].value, "감지기 번호")
 
@@ -111,6 +112,26 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(fs.entities(p, "facility"), ["facility:TK-01"])
         row = next(r for r in fs.fact_rows(p) if r["_id"] == "facility.pressure")
         self.assertEqual(row["_state"], fs.O)
+
+    def test_examples_are_never_company_facts_and_same_filename_replaces(self):
+        p = create_direct_cap_project("가상", address="주소", cap_group="")
+        book = load_workbook(BytesIO(tpl.build(p, docs=("CAP",))))
+        sheet = book[tpl.SITE_SHEET]
+        row = next(r for r in range(2, sheet.max_row + 1) if sheet.cell(r, 1).value == "대표자")
+        self.assertTrue(sheet.cell(row, 3).value)
+        def upload(value):
+            sheet.cell(row, 2, value)
+            out = BytesIO()
+            book.save(out)
+            content = out.getvalue()
+            ew.replace_same_name(p, tpl.FILENAME, content)
+            ew.ingest(p, tpl.FILENAME, content, ew.classify_document(tpl.FILENAME, content))
+        upload("김대표")
+        upload("이대표")
+        self.assertEqual(len(ew.documents(p)), 1)
+        facts = ew.graph_facts(p)
+        self.assertTrue(any(f["value"] == "이대표" for f in facts))
+        self.assertFalse(any(f["value"] in ("김대표", "홍길동") for f in facts))
 
     def test_full_template_lists_all_columns_even_when_filled(self):
         p = create_direct_cap_project("가상", address="가상 주소", cap_group="")

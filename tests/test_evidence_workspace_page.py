@@ -45,7 +45,7 @@ DEVELOPER_TEXT = re.compile(r"[0-9a-f]{40,}|facility:|material:|SHA256|\bCSV 행
 
 def _correction_table(at):
     """② 화면의 ‘파일별 수정 요청’ 표를 글자 하나로."""
-    frame = next(d.value for d in at.dataframe if "수정 요청" in d.value.columns)
+    frame = next(d.value for d in at.dataframe if "고칠 점" in d.value.columns)
     return " ".join(" | ".join(str(v) for v in row) for row in frame.itertuples(index=False))
 
 
@@ -128,39 +128,25 @@ class EvidencePageTests(unittest.TestCase):
         self.assertNotIn(name, [d["name"] for d in ew.documents(project)])
         self.assertEqual(ew.confirmed_entities(project)["facility:TK-01"]["capacity"], 10)   # 충돌하던 값이 빠져 바로 정해짐
 
-    def test_questions_step_shows_fact_table_with_filters_and_matrix(self):
+    def test_questions_step_has_one_correction_table_and_blank_template(self):
         at = self.run_page(step=2)
-        text = " ".join(_texts(at))
-        self.assertIn("화학사고예방관리계획서에 필요한 사실", text)
-        self.assertIn("대상별 표", text)
-        labels = [m.label for m in at.metric]
-        self.assertIn("파일에서 찾은 사실", labels)
-        self.assertIn("충돌", labels)
-        conflicts = next(m for m in at.metric if m.label == "충돌")
-        self.assertNotEqual(str(conflicts.value), "0")              # 연습 자료의 TK-01 용량 충돌
-        at.radio(key="fact_view_" + self.pid).set_value("전체").run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        at.radio(key="fact_group_" + self.pid).set_value("1군").run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        labels = " ".join(b.proto.label for b in at.get("download_button"))
-        self.assertIn("엑셀 업로드 양식 내려받기 (빈 사실", labels)
-        at.checkbox(key="template_full_" + self.pid).check().run()
-        self.assertIn("(모든 사실)", " ".join(b.proto.label for b in at.get("download_button")))
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.dataframe), 1)
+        frame = at.dataframe[0].value
+        self.assertEqual(list(frame.columns), ["상태", "사실", "쓰이는 곳", "올린 파일", "고칠 점"])
+        self.assertTrue(any("03_old_equipment.csv" in str(v) for v in frame["올린 파일"]))
+        self.assertNotIn("대상별 표", " ".join(_texts(at)))
+        self.assertIn("빈칸 전용 엑셀 양식 내려받기", [b.proto.label for b in at.get("download_button")])
 
     def test_step_four_lists_narrative_items_and_makes_rule_drafts(self):
-        from engine.stage2 import cap_fact_drafting as fd
-        project = load_project(self.pid)
-        ew.ingest(project, "plan.docx", _site_doc([("교육 대상", "전 직원"), ("대표자", "홍가상")]), "site")
-        save_project(project)
-        at = self.run_page(step=4)
-        self.assertIn("서술형 항목", " ".join(_texts(at)))
-        saved = load_project(self.pid)
-        training = next(i for i in fd.items(saved) if i.key == "cap.prevention.training")
-        self.assertEqual(training.state, fd.HAS_DRAFT)              # 화면을 열면 근거 사실로 규칙 초안을 만들어 둠
-        self.assertIn("[확인 필요: 교육 주기]", training.draft)
+        at = self.run_page(4)
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.dataframe), 0)
+        at.button(key="write_" + self.pid).click().run()
+        self.assertFalse(at.exception)
+        self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
         at.button(key="fact_drafts_" + self.pid).click().run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        self.assertIn("서술형 초안", " ".join(_texts(at)))
+        self.assertFalse(at.exception)
 
     def test_upload_change_message_is_shown_once(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)
@@ -178,30 +164,19 @@ class EvidencePageTests(unittest.TestCase):
             self.assertEqual(leaked, [], f"{step}단계")
             self.assertEqual(len(at.json), 0, f"{step}단계")
 
-    def test_scenarios_rank_before_answers_and_explain_values_in_words(self):
+    def test_scenarios_show_only_ranked_table_without_detail_menus(self):
         at = self.run_page(3)
-        ranked = next(d.value for d in at.dataframe if "순서" in d.value.columns)
-        self.assertEqual(list(ranked["순서"])[:2], [1, 1])    # 값이 없는 두 반응기는 임시값으로 공동 1위
-        self.assertIn("값이 더 필요해요", " ".join(ranked["상태"]))
-        self.assertTrue(any("자료에 없어 임시로 넣은 값" in m.value for m in at.markdown))
-
-    def test_export_requires_one_final_check_then_sends(self):
-        project = load_project(self.pid)
-        slot = next(s for s in ew.slots(project) if s["status"] == "값 충돌")
-        ew.approve(project, slot["key"], slot["facts"][0]["id"])
-        save_project(project)
-        at = self.run_page(4)
-        self.assertTrue(any("보내기 전 마지막 확인" in s.value for s in at.subheader))
-        self.assertTrue(at.button(key="final_ok_" + self.pid).disabled)
-        for _ in range(10):
-            if not any(b.key == "final_ok_" + self.pid for b in at.button):
-                break
-            source = at.selectbox(key="final_source_" + self.pid).value
-            at.checkbox(key="final_check_" + self.pid + "_" + source).set_value(True).run()
-            at.button(key="final_ok_" + self.pid).click().run()
-        self.assertFalse(ew.unreviewed_legal(load_project(self.pid)))
-        at.button(key="publish_" + self.pid).click().run()
         self.assertFalse(at.exception)
+        self.assertEqual(len(at.dataframe), 1)
+        self.assertIn("설비", at.dataframe[0].value.columns)
+        self.assertFalse(any(e.label in ("순서는 어떻게 매기나요?", "조합별로 어떤 값을 썼는지 보기") for e in at.expander))
+        self.assertFalse(any(x.key == "combo_" + self.pid for x in at.selectbox))
+
+    def test_write_uses_uploaded_facts_without_confirmation_gate(self):
+        at = self.run_page(4)
+        at.button(key="write_" + self.pid).click().run()
+        self.assertFalse(at.exception)
+        self.assertFalse(any("보내기 전 마지막 확인" in s.value for s in at.subheader))
         self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
 
     def test_unread_document_is_visible_in_status(self):
@@ -297,18 +272,13 @@ class ProgressBoardTests(unittest.TestCase):
         self.assertIn("초안을 내려받을 수 있어요", rows["export"]["status"])
         self.assertIn("저장하지 않았어요", rows["submission"]["status"])
 
-    def test_board_is_shown_in_step_four_and_opens_the_draft_download(self):
+    def test_step_four_shows_write_action_and_download_destination(self):
         at = AppTest.from_string(SCRIPT, default_timeout=60)
         at.session_state["_stage2_active_project_id"] = self.pid
         at.session_state["evidence_step_" + self.pid] = 4
         at.run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        text = " ".join(m.value for m in at.markdown)
-        self.assertIn("화학사고예방관리계획서 진행 현황", text)
-        self.assertIn("초안 내려받기", text)
-        self.assertNotIn("사업장·물질·시설 작성", text)
-        page = AppTest.from_file(str(ROOT / "ui" / "cap_export_page.py"), default_timeout=90)
-        page.session_state["_stage2_active_project_id"] = self.pid
-        page.run()
-        self.assertFalse(page.exception, [e.value for e in page.exception])
+        self.assertFalse(at.exception)
+        self.assertEqual(len(at.dataframe), 0)
+        at.button(key="write_" + self.pid).click().run()
+        self.assertTrue(any("초안 내려받기" in x.value for x in at.success))
 

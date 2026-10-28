@@ -306,6 +306,12 @@ def _read_xlsx(content):
                         if (r, c) != (span.min_row - 1, span.min_col - 1):
                             grid[r][c] = top
                             flags[(r, c)] = "merged"
+            # 양식의 예시 열은 값·항목 탐지 전 제거하여 초안에 섞이지 않게 합니다.
+            if grid:
+                keep = [c for c, value in enumerate(grid[0]) if value != "예시 (입력하지 마세요)"]
+                grid = [[row[c] for c in keep] for row in grid]
+                positions = {old: new for new, old in enumerate(keep)}
+                flags = {(r, positions[c]): v for (r, c), v in flags.items() if c in positions}
             while grid and not any(grid[-1]):
                 grid.pop()
             label = sheet.title + ("" if sheet.sheet_state == "visible" else " (숨김 시트)")
@@ -553,6 +559,8 @@ def _prose_only(rows):
 
 def _is_site_table(rows, pairs):
     fields = {CATALOG_HEADERS["site"][norm(label)] for _, _, label, _ in pairs}
+    if fields and rows and [norm(c) for c in rows[0][:2]] == ["항목", "값"]:
+        return True
     if len(fields) >= 2:
         return True
     return len(fields) == 1 and len(rows) <= 2        # 공정개요 한 칸만 적은 작은 표

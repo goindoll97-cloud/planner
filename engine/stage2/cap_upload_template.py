@@ -8,7 +8,7 @@
 - 설비 / 물질 / 가스감지기: 한 줄에 대상 하나. 이미 알고 있는 대상은 번호·이름을 미리 적어 둡니다.
 - 사고시나리오 검토: 설비 한 줄에 선정할 사고유형·경계까지 거리·물성·개시사건 개수(설비 시트와 같은 설비번호)
 - 공정안전보고서 표(동력기계 목록·배관 및 개스킷 명세 등): 서식 표 하나가 시트 하나. 한 줄에 하나씩 적습니다.
-- 안내: 열마다 단위·선택지·쓰이는 별지(값으로 읽히지 않도록 한 칸짜리 문장으로만 적음)
+- 각 시트의 예시 열: 입력할 값의 예를 표시하며 업로드 시 회사 사실에서 제외함
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ GUIDE_SHEET = "안내"
 EXTRA_ROWS = {"facility": 5, "material": 5, "detector": 10, "scenario": 5}     # 새 대상을 적을 빈 줄
 ID_HEADER = {"facility": "설비번호", "material": "제품코드", "detector": "감지기 번호", "scenario": "설비번호"}
 NAME_FIELD = {"facility": "name", "material": "name"}
-FILENAME = "화학사고예방관리계획서_업로드양식.xlsx"
+FILENAME = "화학사고예방관리계획서_빈칸전용양식.xlsx"
 PSM_FILENAME = "공정안전보고서_업로드양식.xlsx"
 BOTH_FILENAME = "사업장자료_업로드양식.xlsx"
 TABLE_EXTRA_ROWS = 10
@@ -77,10 +77,10 @@ def _wanted(rows: list[dict[str, Any]], only_blank: bool) -> list[catalog.Fact]:
     return out
 
 
-def columns(project: Stage2Project, *, only_blank: bool = True, group: str = "") -> dict[str, Any]:
+def columns(project: Stage2Project, *, only_blank: bool = True, group: str = "", docs=None) -> dict[str, Any]:
     """시트별로 넣을 사실. {‘site’: [...], ‘facility’: [...], ..., ‘tables’: {서식 번호: [그 표의 모든 열]}}.
     공정안전보고서 표는 빈칸이 하나라도 있으면(줄이 없는 표 포함) 그 표의 열을 모두 넣습니다."""
-    rows = status.fact_rows(project, group=group)
+    rows = status.fact_rows(project, group=group, docs=docs)
     out: dict[str, Any] = {"site": [], "facility": [], "material": [], "detector": [], "scenario": [], "tables": {}}
     for item in _wanted(rows, only_blank):
         key = "site" if item.kind in catalog.SITE_KINDS else item.kind
@@ -107,13 +107,13 @@ def blank_count(project: Stage2Project, group: str = "") -> int:
     return sum(len(v) for k, v in wanted.items() if k != "tables") + sum(len(v) for v in wanted["tables"].values())
 
 
-def build(project: Stage2Project, *, only_blank: bool = True, group: str = "") -> bytes:
+def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", docs=None) -> bytes:
     from openpyxl import Workbook
     from openpyxl.comments import Comment
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    wanted = columns(project, only_blank=only_blank, group=group)
+    wanted = columns(project, only_blank=only_blank, group=group, docs=docs)
     book = Workbook()
     book.remove(book.active)
     bold, head_fill = Font(bold=True), PatternFill("solid", fgColor="DDEBF7")
@@ -190,29 +190,43 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "") -
             choices(sheet, item, sheet.cell(row=1, column=column).column_letter, 2, len(known) + 1 + TABLE_EXTRA_ROWS)
         sheet.freeze_panes = "A2"
 
-    guide = book.create_sheet(GUIDE_SHEET)
-    lines = [
-        filename(project).replace("_", " ").removesuffix(".xlsx"),
-        "빈칸을 채워 ‘자료 올리기’에 이 파일을 그대로 올리세요. 열 이름과 시트 이름은 바꾸지 마세요.",
-        "이미 올린 파일에서 찾은 값은 넣지 않았어요. 값이 서로 다르게 적힌 항목(충돌)은 원래 파일을 고쳐 다시 올려 주세요.",
-        "모르는 칸은 비워 두세요. 해당하지 않으면 ‘해당 없음’, 자료에 없으면 ‘자료 없음’이라고 적으세요.",
-        "설비·물질·감지기 시트는 한 줄에 하나씩 적습니다. 번호(설비번호·제품코드·감지기 번호)가 없는 줄은 읽지 않아요.",
-        "공정안전보고서 표 시트도 한 줄에 하나씩 적습니다. 구별 열(기계번호·분류코드 등)이 빈 줄은 읽지 않아요.",
-        "",
-        "열 설명",
-    ]
-    for key, title in (("site", SITE_SHEET), *ENTITY_SHEETS.items()):
-        for item in wanted[key]:
-            lines.append(f"· [{title}] {item.template_header} — {_help(item)}")
-    for table, items in wanted["tables"].items():
-        for item in items:
-            lines.append(f"· [{sheet_title(table)}] {item.template_header} — {_help(item)}")
-    for line in lines:
-        guide.append([line])
-    guide["A1"].font = Font(bold=True, size=13)
-    guide.column_dimensions["A"].width = 120
-    if book.sheetnames and book.sheetnames[0] == GUIDE_SHEET and len(book.sheetnames) > 1:
-        book.move_sheet(GUIDE_SHEET, offset=len(book.sheetnames) - 1)
+    # 예시는 별도 열에만 두며 읽기 엔진에서 제외합니다.
+    from openpyxl.utils import get_column_letter
+    for sheet in book.worksheets:
+        col = sheet.max_column + 1
+        sheet.cell(1, col, "예시 (입력하지 마세요)")
+        if sheet.title == SITE_SHEET:
+            for row, item in enumerate(wanted["site"], 2):
+                sheet.cell(row, col, _example(item))
+        else:
+            items = next((wanted[k] for k, title in ENTITY_SHEETS.items() if title == sheet.title), None)
+            if items is None:
+                items = next((v for t, v in wanted["tables"].items() if sheet_title(t) == sheet.title), [])
+            text = " / ".join(f"{i.template_header}: {_example(i)}" for i in items)
+            # 번호가 없는 예시 전용 줄은 만들지 않습니다.
+            for row in range(2, max(sheet.max_row, 2) + 1):
+                sheet.cell(row, col, text)
+        sheet.column_dimensions[get_column_letter(col)].width = 65
+        for cell in sheet[get_column_letter(col)]:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            cell.fill = PatternFill("solid", fgColor="FFF2CC")
+    if not book.worksheets:
+        book.create_sheet(SITE_SHEET).append(["항목", "값", "예시 (입력하지 마세요)"])
     out = BytesIO()
     book.save(out)
     return out.getvalue()
+
+
+def _example(item: catalog.Fact) -> str:
+    """예시 값은 회사 사실로 취급하지 않습니다."""
+    if item.options:
+        return item.options[0]
+    if item.evidence_field == "cas":
+        return "108-88-3"
+    if item.format == "number":
+        return "10" + (" " + item.unit if item.unit else "")
+    examples = {"대표자": "홍길동", "공정개요": "원료 입고 → 저장 → 혼합 → 출하",
+                "설비명": "원료 저장탱크", "물질명": "톨루엔"}
+    if item.kind == "narrative":
+        return "안전관리책임자가 매월 비상장비를 점검하고 결과를 기록한다. (실제 담당자·주기에 맞게 작성)"
+    return examples.get(item.name, f"사업장의 실제 {item.name} 기재")

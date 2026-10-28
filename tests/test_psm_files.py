@@ -59,7 +59,7 @@ def _fill(content):
                 sheet.cell(row=r, column=2, value="해당 없음" if item.column.endswith("#근거") else _sample(item, r))
         elif title in tables:
             items = {i.template_header: i for i in tables[title]}
-            headers = [c.value for c in sheet[1]]
+            headers = [c.value for c in sheet[1] if c.value != "예시 (입력하지 마세요)"]
             for r in (2, 3):
                 for c, header in enumerate(headers, start=1):
                     sheet.cell(row=r, column=c, value=_sample(items[header], r))
