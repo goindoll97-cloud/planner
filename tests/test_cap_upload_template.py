@@ -49,7 +49,8 @@ def _fill(content: bytes, new_ids: dict[str, list[str]]) -> bytes:
                 continue
             for c, header in enumerate(headers[1:], start=2):
                 if sheet.cell(row=r, column=c).value in (None, ""):
-                    sheet.cell(row=r, column=c, value=_sample(by_header[(kind, header)], r))
+                    lookup = "facility" if kind == "scenario" else kind      # 사고시나리오 검토 시트는 설비 사실
+                    sheet.cell(row=r, column=c, value=_sample(by_header[(lookup, header)], r))
     out = BytesIO()
     book.save(out)
     return out.getvalue()
@@ -71,7 +72,8 @@ class TemplateTests(unittest.TestCase):
 
     def test_round_trip_fills_every_template_column(self):
         p = create_direct_cap_project("가상", address="가상 주소", cap_group="")
-        content = _fill(tpl.build(p), {"facility": ["TK-01", "TK-02"], "material": ["P-01"], "detector": ["GD-01"]})
+        content = _fill(tpl.build(p), {"facility": ["TK-01", "TK-02"], "material": ["P-01"], "detector": ["GD-01"],
+                                       "scenario": ["TK-01", "TK-02"]})
         self.assertEqual(ew.classify_document(tpl.FILENAME, content), "mixed")
         ew.ingest(p, tpl.FILENAME, content, "mixed")
         doc = ew.documents(p)[0]

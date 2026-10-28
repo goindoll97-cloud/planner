@@ -62,7 +62,8 @@ class DemoCompanyTests(unittest.TestCase):
         cls.p = create_direct_cap_project(d.COMPANY, address=d.DATA["company"]["주소"], cap_group="")
         cls.before = fs.snapshot(cls.p)
         for name in ("01_제품목록.xlsx", "02_설비대장.xlsx", "03_사업장_일반정보.docx", "04_공정설명서.docx",
-                     "05_SDS_물성표.xlsx", "06_설비사양_안전설비.xlsx", "09_안전관리_비상대응계획.docx"):
+                     "05_SDS_물성표.xlsx", "06_설비사양_안전설비.xlsx", "07_주변보호대상_조사표.xlsx",
+                     "08_사고시나리오_검토자료.xlsx", "09_안전관리_비상대응계획.docx"):
             ew.ingest(cls.p, name, files[name], ew.classify_document(name, files[name]))
         ew.publish(cls.p, replace_existing=True)
         cls.rows = fs.fact_rows(cls.p)

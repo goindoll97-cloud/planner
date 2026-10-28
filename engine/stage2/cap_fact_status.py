@@ -25,8 +25,10 @@ CHECK = "확인"
 DONE = "계산됨"
 NOT_DONE = "계산 전"
 MARK = {O: "O", BLANK: "", CONFLICT: "⚠ 충돌", CHECK: "△ 확인", DONE: "계산됨", NOT_DONE: "계산 전"}
-ENTITY_NOUN = {"facility": ("설비", "대"), "material": ("물질", "종"), "detector": ("감지기", "개"), "psm_table": ("", "줄")}
-ENTITY_PREFIX = {"facility": "facility:", "material": "material:", "detector": "detector:", "psm_table": "table:"}
+ENTITY_NOUN = {"facility": ("설비", "대"), "material": ("물질", "종"), "detector": ("감지기", "개"), "psm_table": ("", "줄"),
+               "target": ("보호대상", "곳")}
+ENTITY_PREFIX = {"facility": "facility:", "material": "material:", "detector": "detector:", "psm_table": "table:",
+                 "target": "target:"}
 
 
 # ---------------------------------------------------------------- 사람 말
@@ -238,7 +240,8 @@ def _survey_row(project, item) -> dict[str, Any]:
     have = [r for r in rows if str(r.get(item.column) or "").strip()]
     if rows and len(have) == len(rows):
         return {"state": O, "value": f"{len(rows)}곳", "source": "지도·현장 조사", "fix": ""}
-    fix = "사업장 주소로 주변 지도를 조회하고 보호대상을 확인해 주세요."
+    fix = ("‘사고시나리오 결과’ 화면에서 지도에 사업장 경계를 그리고 주변 보호대상 조사표를 내려받아 채워 올려 주세요"
+           "(보호대상이 없으면 조사표의 ‘500m 안 보호대상 없음’에 ‘예’).")
     if rows:
         return {"state": CHECK, "value": f"{len(rows)}곳 중 {len(have)}곳", "source": "지도·현장 조사", "fix": fix}
     return {"state": BLANK, "value": "", "source": "", "fix": fix}
@@ -376,7 +379,12 @@ def fact_rows(project: Stage2Project, *, group: str = "", forms=(), docs=None) -
             else:
                 continue
         elif item.source == "survey":
-            cell = _survey_row(project, item)
+            if item.kind in catalog.SITE_KINDS:
+                cell = _site_row(project, item, slots)
+            elif kind_entities.get("target"):
+                cell, _ = _entity_row(project, item, slots, kind_entities)
+            else:
+                cell = _survey_row(project, item)
         else:
             cell = _derived_row(project, item, checks, slots)
         rows.append({"사실": item.label, "종류": catalog.kind_label(item.kind), "상태": MARK[cell["state"]],

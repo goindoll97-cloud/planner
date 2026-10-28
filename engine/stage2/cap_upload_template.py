@@ -6,6 +6,7 @@
 시트
 - 사업장 정보: ‘항목 | 값’ 두 열(사업장에 하나뿐인 사실·서술형)
 - 설비 / 물질 / 가스감지기: 한 줄에 대상 하나. 이미 알고 있는 대상은 번호·이름을 미리 적어 둡니다.
+- 사고시나리오 검토: 설비 한 줄에 선정할 사고유형·경계까지 거리·물성·개시사건 개수(설비 시트와 같은 설비번호)
 - 공정안전보고서 표(동력기계 목록·배관 및 개스킷 명세 등): 서식 표 하나가 시트 하나. 한 줄에 하나씩 적습니다.
 - 안내: 열마다 단위·선택지·쓰이는 별지(값으로 읽히지 않도록 한 칸짜리 문장으로만 적음)
 """
@@ -20,10 +21,11 @@ from . import evidence_workspace as ew
 from .project import Stage2Project
 
 SITE_SHEET = "사업장 정보"
-ENTITY_SHEETS = {"facility": "설비", "material": "물질", "detector": "가스감지기"}
+ENTITY_SHEETS = {"facility": "설비", "material": "물질", "detector": "가스감지기", "scenario": "사고시나리오 검토"}
+SCENARIO_FILE = "scenario_review"        # 설비별 사고시나리오 입력은 설비 시트와 따로 둡니다(열이 많음)
 GUIDE_SHEET = "안내"
-EXTRA_ROWS = {"facility": 5, "material": 5, "detector": 10}     # 새 대상을 적을 빈 줄
-ID_HEADER = {"facility": "설비번호", "material": "제품코드", "detector": "감지기 번호"}
+EXTRA_ROWS = {"facility": 5, "material": 5, "detector": 10, "scenario": 5}     # 새 대상을 적을 빈 줄
+ID_HEADER = {"facility": "설비번호", "material": "제품코드", "detector": "감지기 번호", "scenario": "설비번호"}
 NAME_FIELD = {"facility": "name", "material": "name"}
 FILENAME = "화학사고예방관리계획서_업로드양식.xlsx"
 PSM_FILENAME = "공정안전보고서_업로드양식.xlsx"
@@ -79,9 +81,11 @@ def columns(project: Stage2Project, *, only_blank: bool = True, group: str = "")
     """시트별로 넣을 사실. {‘site’: [...], ‘facility’: [...], ..., ‘tables’: {서식 번호: [그 표의 모든 열]}}.
     공정안전보고서 표는 빈칸이 하나라도 있으면(줄이 없는 표 포함) 그 표의 열을 모두 넣습니다."""
     rows = status.fact_rows(project, group=group)
-    out: dict[str, Any] = {"site": [], "facility": [], "material": [], "detector": [], "tables": {}}
+    out: dict[str, Any] = {"site": [], "facility": [], "material": [], "detector": [], "scenario": [], "tables": {}}
     for item in _wanted(rows, only_blank):
         key = "site" if item.kind in catalog.SITE_KINDS else item.kind
+        if item.kind == "facility" and item.file == SCENARIO_FILE:
+            key = "scenario"
         if key in out and key != "psm_table":
             out[key].append(item)
     by_id = {r["_id"]: r for r in rows}
@@ -147,8 +151,9 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "") -
         if not items:
             continue
         sheet = book.create_sheet(title)
-        known = status.entities(project, kind)
-        name_item = next((i for i in catalog.facts(kinds=[kind]) if i.evidence_field == NAME_FIELD.get(kind)), None)
+        known = status.entities(project, "facility" if kind == "scenario" else kind)
+        name_item = next((i for i in catalog.facts(kinds=["facility" if kind == "scenario" else kind])
+                          if i.evidence_field == NAME_FIELD.get(kind)), None)
         header_items = ([name_item] if name_item else []) + [i for i in items if i is not name_item]   # 이름을 번호 바로 옆에
         sheet.append([ID_HEADER[kind]] + [i.template_header for i in header_items])
         for column, cell in enumerate(sheet[1], start=1):

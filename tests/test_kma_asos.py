@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from engine import kma_asos as kma
-from tests.test_psm_workspace_page import _project, _run
+from tests.test_psm_workspace_page import _project
 
 
 def _body(items, total=None, code="00"):
@@ -80,32 +80,50 @@ class AsosTests(unittest.TestCase):
 
 
 class ScreenTests(unittest.TestCase):
-    def test_button_fills_temperature_and_humidity_and_records_the_basis(self):
-        project = _project()
-        basis = kma.WeatherBasis("152", "울산", "2023-09-19 ~ 2026-09-18", 1096, 38.1, 61.2, 2.4, "2024-07-20")
-        result = kma.DailyResult("OK", "", ())
-        with patch("engine.kma_asos.three_year_basis", return_value=(basis, result)), \
-             patch("engine.stage2.storage.save_project"):
-            def click(at):
-                at.button(key="psm19_weather_fill").click().run()
-            at = _run(project, "19-2", click)
-        self.assertFalse(at.exception)
-        self.assertEqual(at.text_input(key="psm19_temp").value, "38.1")
-        self.assertEqual(at.text_input(key="psm19_humidity").value, "61.2")
-        record = project.get_field("psm.risk.weather_basis")
-        self.assertEqual(record.value["관측소"], "울산(152)")
-        self.assertTrue(any("채웠습니다" in s.value for s in at.success))
+    """대기온도·습도는 ‘사고시나리오 결과’ 화면이 처음 열릴 때 주소로 관측소를 골라 채웁니다(화면에 입력칸 없음)."""
 
-    def test_lookup_failure_leaves_the_fields_for_manual_input(self):
-        project = _project()
-        failed = kma.DailyResult("NOT_CONFIGURED", "키가 없어 조회하지 않았습니다.")
-        with patch("engine.kma_asos.three_year_basis", return_value=(None, failed)):
-            def click(at):
-                at.button(key="psm19_weather_fill").click().run()
-            at = _run(project, "19-2", click)
+    def _project(self, address):
+        from tests.test_demo_full_company import walk
+
+        project, _ = walk()
+        project.psm_required = True
+        project.set_authoring_scope(psm_selected=True, cap_selected=True)
+        project.set_field("business.address", "사업장 주소", address, "VERIFIED")
+        return project
+
+    def _run(self, project):
+        from pathlib import Path
+        from streamlit.testing.v1 import AppTest
+
+        rows = [{"project_id": project.project_id, "company_name": project.company_name}]
+        with patch("engine.stage2.storage.list_projects", return_value=rows), \
+             patch("engine.stage2.storage.load_project", return_value=project), \
+             patch("engine.stage2.storage.save_project"):
+            at = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "ui/scenario_results_page.py"), default_timeout=120)
+            at.session_state["_stage2_active_project_id"] = project.project_id
+            at.run()
+            return at
+
+    def test_scenario_page_fills_temperature_and_humidity_on_first_open(self):
+        from engine.stage2 import psm_form19_2_workspace as f19
+
+        project = self._project("울산광역시 남구 산업로 1")
+        basis = kma.WeatherBasis("152", "울산", "2023-09-19 ~ 2026-09-18", 1096, 38.1, 61.2, 2.4, "2024-07-20")
+        with patch("engine.kma_asos.three_year_basis", return_value=(basis, kma.DailyResult("OK", "", ()))):
+            at = self._run(project)
         self.assertFalse(at.exception)
-        self.assertEqual(at.text_input(key="psm19_temp").value, "")
-        self.assertTrue(any("키가 없어" in w.value for w in at.warning))
+        self.assertEqual(project.get_field("psm.risk.weather_basis").value["관측소"], "울산(152)")
+        rows = project.get_field(f19.TABLE_KEY).value
+        self.assertEqual({(r["대기온도(℃)"], r["습도(%)"]) for r in rows}, {("38.1", "61.2")})
+        self.assertTrue(any("채웠습니다" in s.value for s in at.success))
+        self.assertEqual(len(at.text_input), 0)
+
+    def test_unknown_station_points_to_the_file_instead_of_an_input_box(self):
+        project = self._project("알 수 없는 마을 1")
+        at = self._run(project)
+        self.assertFalse(at.exception)
+        self.assertTrue(any("관측소를 찾지 못했습니다" in i.value and "사업개요 파일" in i.value for i in at.info))
+        self.assertEqual(len(at.text_input), 0)
 
 
 if __name__ == "__main__":
@@ -150,21 +168,3 @@ class AutoFillTests(unittest.TestCase):
         project = self._with_address(_project(), "울산광역시 남구")
         with patch("engine.kma_asos._credential", return_value=""):
             self.assertEqual(pw.auto_fill(project).status, "NOT_CONFIGURED")
-
-    def test_screen_fills_the_fields_on_first_open_without_a_click(self):
-        project = self._with_address(_project(), "울산광역시 남구 산업로 1")
-        basis = kma.WeatherBasis("152", "울산", "2023-09-19 ~ 2026-09-18", 1096, 38.1, 61.2, 2.4, "2024-07-20")
-        with patch("engine.kma_asos.three_year_basis", return_value=(basis, kma.DailyResult("OK", "", ()))), \
-             patch("engine.stage2.storage.save_project"):
-            at = _run(project, "19-2")
-        self.assertFalse(at.exception)
-        self.assertEqual(at.text_input(key="psm19_temp").value, "38.1")
-        self.assertEqual(at.text_input(key="psm19_humidity").value, "61.2")
-        self.assertTrue(any("채웠습니다" in s.value for s in at.success))
-
-    def test_screen_falls_back_to_manual_input_when_no_station_matches(self):
-        project = self._with_address(_project(), "알 수 없는 마을 1")
-        at = _run(project, "19-2")
-        self.assertFalse(at.exception)
-        self.assertEqual(at.text_input(key="psm19_temp").value, "")
-        self.assertTrue(any("관측소를 찾지 못했습니다" in i.value for i in at.info))

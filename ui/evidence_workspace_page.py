@@ -460,8 +460,9 @@ def _correction_rows(project, found) -> list[dict]:
 
 
 KIND_NAMES = {"material": "물질 목록·SDS", "facility": "설비 목록·운전 자료", "site": "사업장 일반정보·공정 설명",
-              "detector": "가스감지기 명세", "mixed": "여러 종류가 든 묶음 파일(시트마다 따로 읽음)"}
-FACT_FORMS = (1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16)
+              "detector": "가스감지기 명세", "target": "주변 보호대상 조사표",
+              "mixed": "여러 종류가 든 묶음 파일(시트마다 따로 읽음)"}
+FACT_FORMS = (1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16)
 DOC_NAMES = {"CAP": "화학사고예방관리계획서", "PSM": "공정안전보고서"}
 FACT_COLUMNS = ("상태", "사실", "값", "출처", "쓰이는 곳", "올릴 파일", "필요", "고칠 점")
 
@@ -713,6 +714,14 @@ def _auto_publish(project) -> None:
         try:
             changed = cap_fact_drafting.refresh_rule_drafts(project) > 0 or changed
         except Exception:          # 서술형 초안 문제로 화면이 멈추지 않게
+            pass
+        try:                       # 사고시나리오 결과도 새 파일로 다시 계산(‘사고시나리오 결과’ 화면에서 확인)
+            from engine.stage2 import scenario_pipeline
+
+            if scenario_pipeline.needs_refresh(project):
+                scenario_pipeline.refresh(project)
+                changed = True
+        except Exception:
             pass
     if changed:
         save_project(project)
