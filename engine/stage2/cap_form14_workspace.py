@@ -14,6 +14,7 @@ from .cap_risk_engine import INITIATING_EVENTS, build_cap_form14_data
 from .cap_scenario_workspace import LORRY_KIND, _facility_rows, evaluate as evaluate_targets, saved_scenarios
 from .cap_form9_engine import _pressure_mpa
 from .project import Stage2Project
+from .scenario_evidence import frequency_for
 
 FREQUENCY_KEY = "cap.offsite.scenario_frequency"
 IMPACT_TABLE_KEY = "cap.offsite.scenario_impact_table"
@@ -84,6 +85,11 @@ def rows(project: Stage2Project) -> list[dict[str, Any]]:
         row["수동적 완화장치"] = _clean(old.get("수동적 완화장치"))
         row["능동적 완화장치"] = _clean(old.get("능동적 완화장치"))
         row["안전성확보설비 증빙"] = _clean(old.get("안전성확보설비 증빙"))
+        # 사업장 업무에 올린 자료의 확인 완료 값으로 빈 칸만 채웁니다(저장된 값·직접 적은 값은 그대로).
+        scenario = next((x for x in saved_scenarios(project) if _clean(x.get("사고시나리오명")) == name), {})
+        for column, value in frequency_for(project, _clean(scenario.get("대상 설비번호"))).items():
+            if _clean(row.get(column)) == "":
+                row[column] = value
         out.append(row)
     return out
 
@@ -100,7 +106,7 @@ def apply_suggestions(project: Stage2Project, edited: list[Mapping[str, Any]]) -
     return result
 
 
-def save(project: Stage2Project, edited: list[Mapping[str, Any]]) -> int:
+def save(project: Stage2Project, edited: list[Mapping[str, Any]], *, status: str = "USER_CONFIRMED", note: str = "") -> int:
     cleaned = []
     for row in edited:
         name = _clean(row.get("사고시나리오명"))
@@ -114,8 +120,8 @@ def save(project: Stage2Project, edited: list[Mapping[str, Any]]) -> int:
         for column in ("수동적 완화장치", "능동적 완화장치", "안전성확보설비 증빙"):
             item[column] = _clean(row.get(column))
         cleaned.append(item)
-    project.set_field(FREQUENCY_KEY, "사고시나리오별 개시사건 개수(별지 제14호 작성대)", cleaned, "USER_CONFIRMED",
-                      note="CAP 작성대 별지 제14호에서 개시사건 개수·완화장치 입력(개수는 P&ID 사실)")
+    project.set_field(FREQUENCY_KEY, "사고시나리오별 개시사건 개수(별지 제14호 작성대)", cleaned, status,
+                      note=note or "CAP 작성대 별지 제14호에서 개시사건 개수·완화장치 입력(개수는 P&ID 사실)")
     return len(cleaned)
 
 

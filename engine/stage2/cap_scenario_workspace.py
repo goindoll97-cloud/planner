@@ -187,8 +187,9 @@ def saved_scenarios(project: Stage2Project) -> list[dict[str, Any]]:
     return [dict(r) for r in record.value if isinstance(r, Mapping)]
 
 
-def save_scenarios(project: Stage2Project, rows: list[Mapping[str, Any]]) -> int:
+def save_scenarios(project: Stage2Project, rows: list[Mapping[str, Any]], *, status: str = "USER_CONFIRMED",
+                   note: str = "") -> int:
     cleaned = [{k: _clean(v) for k, v in row.items()} for row in rows if _clean(row.get("사고시나리오명"))]
-    project.set_field(SCENARIO_KEY, "사고시나리오 목록(작성대)", cleaned, "USER_CONFIRMED",
-                      note="예비시나리오 대상(규정 제23조, 별표 2)에서 사용자가 확정. 별지 제12·14·15·16호가 공유")
+    project.set_field(SCENARIO_KEY, "사고시나리오 목록(작성대)", cleaned, status,
+                      note=note or "예비시나리오 대상(규정 제23조, 별표 2)에서 사용자가 확정. 별지 제12·14·15·16호가 공유")
     return len(cleaned)
