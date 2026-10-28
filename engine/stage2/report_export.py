@@ -196,3 +196,28 @@ def build_outputs(project: Stage2Project, system: str = "PSM") -> Outputs:
         provenance_json=output_provenance_json_bytes(provenance), provenance_name=output_provenance_filename(name),
         bundle=build_verified_output_bundle(regulation, provenance), bundle_name=verified_bundle_filename(name),
     )
+
+
+@dataclass(frozen=True)
+class WorkspaceDraft:
+    docx: bytes
+    name: str
+    state: ExportState
+    provenance_json: bytes
+
+
+def build_cap_workspace_draft(project: Stage2Project) -> WorkspaceDraft:
+    """④의 단일 초안: 원본 규정서식에 현재 서술형을 자동 포함하고 검증 기록을 보존합니다."""
+    from io import BytesIO
+    from docx import Document
+    from .statutory_report_v2 import _render_cap_narrative
+
+    state = evaluate(project, "CAP")
+    doc = Document(BytesIO(build_cap_draft(project)))
+    _render_cap_narrative(doc, project)
+    out = BytesIO()
+    doc.save(out)
+    content = out.getvalue()
+    name = cap_baseline_filename(project).replace("_규정서식_작성본.docx", "_규정서식_초안.docx")
+    provenance = build_output_provenance(project, "CAP", content, file_name=name, final_ready=False)
+    return WorkspaceDraft(content, name, state, output_provenance_json_bytes(provenance))

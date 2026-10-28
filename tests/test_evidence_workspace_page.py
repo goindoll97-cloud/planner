@@ -274,8 +274,7 @@ class ProgressBoardTests(unittest.TestCase):
         info = cap_common.progress(self.project)
         rows = {r["group"]: r for r in info["rows"]}
         self.assertEqual(list(rows), list(cap_common.GROUPS))
-        self.assertEqual(list(rows), ["export", "submission"])
-        self.assertIn("초안을 내려받을 수 있어요", rows["export"]["status"])
+        self.assertEqual(list(rows), ["submission"])
         self.assertIn("저장하지 않았어요", rows["submission"]["status"])
 
     def test_step_four_shows_write_action_and_download_destination(self):
@@ -286,5 +285,11 @@ class ProgressBoardTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(len(at.dataframe), 0)
         at.button(key="write_" + self.pid).click().run()
-        self.assertTrue(any("초안 내려받기" in x.value for x in at.success))
+        self.assertTrue(any("아래에서 내려받으세요" in x.value for x in at.success))
+        downloads = [b.proto.label for b in at.get("download_button")]
+        self.assertEqual(downloads, ["규정서식 초안 DOCX 내려받기"])
+        self.assertFalse(at.error)
+        text = " ".join(_texts(at))
+        for removed in ("버전관리 열기", "새 사업장은", "서술형 포함 DOCX", "제출 행정서식", "점검하고 내려받기"):
+            self.assertNotIn(removed, text)
 

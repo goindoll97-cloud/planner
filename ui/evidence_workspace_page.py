@@ -1,6 +1,6 @@
 """사업장 업무 화면: 신입사원도 따라올 수 있게 단계별로 안내합니다.
 
-① 자료 올리기 → ② 파일별 보완 요청 → ③ 시나리오 후보 → ④ 보내기·진행 현황
+① 자료 올리기 → ② 파일별 보완 요청 → ③ 시나리오 후보 → ④ 작성·내려받기
 
 보완 요청은 ②의 한 표에 모으고 ③은 후보 표, ④는 작성 동작과 간단한 진행 상태만 보여 줍니다.
 """
@@ -18,7 +18,7 @@ from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import delete_all_projects, list_projects, load_attachment, load_project, save_attachment, save_project
 
-STEPS = {1: "① 자료 올리기", 2: "② 파일별 보완 요청", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
+STEPS = {1: "① 자료 올리기", 2: "② 파일별 보완 요청", 3: "③ 시나리오 후보", 4: "④ 작성·내려받기"}
 DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".hwp", ".txt")
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
 
@@ -509,6 +509,24 @@ def _coverage_panel(project, found) -> None:
                  "고칠 점": row["확인된 문제"] + " " + row["수정 요청"]}
         if not any(r["사실"] == entry["사실"] and r["고칠 점"] == entry["고칠 점"] for r in visible):
             visible.append(entry)
+    if project.cap_in_scope:
+        from engine.stage2 import report_export
+        try:
+            state = report_export.evaluate(project, "CAP")
+            for issue in (*state.text_issues, *state.manual_issues):
+                if issue.status == "PASS":
+                    continue
+                sources = []
+                for key in issue.field_keys:
+                    record = project.get_field(key)
+                    if record:
+                        sources.extend(ref.source_name for ref in record.evidence if ref.source_name in filenames)
+                entry = {"상태": "보완", "사실": issue.legal_item, "쓰이는 곳": "",
+                         "올린 파일": " / ".join(dict.fromkeys(sources)), "고칠 점": issue.message}
+                if not any(r["사실"] == entry["사실"] and r["고칠 점"] == entry["고칠 점"] for r in visible):
+                    visible.append(entry)
+        except Exception:
+            st.error("문서 검증 결과를 확인하지 못했어요. 보완 요청이 전부 확인된 상태는 아닙니다.")
     st.dataframe(visible, hide_index=True, width="stretch")
     _template_download(project, project.cap_group)
 
@@ -537,10 +555,10 @@ def _step_scenarios(project, found, triage) -> None:
     st.dataframe([{"순서": r["rank"], "설비": names(r["facility"]), "물질": names(r["material"]),
                    "인식한 파일": " / ".join(dict.fromkeys(source["document"] for source in r["sources"].values() if source)),
                    "비교 점수": round(r["score"], 1)} for r in linked], hide_index=True, width="stretch")
-    _next_button(4, pid, "다음: 보내기·진행 현황 →")
+    _next_button(4, pid, "다음: 작성·내려받기 →")
 
 
-# ---------------------------------------------------------------- ④ 보내기·진행 현황
+# ---------------------------------------------------------------- ④ 작성·내려받기
 
 
 def _step_export(project, found) -> None:
@@ -548,9 +566,11 @@ def _step_export(project, found) -> None:
     st.caption("읽은 자료로 초안을 작성합니다. 부족한 자료는 ②에서 확인하세요.")
     if st.button("작성하기", type="primary", key="write_" + project.project_id):
         _auto_publish(project)
-        st.success("작성된 초안은 ‘초안 내려받기’에서 받을 수 있어요.")
+        st.success("초안을 작성했어요. 아래에서 내려받으세요.")
     st.caption("서술형 초안 " + str(sum(bool(i.company_text or i.draft) for system in cap_fact_drafting.systems(project) for i in cap_fact_drafting.items(project, system))) + "개 작성됨")
     _narrative_drafts(project)
+    from ui.report_export_panel import render_workspace_download
+    render_workspace_download(project)
 
 
 def _auto_publish(project) -> None:
@@ -622,12 +642,6 @@ def _narrative_drafts(project) -> None:
             (f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
             if results else "작성할 서술형이 없어요. 완성 문서는 그대로 사용하며, 근거가 없는 항목은 ②에서 필요한 자료를 확인해 주세요.")
         st.rerun()
-    with st.expander("서술형 초안 보기"):
-        for item in [i for system in systems for i in cap_fact_drafting.items(project, system)]:
-            text = item.company_text or item.draft
-            if text:
-                st.markdown(f"**{item.label}** — {item.state}")
-                st.text(text)
 
 
 # ---------------------------------------------------------------- 화면

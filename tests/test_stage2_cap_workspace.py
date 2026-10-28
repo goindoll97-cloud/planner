@@ -331,9 +331,10 @@ class CAPWorkspaceTests(unittest.TestCase):
 
     def test_page_is_wired_into_navigation(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn('st.Page("ui/cap_export_page.py"', app)
-        page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
-        self.assertIn('report_export_panel.render(project, "CAP")', page)  # 규정서식 DOCX는 공용 내보내기 단계에서 만든다
+        self.assertNotIn('st.Page("ui/cap_export_page.py"', app)
+        self.assertIn('st.Page("ui/evidence_workspace_page.py"', app)
+        page = (ROOT / "ui/evidence_workspace_page.py").read_text(encoding="utf-8")
+        self.assertIn("render_workspace_download(project)", page)  # 자료 접수 ④에서 내려받는다
 
 class CAPSharedFactsTests(unittest.TestCase):
     """Facilities entered once in 별지 제1호 must reappear in the other 별지."""

@@ -209,7 +209,7 @@ def _narrative(project) -> None:
             if text:
                 st.markdown(f"**{item.label}** — {item.state}")
                 st.text(text)
-    st.caption("로컬 AI로 문장을 다듬거나 초안을 다시 만드는 것은 ‘사업장 업무 > ④ 보내기·진행 현황’에서 합니다.")
+    st.caption("로컬 AI로 문장을 다듬거나 초안을 다시 만드는 것은 ‘사업장 업무 > ④ 작성·내려받기’에서 합니다.")
     _to_intake()
 
 

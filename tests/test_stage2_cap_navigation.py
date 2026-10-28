@@ -24,7 +24,7 @@ class CAPNavigationTests(unittest.TestCase):
     def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
-        self.assertIn('st.Page("ui/cap_export_page.py", title="초안 내려받기"', app)
+        self.assertNotIn('st.Page("ui/cap_export_page.py"', app)
         for gone in ("cap_facts_page.py", "cap_scenario_page.py", "cap_emergency_page.py"):
             self.assertNotIn(gone, app)                           # 서식 입력 화면은 없다
         self.assertNotIn("cap_workspace_page.py", app)          # 예전 한 화면은 나눠서 지움

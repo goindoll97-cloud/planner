@@ -8,7 +8,6 @@ import streamlit as st
 from engine.stage2 import report_export as export
 from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
-from engine.stage2 import cap_submission_forms
 from ui import cap_frames as frames
 
 LABELS = {"PSM": "공정안전보고서", "CAP": "화학사고예방관리계획서"}
@@ -29,6 +28,9 @@ def _gate_table(title: str, gate, *, with_pages: bool = False) -> None:
 
 
 def render(project, system: str) -> None:
+    if system == "CAP":
+        render_workspace_download(project)
+        return
     label = LABELS[system]
     prefix = f"export_{system.lower()}"
     st.caption(f"회사 파일에서 프로그램이 채운 {label} 초안(DOCX)을 내려받습니다. 승인 절차는 없습니다. "
@@ -68,39 +70,6 @@ def render(project, system: str) -> None:
     st.download_button("서술형 포함 DOCX 초안(보완 안내 포함) 내려받기", data=outputs.review_docx, file_name=outputs.review_name,
                        mime=export.DOCX_MIME, key=f"{prefix}_dl_review", width="stretch")
 
-    if system == "CAP":
-        st.markdown("### 제출 행정서식")
-        submission_rec = project.get_field("cap.business.submission_type")
-        submission_type = str(submission_rec.value if submission_rec else "")
-        if submission_type == cap_submission_forms.FORM32_TYPE:
-            form = cap_submission_forms.form32_readiness(project)
-            if form.ready:
-                st.download_button(
-                    "별지 제32호 변경 검토신청서 DOCX 내려받기",
-                    data=cap_submission_forms.build_form32_docx(project),
-                    file_name=cap_submission_forms.form32_filename(project),
-                    mime=export.DOCX_MIME,
-                    key=f"{prefix}_dl_cap_form32",
-                    width="stretch",
-                )
-            else:
-                st.info("별지 제32호는 '제출·변경 행정서식' 화면에서 최종 적합통보 정보와 비교 기준 버전을 확인하면 내려받을 수 있습니다.")
-        elif submission_type in cap_submission_forms.FORM31_TYPES:
-            form = cap_submission_forms.form31_readiness(project)
-            if form.ready:
-                st.download_button(
-                    "별지 제31호 검토신청서 DOCX 내려받기",
-                    data=cap_submission_forms.build_form31_docx(project),
-                    file_name=cap_submission_forms.form31_filename(project),
-                    mime=export.DOCX_MIME,
-                    key=f"{prefix}_dl_cap_form31",
-                    width="stretch",
-                )
-            else:
-                st.info("별지 제31호는 '제출·변경 행정서식' 화면에서 관할기관·제출방법·신청일 등 제출정보를 확인하면 내려받을 수 있습니다.")
-        else:
-            st.info("제출구분을 확인하면 해당하는 별지 제31호 또는 제32호를 안내합니다.")
-
     if system == "PSM":
         st.markdown("### 심사 제출 행정서식")
         form1 = psm_admin_forms.form1_readiness(project)
@@ -138,3 +107,19 @@ def render(project, system: str) -> None:
                            mime="application/json", key=f"{prefix}_dl_prov", width="stretch")
         st.download_button("검증 묶음 ZIP(DOCX + 검증정보)", data=outputs.bundle, file_name=outputs.bundle_name,
                            mime="application/zip", key=f"{prefix}_dl_bundle", width="stretch")
+
+
+def render_workspace_download(project) -> None:
+    """자료 접수 ④의 단일 다운로드. 상세 보완은 ②에서 안내합니다."""
+    if not project.cap_in_scope:
+        st.caption("화학사고예방관리계획서 작성 대상이 확인되면 초안을 내려받을 수 있어요.")
+        return
+    try:
+        draft = export.build_cap_workspace_draft(project)
+    except Exception:
+        st.error("초안을 생성·검증하지 못했어요. 자료와 서식 구성을 확인한 뒤 다시 시도해 주세요.")
+        return
+    st.caption("현재 자료와 서술형을 포함한 초안입니다. 제출 전에 내용을 확인하고, 보완할 자료는 ②에서 확인하세요.")
+    st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
+                       mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
+                       width="stretch", type="primary")

@@ -84,8 +84,8 @@ class CapExportTests(unittest.TestCase):
 class CapScreenTests(unittest.TestCase):
     def test_cap_workspace_export_step_uses_the_shared_panel(self):
         from pathlib import Path
-        source = (Path(__file__).resolve().parents[1] / "ui/cap_common.py").read_text(encoding="utf-8")
-        self.assertIn('report_export_panel.render(project, "CAP")', source)
+        source = (Path(__file__).resolve().parents[1] / "ui/evidence_workspace_page.py").read_text(encoding="utf-8")
+        self.assertIn('render_workspace_download(project)', source)
         self.assertNotIn("cap_form01_download_", source)  # 항상 '작성본'으로 이름 붙이던 예전 다운로드 제거
 
 
@@ -104,4 +104,5 @@ class CapPanelRenderTests(unittest.TestCase):
         at = AppTest.from_string(code, default_timeout=90).run()
         self.assertFalse(at.exception)
         self.assertFalse(any(b.key == "export_cap_ack" for b in at.button))   # 승인·확인 단추가 없다
-        self.assertTrue(any("초안입니다" in i.value for i in at.info))
+        self.assertTrue(any("초안입니다" in i.value for i in at.caption))
+        self.assertEqual([d.proto.label for d in at.get("download_button")], ["규정서식 초안 DOCX 내려받기"])

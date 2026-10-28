@@ -1,4 +1,7 @@
-"""화학사고예방관리계획서 · export 화면. 내용은 ui/cap_common.py의 GROUPS["export"]에 있습니다."""
-from ui import cap_common
+"""예전 다운로드 경로는 자료 접수 ④로 이동합니다."""
+import streamlit as st
 
-cap_common.page("export")
+pid = st.session_state.get("_stage2_active_project_id")
+if pid:
+    st.session_state["evidence_step_" + pid] = 4
+st.switch_page("ui/evidence_workspace_page.py")

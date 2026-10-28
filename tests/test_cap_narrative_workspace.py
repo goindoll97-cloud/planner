@@ -130,6 +130,10 @@ class ScreenTests(unittest.TestCase):
             page = cap_common.page_for(option)
             at = AppTest.from_file(str(ROOT / page), default_timeout=90)
             at.session_state["_stage2_active_project_id"] = project.project_id
+            if option == "export":
+                at.session_state["evidence_step_" + project.project_id] = 4
+                at.run()
+                return at
             at.run()
             group = page.split("cap_", 1)[1].rsplit("_page.py", 1)[0]
             if len(cap_common.GROUPS[group][2]) > 1:
