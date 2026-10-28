@@ -246,6 +246,7 @@ def _step_upload(project, found) -> None:
                                     mime="application/pdf", key="cap_request_pdf")
         st.markdown("**우선 모을 파일**: 설비목록·설비대장(설비번호·공장·용량·최대보유량), 물질목록·제품별 SDS(CAS·함량), "
                     "운전조건표·설비사양서(압력·온도·단위), 공정설명서, 안전설비·비상대응 자료, 주변현황·평가 근거.")
+        st.caption("서술형 계획서는 직접 쓰지 않아도 됩니다. 단답형 정보를 올리면 프로그램이 초안을 작성하고 ④에서 AI로 다듬을 수 있어요.")
         for label, rows in cap_intake_guide.grouped_checklist():
             st.markdown(f"#### {label}")
             st.dataframe([{"구역": cap_intake_guide.form_zone(r), "필요한 내용": r["label"],
@@ -465,7 +466,10 @@ def _correction_rows(project, found) -> list[dict]:
         fact = item["slot"]["facts"][0]
         add(_where(fact), _name(item["field"]), "출처·단위·법적 판단용 값의 확인이 필요합니다.",
             "원본과 현장 적용 여부를 확인하고 최신본을 다시 올리거나 아래 확인 절차를 이용하세요.")
+    narrative_keys = cap_fact_drafting.input_requirement_keys(project.cap_group)
     for req in build_intake_catalog(project):
+        if req.requirement_key in narrative_keys:
+            continue  # 문장 제출을 요구하지 않음: 단답형 누락·충돌은 사실 표에서 안내
         if req.system not in {"CAP", "COMMON"} or req.coverage_status in {"확인", "해당 없음"}:
             continue
         missing = ", ".join(req.missing_labels or (req.label,))
@@ -488,7 +492,10 @@ def _coverage_panel(project, found) -> None:
     rows = cap_fact_status.fact_rows(project, docs=("CAP",))
     visible = []
     filenames = [d["name"] for d in ew.documents(project)]
+    generated = cap_fact_drafting.generated_fact_ids(project.cap_group)
     for row in rows:
+        if row["_id"] in generated:
+            continue
         if not row["_company"]:
             continue
         source = row["출처"]

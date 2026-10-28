@@ -129,6 +129,29 @@ def _owns(fact, owner: str):
     return None
 
 
+def input_facts(spec) -> list[catalog.Fact]:
+    """서술형 결과물 대신 회사에 요청할 단답형 근거 사실."""
+    if spec.system != "CAP" or not spec.section.startswith(SECTIONS):
+        return []
+    owner = drafting.typed_fact_owner(spec.key)
+    return [fact for fact in catalog.facts(kinds=["narrative"])
+            if owner and _owns(fact, owner) is not None]
+
+
+def input_requirement_keys(group: str = "") -> set[str]:
+    from .requirements import cap_requirement_specs
+    return {spec.key for spec in cap_requirement_specs(group or "1군") if input_facts(spec)}
+
+
+def generated_fact_ids(group: str = "") -> set[str]:
+    """기존 완성 문장은 읽되 새 양식이나 보완 목록에서 제출을 요구하지 않습니다."""
+    from .requirements import cap_requirement_specs
+    fields = {key for spec in cap_requirement_specs(group or "1군") if input_facts(spec)
+              for key in spec.field_keys}
+    return {f.id for f in catalog.facts(kinds=["narrative"])
+            if not f.column and f.field_key in fields}
+
+
 def items(project: Stage2Project, system: str = "CAP") -> list[Item]:
     """이 사업장의 서술형 항목과 각각의 근거 사실(화학사고예방관리계획서는 1군·2군에 맞춰)."""
     site = _site_facts(project)

@@ -61,9 +61,16 @@ def checklist(group: str = "") -> list[dict]:
     for spec in (*COMMON_REQUIREMENTS, *source):
         if any(row["key"] == spec.key for row in rows):
             continue
-        evidence = list(dict.fromkeys(spec.suggested_evidence))
-        rows.append({"key": spec.key, "section": spec.section, "label": spec.label,
-                     "details": spec.description, "evidence": evidence,
+        from .cap_fact_drafting import input_facts
+        facts = input_facts(spec)
+        evidence = (["항목·값 표: " + " / ".join(f.template_header for f in facts),
+                     "기존 회사자료·연락망 (완성된 계획서가 있으면 선택 제출)"]
+                    if facts else list(dict.fromkeys(spec.suggested_evidence)))
+        details = ("회사에서 확인할 정보: " + ", ".join(f.template_header for f in facts)
+                   + ". 이 정보로 프로그램이 서술형 초안을 작성하고, 로컬 AI로 문장을 다듬습니다. 완성된 계획서는 필수가 아닙니다."
+                   if facts else spec.description)
+        rows.append({"key": spec.key, "section": spec.section, "label": spec.label + (" 작성용 정보" if facts else ""),
+                     "details": details, "evidence": evidence,
                      "levels": sorted(seen.get(spec.key, {"1군", "2군"})),
                      "basis": spec.legal_basis, "pages": spec.manual_pages,
                      "required": spec.required})
@@ -91,7 +98,7 @@ def guidance_text(group: str = "", *, drawings: bool = True) -> str:
                 lines.append(f"  작성 참고: {row['basis']}")
             lines.append("")
     lines.extend(["조건이 달라지면 추가 확인", "• 물질·농도·성상·최대보유량·일일 취급량이 바뀌면 작성수준과 대상시설을 다시 판정하세요.",
-                  "• 1군으로 확인되면 외부 비상대응·지역사회 소통 관련 자료도 제출하세요.",
+                  "• 1군은 소통 대상·방법·주기, 협력 기관·내용, 경보 방법·대피 경로·장소를 알려 주세요. 계획서 문장은 프로그램이 작성합니다.",
                   "• 공동비상대응, 타 제도 심사결과 활용, 변경제출 여부는 각 증빙이 있을 때 해당 자료를 추가하세요.",
                   "• 누락 자료는 파일·항목별 보완 요청으로 돌려보내고, 규정 기준표가 없으면 판정 보류로 표시합니다."])
     return "\n".join(lines) + "\n"
@@ -101,7 +108,7 @@ def conditional_notice(group: str) -> str:
     """승인된 작성수준에서 달라지는 자료를 구체적으로 안내한다."""
     if group == "1군":
         extra = [row["label"] for row in checklist() if row["levels"] == ["1군"]]
-        return ("이 사업장은 1군으로 설정되어 있습니다. 외부 비상대응·지역사회 소통 자료를 추가 제출하세요: "
+        return ("이 사업장은 1군으로 설정되어 있습니다. 완성된 계획서 대신 서술형 작성에 필요한 단답형 정보를 추가하세요: "
                 + ", ".join(extra) + ". 물질·함량·최대보유량·일일 취급량과 승인 규정 DB를 대조해 작성수준을 확정하세요.")
     if group == "2군":
         return ("이 사업장은 2군으로 설정되어 있습니다. 물질·함량·최대보유량·일일 취급량이 바뀌면 "

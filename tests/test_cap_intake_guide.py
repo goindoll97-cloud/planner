@@ -12,6 +12,19 @@ from engine.stage2.hwp5_binary import HWP5_MAGIC
 
 
 class CapIntakeGuideTests(unittest.TestCase):
+    def test_plans_request_short_facts_instead_of_finished_documents(self):
+        rows = {row["key"]: row for row in guide.checklist("1군")}
+        expected = {"cap.external.communication": ["지역사회 소통 대상", "지역사회 소통 방법", "지역사회 소통 주기"],
+                    "cap.external.mutual_aid": ["협력 기관", "협력 내용", "합동 훈련"],
+                    "cap.external.evacuation": ["경보 방법", "대피 경로", "대피 장소"]}
+        for key, labels in expected.items():
+            row = rows[key]
+            self.assertIn("작성용 정보", row["label"])
+            self.assertIn("완성된 계획서는 필수가 아닙니다", row["details"])
+            for label in labels:
+                self.assertIn(label, row["details"])
+        self.assertNotIn("cap.external.communication", {r["key"] for r in guide.checklist("2군")})
+
     def test_full_checklist_includes_conditional_scope_and_all_registry_entries(self):
         all_rows = guide.checklist()
         keys = {row["key"] for row in all_rows}

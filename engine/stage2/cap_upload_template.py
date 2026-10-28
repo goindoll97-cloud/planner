@@ -65,7 +65,11 @@ def _wanted(rows: list[dict[str, Any]], only_blank: bool) -> list[catalog.Fact]:
     """양식에 넣을 사실: 빈칸(일부 대상만 빈 것 포함)인 회사 사실. 충돌·확인은 원본 파일을 고쳐야 하므로 넣지 않습니다."""
     by_id = {r["_id"]: r for r in rows}
     out = []
+    from .cap_fact_drafting import generated_fact_ids
+    generated = generated_fact_ids()
     for item in catalog.facts(company=True):
+        if item.id in generated:
+            continue
         if item.identifier or not item.readable or item.field_key.startswith("@"):
             continue
         row = by_id.get(item.id)

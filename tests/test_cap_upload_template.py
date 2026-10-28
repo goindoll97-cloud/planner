@@ -133,6 +133,13 @@ class TemplateTests(unittest.TestCase):
         self.assertTrue(any(f["value"] == "이대표" for f in facts))
         self.assertFalse(any(f["value"] in ("김대표", "홍길동") for f in facts))
 
+    def test_plan_template_requests_facts_and_never_complete_narratives(self):
+        p = create_direct_cap_project("가상", address="주소", cap_group="1군")
+        book = load_workbook(BytesIO(tpl.build(p, docs=("CAP",))))
+        headers = {row[0].value for row in book[tpl.SITE_SHEET].iter_rows(min_row=2)}
+        self.assertTrue({"지역사회 소통 대상", "협력 기관", "대피 장소"} <= headers)
+        self.assertFalse({"지역사회 소통", "지역비상대응기관·인근사업장 공조", "주민 경보·대피"} & headers)
+
     def test_full_template_lists_all_columns_even_when_filled(self):
         p = create_direct_cap_project("가상", address="가상 주소", cap_group="")
         ew.ingest(p, "eq.csv", "설비번호,설비명,용량(m3)\nTK-01,탱크,10\n".encode("utf-8"), "facility")
