@@ -36,6 +36,56 @@ def _today() -> str:
 
 # ---------------------------------------------------------------- 경계
 
+def locate(address: str, *, geocoders=None) -> tuple[tuple[float, float] | None, str]:
+    """주소 → ((경도, 위도), 어디서 찾았는지). 브이월드 다음 카카오. 못 찾으면 (None, 이유)."""
+    from . import cap_site_lookup as kakao, cap_vworld_lookup as vworld
+
+    address = " ".join(str(address or "").split())
+    if not address:
+        return None, "주소를 적어 주세요."
+    geocoders = geocoders or (("브이월드", vworld), ("카카오", kakao))
+    tried = []
+    for title, provider in geocoders:
+        if not provider.api_key():
+            continue
+        tried.append(title)
+        try:
+            point = provider.geocode(address)
+        except Exception:
+            continue
+        if point:
+            lon, lat = float(point[0]), float(point[1])
+            if 124 <= lon <= 132 and 33 <= lat <= 39:
+                return (lon, lat), title
+    if not tried:
+        return None, "브이월드·카카오 키가 없어 주소를 찾을 수 없습니다. 지도를 옮겨 직접 그리거나 경계 파일을 올려 주세요."
+    return None, f"{'·'.join(tried)}에서 이 주소를 찾지 못했습니다. 도로명주소나 지번주소로 다시 적어 주세요."
+
+
+def toggle_parcel(parcels: list[dict], lat: float, lon: float, *, feature=None) -> tuple[list[dict], str]:
+    """지도에서 클릭한 점: 이미 고른 필지 안이면 빼고, 아니면 그 점의 필지를 더합니다. (새 목록, 안내)."""
+    from shapely.geometry import Point, shape
+    from . import cap_vworld_lookup as vworld
+
+    for index, parcel in enumerate(parcels):
+        try:
+            if shape(parcel["geometry"]).covers(Point(lon, lat)):
+                return parcels[:index] + parcels[index + 1:], f"필지 {parcel.get('label', '')}를 뺐습니다."
+        except (KeyError, ValueError, TypeError, AttributeError):
+            continue
+    found, note = (feature or vworld.parcel_feature)(lat, lon)
+    if not found:
+        return parcels, note
+    if any(p.get("id") == found["id"] for p in parcels):
+        return parcels, "이미 고른 필지입니다."
+    return parcels + [found], f"필지 {found.get('label', '')}를 더했습니다."
+
+
+def parcels_geometry(parcels: list[dict]) -> dict:
+    """고른 필지를 합친 경계(맞닿은 필지는 하나의 면으로)."""
+    return survey.boundary_from_drawings([{"type": "Feature", "geometry": p["geometry"], "properties": {}} for p in parcels])
+
+
 def parcel_draft(project: Stage2Project, *, geocode=None, parcel=None) -> tuple[dict | None, str]:
     """주소점이 든 필지 경계를 초안으로. (도형, 설명) — 실패하면 (None, 이유)."""
     from . import cap_vworld_lookup as vworld
@@ -53,6 +103,28 @@ def parcel_draft(project: Stage2Project, *, geocode=None, parcel=None) -> tuple[
         return None, "주소 좌표를 찾지 못했습니다(브이월드 키·주소 확인). 지도에 직접 그려 주세요."
     lon, lat = float(point[0]), float(point[1])
     return parcel(lat, lon)
+
+
+def confirm(project: Stage2Project, geometry: dict, origin: str, *, collect=None, refresh=None) -> dict[str, Any]:
+    """‘이 경계로 확인’: 경계를 저장하고, 경계 기준으로 주변 지도를 조회하고, 조사표 후보 거리를 재고, 시나리오를 다시 계산합니다.
+    지도 조회가 안 되어도(키 없음 등) 경계 저장은 그대로 두고 이유를 알려 줍니다."""
+    from . import scenario_pipeline as sp
+
+    payload = survey.save_boundary(project, geometry, f"{origin or '화면 지도에서 그린 경계'}, {_today()}", confirmed=True)
+    notices: list[str] = []
+    try:
+        (collect or survey.collect)(project, expand_to_boundary=True)
+    except Exception as exc:          # 키 없음·조회 실패: 경계는 저장됨
+        notices.append(f"주변 지도 조회를 하지 못했습니다({exc if isinstance(exc, ValueError) else type(exc).__name__}). "
+                       "주변 보호대상 조사표에 직접 적어 올려 주세요.")
+    data = survey.survey(project)
+    notices += [str(n) for n in data.get("notices", []) if "실패" in str(n) or "미완료" in str(n)]
+    candidates = candidate_rows(project)
+    try:
+        (refresh or sp.refresh)(project)
+    except Exception as exc:
+        notices.append(f"사고시나리오를 다시 계산하지 못했습니다({type(exc).__name__}).")
+    return {"boundary": payload, "objects": len(data.get("objects", [])), "candidates": len(candidates), "notices": notices}
 
 
 def boundary_from_csv(content: bytes) -> dict:

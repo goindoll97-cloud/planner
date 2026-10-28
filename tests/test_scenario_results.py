@@ -230,6 +230,75 @@ class SurveyTests(unittest.TestCase):
         self.assertEqual(f8.needs(p), [])
 
 
+class BoundaryPickingTests(unittest.TestCase):
+    """주소를 찾으면 필지 경계가 표시되고, 필지를 눌러 더하거나 빼고, ‘이 경계로 확인’으로 이어서 계산합니다."""
+
+    def _feature(self, parcels):
+        def feature(lat, lon):
+            for parcel in parcels:
+                from shapely.geometry import Point, shape
+                if shape(parcel["geometry"]).covers(Point(lon, lat)):
+                    return parcel, "브이월드 연속지적도 필지"
+            return None, "이 위치에서 필지 경계를 찾지 못했습니다. 지도에 직접 그려 주세요."
+        return feature
+
+    def test_locate_tries_vworld_then_kakao(self):
+        class Provider:
+            def __init__(self, key, point):
+                self.key, self.point = key, point
+
+            def api_key(self):
+                return self.key
+
+            def geocode(self, address):
+                return self.point
+
+        point, where = ss.locate("연습로 1", geocoders=(("브이월드", Provider("k", None)), ("카카오", Provider("k", CENTER))))
+        self.assertEqual((point, where), (CENTER, "카카오"))
+        self.assertIsNone(ss.locate("연습로 1", geocoders=(("브이월드", Provider("", CENTER)),))[0])
+        self.assertIn("찾지 못했습니다", ss.locate("연습로 1", geocoders=(("브이월드", Provider("k", None)),))[1])
+
+    def test_click_adds_and_removes_parcels_and_neighbours_merge(self):
+        west = {"id": "A", "label": "연습동 1", "geometry": _box(-80, -50, 0, 50)}
+        east = {"id": "B", "label": "연습동 2", "geometry": _box(0, -50, 80, 50)}
+        feature = self._feature([west, east])
+        lon, lat = CENTER
+        parcels, note = ss.toggle_parcel([], lat, lon - 0.0003, feature=feature)
+        self.assertEqual([p["id"] for p in parcels], ["A"])
+        parcels, _ = ss.toggle_parcel(parcels, lat, lon + 0.0003, feature=feature)
+        self.assertEqual([p["id"] for p in parcels], ["A", "B"])
+        self.assertEqual(ss.parcels_geometry(parcels)["type"], "Polygon")          # 맞닿은 두 필지는 한 면
+        parcels, note = ss.toggle_parcel(parcels, lat, lon - 0.0003, feature=feature)
+        self.assertEqual([p["id"] for p in parcels], ["B"])
+        self.assertIn("뺐습니다", note)
+        same, note = ss.toggle_parcel(parcels, lat + 0.01, lon, feature=feature)
+        self.assertEqual(same, parcels)
+        self.assertIn("직접 그려", note)
+
+    def test_confirm_saves_the_boundary_then_surveys_and_recalculates(self):
+        p, _ = walk("울산광역시 남구 연습로 1")
+        with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
+                patch.object(vworld, "search", return_value=(MAP_OBJECTS, [])):
+            summary = ss.confirm(p, _box(-75, -50, 75, 50), "브이월드 연속지적도 필지를 고른 경계")
+        self.assertIsNotNone(survey.boundary(p))
+        self.assertIn("브이월드 연속지적도 필지를 고른 경계", survey.boundary_record(p)["source"])
+        self.assertEqual(summary["candidates"], 3)
+        self.assertTrue(sc.saved_scenarios(p))
+        self.assertFalse(sp.needs_refresh(p))
+
+    def test_confirm_without_map_keys_still_saves_the_boundary(self):
+        p, _ = walk()
+        with patch.object(vworld, "api_key", return_value=""), patch("engine.stage2.cap_site_lookup.api_key", return_value=""):
+            summary = ss.confirm(p, _box(-75, -50, 75, 50), "")
+        self.assertIsNotNone(survey.boundary(p))
+        self.assertEqual(summary["candidates"], 0)
+        self.assertIn("주변 지도 조회를 하지 못했습니다", summary["notices"][0])
+
+    def test_tiles_need_a_key(self):
+        self.assertEqual(vworld.tile_layers(""), {})
+        self.assertIn("/KEY/Satellite/", vworld.tile_layers("KEY")["satellite"])
+
+
 class PageTests(unittest.TestCase):
     def _run(self, project):
         rows = [{"project_id": project.project_id, "company_name": project.company_name}]
@@ -245,11 +314,25 @@ class PageTests(unittest.TestCase):
         p, _ = walk()
         at = self._run(p)
         self.assertFalse(at.exception, at.exception)
-        self.assertEqual(len(at.text_input), 0)              # 시나리오·숫자를 화면에서 적지 않음
+        self.assertEqual([t.label for t in at.text_input], ["주소로 찾기"])   # 지도를 옮길 주소만. 시나리오·숫자는 적지 않음
         self.assertEqual(len(at.number_input), 0)
         texts = " ".join(m.value for m in at.markdown)
         self.assertIn("피해반경", texts)
         self.assertTrue(sc.saved_scenarios(p))               # 처음 열 때 파일로 계산
+
+
+    def test_opening_finds_the_address_and_shows_its_parcel(self):
+        p, _ = walk("울산광역시 남구 연습로 1")
+        survey.clear_boundary(p)                          # 경계를 아직 정하지 않은 사업장
+        parcel = {"id": "P1", "label": "연습동 1-1", "geometry": _box(-60, -40, 60, 40)}
+        with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
+                patch.object(vworld, "parcel_feature", return_value=(parcel, "브이월드 연속지적도 필지 연습동 1-1")), \
+                patch("engine.stage2.cap_site_lookup.api_key", return_value=""):
+            at = self._run(p)
+        self.assertFalse(at.exception, at.exception)
+        self.assertTrue(any("고른 필지: 연습동 1-1" in m.value for m in at.markdown))
+        self.assertTrue(any("브이월드에서 주소를 찾았습니다" in m.value for m in at.success))
+        self.assertTrue(any(b.label == "이 경계로 확인" and not b.disabled for b in at.button))
 
 
 if __name__ == "__main__":

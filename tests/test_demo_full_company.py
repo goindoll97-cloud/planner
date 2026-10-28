@@ -216,7 +216,7 @@ class RealAddressTests(unittest.TestCase):
         self.assertEqual(survey_sheet.max_row, 1)                       # 빈 양식(머리글만)
         with ZipFile(BytesIO(d.full_demo_zip(REAL))) as z:
             self.assertIsNone(json.loads(z.read("answer_key.json"))["surroundings"])
-        for words in (REAL, "주소 필지 경계를 초안으로 불러오기", "VWORLD_API_KEY", "그린 경계 저장", "주변 보호대상 조사표 내려받기"):
+        for words in (REAL, "주소로 찾기", "VWORLD_API_KEY", "이 경계로 확인", "주변 보호대상 조사표 내려받기"):
             self.assertIn(words, guide)
         self.assertNotIn("가상 초등학교", guide)
         self.assertEqual(d.company(REAL)["industrial_complex"], "해당 없음")

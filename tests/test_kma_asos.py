@@ -116,14 +116,14 @@ class ScreenTests(unittest.TestCase):
         rows = project.get_field(f19.TABLE_KEY).value
         self.assertEqual({(r["대기온도(℃)"], r["습도(%)"]) for r in rows}, {("38.1", "61.2")})
         self.assertTrue(any("채웠습니다" in s.value for s in at.success))
-        self.assertEqual(len(at.text_input), 0)
+        self.assertEqual([t.label for t in at.text_input], ["주소로 찾기"])
 
     def test_unknown_station_points_to_the_file_instead_of_an_input_box(self):
         project = self._project("알 수 없는 마을 1")
         at = self._run(project)
         self.assertFalse(at.exception)
         self.assertTrue(any("관측소를 찾지 못했습니다" in i.value and "사업개요 파일" in i.value for i in at.info))
-        self.assertEqual(len(at.text_input), 0)
+        self.assertEqual([t.label for t in at.text_input], ["주소로 찾기"])
 
 
 if __name__ == "__main__":
