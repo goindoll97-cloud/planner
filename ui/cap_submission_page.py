@@ -1,4 +1,3 @@
-"""화학사고예방관리계획서 · submission 화면. 내용은 ui/cap_common.py의 GROUPS["submission"]에 있습니다."""
-from ui import cap_common
-
-cap_common.page("submission")
+"""이전 CAP 제출 경로는 통합 관리 화면으로 이동합니다."""
+import streamlit as st
+st.switch_page("ui/submission_management_page.py")

@@ -17,7 +17,7 @@ def _people_frame(rows) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=impl.PERSON_COLUMNS)
 
 
-def render(project) -> None:
+def render(project, *, base_version: str | None = None) -> None:
     st.header("이행점검 · 자체점검")
     st.caption(
         "적합통보를 받은 화학사고예방관리계획서의 이행 여부를 자체점검하고, "
@@ -27,19 +27,23 @@ def render(project) -> None:
 
     versions = versioning.list_versions(project.project_id, "CAP")
     if not versions:
-        st.warning("기준으로 삼을 CAP 제출본 버전이 없습니다. 먼저 버전 관리에서 적합·제출 당시 자료를 버전으로 저장해 주세요.")
+        st.warning("기준으로 삼을 CAP 제출본 버전이 없습니다. 먼저 제출·이행 관리의 제출본 저장에서 적합·제출 당시 자료를 버전으로 저장해 주세요.")
         return
 
     header = impl.header_values(project)
     version_ids = [meta.version_id for meta in versions]
     saved_base = header.get("기준 버전", "")
-    base = st.selectbox(
-        "자체점검 기준 적합·제출본",
-        version_ids,
-        index=version_ids.index(saved_base) if saved_base in version_ids else len(version_ids) - 1,
-        key=f"cap_impl_base_{project.project_id}",
-        help="이전 적합·제출본을 기준으로 현재 이행상태를 점검합니다. 프로그램이 적합 여부를 임의로 판단하지 않습니다.",
-    )
+    if base_version in version_ids:
+        base = base_version
+        st.caption("점검 기준 제출본: " + base)
+    else:
+        base = st.selectbox(
+            "자체점검 기준 적합·제출본",
+            version_ids,
+            index=version_ids.index(saved_base) if saved_base in version_ids else len(version_ids) - 1,
+            key=f"cap_impl_base_{project.project_id}",
+            help="이전 적합·제출본을 기준으로 현재 이행상태를 점검합니다. 프로그램이 적합 여부를 임의로 판단하지 않습니다.",
+        )
 
     st.markdown("### 1. 자체점검 결과서 기본정보")
     c1, c2 = st.columns(2)

@@ -1,7 +1,7 @@
 """화학사고예방관리계획서 화면들이 함께 쓰는 부분.
 
 사람은 서식을 쓰지 않고 회사 파일을 올립니다(사업장 업무). 프로그램이 채운 초안은 자료 접수 ④ ‘작성·내려받기’에서 받고,
-행정서식(별지 제2·31·32호)과 이행점검은 ‘제출·변경·이행점검’에서 다룹니다. 각 화면은 이 모듈의 page()만 부릅니다.
+행정서식(별지 제2·31·32호)과 이행점검은 ‘제출·이행 관리’에서 다룹니다. 각 화면은 이 모듈의 page()만 부릅니다.
 """
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ SPECIAL = {
 
 # 화면 → (제목, 아이콘, 다루는 별지·항목, 설명)
 GROUPS = {
-    "submission": ("제출·변경·이행점검", "📮", [2, "submission", "implementation"],
+    "submission": ("제출·이행 관리", "📮", [2, "submission", "implementation"],
                    "변경내역 관리대장(별지 제2호), 검토·변경 검토신청서(별지 제31·32호), 이행점검 자체점검을 작성해요. "
-                   "저장해 둔 버전을 비교 기준으로 쓰므로 먼저 ‘버전 관리’에서 제출본을 저장해 두세요."),
+                   "저장해 둔 버전을 비교 기준으로 쓰므로 같은 화면의 ‘제출본 저장’에서 제출 당시 자료를 저장해 두세요."),
 }
-PAGES = {group: f"ui/cap_{group}_page.py" for group in GROUPS}
+PAGES = {group: "ui/submission_management_page.py" for group in GROUPS}
 
 
 def option_label(option) -> str:
@@ -167,7 +167,7 @@ def progress(project) -> dict:
         if group == "submission":
             versions = ver.list_versions(project.project_id, "CAP")
             row["done"] = bool(versions) and not open_forms
-            row["status"] = (f"저장한 제출본 {len(versions)}개" if versions else "제출본을 아직 저장하지 않았어요 (버전 관리에서 저장)") + \
+            row["status"] = (f"저장한 제출본 {len(versions)}개" if versions else "제출본을 아직 저장하지 않았어요 (제출·이행 관리에서 저장)") + \
                             (f" · 별지 제2호 보완 {open_forms[0][1]}건" if open_forms else "")
         rows.append(row)
     return {"rows": rows, "remaining": state.hold + state.review}

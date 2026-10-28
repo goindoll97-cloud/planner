@@ -49,13 +49,13 @@ def _summary(project, doc: str):
     latest = _latest(metas)
     pending = ver.diff_versions(project, latest.version_id) if latest else []
     if latest is None:
-        return metas, latest, pending, f"{name} 버전 없음 · 제출하면 버전으로 저장해 두세요"
+        return metas, latest, pending, f"{name} 저장된 제출본 없음 · 제출 시점의 자료를 저장해 두세요"
     if pending:
         return metas, latest, pending, f"{name} · 기준 {latest.version_id} · 저장하지 않은 변경 {len(pending)}건"
     return metas, latest, pending, f"{name} · 기준 {latest.version_id} · 변경 없음"
 
 
-PAGE = "ui/version_page.py"
+PAGE = "ui/submission_management_page.py"
 
 
 def render_status(project, doc: str) -> None:
@@ -63,12 +63,12 @@ def render_status(project, doc: str) -> None:
     *_, summary = _summary(project, doc)
     st.caption(f"🕘 {summary}")
     try:
-        st.page_link(PAGE, label="버전 관리 열기 (저장·비교·이전 제출본에서 시작·법령 개정 반영)", icon="🕘")
+        st.page_link(PAGE, label="제출·이행 관리 열기", icon="🕘")
     except Exception:  # 메뉴 없이 단독 실행되는 시험에서는 이동 링크를 만들 수 없음
         pass
 
 
-def render(project, doc: str, *, inline: bool = False) -> None:
+def render(project, doc: str, *, inline: bool = False, section: str = "all", base_version: str | None = None) -> None:
     """버전 관리 전체. inline=True면 접지 않고 화면에 바로 펼칩니다(버전 관리 화면용)."""
     pid = project.project_id
     metas, latest, pending, summary = _summary(project, doc)
@@ -80,50 +80,54 @@ def render(project, doc: str, *, inline: bool = False) -> None:
             st.caption("제출한 시점의 값을 버전으로 저장해 두면, 이후 아래 입력 화면을 그대로 고쳤을 때 무엇이 바뀌었는지 "
                        "이전 버전과 자동으로 비교됩니다. 첨부파일은 버전에 포함되지 않고 입력값만 저장됩니다.")
 
-        if metas:
-            st.dataframe(
-                pd.DataFrame([{"버전": m.version_id, "제출유형": m.kind, "변경 유형": m.label, "사유·메모": m.note,
-                               "저장 시각": m.created_at} for m in metas]),
-                hide_index=True, width="stretch",
-            )
+        if section in ("all", "save"):
+            if metas:
+                st.dataframe(
+                    pd.DataFrame([{"제출본": m.version_id, "제출유형": m.kind, "변경 유형": m.label, "사유·메모": m.note,
+                                   "저장 시각": m.created_at} for m in metas]),
+                    hide_index=True, width="stretch",
+                )
 
-        st.markdown("**현재 값을 버전으로 저장**")
-        if doc == "CAP":
-            kind_options = CAP_KINDS if metas else ("신규제출",)
-        else:
-            kind_options = KINDS if metas else ("신규",)
-        c1, c2 = st.columns(2)
-        kind = c1.selectbox("제출유형", kind_options, key=f"ver_kind_{doc}_{pid}",
-                            help="변경제출은 v1.0 → v1.1처럼 부 버전이, 신규·재제출 계열은 v2.0처럼 새 주 버전이 열립니다.")
-        is_change = kind in {"변경", "변경제출"}
-        label = c2.selectbox("변경 유형", ("",) + CHANGE_TYPES, key=f"ver_type_{doc}_{pid}",
-                             disabled=not is_change)
-        note = st.text_input("변경 사유·메모", key=f"ver_note_{doc}_{pid}",
-                             help="왜 바뀌었는지 적어 두면 변경내역을 정리할 때 그대로 쓸 수 있습니다.")
-        if st.button("버전으로 저장", key=f"ver_save_{doc}_{pid}", type="primary"):
-            if is_change and not (label or note.strip()):
-                st.error("변경 버전은 변경 유형이나 사유를 하나 이상 적어 주세요.")
-            elif latest is not None and not pending:
-                st.error("이전 버전과 달라진 값이 없어 새 버전을 만들지 않았습니다.")
+            st.markdown("**현재 자료를 제출본으로 저장**")
+            if doc == "CAP":
+                kind_options = CAP_KINDS if metas else ("신규제출",)
             else:
-                if doc == "CAP":
-                    project.set_field(
-                        "cap.business.submission_type",
-                        "화학사고예방관리계획서 제출구분",
-                        kind,
-                        "USER_CONFIRMED",
-                        note="CAP 버전 저장 시 선택한 제출유형과 동기화",
-                    )
-                    storage.save_project(project)
-                meta = ver.freeze_version(project, doc, kind, label=label if is_change else "", note=note.strip())
-                st.success(f"{meta.version_id}로 저장했습니다.")
-                st.rerun()
+                kind_options = KINDS if metas else ("신규",)
+            c1, c2 = st.columns(2)
+            kind = c1.selectbox("제출유형", kind_options, key=f"ver_kind_{doc}_{pid}",
+                                help="변경제출은 v1.0 → v1.1처럼 부 버전이, 신규·재제출 계열은 v2.0처럼 새 주 버전이 열립니다.")
+            is_change = kind in {"변경", "변경제출"}
+            label = c2.selectbox("변경 유형", ("",) + CHANGE_TYPES, key=f"ver_type_{doc}_{pid}",
+                                 disabled=not is_change)
+            note = st.text_input("변경 사유·메모", key=f"ver_note_{doc}_{pid}",
+                                 help="왜 바뀌었는지 적어 두면 변경내역을 정리할 때 그대로 쓸 수 있습니다.")
+            if st.button("제출본 저장", key=f"ver_save_{doc}_{pid}", type="primary"):
+                if is_change and not (label or note.strip()):
+                    st.error("변경 제출본은 변경 유형이나 사유를 하나 이상 적어 주세요.")
+                elif latest is not None and not pending:
+                    st.error("이전 버전과 달라진 값이 없어 새 버전을 만들지 않았습니다.")
+                else:
+                    if doc == "CAP":
+                        project.set_field(
+                            "cap.business.submission_type",
+                            "화학사고예방관리계획서 제출구분",
+                            kind,
+                            "USER_CONFIRMED",
+                            note="CAP 버전 저장 시 선택한 제출유형과 동기화",
+                        )
+                        storage.save_project(project)
+                    meta = ver.freeze_version(project, doc, kind, label=label if is_change else "", note=note.strip())
+                    st.success(f"{meta.version_id}로 저장했습니다.")
+                    st.rerun()
 
-        if latest is not None:
-            st.markdown("**변경점 보기**")
+        if latest is not None and section in ("all", "compare"):
+            st.markdown("**이전 제출본과 비교**")
             choices = [m.version_id for m in metas]
-            base = st.selectbox("비교 기준 버전", choices, index=choices.index(latest.version_id),
-                                key=f"ver_base_{doc}_{pid}")
+            if base_version in choices:
+                base = base_version
+            else:
+                base = st.selectbox("비교 기준 제출본", choices, index=choices.index(latest.version_id),
+                                    key=f"ver_base_{doc}_{pid}")
             changes = ver.diff_versions(project, base)
             if not changes:
                 st.info(f"{base}과(와) 현재 값이 같습니다.")
@@ -147,7 +151,7 @@ def render(project, doc: str, *, inline: bool = False) -> None:
             if pending:
                 st.warning(f"저장하지 않은 변경 {len(pending)}건이 있습니다. 되돌리면 이 변경은 사라집니다.")
                 confirm = st.checkbox("사라져도 됩니다", key=f"ver_force_{doc}_{pid}")
-            if st.button("이 버전에서 새 작업 시작", key=f"ver_do_restore_{doc}_{pid}", disabled=not confirm):
+            if st.button("이 제출본에서 새 작업 시작", key=f"ver_do_restore_{doc}_{pid}", disabled=not confirm):
                 ver.start_from_version(project, target, doc=doc, force=True)
                 if doc == "CAP" and next_kind:
                     project.set_field(
@@ -166,6 +170,9 @@ def render(project, doc: str, *, inline: bool = False) -> None:
                 st.rerun()
 
             render_legal_refresh(project, doc, choices, latest.version_id, pending)
+
+    if section == "compare" and latest is None:
+        st.info("비교할 제출본이 없어요. 먼저 ‘제출본 저장’에서 현재 자료를 저장하세요.")
 
 
 def render_old_new(plan, doc: str, pid: str) -> None:
@@ -239,7 +246,7 @@ def render_refresh_banner(project, doc: str) -> None:
     if plan.group_review:
         parts.append("작성수준 재판정 필요")
     st.warning(f"🔔 {latest.version_id} 작성 이후 개정된 법령 {len(plan.law_changes)}건이 있습니다 ({', '.join(parts)}). "
-               "왼쪽 ‘버전 관리’ 화면의 ‘법령 개정 반영’에서 바뀐 내용을 보고 최신화 작업본을 만드세요.")
+               "‘제출·이행 관리 → 이전 제출본과 비교’의 ‘법령 개정 반영’에서 바뀐 내용을 보고 최신화 작업본을 만드세요.")
 
 
 RECOMPUTE_LABEL = {"CHANGED": "판정 변경", "ADDED": "새로 해당", "REMOVED": "해당 없어짐"}

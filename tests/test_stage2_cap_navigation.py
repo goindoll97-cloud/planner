@@ -15,7 +15,7 @@ class CAPNavigationTests(unittest.TestCase):
     def test_every_registered_form_has_a_view_with_render(self):
         for number in registry.FORM_NUMBERS:
             source = (ROOT / f"ui/cap_form{number}_view.py").read_text(encoding="utf-8")
-            self.assertIn("def render(project)", source, number)
+            self.assertIn("def render(project", source, number)
         self.assertEqual(registry.label(2), "별지 제2호")
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn('"implementation": "이행점검 · 자체점검 별지 제1호~제3호"', page)
@@ -23,7 +23,9 @@ class CAPNavigationTests(unittest.TestCase):
 
     def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
-        self.assertIn('"화학사고예방관리계획서": [', app)
+        self.assertIn('st.Page("ui/submission_management_page.py", title="제출·이행 관리"', app)
+        self.assertNotIn('st.Page("ui/version_page.py"', app)
+        self.assertNotIn('st.Page("ui/cap_submission_page.py"', app)
         self.assertNotIn('st.Page("ui/cap_export_page.py"', app)
         for gone in ("cap_facts_page.py", "cap_scenario_page.py", "cap_emergency_page.py"):
             self.assertNotIn(gone, app)                           # 서식 입력 화면은 없다

@@ -20,13 +20,10 @@ def main(project_id: str) -> int:
             titles = ["1. 시설 입력", "2. 결과", "3. 서식 내보내기"]
         step_key = "cap_form01_step" if number == 1 else f"cap_form{number:02d}_step"
         for title in titles:
-            from ui import cap_common
-
-            page = cap_common.page_for(number)
-            group = page.split("cap_", 1)[1].rsplit("_page.py", 1)[0]
-            app = AppTest.from_file(page, default_timeout=90)
-            app.session_state["_stage2_active_project_id"] = project_id
-            app.session_state[f"cap_form_no_{group}"] = number
+            script = ("from engine.stage2.storage import load_project\n"
+                      f"from ui import cap_form{number}_view\n"
+                      f"cap_form{number}_view.render(load_project({project_id!r}))\n")
+            app = AppTest.from_string(script, default_timeout=90)
             app.session_state[step_key] = title
             app.run()
             errors = [str(e.value)[:200] for e in app.exception]

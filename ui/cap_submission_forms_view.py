@@ -31,7 +31,7 @@ def _mapping(project, key: str) -> dict:
     return dict(rec.value) if rec is not None and isinstance(rec.value, dict) else {}
 
 
-def render(project) -> None:
+def render(project, *, base_version: str | None = None) -> None:
     st.header("제출·변경 행정서식")
     st.caption(
         "화학물질관리법 시행규칙 별지 제31호·제32호를 작성합니다. "
@@ -123,17 +123,21 @@ def render(project) -> None:
         )
         versions = _versions(project)
         if not versions:
-            st.warning("저장된 CAP 제출 버전이 없습니다. 먼저 버전 관리에서 기존 제출본을 v1.0 등으로 저장해야 합니다.")
+            st.warning("저장된 CAP 제출 버전이 없습니다. 먼저 제출·이행 관리의 제출본 저장에서 기존 제출본을 v1.0 등으로 저장해야 합니다.")
             return
 
         current32 = forms.form32_values(project)
         saved_base = str(current32.get("비교 기준 버전") or "")
-        base = st.selectbox(
-            "비교 기준 제출본",
-            versions,
-            index=versions.index(saved_base) if saved_base in versions else max(0, len(versions) - 1),
-            key=f"cap32_base_{project.project_id}",
-        )
+        if base_version in versions:
+            base = base_version
+            st.caption("비교 기준 제출본: " + base)
+        else:
+            base = st.selectbox(
+                "비교 기준 제출본",
+                versions,
+                index=versions.index(saved_base) if saved_base in versions else max(0, len(versions) - 1),
+                key=f"cap32_base_{project.project_id}",
+            )
         final_no = st.text_input(
             "(최종) 적합통보 번호",
             value=str(current32.get("(최종) 적합통보 번호") or ""),

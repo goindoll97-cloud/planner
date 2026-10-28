@@ -221,7 +221,7 @@ class VersionPageTests(unittest.TestCase):
 
     def _page(self):
         from pathlib import Path
-        page = Path(__file__).resolve().parents[1] / "ui" / "version_page.py"
+        page = Path(__file__).resolve().parents[1] / "ui" / "submission_management_page.py"
         at = AppTest.from_file(str(page), default_timeout=60)
         at.session_state["_stage2_active_project_id"] = "p1"
         return at.run()
@@ -246,4 +246,4 @@ class VersionPageTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(len(at.expander), 0)
         self.assertEqual(len(at.button), 0)
-        self.assertIn("버전 없음", at.caption[0].value)
+        self.assertIn("저장된 제출본 없음", at.caption[0].value)

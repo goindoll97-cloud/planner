@@ -12,8 +12,6 @@ from engine.stage2 import versioning
 from engine.regulatory_tables import observed_source
 from engine.law_attachment_archive import approved_source_is_current
 from engine.stage2 import cap_workspace as ws
-from engine.stage2.cap_baseline_docx import cap_baseline_filename
-from engine.stage2.cap_catalog_docx import build_cap_draft
 from engine.stage2.storage import save_project
 
 
@@ -84,7 +82,7 @@ ARTICLE29_EVENTS = {
 }
 
 
-def _render_version_change_candidates(project) -> None:
+def _render_version_change_candidates(project, base_version=None) -> None:
     """Offer only confirmed fact differences; never copy a legal conclusion."""
     versions = versioning.list_versions(project.project_id, "CAP")
     with st.expander("이전에 저장한 화학사고예방관리계획서와 비교해 변경내역 후보 찾기"):
@@ -94,10 +92,13 @@ def _render_version_change_candidates(project) -> None:
         ids = [meta.version_id for meta in versions]
         base_record = project.get_field("cap.submission.base_version_id")
         default = str(base_record.value) if base_record and base_record.value in ids else ids[-1]
-        selected_version = st.selectbox(
-            "비교 기준(이전 제출·적합본 확인)", ids, index=ids.index(default),
-            key=f"cap_form02_compare_version_{project.project_id}",
-        )
+        if base_version in ids:
+            selected_version = base_version
+        else:
+            selected_version = st.selectbox(
+                "비교 기준(이전 제출·적합본 확인)", ids, index=ids.index(default),
+                key=f"cap_form02_compare_version_{project.project_id}",
+            )
         st.caption("선택한 저장본이 실제 이전에 제출해 적합통보를 받은 계획서인지 확인하세요. 저장된 계획서와 현재 입력한 정보 중 비교 가능한 물질·시설만 비교합니다.")
         try:
             candidates = change_tracking.form2_change_candidates(project, selected_version)
@@ -324,7 +325,7 @@ def _render_structured_change_entry(project) -> bool:
     return added
 
 
-def render(project) -> None:
+def render(project, *, base_version: str | None = None) -> None:
     schema = ws.load_form_schema(2)
     steps = schema["steps"]
     titles = [step["title"] for step in steps]
@@ -370,7 +371,7 @@ def render(project) -> None:
         notice_key = f"cap_form02_added_notice_{project.project_id}"
         if st.session_state.pop(notice_key, None):
             st.success("변경내역을 법정 서식 표에 추가했습니다.")
-        _render_version_change_candidates(project)
+        _render_version_change_candidates(project, base_version)
         if _render_structured_change_entry(project):
             st.rerun()
         st.subheader("등록된 변경내역")
@@ -410,12 +411,4 @@ def render(project) -> None:
                 frames.show(pd.DataFrame(f2.change_log_rows(project)), width="stretch", hide_index=True)
             else:
                 st.caption("작성 대상이 아니어서 표는 비워 둡니다.")
-        try:
-            st.download_button(
-                "화학사고예방관리계획서 규정서식 DOCX 초안 다운로드",
-                data=build_cap_draft(project), file_name=cap_baseline_filename(project),
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key=f"cap_form02_download_{project.project_id}",
-            )
-        except Exception as exc:
-            st.error(f"규정서식 초안을 만들지 못했습니다: {type(exc).__name__}: {exc}")
+        st.caption("규정서식 초안은 자료 접수 ④ 작성·내려받기에서 받을 수 있어요.")
