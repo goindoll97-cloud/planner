@@ -10,16 +10,17 @@ from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
 # installed during ordinary app startup.
 install_cap_final_form_runtime()
 
-# 화학사고예방관리계획서는 별지 순서대로 한 화면에서 작성한다. 엑셀 통합 작성자료 가져오기도 그 화면 안에 들어 있어
-# 예전의 3~5단계 화면(엑셀 왕복 방식)은 화학사고예방관리계획서에는 더 이상 쓰이지 않는다.
+# 사람은 서식을 쓰지 않고 회사 파일을 올립니다(사업장 업무). 프로그램이 채운 초안은 ‘초안 내려받기’에서 받고,
+# 행정서식과 이행점검은 ‘제출·변경·이행점검’에서 다룹니다. 내용은 ui/cap_common.py의 GROUPS.
 sections: dict[str, list] = {
     "사업장 업무": [st.Page("ui/evidence_workspace_page.py",title="자료 접수·확인할 일",icon="📂",default=True),
-                # 버전은 작성 화면이 아니라 사업장 작성자료 전체의 스냅샷이라 따로 둔다(작성 화면을 바꿔도 남음).
+                # 사고시나리오는 파일로 프로그램이 계산하고, 사람은 지도에 사업장 경계만 그립니다.
+                st.Page("ui/scenario_results_page.py", title="사고시나리오 결과", icon="🧭"),
+                # 버전은 사업장 작성자료 전체의 스냅샷이라 따로 둔다.
                 st.Page("ui/version_page.py", title="버전 관리", icon="🕘")],
-    # 별지 입력 화면은 없앴습니다. 작성은 자료 접수에서 백엔드가 하고, 사람은 지도에서 경계만 그리고 완성본을 내려받습니다.
     "화학사고예방관리계획서": [
-        st.Page("ui/surroundings_map_page.py", title="지도 그리기", icon="🗺️"),
-        st.Page("ui/cap_download_page.py", title="작성본 내려받기", icon="📥"),
+        st.Page("ui/cap_export_page.py", title="초안 내려받기", icon="📤"),
+        st.Page("ui/cap_submission_page.py", title="제출·변경·이행점검", icon="📮"),
     ],
 }
 

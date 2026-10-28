@@ -14,13 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class CAPNavigationTests(unittest.TestCase):
     def test_every_registered_form_has_a_view_with_render(self):
         for number in registry.FORM_NUMBERS:
-            if number == 1:
-                continue  # 별지 제1호는 작성 화면 본문에 있다
             source = (ROOT / f"ui/cap_form{number}_view.py").read_text(encoding="utf-8")
             self.assertIn("def render(project)", source, number)
-        self.assertEqual(registry.label(12), "별지 제12·13호")
-        self.assertEqual(registry.label(3), "별지 제3호")
-        self.assertNotIn(13, registry.FORM_NUMBERS)
+        self.assertEqual(registry.label(2), "별지 제2호")
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertIn('"implementation": "이행점검 · 자체점검 별지 제1호~제3호"', page)
         self.assertTrue((ROOT / "ui/cap_implementation_self_check_view.py").exists())
@@ -28,17 +24,17 @@ class CAPNavigationTests(unittest.TestCase):
     def test_navigation_groups_cap_psm_and_the_judgement_page(self):
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('"화학사고예방관리계획서": [', app)
-        # 별지 입력 화면은 왼쪽 메뉴에서 뺐습니다. 작성은 자료 접수에서 백엔드가 하고, 사람은 지도와 내려받기만 씁니다.
-        self.assertIn('st.Page("ui/surroundings_map_page.py", title="지도 그리기"', app)
-        self.assertIn('st.Page("ui/cap_download_page.py", title="작성본 내려받기"', app)
+        self.assertIn('st.Page("ui/cap_export_page.py", title="초안 내려받기"', app)
+        for gone in ("cap_facts_page.py", "cap_scenario_page.py", "cap_emergency_page.py"):
+            self.assertNotIn(gone, app)                           # 서식 입력 화면은 없다
         self.assertNotIn("cap_workspace_page.py", app)          # 예전 한 화면은 나눠서 지움
-        for gone in ("cap_facts_page.py", "cap_scenario_page.py", "cap_emergency_page.py",
-                     "cap_export_page.py", "cap_submission_page.py"):
-            self.assertNotIn(gone, app)                         # 사람이 별지를 직접 채우는 화면은 메뉴에 없습니다
         from ui import cap_common
         listed = [option for _, _, options, _ in cap_common.GROUPS.values() for option in options]
         self.assertEqual(sorted(o for o in listed if isinstance(o, int)), sorted(registry.FORM_NUMBERS))   # 별지가 빠짐없이 한 번씩
         self.assertEqual(len(listed), len(set(listed)))
+        for page in cap_common.PAGES.values():
+            self.assertIn(f'st.Page("{page}"', app)
+            self.assertTrue((ROOT / page).exists(), page)
         self.assertIn('sections["공정안전보고서"]', app)
         self.assertIn('st.Page("ui/judgement_page.py"', app)
         for gone in ("diagnosis_entry.py", "stage2_scope_page.py", "엑셀로 판정하기"):
@@ -51,8 +47,6 @@ class CAPNavigationTests(unittest.TestCase):
         page = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         self.assertNotIn("cap_excel_panel", page)
         self.assertFalse((ROOT / "ui/cap_excel_panel.py").exists())
-        form6 = (ROOT / "ui/cap_form6_view.py").read_text(encoding="utf-8")
-        self.assertIn("chemical_upload_panel.render", form6)  # 물질 목록만 엑셀·CSV로 올린다
         start = (ROOT / "ui/cap_start_panel.py").read_text(encoding="utf-8")
         self.assertIn("chemical_upload_panel.render", start)
 

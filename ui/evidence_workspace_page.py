@@ -6,42 +6,22 @@
 """
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
-import operator
 import re
-from datetime import date
 
 import streamlit as st
 
-from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_evidence_links
-from engine.stage2 import intake
+from engine.stage2 import demo_company, scenario_triage, scenario_workup, cap_intake_guide, cap_coverage_report
+from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import delete_all_projects, list_projects, load_attachment, load_project, save_attachment, save_project
 
 STEPS = {1: "① 자료 올리기", 2: "② 파일별 보완 요청", 3: "③ 시나리오 후보", 4: "④ 보내기·진행 현황"}
-MAX_CARDS = 30
 DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".hwp", ".txt")
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
-
-# 신입사원이 모를 수 있는 항목마다 한 줄 설명
-HELP = {
-    "product": "이 설비가 다루는 제품이에요. 물질 목록에 있는 제품 중에서 고르세요.",
-    "inventory": "이 설비 안에 한 번에 들어 있을 수 있는 물질의 최대 양이에요.",
-    "pressure": "평소 운전할 때의 압력이에요. 운전 기록이나 설비 사양서에서 확인하세요. kPa로 적혀 있으면 1,000으로 나눠 MPa로 적어요.",
-    "temperature": "평소 운전할 때의 온도예요. 운전 기록이나 설비 사양서에서 확인하세요.",
-    "facility_type": "설비가 하는 일이에요. 저장탱크는 물질을 담아 두는 탱크, 제조·사용시설은 반응기·혼합기처럼 물질을 쓰거나 만드는 설비, "
-                     "보관시설은 드럼·용기를 쌓아 두는 창고예요.",
-    "substance_state": "설비 안에서 물질이 어떤 상태인지예요. 대부분의 용제·산은 액체예요.",
-    "capacity": "설비의 설계 용량이에요. 1 m³ = 1,000 L예요.",
-    "concentration": "제품 안에 이 물질이 들어 있는 비율이에요. MSDS 3번 항목(구성성분)에 있어요.",
-    "cas": "물질마다 붙는 고유 번호예요. MSDS 3번 항목에 있어요.",
-    "density": "물보다 무거우면 1보다 커요. MSDS 9번 항목(물리·화학적 특성)에 있어요.",
-    "process_type": "설비 안에서 물질이 반응하면 ‘반응’, 섞기만 하면 ‘단순혼합’, 그대로면 ‘변화없음’이에요.",
-}
 
 TRIAGE_STATE = {"보류": "값이 더 필요해요", "잠정": "자료 값으로 계산 (확인 전)", "예비 검토": "채운 값으로 계산"}
 VALUE_STATE = {"confirmed": "채운 값", "provisional": "자료에서 읽은 값 (확인 전)",
@@ -57,18 +37,6 @@ def _unit(field: str) -> str:
 
 def _name(field: str) -> str:
     return re.sub(r"\s*\([^)]*\)$", "", ew.LABELS[field])
-
-
-def _j(word: str, with_batchim: str, without: str) -> str:
-    """받침에 맞는 조사를 붙입니다 (용량이 / 운전온도가)."""
-    last = str(word)[-1:] if word else ""
-    has = "가" <= last <= "힣" and (ord(last) - 0xAC00) % 28 != 0
-    return f"{word}{with_batchim if has else without}"
-
-
-def _q(word: str, with_batchim: str, without: str) -> str:
-    """따옴표로 감싼 원문 뒤 조사 (‘상압’이라고 / ‘가스’라고)."""
-    return f"‘{word}’" + _j(str(word), with_batchim, without)[len(str(word)):]
 
 
 def _number(value) -> str:
@@ -120,49 +88,6 @@ def _raw_note(fact) -> str:
     return f" (자료에는 ‘{raw}{' ' + header_unit.group(1) if header_unit else ''}’로 적혀 있음)"
 
 
-def _plain_reason(reason: str) -> str:
-    if "충돌" in reason:
-        return "자료마다 값이 달라요"
-    if "단위가 없음" in reason:
-        return "자료에 단위가 적혀 있지 않아요"
-    if "문장 또는 AI" in reason:
-        return "표가 아닌 문장(또는 AI)에서 찾은 값이에요"
-    if "지정한 번호" in reason:
-        return "번호 없는 문서에서 지정한 번호로 찾은 값이에요"
-    if "이름으로 연결" in reason:
-        return "설비번호·제품코드 없이 이름만으로 찾은 값이에요"
-    if "수식" in reason:
-        return "엑셀 계산식의 결과값이에요"
-    if "병합" in reason:
-        return "합쳐진 칸(병합 셀)에서 읽은 값이에요"
-    return reason
-
-
-_SAFE_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv}
-
-
-def _formula_result(raw: str):
-    """‘=1500+500’처럼 숫자와 사칙연산만 있는 엑셀 식이면 계산한 값을 제안합니다. 셀 참조가 있으면 None."""
-    text = str(raw).strip().lstrip("=").replace(",", "")
-    if not text or not re.fullmatch(r"[\d+\-*/(). ]+", text):
-        return None
-
-    def walk(node):
-        if isinstance(node, ast.Expression):
-            return walk(node.body)
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-            return node.value
-        if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPS:
-            return _SAFE_OPS[type(node.op)](walk(node.left), walk(node.right))
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-            return -walk(node.operand)
-        raise ValueError
-    try:
-        return float(walk(ast.parse(text, mode="eval")))
-    except (ValueError, SyntaxError, ZeroDivisionError, TypeError):
-        return None
-
-
 class Names:
     """화면에 ‘가상 저장탱크 (TK-01)’처럼 이름과 번호를 함께 보여 줍니다."""
 
@@ -175,6 +100,10 @@ class Names:
                     self.names[slot["entity"]] = str(fact["value"]).strip()
 
     def __call__(self, entity: str) -> str:
+        if entity == ew.SITE_ENTITY:
+            return "사업장"
+        if entity.startswith("detector:"):
+            return "감지기 " + entity.split(":", 1)[1]
         if not entity.startswith(("facility:", "material:")):
             return entity
         code = entity.split(":", 1)[1]
@@ -216,13 +145,6 @@ def _question_count(found) -> int:
     return len(found["conflicts"]) + len(found["problems"]) + len(found["held"]) + len(found["rank"]) + len(found["missing"])
 
 
-def _final_check(project) -> list:
-    """보내기 전에 사람이 한 번은 봐야 하는 자동 기입값: 법적 계산 입력 + 순위를 바꾸는 값."""
-    items = {s["key"]: s for s in ew.unreviewed_legal(project)}
-    items.update({s["key"]: s for s in ew.critical_auto(project)})
-    return list(items.values())
-
-
 # ---------------------------------------------------------------- 공통
 
 def _save(project, note: str | None = None) -> None:
@@ -230,23 +152,6 @@ def _save(project, note: str | None = None) -> None:
     if note:
         st.session_state.setdefault("evidence_notes", []).append(note)
     st.rerun()
-
-
-def _confirm_manual(project, entity, field, value, reason) -> None:
-    try:
-        ew.add_manual(project, entity, field, value, reason or f"담당자 직접 입력 ({date.today().isoformat()})", confirm=True)
-    except ValueError as exc:
-        st.error(f"저장하지 못했어요: {exc}")
-        return
-    _save(project, f"{_name(field)} 값을 저장했어요.")
-
-
-def _value_input(field: str, key: str, label: str | None = None):
-    label = label or f"{_name(field)}" + (f" ({_unit(field)})" if _unit(field) else "")
-    if field in ew.CHOICES:
-        choice = st.selectbox(label, ["모름"] + list(ew.CHOICES[field]), key=key, help=HELP.get(field))
-        return "" if choice == "모름" else choice
-    return st.text_input(label, key=key, placeholder="예: 2000" if field == "inventory" else "", help=HELP.get(field)).strip()
 
 
 def _go(step: int, pid: str) -> None:
@@ -360,13 +265,14 @@ def _step_upload(project, found) -> None:
     for index, file in enumerate(uploaded or []):
         digest, detected = _classify(file.name, file.getvalue())
         if detected:
-            st.write(f"✅ {file.name} — {'물질 목록·MSDS' if detected == 'material' else '설비 목록·운전 자료'}로 알아봤어요")
+            st.write(f"✅ {file.name} — {KIND_NAMES.get(detected, detected)}로 알아봤어요")
             selected[index] = detected
         else:
             # 파일 내용 기준 키: 다른 파일을 빼도 이미 고른 종류가 다른 파일로 옮겨 가지 않습니다
-            selected[index] = st.selectbox(f"{file.name} — 자료 유형", ["reference", "facility", "material"],
+            selected[index] = st.selectbox(f"{file.name} — 자료 유형", ["reference", "facility", "material", "site"],
                                            format_func={"reference": "기타 작성 근거자료 (원본 보관·보완 검토)", "material": "물질 목록·MSDS",
-                                                        "facility": "설비 목록·운전 자료"}.get,
+                                                        "facility": "설비 목록·운전 자료",
+                                                        "site": "사업장 일반정보·공정 설명"}.get,
                                            key=f"kind_{pid}_{digest[:16]}")
         if file.name.lower().endswith(DOCUMENT_TYPES):
             # 번호는 파일마다 따로 받습니다. 한 칸을 모든 파일에 쓰면 다른 파일의 값이 엉뚱한 설비로 붙습니다.
@@ -375,8 +281,12 @@ def _step_upload(project, found) -> None:
                                          help="사양서·MSDS처럼 표에 번호가 없는 문서일 때만 적으세요. "
                                               "적으면 문서 속 ‘운전압력(MPa): 0.35’ 같은 문장도 읽어요.").strip()
     if st.button("자료 읽기", type="primary", disabled=not uploaded, key="read_" + pid):
+        before = cap_fact_status.snapshot(project)
         for index, file in enumerate(uploaded):
             try:
+                if ew.replace_same_name(project, file.name, file.getvalue()):      # 고친 파일을 다시 올린 경우
+                    st.session_state.setdefault("evidence_notes", []).append(
+                        f"{file.name}: 예전에 올린 같은 이름의 파일을 새 파일로 바꿨어요.")
                 if selected[index] == "reference":
                     ew.register_reference(project, file.name, file.getvalue())
                     save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 항목·값 표의 서식 연결 결과 확인")
@@ -398,6 +308,8 @@ def _step_upload(project, found) -> None:
             except Exception as exc:
                 why = exc if isinstance(exc, ValueError) else "파일 형식을 확인해 주세요"
                 st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 읽지 못했어요 ({why}). 다른 자료는 그대로예요.")
+        delta = cap_fact_status.change(before, cap_fact_status.snapshot(project))
+        st.session_state["evidence_change"] = "이번에 올린 파일로 " + cap_fact_status.change_text(delta)
         st.session_state["evidence_goto"] = 2
         st.rerun()
 
@@ -439,26 +351,27 @@ def _reading_report(project, doc, facts, names, reasons) -> None:
             parts.append(f"그대로 쓸 수 없는 칸 {len(unusable)}개")
         st.write(f"📄 **{doc['name']}** — " + " · ".join(parts))
     with st.expander("읽기 결과 보기"):
-        for link_no, link in enumerate(doc.get("links", [])):
+        if st.button("이 파일 빼기", key=f"remove_{pid}_{sha[:12]}",
+                     help="잘못 올린 파일이나 예전 판을 빼면 그 파일에서 읽은 값도 함께 빠져요."):
+            ew.remove_document(project, sha)
+            _save(project, f"{doc['name']}을(를) 뺐어요. 이 파일에서 읽은 값도 빠졌어요.")
+        for link in doc.get("links", []):           # 근거자료의 항목·값 표에서 바로 연결한 서식 칸
             record = project.get_field(link["key"])
             if record is None:
                 continue
             source = f"{link['location']} · {link['label']}: {link['value']}"
-            if record.status == "HOLD" or (record.note != cap_evidence_links.NOTE and
-                                             str(record.value) != str(link["value"])):
-                st.warning(f"{source} — 다른 자료 또는 확정값과 다릅니다. 원본을 확인하고 수정해 다시 올려 주세요.")
-            elif record.status == "AI_DRAFT":
-                st.write(f"🔎 {source} — 원본 확인 후 서식에 반영")
-                if st.button(f"원본 확인하고 ‘{link['label']}’ 반영", key=f"link_{pid}_{sha[:12]}_{link_no}"):
-                    if cap_evidence_links.confirm(project, link["key"]):
-                        _save(project, f"{link['label']}: 원본 확인 후 서식에 반영했어요.")
-                        st.rerun()
+            if record.status == "HOLD" or (not cap_evidence_links.linked(record) and str(record.value) != str(link["value"])):
+                st.warning(f"{source} — 다른 자료와 값이 다릅니다. 맞는 값으로 파일을 고쳐 다시 올려 주세요.")
             else:
-                st.write(f"✅ {source} — 법정서식에 연결됨")
+                st.write(f"✅ {source} — 초안에 넣음")
         for table in doc.get("tables", []):
             place = "" if table["location"] == "CSV" else f"‘{table['location']}’ "
+            if table.get("kind") == "site" and table.get("columns"):
+                st.markdown(f"- {place}표: 항목·값 표로 보고 {len(table['columns'])}개 항목을 읽었어요: "
+                            + ", ".join(c["header"] for c in table["columns"]))
+                continue
             if table.get("header_row") is None:
-                st.markdown(f"- {place}표: 읽지 못함 — {table.get('problem', '항목 이름 줄을 찾지 못함')}")
+                st.markdown(f"- {place}표: 읽지 않음 — {table.get('problem', '항목 이름 줄을 찾지 못함')}")
                 continue
             used = [c for c in table.get("columns", []) if c["field"]]
             st.markdown(f"- {place}표: {table['header_row']}번째 줄을 항목 이름으로 보고 아래 {table['rows']}줄을 읽었어요. "
@@ -509,178 +422,6 @@ def _remap_columns(project, picked) -> None:
 
 # ---------------------------------------------------------------- ② 파일별 보완 요청
 
-def _card_conflict(project, item, names) -> None:
-    slot, pid, field = item["slot"], project.project_id, item["field"]
-    with st.container(border=True):
-        st.markdown(f"**{names(item['entity'])}의 {_j(_name(field), '이', '가')} 자료마다 달라요.**")
-        st.caption("파일 이름이나 날짜만으로 정하지 마세요. 현재 설비에 실제로 적용되는 값을 원자료·현장 담당자와 확인해 고르세요. 모르면 그대로 두어도 돼요.")
-        facts = {f["id"]: f for f in slot["facts"] if ew.value_problem(field, f["value"]) is None}
-        for bad in (f for f in slot["facts"] if f["id"] not in facts):
-            st.caption(f"{_where(bad)}에는 ‘{bad.get('raw', bad['value'])}’로 적혀 있어 그대로는 고를 수 없어요 "
-                       "(범위·글자·계산식이에요). 맞는 값이 아래에 없으면 직접 적어 주세요.")
-        options = list(facts) + ["직접"]
-        choice = st.radio("어느 값이 맞나요?", options, key=f"pick_{pid}_{slot['key']}",
-                          format_func=lambda i: "둘 다 아니에요 (직접 입력)" if i == "직접"
-                          else f"{_value(field, facts[i]['value'])} — {_where(facts[i])}{_raw_note(facts[i])}")
-        typed = _value_input(field, f"typed_{pid}_{slot['key']}", "맞는 값") if choice == "직접" else ""
-        if st.button("이 값으로 정하기", key=f"ok_{pid}_{slot['key']}"):
-            if choice == "직접":
-                _confirm_manual(project, item["entity"], field, typed, "")
-            else:
-                try:
-                    ew.approve(project, slot["key"], choice)
-                except ValueError as exc:
-                    st.error(str(exc))
-                    return
-                _save(project, f"{names(item['entity'])}의 {_j(_name(field), '을', '를')} {_value(field, facts[choice]['value'])}로 정했어요.")
-
-
-def _card_problem(project, group, names) -> None:
-    """그대로 쓸 수 없는 값. 원인을 추측하지 않고 파일·위치·적힌 글자·걸린 검사만 알려 줍니다.
-    같은 열(단위)과 같은 표기는 한 번만 묻고, 답은 같은 경우 전체와 앞으로 올리는 자료에 적용합니다."""
-    pid, field, facts, raw = project.project_id, group["field"], group["facts"], group["raw"]
-    first = facts[0]
-    gid = hashlib.sha256(json.dumps([group["kind"], field, raw, group["sha256"], group["header"], first["id"]],
-                                    ensure_ascii=False).encode()).hexdigest()[:12]
-    others = f" 외 {len(facts) - 1}곳" if len(facts) > 1 else ""
-    with st.container(border=True):
-        if group["kind"] == "column":
-            st.markdown(f"**{first['document']}의 ‘{group['header']}’ 열에 단위가 없어요.**")
-            st.caption(f"이 열의 값 {len(facts)}개(예: {', '.join(f['raw'] for f in facts[:3])})를 계산에 쓰려면 단위가 필요해요. "
-                       "한 번 고르면 이 열 전체에 적용돼요.")
-            unit = st.radio("이 열의 단위", ew.UNIT_CHOICES.get(field, ()), horizontal=True, key=f"unit_{pid}_{gid}")
-            if st.button("이 열에 적용", key=f"unit_ok_{pid}_{gid}"):
-                try:
-                    changed = ew.learn_unit(project, group["sha256"], group["header"], unit)
-                except ValueError as exc:
-                    st.error(str(exc))
-                    return
-                _save(project, f"‘{group['header']}’ 열 {changed}칸에 단위 {unit}를 적용했어요.")
-            return
-        if group["kind"] == "text" and len(facts) > 1:
-            st.markdown(f"**{_name(field)} 칸에 {_q(raw, '이라고', '라고')} 적힌 곳이 {len(facts)}곳 있어요.**")
-        else:
-            st.markdown(f"**{names(first['entity'])}의 {_name(field)} 칸에 {_q(raw, '이라고', '라고')} 적혀 있어요.**")
-        st.caption(f"{_where(first)}{others} · {group['reason']}.")
-        if len(facts) > 1:
-            with st.expander(f"{len(facts)}곳 모두 보기"):
-                st.dataframe([{"설비·물질": names(f["entity"]), "읽은 곳": _where(f)} for f in facts], hide_index=True, width="stretch")
-        reason = f"담당자 확인 ({first['document']} 원문 ‘{raw}’)"
-        if len(group["keys"]) == 1:
-            # 같은 설비·항목에 다른 자료가 쓸 수 있는 값을 갖고 있으면 참고로 보여 주고 바로 고를 수 있게 합니다.
-            slot = next((s for s in ew.slots(project) if s["key"] == group["keys"][0]), None)
-            usable = [f for f in (slot["facts"] if slot else []) if ew.value_problem(field, f["value"]) is None]
-            for index, other in enumerate(usable[:3]):
-                st.caption(f"참고: 다른 자료({_where(other)})에는 {_value(field, other['value'])}{_raw_note(other)}")
-                if st.button(f"{_value(field, other['value'])}로 정하기", key=f"use_{pid}_{gid}_{index}"):
-                    ew.approve(project, slot["key"], other["id"])
-                    _save(project, f"{names(first['entity'])}의 {_j(_name(field), '을', '를')} {_value(field, other['value'])}로 정했어요.")
-        if group["kind"] == "single":
-            suggestion = _formula_result(raw) if raw.startswith("=") else None
-            if suggestion is not None:
-                st.caption(f"참고: 식에 숫자와 사칙연산만 있어 계산하면 {_value(field, suggestion)}이에요.")
-                if st.button(f"{_value(field, suggestion)}로 저장", key=f"formula_{pid}_{gid}"):
-                    _confirm_manual(project, first["entity"], field, _number(suggestion).replace(",", ""), reason + " 계산식 결과")
-            typed = _value_input(field, f"fix_{pid}_{gid}", "맞는 값")
-            if st.button("저장", key=f"save_{pid}_{gid}", disabled=not typed):
-                _confirm_manual(project, first["entity"], field, typed, reason)
-            return
-        typed = _value_input(field, f"fix_{pid}_{gid}", f"{_q(raw, '은', '는')} 무엇인가요?")
-        apply_all = st.checkbox(f"같은 표기 {len(facts)}곳과 앞으로 올리는 자료에도 적용" if len(facts) > 1
-                                else "앞으로 올리는 자료의 같은 표기에도 적용", value=True, key=f"all_{pid}_{gid}")
-        if st.button("저장", key=f"save_{pid}_{gid}", disabled=not typed):
-            if not apply_all:
-                _confirm_manual(project, first["entity"], field, typed, reason)
-                return
-            try:
-                changed = ew.learn_value(project, field, raw, typed)
-            except ValueError as exc:
-                st.error(f"저장하지 못했어요: {exc}")
-                return
-            _save(project, f"{_q(raw, '을', '를')} {typed}(으)로 정해 {changed}칸에 적용했어요.")
-
-
-def _card_held(project, item, names) -> None:
-    slot, pid, field = item["slot"], project.project_id, item["field"]
-    fact = slot["facts"][0]
-    with st.container(border=True):
-        st.markdown(f"**{names(item['entity'])}의 {_name(field)}: {_value(field, fact['value'])}**{_raw_note(fact)}")
-        why = ", ".join(dict.fromkeys(_plain_reason(r) for r in item["reasons"])) or "한 번 확인이 필요한 값이에요"
-        st.caption(f"{_where(fact)} · {why}. 자료와 같으면 ‘맞아요’를 눌러 주세요.")
-        cols = st.columns([1, 3])
-        if cols[0].button("맞아요", key=f"yes_{pid}_{slot['key']}"):
-            try:
-                ew.approve(project, slot["key"], fact["id"])
-            except ValueError as exc:
-                st.error(str(exc))
-                return
-            _save(project)
-        with cols[1].popover("다른 값이에요"):
-            typed = _value_input(field, f"other_{pid}_{slot['key']}", "맞는 값")
-            if st.button("저장", key=f"other_ok_{pid}_{slot['key']}", disabled=not typed):
-                _confirm_manual(project, item["entity"], field, typed, "")
-
-
-def _card_rank(project, question, names) -> None:
-    pid, field, entity = project.project_id, question["field"], question["entity"]
-    key = f"rank_{pid}_{entity}_{field}"
-    with st.container(border=True):
-        other = question["material"] if entity == question["facility"] else question["facility"]
-        st.markdown(f"**{names(entity)}의 {_j(_name(field), '이', '가')} 자료에 없어요.**")
-        st.caption(f"‘{names(entity)} × {names(other)}’를 포함한 후보들의 순서에 영향을 줄 수 있어요. {HELP.get(field, '')}")
-        typed = _value_input(field, key + "_in")
-        if st.button("저장", key=key + "_ok", disabled=not typed):
-            _confirm_manual(project, entity, field, typed, "")
-
-
-def _card_missing(project, entity, fields, names, materials) -> None:
-    pid = project.project_id
-    with st.container(border=True):
-        st.markdown(f"**{names(entity)}** — 자료에 없는 정보: " + ", ".join(_name(f) for f in fields))
-        with st.form(f"missing_{pid}_{entity}"):
-            values = {}
-            for field in fields:
-                if field == "product" and materials:
-                    pick = st.selectbox("다루는 제품", ["모름"] + materials, format_func=lambda m: m if m == "모름" else names(m),
-                                        help=HELP["product"], key=f"missing_{pid}_{entity}_product")
-                    values[field] = "" if pick == "모름" else pick.split(":", 1)[1]
-                else:
-                    values[field] = _value_input(field, f"missing_{pid}_{entity}_{field}")
-            st.caption("아는 것만 적으세요. 비워 둔 항목은 나중에 자료를 더 올리거나 다시 적으면 돼요.")
-            if st.form_submit_button("저장"):
-                filled = {f: v for f, v in values.items() if v}
-                errors = []
-                for field, value in filled.items():
-                    try:
-                        ew.add_manual(project, entity, field, value, f"담당자 직접 입력 ({date.today().isoformat()})", confirm=True)
-                    except ValueError as exc:
-                        errors.append(f"{_name(field)}: {exc}")
-                if errors:
-                    st.error("저장하지 못한 항목이 있어요 — " + " / ".join(errors))
-                elif filled:
-                    _save(project, f"{names(entity)} 정보 {len(filled)}개를 저장했어요.")
-
-
-def _section(title: str, items: list, caption: str) -> bool:
-    if not items:
-        return False
-    st.subheader(f"{title} ({len(items)})")
-    st.caption(caption)
-    return True
-
-
-def _visible(items, key):
-    """질문이 많을 때 뒤쪽 질문도 선택해 볼 수 있게 합니다."""
-    entries = list(items)
-    if len(entries) <= MAX_CARDS:
-        return entries
-    pages = (len(entries) + MAX_CARDS - 1) // MAX_CARDS
-    page = st.selectbox("볼 질문 묶음", range(pages), key=key,
-                        format_func=lambda i: f"{i + 1}/{pages} 묶음 · {i * MAX_CARDS + 1}~{min((i + 1) * MAX_CARDS, len(entries))}번")
-    st.caption(f"전체 {len(entries)}개 중 이 묶음의 질문을 보여 줍니다. 다음 묶음도 확인해 주세요.")
-    return entries[page * MAX_CARDS:(page + 1) * MAX_CARDS]
-
-
 def _correction_rows(project, found) -> list[dict]:
     """파일·위치·항목·수정 지시를 한 줄씩 적는다. 추정된 원본은 쓰지 않는다."""
     rows = []
@@ -693,19 +434,15 @@ def _correction_rows(project, found) -> list[dict]:
             is_reference = doc.get("kind") == "reference" and not doc.get("needs_ocr")
             add(doc["name"], "서식 값 연결" if is_reference else "문서 읽기",
                 doc.get("problem") or "값을 연결하지 못했습니다.",
-                "해당 문서의 값을 작성 화면에서 연결·확정하세요." if is_reference else
+                "서식 항목 이름(예: 대표자, 사업자 등록번호)과 값을 2열 표로 적어 다시 올리세요." if is_reference else
                 "스캔본은 OCR을 적용하세요. 항목명·번호를 확인해 원본을 다시 제출하세요.")
         for link in doc.get("links", []):
             record = project.get_field(link["key"])
-            if record and record.status == "AI_DRAFT":
-                add(f"{doc['name']} · {link['location']}", link["label"],
-                    "원본을 읽어 서식 초안을 만들었습니다. 담당자 확인이 필요합니다.",
-                    "① 자료 올리기 → 읽기 결과 보기에서 원본과 대조한 뒤 ‘반영’을 누르세요.")
             if record and (record.status == "HOLD" or
-                           (record.note != cap_evidence_links.NOTE and str(record.value) != str(link["value"]))):
+                           (not cap_evidence_links.linked(record) and str(record.value) != str(link["value"]))):
                 add(f"{doc['name']} · {link['location']}", link["label"],
-                    "같은 항목의 값이 다른 자료 또는 이미 확정한 값과 다릅니다.",
-                    "적용할 값을 원본에서 확인하고 잘못된 파일을 수정해 다시 올려 주세요.")
+                    "같은 항목의 값이 다른 자료와 다릅니다.",
+                    "맞는 값을 원본에서 확인하고 잘못된 파일을 고쳐 다시 올려 주세요.")
         for table in doc.get("tables", []):
             for skipped in table.get("skipped", []):
                 add(f"{doc['name']} · {table['location']} {skipped['row']}행", "설비·제품 번호",
@@ -740,16 +477,120 @@ def _correction_rows(project, found) -> list[dict]:
         missing = ", ".join(req.missing_labels or (req.label,))
         add(" / ".join(req.suggested_evidence) or "근거 파일 미지정", req.label,
             f"작성 항목에 {missing} 값이 아직 연결되지 않았습니다. 업로드한 자료에 있어도 자동 연결되지 않았을 수 있습니다.",
-            "해당 근거자료와 최신본·적용범위를 확인해 제출하고 작성 화면에서 연결·확정하세요.")
+            "해당 근거자료와 최신본·적용범위를 확인해 파일에 적어 다시 올려 주세요.")
     return rows
 
 
+KIND_NAMES = {"material": "물질 목록·SDS", "facility": "설비 목록·운전 자료", "site": "사업장 일반정보·공정 설명",
+              "detector": "가스감지기 명세", "target": "주변 보호대상 조사표",
+              "mixed": "여러 종류가 든 묶음 파일(시트마다 따로 읽음)"}
+FACT_FORMS = (1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16)
+DOC_NAMES = {"CAP": "화학사고예방관리계획서", "PSM": "공정안전보고서"}
+FACT_COLUMNS = ("상태", "사실", "값", "출처", "쓰이는 곳", "올릴 파일", "필요", "고칠 점")
+
+
+def _file_panel(project) -> None:
+    files = cap_coverage_report.file_results(project)
+    st.markdown("**올린 파일을 어디까지 읽었나요**")
+    if not files:
+        return
+    bad = [f for f in files if not f["_ok"]]
+    if bad:
+        st.warning(f"읽지 못했거나 일부만 읽은 파일이 {len(bad)}개 있어요. ‘읽지 못한 이유’를 보고 파일을 고쳐 다시 올려 주세요.")
+    else:
+        st.success("올린 파일을 모두 읽었어요.")
+    st.dataframe([{k: v for k, v in f.items() if not k.startswith("_")} for f in files], hide_index=True, width="stretch")
+
+
+def _coverage_panel(project) -> None:
+    """올린 파일을 어디까지 읽었는지, 화사계에 필요한 사실 중 무엇을 파일에서 찾았는지 사실 표로 보여 줍니다."""
+    pid = project.project_id
+    _file_panel(project)
+    docs = cap_fact_status.project_docs(project)
+    st.markdown("**" + " · ".join(DOC_NAMES[d] for d in docs) + "에 필요한 사실**")
+    st.caption("한 줄에 사실 하나예요. O는 파일에서 찾은 값(출처를 함께 보여 줘요), 빈칸은 아직 못 찾은 값, "
+               "⚠ 충돌은 파일끼리 값이 달라 초안에 넣지 않은 값, △ 확인은 읽었지만 그대로 쓸 수 없는 값이에요. "
+               "두 문서에 같이 쓰이는 사실은 한 번만 보여 줘요.")
+    cols = st.columns(4 if len(docs) > 1 else 3)
+    if len(docs) > 1:
+        picked = cols[3].radio("문서", ["두 문서", *docs], horizontal=True, key="fact_doc_" + pid,
+                               format_func=lambda d: DOC_NAMES.get(d, d))
+        docs = docs if picked == "두 문서" else (picked,)
+    group = ""
+    if "CAP" in docs:
+        groups = ["전체", "1군", "2군"]
+        default = groups.index(project.cap_group) if project.cap_group in groups else 0
+        picked_group = cols[0].radio("작성수준", groups, index=default, horizontal=True, key="fact_group_" + pid)
+        group = "" if picked_group == "전체" else picked_group
+    forms = cols[1].multiselect("화학사고예방관리계획서 별지", FACT_FORMS, default=[], format_func=lambda n: f"제{n}호",
+                                key="fact_forms_" + pid, placeholder="모든 별지") if "CAP" in docs else []
+    view = cols[2].radio("보기", ["빈칸·충돌만", "전체"], horizontal=True, key="fact_view_" + pid)
+    rows = cap_fact_status.fact_rows(project, group=group, forms=forms, docs=docs)
+    info = cap_fact_status.summary(rows)
+    metrics = st.columns(5)
+    metrics[0].metric("파일에서 찾은 사실", f"{info['filled']}/{info['company']}")
+    metrics[1].metric("빈칸(필수)", info["blank_required"])
+    metrics[2].metric("충돌", info["conflicts"])
+    metrics[3].metric("확인 필요", info["checks"])
+    metrics[4].metric("계산·조회 완료", f"{info['derived_done']}/{info['derived']}")
+    company = [r for r in rows if r["_company"]]
+    if view == "빈칸·충돌만":
+        company = [r for r in company if r["_state"] in (cap_fact_status.CONFLICT, cap_fact_status.CHECK)
+                   or (r["_state"] == cap_fact_status.BLANK and r["_required"])]
+    if company:
+        st.dataframe([{k: r[k] for k in FACT_COLUMNS} for r in company], hide_index=True, width="stretch")
+    else:
+        st.success("필수 사실을 모두 파일에서 찾았고 충돌도 없어요.")
+    derived = [r for r in rows if not r["_company"]]
+    if derived:
+        with st.expander("프로그램이 계산·조회하는 값과 지도 조사 값 (회사 파일에서 읽지 않음)"):
+            st.dataframe([{k: r[k] for k in ("상태", "사실", "쓰이는 곳", "올릴 파일", "고칠 점")} for r in derived],
+                         hide_index=True, width="stretch")
+    _matrix_panel(project, forms)
+    _template_download(project, "" if group == "전체" else group)
+
+
+def _template_download(project, group: str) -> None:
+    """빈 사실의 열 이름을 넣은 엑셀 양식. 채워서 ‘① 자료 올리기’에 그대로 올리면 됩니다."""
+    pid = project.project_id
+    st.markdown("**엑셀 업로드 양식**")
+    st.caption("빈칸은 ‘올릴 파일’에 ‘고칠 점’의 항목 이름으로 적어 다시 올리면 채워져요. 회사 파일에 적기 어려우면 "
+               "아래 양식을 받아 빈칸을 채워 올려도 돼요. 열 이름은 프로그램이 알아보는 이름이라 바꾸지 마세요.")
+    full = st.checkbox("이미 찾은 사실의 열도 모두 넣기", key="template_full_" + pid)
+    count = cap_upload_template.blank_count(project, group)
+    label = "엑셀 업로드 양식 내려받기 (모든 사실)" if full else f"엑셀 업로드 양식 내려받기 (빈 사실 {count}개)"
+    st.download_button(label, cap_upload_template.build(project, only_blank=not full, group=group),
+                       file_name=cap_upload_template.filename(project), key="template_" + pid, disabled=not full and not count,
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+def _matrix_panel(project, forms) -> None:
+    pid = project.project_id
+    tabs = [(kind, title) for kind, title in (("facility", "설비 × 항목"), ("material", "물질 × 항목"), ("detector", "감지기 × 항목"))
+            if cap_fact_status.entities(project, kind)]
+    if not tabs:
+        return
+    st.markdown("**대상별 표**")
+    required_only = st.checkbox("꼭 필요한 항목만 보기", value=True, key="matrix_required_" + pid)
+    for tab, (kind, _) in zip(st.tabs([title for _, title in tabs]), tabs):
+        with tab:
+            data = cap_fact_status.matrix(project, kind, forms=forms, required_only=required_only)
+            if not data["columns"]:
+                st.caption("고른 별지에 쓰이는 이 종류의 항목이 없어요.")
+                continue
+            st.dataframe(data["rows"], hide_index=True, width="stretch")
+            if data["problems"]:
+                st.dataframe(data["problems"], hide_index=True, width="stretch")
+
+
 def _step_questions(project, found) -> None:
-    pid, names = project.project_id, found["names"]
+    pid = project.project_id
     if not ew.documents(project):
         st.info("먼저 ① 자료 올리기에서 자료를 올려 주세요.")
         return
     st.info(cap_intake_guide.conditional_notice(project.cap_group))
+    _coverage_panel(project)
+    st.divider()
     rows = _correction_rows(project, found)
     st.markdown("**파일별 수정 요청**")
     st.caption("원본 파일을 고쳐 한 번에 다시 올리세요. ‘작성 항목에 연결되지 않음’은 그 값이 회사 자료에 없다는 뜻이 아닙니다.")
@@ -761,50 +602,7 @@ def _step_questions(project, found) -> None:
                            file_name="회사자료_파일별_수정요청.txt", mime="text/plain", key="corrections_" + pid)
     else:
         st.success("현재 연결된 자료에서 수정 요청을 찾지 못했습니다. 법정 판정과 서식 확인은 별도로 진행하세요.")
-    with st.expander("파일을 바로 고칠 수 없을 때만 직접 확인·입력"):
-        _inline_review(project, found)
     _next_button(3, pid, "다음: 시나리오 후보 보기 →")
-
-
-def _inline_review(project, found) -> None:
-    pid, names = project.project_id, found["names"]
-    unmapped = [d for d in ew.documents(project) if d.get("unmapped_columns")]
-    if unmapped:
-        st.info(f"프로그램이 모르는 열이 있는 파일이 {len(unmapped)}개 있어요. ① 자료 올리기의 ‘읽기 결과 보기’에서 필요한 열을 먼저 "
-                "지정하면, 자료에 없다고 묻는 질문이 줄어들 수 있어요.")
-        st.button("① 읽기 결과 보러 가기", key="to_report_" + pid, on_click=_go, args=(1, pid))
-    if not _question_count(found):
-        if any(d.get("needs_reading") for d in ew.documents(project)):
-            st.warning("답할 질문은 없지만 읽지 못한 파일이 있어요. ① 자료 올리기에서 해당 파일을 확인해 주세요.")
-        else:
-            st.success("지금 답할 질문이 없어요. ③ 시나리오 후보를 확인해 보세요.")
-    if _section("자료마다 값이 달라요", found["conflicts"], "같은 설비의 같은 항목이 파일마다 다르게 적혀 있어요. 맞는 값을 하나 골라 주세요."):
-        for item in _visible(found["conflicts"], "conflict_page_" + pid):
-            _card_conflict(project, item, names)
-    if _section("그대로 쓸 수 없는 값", found["problems"],
-                "어느 파일 어디에 무엇이 적혀 있었고 어떤 검사에 걸렸는지 보여 줘요. 같은 열과 같은 표기는 한 번만 물어요."):
-        for group in _visible(found["problems"], "problem_page_" + pid):
-            _card_problem(project, group, names)
-    if _section("순위를 정하려면 꼭 필요한 값", found["rank"], "자료에 없는 값 중 시나리오 후보 순위를 바꾸는 것만 골랐어요."):
-        for question in _visible(found["rank"], "rank_page_" + pid):
-            _card_rank(project, question, names)
-    if _section("한 번 확인해 주세요", found["held"], "값은 찾았지만 자동으로 채우기엔 확실하지 않은 값이에요."):
-        table_only = [i for i in found["held"] if all(f.get("method") == "table" for f in i["slot"]["facts"])]
-        checked = st.checkbox("표에서 읽은 값들의 원자료를 확인했어요", key="bulk_check_" + pid) if len(table_only) > 3 else False
-        if len(table_only) > 3 and st.button(f"확인한 표 값 {len(table_only)}개 저장", key="bulk_" + pid, disabled=not checked):
-            outcome = ew.approve_bulk(project, [i["key"] for i in table_only])
-            _save(project, f"{outcome['approved']}개를 확인했어요.")
-        for item in _visible(found["held"], "held_page_" + pid):
-            _card_held(project, item, names)
-    if _section("자료에 없는 정보", list(found["missing"]), "알고 있으면 적어 주세요. 모르면 비워 두고 관련 자료를 더 올려도 돼요."):
-        materials = sorted({s["entity"] for s in found["slots"] if s["entity"].startswith("material:")})
-        for entity, fields in _visible(found["missing"].items(), "missing_page_" + pid):
-            _card_missing(project, entity, fields, names, materials)
-    if found["notes"]:
-        st.subheader("참고")
-        for note in found["notes"]:
-            st.write("• " + (names(note["entity"]) + ": " if note["entity"].startswith(("facility:", "material:")) else "")
-                     + note["task"])
 
 
 # ---------------------------------------------------------------- ③ 시나리오 후보
@@ -870,7 +668,7 @@ def _step_scenarios(project, found, triage) -> None:
 def _form1_payoff(project) -> None:
     """보낸 자료로 별지 제1호가 어디까지 채워졌는지, 법정 산정에 더 필요한 값이 무엇인지 보여 줍니다."""
     record = project.get_field("inventory.facilities")
-    if record is None or record.status not in {"USER_CONFIRMED", "VERIFIED"}:
+    if record is None or not record.confirmed:
         return
     from engine.stage2 import cap_workspace as ws
     form = ws.resolve_form1(project)
@@ -892,49 +690,22 @@ TARGET_NAME = {"inventory.chemicals": "물질 목록", "inventory.facilities": "
 
 def _step_export(project, found) -> None:
     """확인한 값을 작성자료로 보내고, 문서별로 남은 일을 한곳에서 보여 줍니다(여기만 따라가면 되도록)."""
-    st.write("확인한 값을 **작성자료**로 보내요. 보낸 뒤에는 아래 현황표에서 서식별로 채워진 항목과 빠진 항목을 봐요.")
+    st.write("확인한 값을 **작성자료**로 보내요. 보낸 뒤에는 아래 진행 현황에서 남은 일을 보고 ‘이어서 작성’을 누르면 돼요.")
     _send(project, found)
-    st.divider()
-    _status_table(project)
+    _narrative_drafts(project)
     st.divider()
     _progress_board(project)
     _records(project, found["names"])
 
 
-OX = {intake.COVERAGE_CONFIRMED: "O", intake.COVERAGE_PARTIAL: "△", intake.COVERAGE_REVIEW: "△",
-      intake.COVERAGE_REQUEST: "X", intake.COVERAGE_NOT_APPLICABLE: "—"}
-
-
-def _status_table(project) -> None:
-    """화사계 작성항목 현황표: 자료로 채워졌는지 O/X로 보여 줍니다(여기만 보면 됩니다)."""
-    rows, counts = [], {mark: 0 for mark in ("O", "△", "X", "—")}
-    for req in build_intake_catalog(project):
-        if req.system not in {"CAP", "COMMON"}:
-            continue
-        mark = OX.get(req.coverage_status, "X")
-        counts[mark] += 1
-        rows.append({"": mark, "서식·구역": req.section, "작성항목": req.label,
-                     "채워진 항목": ", ".join(req.confirmed_labels) or "-",
-                     "빠진 항목": ", ".join(req.missing_labels) or "-",
-                     "필요한 회사 자료": " / ".join(req.suggested_evidence) or "-"})
-    if not rows:
-        st.caption("작성 범위가 아직 정해지지 않았어요. ‘사업장 판정하기’에서 확인하세요.")
-        return
-    st.markdown("**화학사고예방관리계획서 작성항목 현황**")
-    st.caption("O 자료로 채워짐 · △ 일부만 채워짐 또는 담당자 확인 필요 · X 자료가 없어 비어 있음 · — 해당 없음. "
-               "X·△는 ‘② 파일별 보완 요청’의 자료를 올리면 채워집니다. 화면에서 직접 입력하지 않습니다.")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("채워짐 O", counts["O"])
-    c2.metric("일부·확인 필요 △", counts["△"])
-    c3.metric("비어 있음 X", counts["X"])
-    only_open = st.checkbox("아직 비어 있는 항목만 보기", value=False, key="status_open_" + project.project_id)
-    shown = [r for r in rows if r[""] in ("X", "△")] if only_open else rows
-    st.dataframe(shown, hide_index=True, width="stretch")
-    st.page_link("ui/cap_download_page.py", label="작성된 규정서식 내려받기 →", icon="📥")
-
-
 def _progress_board(project) -> None:
-    """다른 문서(공정안전보고서)로 가는 안내만 둡니다. 화사계 현황은 위 현황표에서 봅니다."""
+    from engine.stage2 import cap_judgement
+    from ui import cap_common
+
+    shown = False
+    if project.cap_in_scope or cap_judgement.undecided(project):
+        cap_common.render_progress(project, key_prefix="hub_" + project.project_id)
+        shown = True
     if project.psm_in_scope:
         from engine.stage2 import report_export as rx
 
@@ -945,89 +716,93 @@ def _progress_board(project) -> None:
         except ValueError:
             pass
         st.page_link("ui/psm_workspace_page.py", label="공정안전보고서 작성 화면으로 가기 →")
-    st.page_link("ui/surroundings_map_page.py", label="지도에서 사업장 경계 그리기 →", icon="🗺️")
+        shown = True
+    if not shown:
+        st.caption("이 사업장은 아직 작성할 문서가 정해지지 않았어요. ‘사업장 판정하기’에서 확인하세요.")
 
 
-def _restore_excluded(project) -> None:
-    """별지에서 지워 제외한 대상. 실수로 지웠으면 되살릴 수 있게 합니다."""
-    gone = ew.excluded(project)
-    if not gone:
+def _auto_publish(project) -> None:
+    """회사 파일에서 읽은 값을 작성자료(초안)에 자동으로 반영합니다. 사람의 승인 단계는 없습니다.
+    서술형 항목도 근거 사실이 있으면 규칙 초안을 바로 만들어 둡니다(AI 다듬기는 ④에서 따로)."""
+    changed = False
+    # 파일을 새로 올리면 이전에 반영한 값이 보류로 바뀌므로, 값이 같아도 확정 상태가 아니면 다시 반영합니다.
+    if ew.needs_publish(project):
+        try:
+            ew.publish(project, replace_existing=True)
+            changed = True
+        except ValueError:
+            pass
+    if project.cap_in_scope or project.psm_in_scope:
+        try:
+            changed = cap_fact_drafting.refresh_rule_drafts(project) > 0 or changed
+        except Exception:          # 서술형 초안 문제로 화면이 멈추지 않게
+            pass
+        try:                       # 사고시나리오 결과도 새 파일로 다시 계산(‘사고시나리오 결과’ 화면에서 확인)
+            from engine.stage2 import scenario_pipeline
+
+            if scenario_pipeline.needs_refresh(project):
+                scenario_pipeline.refresh(project)
+                changed = True
+        except Exception:
+            pass
+    if changed:
+        save_project(project)
+
+
+def _narrative_drafts(project) -> None:
+    """사전관리방침·비상대응계획 서술형: 회사 파일의 사실로 쓴 초안 현황과 다시 만들기."""
+    systems = cap_fact_drafting.systems(project)
+    if not systems:
         return
-    with st.expander(f"별지에서 지워 제외한 대상 {len(gone)}개"):
-        st.caption("별지 제1·6호에서 행을 지우면 자료 접수에서도 제외돼 다시 보내지 않아요. 실수였다면 되살리세요.")
-        names = Names(ew.slots(project))
-        for entity in gone:
-            cols = st.columns([4, 1])
-            cols[0].write(entity.split(":", 1)[1] + (" (설비)" if entity.startswith("facility:") else " (물질)"))
-            if cols[1].button("되살리기", key=f"restore_{project.project_id}_{entity}"):
-                ew.restore(project, entity)
-                _save(project, f"{names(entity)}을(를) 다시 포함했어요.")
+    pid = project.project_id
+    tables = [(system, cap_fact_drafting.rows(project, system)) for system in systems]
+    if not any(rows for _, rows in tables):
+        return
+    st.subheader("서술형 항목")
+    st.caption("사전관리방침·비상대응계획·안전운전계획 같은 글은 회사 파일에서 읽은 사실만으로 초안을 써요. 근거가 없는 부분은 "
+               "‘[확인 필요]’로 남기고, 초안 문서에 ‘AI 초안’ 표시와 함께 들어가요. 내려받은 문서에서 고쳐 쓰세요.")
+    for system, rows in tables:
+        if rows:
+            st.markdown(f"**{DOC_NAMES[system]}**")
+            st.dataframe([{k: v for k, v in r.items() if not k.startswith("_")} for r in rows], hide_index=True, width="stretch")
+    use_ai = st.checkbox("이 PC의 로컬 AI로 문장 다듬기 (회사 정보는 밖으로 보내지 않아요)", key="fact_ai_" + pid)
+    client = None
+    if use_ai:
+        from ui.narrative_panel import _local_config
+
+        config, probe, build = _local_config("fact_" + pid)
+        if probe is not None and probe.ready:
+            client = build(config)
+        else:
+            st.warning("로컬 AI를 찾지 못했어요. 사실만 이어 쓴 규칙 초안으로 만들어요.")
+    if st.button("근거 사실로 서술형 초안 다시 만들기", key="fact_drafts_" + pid):
+        results = cap_fact_drafting.generate(project, client, refresh=True)
+        save_project(project)
+        checks = sum(r["checks"] for r in results)
+        st.session_state.setdefault("evidence_notes", []).append(
+            f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
+        st.rerun()
+    with st.expander("서술형 초안 보기"):
+        for item in [i for system in systems for i in cap_fact_drafting.items(project, system)]:
+            text = item.company_text or item.draft
+            if text:
+                st.markdown(f"**{item.label}** — {item.state}")
+                st.text(text)
 
 
 def _send(project, found) -> None:
-    pid, names = project.project_id, found["names"]
     pending = _question_count(found)
     if pending:
-        st.info(f"② 아직 보완·확인하지 않은 값 {pending}개가 있어요. 확인한 값만 연결되고 나머지는 보류됩니다.")
-    check = _final_check(project)
-    if check:
-        groups = {}
-        for slot in check:
-            source = slot["chosen"]["sha256"]
-            groups.setdefault(source, []).append(slot)
-        st.subheader(f"보내기 전 마지막 확인 · 파일 {len(groups)}개")
-        st.caption("자동으로 채운 중요한 값은 파일별로 확인해요. 지금 모르면 확인하지 않고 원자료를 다시 살펴보세요.")
-        source = st.selectbox("확인할 파일", list(groups), key="final_source_" + pid,
-                              format_func=lambda key: f"{groups[key][0]['chosen']['document']} · {len(groups[key])}개 값")
-        selected = groups[source]
-        st.caption(f"이 파일에서 확인할 값 {len(selected)}개 · 전체 남은 값 {len(check)}개")
-        st.dataframe([{"설비·물질": names(s["entity"]), "항목": _name(s["field"]),
-                       "값": _value(s["field"], s["chosen"]["value"]) + _raw_note(s["chosen"]),
-                       "읽은 곳": _where(s["chosen"])} for s in selected], hide_index=True, width="stretch")
-        checked = st.checkbox("이 파일의 값과 원자료·단위·현재 적용 여부를 확인했어요", key="final_check_" + pid + "_" + source)
-        cols = st.columns([1, 2])
-        if cols[0].button("이 파일의 값 저장", key="final_ok_" + pid, type="primary", disabled=not checked):
-            ew.confirm_auto(project, [s["key"] for s in selected])
-            _save(project, f"{len(selected)}개 값을 확인했어요.")
-        with cols[1].popover("틀린 값이 있어요"):
-            pick = st.selectbox("어느 값인가요?", range(len(selected)), key="final_pick_" + pid,
-                                format_func=lambda i: f"{names(selected[i]['entity'])} · {_name(selected[i]['field'])}")
-            slot = selected[pick]
-            typed = _value_input(slot["field"], f"final_fix_{pid}_{slot['key']}", "맞는 값")
-            if st.button("고치기", key="final_fix_ok_" + pid, disabled=not typed):
-                _confirm_manual(project, slot["entity"], slot["field"], typed, "")
-        return
-
+        st.info(f"② 파일을 고치면 채워질 값 {pending}개가 있어요. 지금은 읽은 값만 초안에 반영돼요.")
     if not ew.publishing_plan(project):
-        st.info("보낼 값이 아직 없어요. ① 자료를 올리고 ② 파일별 보완 요청을 확인해 주세요.")
+        st.info("반영할 값이 아직 없어요. ① 자료를 올리고 ② 파일별 보완 요청을 확인해 주세요.")
         return
-    st.caption("같은 설비번호·CAS 번호의 행에 합쳐요. 별지에서만 적은 칸(분자량·형상 치수 등)은 그대로 두고, "
-               "자료마다 달라 아직 정하지 않은 값은 비워요. 별지 제1·6호에서 고친 값은 이미 여기에 반영돼 있어요.")
-    preview = ew.publish_preview(project)
-    changed = [key for key, rows in preview.items() if (project.get_field(key) or None) is None or project.get_field(key).value != rows]
-    replaced = [key for key in changed if project.get_field(key) is not None]
-    for key in ("inventory.chemicals", "inventory.facilities"):
-        if key in preview:
-            st.markdown(f"**{TARGET_NAME[key]}** — {len(preview[key])}개" + ("" if key in changed else " · 바뀐 것 없음"))
-            st.dataframe(preview[key], hide_index=True, width="stretch")
-    for key in ("cap.workspace.facilities", "cap.chemical.details"):
-        if key in changed:
-            st.caption(f"{TARGET_NAME[key]}에도 같은 값을 합쳐요.")
-    _restore_excluded(project)
-    if not changed:
-        st.success("이미 보낸 내용과 같아요. 보낼 것이 없어요.")
-        return
-    overwrite = True
-    if replaced:
-        overwrite = st.checkbox("이미 저장된 " + ", ".join(TARGET_NAME.get(k, k) for k in replaced)
-                                + "에 위 내용을 합칠게요", key="overwrite_" + pid)
-    if st.button("작성자료로 보내기", type="primary", key="publish_" + pid, disabled=not overwrite):
-        try:
-            ew.publish(project, replace_existing=True)
-            save_project(project)
-            st.success("보냈어요. 아래 진행 현황에서 ‘이어서 작성’을 누르세요.")
-        except ValueError as exc:
-            st.error(str(exc))
+    st.caption("회사 파일에서 읽은 값은 자동으로 초안에 반영돼요. 같은 설비번호·CAS 번호의 행에 합치고, 자료마다 달라 정하지 못한 값은 비워 둬요.")
+    for key, rows in ew.publish_preview(project).items():
+        if key in ("inventory.chemicals", "inventory.facilities"):
+            st.markdown(f"**{TARGET_NAME[key]}** — {len(rows)}개")
+            st.dataframe(rows, hide_index=True, width="stretch")
+    st.success("초안에 반영돼 있어요. 왼쪽 ‘초안 내려받기’에서 받으세요.")
     _form1_payoff(project)
 
 
@@ -1052,7 +827,11 @@ st.caption("회사 자료를 올리면 값을 찾아 정리하고, 파일별 수
 _active = _project_header()
 _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
+_auto_publish(_active)
 _status_line(_active, _found)
+_change = st.session_state.pop("evidence_change", None)
+if _change:
+    (st.warning if "새 충돌 0개" not in _change and "새 충돌은 없어요" not in _change else st.info)(_change)
 for _note in st.session_state.pop("evidence_notes", []):
     (st.error if "읽지 못" in _note else st.warning if "찾지 못" in _note else st.success)(_note)
 
