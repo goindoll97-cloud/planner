@@ -110,6 +110,9 @@ def entities(project: Stage2Project, kind: str, table: str = "") -> list[str]:
 
 
 def _table_title(table: str) -> str:
+    if table.startswith("cap-"):
+        from .cap_upload_template import sheet_title
+        return sheet_title(table)
     from . import psm_table_workspace as pt
     return pt.SPECS[table].title if table in pt.SPECS else table
 
@@ -355,7 +358,7 @@ def fact_rows(project: Stage2Project, *, group: str = "", forms=(), docs=None) -
     docs = project_docs(project) if docs is None else docs
     slots = _slot_index(project)
     kind_entities = {kind: entities(project, kind) for kind in ENTITY_NOUN if kind != "psm_table"}
-    for table in catalog.psm_tables():
+    for table in catalog.input_tables():
         kind_entities[("psm_table", table)] = entities(project, "psm_table", table)
     checks = _derived_checks(project)
     rows = []
@@ -374,10 +377,10 @@ def fact_rows(project: Stage2Project, *, group: str = "", forms=(), docs=None) -
                 else:
                     cell = {"state": BLANK, "value": "", "source": "",
                             "fix": f"‘{_table_title(item.table)}’ 표를 올려 주세요(한 줄에 하나, 구별 열: "
-                                   + ", ".join(i.template_header for i in catalog.psm_tables()[item.table] if i.identifier) + ")."
+                                   + ", ".join(i.template_header for i in catalog.input_tables()[item.table] if i.identifier) + ")."
                                    + (" 해당하지 않으면 사업개요 파일에 ‘적용여부: 해당 없음’과 근거를 적어 주세요."
                                       if _conditional(item.table) else "")}
-                item = next(i for i in catalog.psm_tables()[item.table] if i.identifier)
+                item = next(i for i in catalog.input_tables()[item.table] if i.identifier)
             elif item.kind in ENTITY_NOUN:
                 cell, _ = _entity_row(project, item, slots, kind_entities)
             else:

@@ -125,7 +125,7 @@ class CAPHwpxTemplateTests(unittest.TestCase):
 
     def test_requirements_keep_pure_python_hwpx_and_windows_hancom_converter(self):
         text = (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("python-hwpx==6.4.0", text)
+        self.assertIn("python-hwpx==6.9.0", text)
         self.assertIn("pyhwpx==1.7.2; platform_system == \"Windows\"", text)
 
 

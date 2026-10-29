@@ -110,42 +110,38 @@ class EvidencePageTests(unittest.TestCase):
         self.assertFalse(p.stage1_snapshot["legal_applicability_confirmed"])
         self.assertIsNone(p.get_field("business.address"))
 
-    def test_single_combined_practice_package_is_available(self):
+    def test_only_company_workbook_download_is_available(self):
         at = self.run_page(step=1)
-        labels = " ".join(b.proto.label for b in at.get("download_button"))
-        self.assertIn("정상 작성 연습자료 받기", labels)
-        self.assertIn("전체 준비자료 목록 한글(HWP)", labels)
+        labels = [b.proto.label for b in at.get("download_button")]
+        self.assertEqual(labels, ["회사 작성용 엑셀 내려받기 · 전체 항목"])
+        self.assertEqual(len(at.get("file_uploader")), 1)
 
-    def test_opens_on_questions_step_with_plain_language_only(self):
+    def test_legacy_project_opens_on_excel_step_and_preserves_its_data(self):
         at = self.run_page()
-        self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 2)
-        text = " ".join(_texts(at))
-        self.assertIn("자료 4개를 읽었어요", text)
-        self.assertNotIn("직접 확인·입력", text)                 # 화면에서 값을 대신 고르거나 적는 길은 두지 않음
-        requests = _correction_table(at)
-        self.assertIn("가상 저장탱크 (TK-01) · 용량", requests)
-        self.assertIn("‘=1500+500’: 엑셀 계산식만 있고 계산 결과가 파일에 저장돼 있지 않아요", requests)   # 파일에서 확인한 사실
+        self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 1)
+        self.assertIn("기존 자료는 보존", " ".join(_texts(at)))
+        self.assertEqual(len(ew.documents(load_project(self.pid))), 4)
         self.assertEqual(len(at.json), 0)
 
-    def test_remove_file_button_drops_its_values(self):
+    def test_legacy_files_cannot_be_removed_or_remapped_from_new_upload_screen(self):
         at = self.run_page(step=1)
-        name = "03_old_equipment.csv"
-        sha = next(d["sha256"] for d in ew.documents(self.project) if d["name"] == name)
-        at.button(key=f"remove_{self.pid}_{sha[:12]}").click().run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        project = load_project(self.pid)
-        self.assertNotIn(name, [d["name"] for d in ew.documents(project)])
-        self.assertEqual(ew.confirmed_entities(project)["facility:TK-01"]["capacity"], 10)   # 충돌하던 값이 빠져 바로 정해짐
+        self.assertFalse(any(b.label == "이 파일 빼기" for b in at.button))
+        self.assertFalse(any("열은" in b.label for b in at.selectbox))
+        self.assertEqual(len(ew.documents(load_project(self.pid))), 4)
 
-    def test_questions_step_has_one_correction_table_and_blank_template(self):
+    def test_questions_step_has_one_excel_correction_table_and_return_action(self):
+        from engine.stage2 import cap_upload_template, company_workbook_intake
+        company_workbook_intake.apply(self.project, "회사작성.xlsx", cap_upload_template.build_company())
+        save_project(self.project)
         at = self.run_page(step=2)
         self.assertFalse(at.exception)
         self.assertEqual(len(at.dataframe), 1)
         frame = at.dataframe[0].value
-        self.assertEqual(list(frame.columns), ["상태", "사실", "쓰이는 곳", "올린 파일", "고칠 점"])
-        self.assertTrue(any("03_old_equipment.csv" in str(v) for v in frame["올린 파일"]))
-        self.assertNotIn("대상별 표", " ".join(_texts(at)))
-        self.assertIn("빈칸 전용 엑셀 양식 내려받기", [b.proto.label for b in at.get("download_button")])
+        self.assertEqual(list(frame.columns), ["파일·위치", "항목", "확인된 문제", "수정 요청"])
+        self.assertTrue(any("회사작성.xlsx" in str(v) for v in frame["파일·위치"]))
+        self.assertTrue(any("사업장 정보!B" in str(v) for v in frame["파일·위치"]))
+        at.button(key="replace_excel_" + self.pid).click().run()
+        self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 1)
 
     def test_step_four_lists_narrative_items_and_makes_rule_drafts(self):
         project = load_project(self.pid)
@@ -229,37 +225,23 @@ class LargeDemoPageTests(unittest.TestCase):
             self.assertEqual(leaked, [], f"{step}단계")
             text = " ".join(_texts(at))
             if step == 1:
-                self.assertIn("건너뛴 줄: 22번째 줄 ‘합계’ — 번호 칸이 비어 있음", text)
-                self.assertIn("글자가 없는 문서예요", text)
-                self.assertTrue(any(b.label == "‘함량(wt%)’ 열은" for b in at.selectbox))
+                self.assertIn("기존 자료는 보존", text)
+                self.assertFalse(any("열은" in b.label for b in at.selectbox))
             if step == 2:
-                # 같은 표기·같은 열은 한 줄로 모으고, 원인을 추측하지 않고 걸린 검사와 파일 위치만 말합니다
-                requests = _correction_table(at)
-                self.assertIn("‘액상’: 선택지에 없는 말이에요", requests)
-                self.assertIn("‘상압’: 숫자가 아니에요", requests)
-                self.assertIn("04_설비목록_2024_구버전.csv", requests)
-                self.assertIn("항목 이름에 단위가 없어요", requests)
-                self.assertNotIn("너무 크거나 작아요", requests)
+                self.assertIn("회사 작성용 엑셀을 올려 주세요", text)
+                self.assertEqual(len(at.dataframe), 0)
 
-    def test_unknown_header_is_mapped_once_and_file_is_read_again(self):
-        from engine.stage2 import demo_company as dc
-        from engine.stage2.storage import save_attachment
-        name = "01_제품목록_2026.xlsx"
-        save_attachment(self.pid, name, dc.files()[name])
+    def test_legacy_unknown_headers_do_not_offer_manual_mapping_in_excel_screen(self):
+        from engine.stage2.storage import load_project
+        before = len(ew.documents(load_project(self.pid)))
         at = AppTest.from_string(SCRIPT, default_timeout=120)
         at.session_state["_stage2_active_project_id"] = self.pid
         at.session_state["evidence_step_" + self.pid] = 1
         at.run()
-        next(b for b in at.selectbox if b.label == "‘함량(wt%)’ 열은").set_value("concentration").run()
-        next(b for b in at.button if b.label == "지정하고 다시 읽기" and not b.disabled).click().run()
-        self.assertFalse(at.exception, [e.value for e in at.exception])
-        project = load_project(self.pid)
-        conflicts = {(i["entity"], i["field"]) for i in ew.review_queue(project) if i["kind"] == "충돌"}
-        self.assertIn(("material:P-10", "concentration"), conflicts)        # 01(35%)과 개정 MSDS(50%)가 다름이 이제 드러남
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertFalse(at.exception)
+        self.assertFalse(any("열은" in b.label for b in at.selectbox))
+        self.assertFalse(any(b.label == "지정하고 다시 읽기" for b in at.button))
+        self.assertEqual(len(ew.documents(load_project(self.pid))), before)
 
 
 class ProgressBoardTests(unittest.TestCase):
@@ -296,7 +278,8 @@ class ProgressBoardTests(unittest.TestCase):
         at.button(key="write_" + self.pid).click().run()
         self.assertTrue(any("아래에서 내려받으세요" in x.value for x in at.success))
         downloads = [b.proto.label for b in at.get("download_button")]
-        self.assertEqual(downloads, ["규정서식 초안 DOCX 내려받기"])
+        self.assertEqual(downloads, ["규정서식 초안 HWP 내려받기", "규정서식 초안 DOCX 내려받기"])
+        self.assertTrue(any("일부만 작성" in c.value for c in at.caption))
         self.assertFalse(at.error)
         text = " ".join(_texts(at))
         for removed in ("버전관리 열기", "새 사업장은", "서술형 포함 DOCX", "제출 행정서식", "점검하고 내려받기"):

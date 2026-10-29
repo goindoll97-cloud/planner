@@ -1,25 +1,24 @@
 """사업장 업무 화면: 신입사원도 따라올 수 있게 단계별로 안내합니다.
 
-① 자료 올리기 → ② 파일별 보완 요청 → ③ 시나리오 후보 → ④ 작성·내려받기
+① 엑셀 작성·올리기 → ② 입력 확인·수정 → ③ 시나리오 후보 → ④ 작성·내려받기
 
 보완 요청은 ②의 한 표에 모으고 ③은 후보 표, ④는 작성 동작과 간단한 진행 상태만 보여 줍니다.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 
 import streamlit as st
 
-from engine.stage2 import demo_authoring_company, scenario_triage, cap_intake_guide
+from engine.stage2 import demo_authoring_company, scenario_triage
 from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
+from engine.stage2 import company_workbook_intake as company_intake
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.direct_template import create_direct_cap_project
-from engine.stage2.storage import delete_all_projects, list_projects, load_attachment, load_project, save_attachment, save_project
+from engine.stage2.storage import delete_all_projects, list_projects, load_project, save_attachment, save_project
 
-STEPS = {1: "① 자료 올리기", 2: "② 파일별 보완 요청", 3: "③ 시나리오 후보", 4: "④ 작성·내려받기"}
-DOCUMENT_TYPES = (".docx", ".pdf", ".hwpx", ".hwp", ".txt")
+STEPS = {1: "① 엑셀 작성·올리기", 2: "② 입력 확인·수정", 3: "③ 시나리오 후보", 4: "④ 작성·내려받기"}
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
 
 # ---------------------------------------------------------------- 사람 말로 바꾸기
@@ -181,7 +180,7 @@ def _project_header():
                 save_project(project)
                 st.session_state["_stage2_active_project_id"] = project.project_id
                 st.session_state["evidence_goto"] = 1
-                st.session_state.setdefault("evidence_notes", []).append("가상 1군 연습 사업장을 만들었어요. 연습자료를 내려받아 01~15 파일을 올리세요. 실제 법적 대상 판정은 수행하지 않았어요.")
+                st.session_state.setdefault("evidence_notes", []).append("가상 1군 연습 사업장을 만들었어요. 회사 작성용 엑셀을 내려받아 작성해 올리세요. 실제 법적 대상 판정은 수행하지 않았어요.")
                 st.rerun()
     if not projects:
         st.info("먼저 사업장을 만들어 주세요. 이름과 주소만 있으면 돼요.")
@@ -209,6 +208,9 @@ def _reset_all(count) -> None:
 
 
 def _status_line(project, found) -> None:
+    if company_intake.current(project):
+        st.markdown(f"최신 엑셀에서 값 {len(ew.graph_facts(project))}개를 읽었어요 · 입력 보완 {len(company_intake.corrections(project))}개")
+        return
     info = ew.summary(project)
     if not info["documents"]:
         return
@@ -223,210 +225,65 @@ def _status_line(project, found) -> None:
 
 # ---------------------------------------------------------------- ① 자료 올리기
 
-def _classify(name: str, content: bytes) -> tuple[str, str | None]:
-    """(내용 해시, 종류). 분류 결과는 엔진이 내용 해시로 보관하므로 다시 그려도 파일을 다시 읽지 않습니다."""
-    digest = hashlib.sha256(content).hexdigest()
-    try:
-        return digest, ew.classify_document(name, content)
-    except Exception:
-        return digest, None
-
-
 def _step_upload(project, found) -> None:
     pid = project.project_id
-    st.write("회사 자료를 한 번에 올리세요. 파일별로 읽힌 값과 보완할 부분을 알려 드립니다.")
-    with st.expander("어떤 자료를 올리면 되나요?"):
-        group = project.cap_group if project.cap_group in {"1군", "2군"} else ""
-        st.info(cap_intake_guide.conditional_notice(group))
-        st.caption("작성수준 판정 전에는 두 군의 자료를 함께 준비하세요. 목록은 작성요건에 맞춘 자료 요청용이며, "
-                   "업로드만으로 서식이 완성되지는 않습니다.")
-        cols = st.columns(2)
-        cols[0].download_button("전체 준비자료 목록 한글(HWP)", cap_intake_guide.guidance_hwp(),
-                                file_name="화학사고예방관리계획서_회사자료_요청목록.hwp",
-                                mime="application/octet-stream", key="cap_request_hwp")
+    st.write("엑셀을 내려받아 연두색 입력 칸을 채운 뒤 올려 주세요.")
+    st.download_button("회사 작성용 엑셀 내려받기 · 전체 항목", cap_upload_template.build_company(),
+                       file_name=cap_upload_template.COMPANY_FILENAME,
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       key="cap_company_full_template")
+    st.caption("단답형은 ‘사업장 정보’ 시트의 값 열에, 목록은 한 행에 하나씩 적으세요. 예시는 읽지 않습니다. "
+               "수정한 엑셀 전체를 다시 올리면 이름이 달라도 최신 내용으로 교체합니다. 도면·SDS·스캔본은 올리지 않습니다.")
+    _latest_workbook(project)
+    uploaded = st.file_uploader("작성한 회사 엑셀 선택 (.xlsx, 한 파일)", type=["xlsx"],
+                                accept_multiple_files=False, key="company_excel_" + pid)
+    if st.button("엑셀 읽고 확인하기", type="primary", disabled=uploaded is None, key="read_" + pid):
+        from copy import deepcopy
+        candidate = deepcopy(project)
         try:
-            pdf_content = cap_intake_guide.guidance_pdf()
-        except RuntimeError as exc:
-            st.warning(f"PDF를 만들지 못했습니다: {exc}")
-        else:
-            cols[1].download_button("전체 준비자료 목록 PDF", pdf_content,
-                                    file_name="화학사고예방관리계획서_회사자료_요청목록.pdf",
-                                    mime="application/pdf", key="cap_request_pdf")
-        st.markdown("**우선 모을 파일**: 설비목록·설비대장(설비번호·공장·용량·최대보유량), 물질목록·제품별 SDS(CAS·함량), "
-                    "운전조건표·설비사양서(압력·온도·단위), 공정설명서, 안전설비·비상대응 자료, 주변현황·평가 근거.")
-        st.caption("서술형 계획서는 직접 쓰지 않아도 됩니다. 단답형 정보를 올리면 프로그램이 초안을 작성하고 ④에서 AI로 다듬을 수 있어요.")
-        for label, rows in cap_intake_guide.grouped_checklist():
-            st.markdown(f"#### {label}")
-            st.dataframe([{"구역": cap_intake_guide.form_zone(r), "필요한 내용": r["label"],
-                           "준비할 자료 예시": " / ".join(r["evidence"]) or r["details"]}
-                          for r in rows], hide_index=True, width="stretch")
-        st.caption("HWP 5.0과 HWPX는 읽을 수 있습니다. 암호화·구형 HWP가 열리지 않으면 한글에서 HWPX로 저장하세요. "
-                   "사진으로 스캔된 PDF는 문자 인식과 원본 확인이 필요합니다.")
-    uploaded = st.file_uploader("파일 선택 (여러 개 가능, 파일당 20MB 이하)",
-                                type=["csv", "xlsx", "pdf", "docx", "hwpx", "hwp", "txt"], accept_multiple_files=True)
-    selected, hints = {}, {}
-    for index, file in enumerate(uploaded or []):
-        digest, detected = _classify(file.name, file.getvalue())
-        if detected:
-            st.write(f"✅ {file.name} — {KIND_NAMES.get(detected, detected)}로 알아봤어요")
-            selected[index] = detected
-        else:
-            # 파일 내용 기준 키: 다른 파일을 빼도 이미 고른 종류가 다른 파일로 옮겨 가지 않습니다
-            selected[index] = st.selectbox(f"{file.name} — 자료 유형", ["reference", "facility", "material", "site"],
-                                           format_func={"reference": "기타 작성 근거자료 (원본 보관·보완 검토)", "material": "물질 목록·MSDS",
-                                                        "facility": "설비 목록·운전 자료",
-                                                        "site": "사업장 일반정보·공정 설명"}.get,
-                                           key=f"kind_{pid}_{digest[:16]}")
-        if file.name.lower().endswith(DOCUMENT_TYPES):
-            # 번호는 파일마다 따로 받습니다. 한 칸을 모든 파일에 쓰면 다른 파일의 값이 엉뚱한 설비로 붙습니다.
-            hints[index] = st.text_input(f"↳ {file.name}이 설비 한 대·제품 하나의 문서라면 그 번호 (선택)",
-                                         placeholder="예: RX-205, P-07", key=f"hint_{pid}_{digest[:16]}",
-                                         help="사양서·MSDS처럼 표에 번호가 없는 문서일 때만 적으세요. "
-                                              "적으면 문서 속 ‘운전압력(MPa): 0.35’ 같은 문장도 읽어요.").strip()
-    if st.button("자료 읽기", type="primary", disabled=not uploaded, key="read_" + pid):
-        before = cap_fact_status.snapshot(project)
-        for index, file in enumerate(uploaded):
-            try:
-                if ew.replace_same_name(project, file.name, file.getvalue()):      # 고친 파일을 다시 올린 경우
-                    st.session_state.setdefault("evidence_notes", []).append(
-                        f"{file.name}: 예전에 올린 같은 이름의 파일을 새 파일로 바꿨어요.")
-                if selected[index] == "reference":
-                    ew.register_reference(project, file.name, file.getvalue())
-                    save_attachment(project.project_id, file.name, file.getvalue(), note="작성 근거자료; 항목·값 표의 서식 연결 결과 확인")
-                    save_project(project)
-                    doc = next((d for d in ew.documents(project) if d["sha256"] == hashlib.sha256(file.getvalue()).hexdigest()), None)
-                    scanned = bool(doc and doc.get("needs_ocr"))
-                    linked = len(doc.get("links", [])) if doc else 0
-                    st.session_state.setdefault("evidence_notes", []).append(
-                        f"{file.name}: 글자가 없어 OCR이 필요합니다." if scanned else
-                        f"{file.name}: 서식 항목 {linked}개를 연결했어요. 확인할 값과 충돌 여부를 읽기 결과에서 확인하세요." if linked else
-                        f"{file.name}: 원본은 읽었지만 서식에 연결할 항목·값 표를 찾지 못했어요.")
-                    continue
-                count = ew.ingest(project, file.name, file.getvalue(), selected[index], hints.get(index, ""))
-                save_attachment(project.project_id, file.name, file.getvalue(), note="공통정보 추출 원문")
-                save_project(project)
-                st.session_state.setdefault("evidence_notes", []).append(
-                    f"{file.name}: 값 {count}개를 찾았어요." if count else
-                    f"{file.name}: 값을 찾지 못했어요. 스캔본이면 글자를 읽을 수 없고, 표에 설비번호·제품코드 같은 항목 이름이 있어야 해요.")
-            except Exception as exc:
-                why = exc if isinstance(exc, ValueError) else "파일 형식을 확인해 주세요"
-                st.session_state.setdefault("evidence_notes", []).append(f"{file.name}: 읽지 못했어요 ({why}). 다른 자료는 그대로예요.")
-        delta = cap_fact_status.change(before, cap_fact_status.snapshot(project))
-        st.session_state["evidence_change"] = "이번에 올린 파일로 " + cap_fact_status.change_text(delta)
-        st.session_state["evidence_goto"] = 2
-        st.rerun()
-
-    docs = ew.documents(project)
-    if docs:
-        st.subheader("읽은 자료")
-        st.caption("파일마다 어디를 읽었고, 무엇을 못 읽었으며 왜 그런지 보여 줘요.")
-        by_doc = {}
-        for fact in ew.graph_facts(project):
-            by_doc.setdefault(fact["sha256"], []).append(fact)
-        reasons = {f["id"]: g["reason"] for g in found["problems"] for f in g["facts"]}
-        for doc in docs:
-            _reading_report(project, doc, by_doc.get(doc["sha256"], []), found["names"], reasons)
-        _next_button(2, pid, "다음: 파일별 보완 요청 →")
-    st.divider()
-    st.markdown("**연습용 가상 회사 자료**")
-    st.download_button("정상 작성 연습자료 받기", demo_authoring_company.archive(),
-                       file_name=demo_authoring_company.ZIP_NAME, mime="application/zip", key="demo_combined")
-    st.caption("주소·도면·이미지 없이 XLSX·CSV·DOCX·HWPX·HWP·텍스트 PDF·TXT를 섞은 가상 회사 자료입니다. "
-               "ZIP을 풀어 회사자료의 01~15 파일을 올리세요. 소통·공조·대피계획은 단답형 사실로 작성합니다. "
-               "승인 규정 DB·주소·현장 확인이 필요한 항목은 보완으로 남습니다.")
+            changed = company_intake.apply(candidate, uploaded.name, uploaded.getvalue())
+            if changed:
+                save_attachment(pid, uploaded.name, uploaded.getvalue(), note="최신 회사 작성용 엑셀 원본")
+                save_project(candidate)
+                st.session_state.pop("narrative_progress_" + pid, None)
+                st.session_state.pop("evidence_change", None)
+            st.session_state.pop("company_upload_error_" + pid, None)
+            st.session_state.setdefault("evidence_notes", []).append(
+                f"{uploaded.name}: 최신 엑셀로 반영했어요. ②에서 빠진 값과 고칠 칸을 확인하세요." if changed else
+                "이미 반영한 엑셀과 내용이 같습니다. ②에서 입력 결과를 확인하세요.")
+            st.session_state["evidence_goto"] = 2
+            st.rerun()
+        except company_intake.WorkbookFormatError as exc:
+            st.session_state["company_upload_error_" + pid] = exc.issues
+        except Exception:
+            st.session_state["company_upload_error_" + pid] = [{"파일·위치": uploaded.name,
+                "항목": "엑셀 읽기", "확인된 문제": "엑셀을 반영하지 못했습니다. 이전에 반영한 자료는 유지됩니다.",
+                "수정 요청": "회사 작성용 양식인지 확인하고 .xlsx로 저장한 뒤 다시 올려 주세요."}]
+    errors = st.session_state.get("company_upload_error_" + pid)
+    if errors:
+        st.error("이번 파일은 반영하지 못했습니다. 아래 내용을 고쳐 다시 올려 주세요.")
+        st.dataframe(errors, hide_index=True, width="stretch")
+    if company_intake.current(project):
+        _next_button(2, pid, "다음: 입력 확인·수정 →")
 
 
-def _reading_report(project, doc, facts, names, reasons) -> None:
-    """파일 하나의 읽기 결과: 읽은 표, 쓴 열·못 쓴 열, 건너뛴 줄, 쓸 수 없는 칸과 그 이유."""
-    pid, sha = project.project_id, doc["sha256"]
-    unusable = [f for f in facts if f["id"] in reasons]
-    skipped = sum(t.get("skipped_count", 0) for t in doc.get("tables", []))
-    if doc.get("needs_reading"):
-        icon = "📎" if doc.get("kind") == "reference" and not doc.get("needs_ocr") else "⚠️"
-        st.write(f"{icon} **{doc['name']}** — {doc.get('problem') or '읽을 수 있는 값을 찾지 못했어요.'}")
-    else:
-        parts = [f"값 {len(facts)}개"]
-        if doc.get("unmapped_columns"):
-            parts.append(f"못 쓴 열 {len(doc['unmapped_columns'])}개")
-        if skipped:
-            parts.append(f"건너뛴 줄 {skipped}개")
-        if unusable:
-            parts.append(f"그대로 쓸 수 없는 칸 {len(unusable)}개")
-        st.write(f"📄 **{doc['name']}** — " + " · ".join(parts))
-    with st.expander("읽기 결과 보기"):
-        if st.button("이 파일 빼기", key=f"remove_{pid}_{sha[:12]}",
-                     help="잘못 올린 파일이나 예전 판을 빼면 그 파일에서 읽은 값도 함께 빠져요."):
-            ew.remove_document(project, sha)
-            _save(project, f"{doc['name']}을(를) 뺐어요. 이 파일에서 읽은 값도 빠졌어요.")
-        for link in doc.get("links", []):           # 근거자료의 항목·값 표에서 바로 연결한 서식 칸
-            record = project.get_field(link["key"])
-            if record is None:
-                continue
-            source = f"{link['location']} · {link['label']}: {link['value']}"
-            if record.status == "HOLD" or (not cap_evidence_links.linked(record) and str(record.value) != str(link["value"])):
-                st.warning(f"{source} — 다른 자료와 값이 다릅니다. 맞는 값으로 파일을 고쳐 다시 올려 주세요.")
-            else:
-                st.write(f"✅ {source} — 초안에 넣음")
-        for table in doc.get("tables", []):
-            place = "" if table["location"] == "CSV" else f"‘{table['location']}’ "
-            if table.get("kind") == "site" and table.get("columns"):
-                st.markdown(f"- {place}표: 항목·값 표로 보고 {len(table['columns'])}개 항목을 읽었어요: "
-                            + ", ".join(c["header"] for c in table["columns"]))
-                continue
-            if table.get("header_row") is None:
-                st.markdown(f"- {place}표: 읽지 않음 — {table.get('problem', '항목 이름 줄을 찾지 못함')}")
-                continue
-            used = [c for c in table.get("columns", []) if c["field"]]
-            st.markdown(f"- {place}표: {table['header_row']}번째 줄을 항목 이름으로 보고 아래 {table['rows']}줄을 읽었어요. "
-                        "쓴 열: " + ", ".join(c["header"] + ("(번호)" if c["field"] == "id" else "") for c in used))
-            for row in table.get("skipped", [])[:10]:
-                st.caption(f"　건너뛴 줄: {row['row']}번째 줄 ‘{row['text']}’ — {row['reason']}")
-            if table.get("skipped_count", 0) > 10:
-                st.caption(f"　건너뛴 줄 {table['skipped_count'] - 10}개 더 있음")
-        if doc.get("unmapped_columns"):
-            st.markdown("**못 쓴 열** — 프로그램이 모르는 항목 이름이에요. 필요한 열이면 무엇인지 골라 주세요. 한 번 고르면 같은 이름의 열은 모두 그렇게 읽어요.")
-            choices = {}
-            for header in doc["unmapped_columns"]:
-                choices[header] = st.selectbox(f"‘{header}’ 열은", ["쓰지 않음"] + list(ew.LABELS), format_func=lambda k: k if k == "쓰지 않음" else ew.LABELS[k],
-                                               key=f"col_{pid}_{sha[:12]}_{header}")
-            picked = {h: f for h, f in choices.items() if f != "쓰지 않음"}
-            if st.button("지정하고 다시 읽기", key=f"col_ok_{pid}_{sha[:12]}", disabled=not picked):
-                _remap_columns(project, picked)
-        if unusable:
-            st.markdown("**그대로 쓸 수 없는 칸** — 원본 파일을 수정해 다시 올려 주세요.")
-            st.dataframe([{"읽은 곳": _where(f), "항목": _name(f["field"]), "적힌 글자": f["raw"], "이유": reasons[f["id"]]}
-                          for f in unusable[:200]], hide_index=True, width="stretch")
-        if facts:
-            st.markdown("**찾은 값**")
-            st.dataframe([{"설비·물질": names(f["entity"]), "항목": _name(f["field"]), "값": _value(f["field"], f["value"]) + _raw_note(f),
-                           "위치": _where(f)} for f in facts[:300]], hide_index=True, width="stretch")
-            if len(facts) > 300:
-                st.caption(f"앞 300개만 보여 줘요 (전체 {len(facts)}개).")
-
-
-def _remap_columns(project, picked) -> None:
-    """모르는 머리글을 항목으로 지정하고, 그 머리글이 있던 파일을 보관한 원본에서 다시 읽습니다."""
-    targets = set()
-    for header, field in picked.items():
-        targets.update(ew.learn_column(project, header, field))
-    missing = []
-    for sha in targets:
-        content = load_attachment(project.project_id, sha)
-        name = next((d["name"] for d in ew.documents(project) if d["sha256"] == sha), sha[:8])
-        if content is None:
-            missing.append(name)
-            continue
-        ew.reingest(project, sha, content)
-    note = f"열 {len(picked)}개를 지정하고 파일 {len(targets) - len(missing)}개를 다시 읽었어요."
-    if missing:
-        note += " 원본이 없어 다시 읽지 못한 파일: " + ", ".join(missing) + " (같은 파일을 다시 올려 주세요)"
-    _save(project, note)
+def _latest_workbook(project):
+    state = company_intake.current(project)
+    if not state:
+        st.info("아직 반영한 회사 작성용 엑셀이 없습니다. 기존 자료는 보존되며, 엑셀을 올리면 새 입력 내용으로 전환됩니다.")
+        return
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    when = datetime.fromisoformat(state['uploaded_at']).astimezone(ZoneInfo('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')
+    st.caption(f"현재 반영한 최신 엑셀: {state['name']} · {when} (한국 시간)")
 
 
 # ---------------------------------------------------------------- ② 파일별 보완 요청
 
 def _correction_rows(project, found) -> list[dict]:
     """파일·위치·항목·수정 지시를 한 줄씩 적는다. 추정된 원본은 쓰지 않는다."""
+    if company_intake.current(project):
+        return company_intake.corrections(project)
     rows = []
 
     def add(source, item, detail, action):
@@ -495,61 +352,33 @@ DOC_NAMES = {"CAP": "화학사고예방관리계획서", "PSM": "공정안전보
 
 def _coverage_panel(project, found) -> None:
     """보완 요청을 필요한 사실 표 한 곳에 모읍니다."""
-    st.markdown("**화학사고예방관리계획서에 필요한 사실**")
-    st.caption("고칠 점을 확인하고 ①에서 수정한 파일을 같은 이름으로 다시 올리세요. 수정 내용을 따로 적을 필요는 없어요.")
-    rows = cap_fact_status.fact_rows(project, docs=("CAP",))
-    visible = []
-    filenames = [d["name"] for d in ew.documents(project)]
-    generated = cap_fact_drafting.generated_fact_ids(project.cap_group)
-    for row in rows:
-        if row["_id"] in generated:
-            continue
-        if not row["_company"]:
-            continue
-        source = row["출처"]
-        files = [name for name in filenames if name in source]
-        visible.append({"상태": row["상태"], "사실": row["사실"], "쓰이는 곳": row["쓰이는 곳"],
-                        "올린 파일": " / ".join(files), "고칠 점": row["고칠 점"]})
-    for row in _correction_rows(project, found):
-        files = [name for name in filenames if name in row["파일·위치"]]
-        entry = {"상태": "확인", "사실": row["항목"], "쓰이는 곳": "",
-                 "올린 파일": " / ".join(files),
-                 "고칠 점": row["확인된 문제"] + " " + row["수정 요청"]}
-        if not any(r["사실"] == entry["사실"] and r["고칠 점"] == entry["고칠 점"] for r in visible):
-            visible.append(entry)
-    if project.cap_in_scope:
-        from engine.stage2 import report_export
-        try:
-            state = report_export.evaluate(project, "CAP")
-            for issue in (*state.text_issues, *state.manual_issues):
-                if issue.status == "PASS":
-                    continue
-                sources = []
-                for key in issue.field_keys:
-                    record = project.get_field(key)
-                    if record:
-                        sources.extend(ref.source_name for ref in record.evidence if ref.source_name in filenames)
-                entry = {"상태": "보완", "사실": issue.legal_item, "쓰이는 곳": "",
-                         "올린 파일": " / ".join(dict.fromkeys(sources)), "고칠 점": issue.message}
-                if not any(r["사실"] == entry["사실"] and r["고칠 점"] == entry["고칠 점"] for r in visible):
-                    visible.append(entry)
-        except Exception:
-            st.error("문서 검증 결과를 확인하지 못했어요. 보완 요청이 전부 확인된 상태는 아닙니다.")
-    st.dataframe(visible, hide_index=True, width="stretch")
-    _template_download(project, project.cap_group)
-
-
-def _template_download(project, group: str) -> None:
-    st.caption("빈칸 전용 엑셀 양식의 값 칸을 예시 옆에서 채운 뒤, 파일명 그대로 ①에 올리세요. 같은 이름의 이전 파일은 자동 교체됩니다.")
-    st.download_button("빈칸 전용 엑셀 양식 내려받기", cap_upload_template.build(project, group=group, docs=("CAP",)),
-                       file_name=cap_upload_template.FILENAME, key="template_" + project.project_id,
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
+    if company_intake.current(project):
+        _latest_workbook(project)
+        rows = company_intake.corrections(project)
+        if project.cap_in_scope:
+            from engine.stage2 import report_export
+            try:
+                state = report_export.evaluate(project, "CAP")
+                for issue in (*state.text_issues, *state.manual_issues):
+                    if issue.status != "PASS":
+                        rows.append({"파일·위치": company_intake.current(project)['name'], "항목": issue.legal_item,
+                                     "확인된 문제": issue.message,
+                                     "수정 요청": "관련 입력값과 적용 기준을 확인해 주세요. 도면·SDS 원본은 올리지 않습니다."})
+            except Exception:
+                st.error("문서 검증을 완료하지 못했습니다. 입력 검사 통과만으로 문서가 완성된 것은 아닙니다.")
+        st.caption("아래 시트와 셀의 값을 엑셀에서 고친 뒤 전체 파일을 다시 올려 주세요. 수정 사유는 적지 않아도 됩니다.")
+        if rows:
+            st.dataframe(rows, hide_index=True, width="stretch")
+        else:
+            st.success("엑셀 입력 검사에서 고칠 항목이 없습니다. 법령 기준과 문서 작성 가능 여부는 별도로 검증합니다.")
+        st.button("수정한 엑셀 다시 올리기", key="replace_excel_" + project.project_id,
+                  on_click=_go, args=(1, project.project_id), type="primary")
+        return
 
 def _step_questions(project, found) -> None:
     pid = project.project_id
-    if not ew.documents(project):
-        st.info("먼저 ① 자료 올리기에서 자료를 올려 주세요.")
+    if not company_intake.current(project):
+        st.info("먼저 ① 엑셀 작성·올리기에서 회사 작성용 엑셀을 올려 주세요.")
         return
     _coverage_panel(project, found)
     _next_button(3, pid, "다음: 시나리오 후보 보기 →")
@@ -656,7 +485,7 @@ def _narrative_drafts(project) -> None:
 
 st.set_page_config(page_title="사업장 업무", page_icon="📂", layout="wide")
 st.title("화학사고예방관리계획서 자료 정리")
-st.caption("회사 자료를 올리면 값을 찾아 정리하고, 파일별 수정·확인 요청을 보여 줍니다.")
+st.caption("회사 작성용 엑셀을 내려받아 작성하고 올리세요. 빠진 값과 잘못된 칸을 확인해 수정본을 다시 올리면 최신 내용으로 반영합니다.")
 _active = _project_header()
 _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
@@ -672,7 +501,7 @@ _step_key = "evidence_step_" + _active.project_id
 if "evidence_goto" in st.session_state:
     st.session_state[_step_key] = st.session_state.pop("evidence_goto")
 if _step_key not in st.session_state:
-    st.session_state[_step_key] = 1 if not ew.documents(_active) else (2 if _correction_rows(_active, _found) else 3)
+    st.session_state[_step_key] = 1 if not company_intake.current(_active) else (2 if _correction_rows(_active, _found) else 3)
 # 단계 이름은 고정합니다: 이름이 바뀌면 위젯이 새로 만들어져 보던 단계가 처음으로 돌아갈 수 있습니다.
 _step = st.radio("단계", list(STEPS), key=_step_key, horizontal=True, label_visibility="collapsed", format_func=STEPS.get)
 st.divider()

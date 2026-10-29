@@ -51,6 +51,11 @@ def _fill(content: bytes, new_ids: dict[str, list[str]]) -> bytes:
                 if sheet.cell(row=r, column=c).value in (None, ""):
                     lookup = "facility" if kind == "scenario" else kind      # 사고시나리오 검토 시트는 설비 사실
                     sheet.cell(row=r, column=c, value=_sample(by_header[(lookup, header)], r))
+    for table, items in catalog.input_tables().items():
+        title = tpl.sheet_title(table)
+        if title in book.sheetnames:
+            for c, item in enumerate(items, 1):
+                book[title].cell(2, c, _sample(item, c))
     out = BytesIO()
     book.save(out)
     return out.getvalue()
@@ -83,6 +88,8 @@ class TemplateTests(unittest.TestCase):
         rows = {r["_id"]: r for r in fs.fact_rows(p)}
         wanted = tpl.columns(create_direct_cap_project("빈", address="주소", cap_group=""))
         for kind, items in wanted.items():
+            if kind == "tables":
+                items = [item for table in items.values() for item in table]
             for item in items:
                 self.assertEqual(rows[item.id]["_state"], fs.O, f"{item.id}: {rows[item.id]['고칠 점']}")
         self.assertEqual(sorted(e for e in fs.entities(p, "facility")), ["facility:TK-01", "facility:TK-02"])

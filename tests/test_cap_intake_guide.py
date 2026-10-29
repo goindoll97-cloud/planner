@@ -24,6 +24,14 @@ class CapIntakeGuideTests(unittest.TestCase):
             for label in labels:
                 self.assertIn(label, row["details"])
         self.assertNotIn("cap.external.communication", {r["key"] for r in guide.checklist("2군")})
+        text = guide.guidance_text("1군")
+        self.assertNotIn("별지 번호 없는 작성자료", text)
+        self.assertNotIn("항목·값 표:", text)
+        self.assertNotIn("기존 회사자료·연락망", text)
+        communication = " / ".join(rows["cap.external.communication"]["evidence"])
+        self.assertIn("주민 협의 결과", communication)
+        self.assertIn("법정 횟수가 아닙니다", communication)
+        self.assertIn("지역사회 고지", communication)
 
     def test_full_checklist_includes_conditional_scope_and_all_registry_entries(self):
         all_rows = guide.checklist()

@@ -21,6 +21,31 @@ START_FORMS = (
      "levels": ["1군", "2군"], "basis": "제출·변경 정보 입력자료", "pages": (), "required": True},
 )
 
+# 파일 형식 대신 담당자가 찾아서 확인할 실제 내용을 안내한다.
+# 예시는 회사의 결정사항이 아니며, 접수·계산·초안의 입력값으로 사용하지 않는다.
+PREPARATION_EXAMPLES = {
+    "cap.prevention.safety_management": "안전관리 책임자의 직책·이름, 안전관리 조직 구성, 안전 점검 회의 일정",
+    "cap.prevention.training": "누가 어떤 교육을 언제 받는지, 교육을 진행하는 방법 — 교육계획에서 확인",
+    "cap.prevention.self_inspection": "어느 설비를 언제 어떻게 점검하는지 — 점검계획·점검기록에서 확인",
+    "cap.prevention.change_management": "설비·물질·운전조건을 바꿀 때 검토하는 순서, 담당자, 변경기록 보관 방법",
+    "cap.prevention.emergency_org": "사고 시 총괄 책임자, 대응반별 역할, 야간·휴일에 대응할 사람과 방법",
+    "cap.prevention.command_center": "사고 대응을 지휘할 장소, 운영 방법, 담당자",
+    "cap.internal.shutdown": "누가 어떤 상황에서 가동 중지를 결정하는지, 설비를 안전하게 멈추는 순서",
+    "cap.internal.communication": "사고를 처음 발견한 사람이 누구에게 어떤 수단으로 알리는지, 전달 담당자",
+    "cap.internal.investigation": "사고 원인을 조사할 책임자, 조사 방법, 재발방지 조치를 정하고 확인하는 방법",
+    "cap.internal.recovery": "복구 책임자, 설비 복구 순서, 누출물 회수·오염 정화 방법",
+    "cap.external.communication": (
+        "누구와(예: 인근 주민대표) 어떻게(예: 간담회) 언제 소통할지 확인하세요. "
+        "지역사회 소통 주기는 담당자에게 기존 운영 일정·주민 협의 결과를 확인하고, 미정이면 협의 후 정하세요. "
+        "예: 반기별 간담회 + 변경사항 발생 시 안내(회사 검토용 예시이며 법정 횟수가 아닙니다). "
+        "규정서식 별지 제16호의 ‘지역사회와 소통 및 공조계획’은 종류·참석 대상·일정·장소·소통방법을 적도록 하며, "
+        "일률적인 횟수를 제시하지 않습니다. 별도의 ‘지역사회 고지’ 의무·주기는 현행 법령과 담당자에게 확인하세요."
+    ),
+    "cap.external.mutual_aid": "함께 대응할 소방서·지자체·인근 사업장, 지원받거나 제공할 인력·장비, 협의된 합동훈련 일정 — 미협의 내용은 확정하지 마세요",
+    "cap.external.evacuation": "주민에게 경보를 전달할 수단, 안전한 대피 경로와 장소 — 지자체·소방과 현장 여건을 확인하세요",
+    "cap.external.public_notice": "알려야 할 주민의 범위, 고지 수단, 취급물질·사고위험·주민 행동요령 — 평상시 소통·사고 시 경보와 구분하고 법정 고지 대상·방법·주기를 확인하세요",
+}
+
 
 def form_zone(row: dict) -> str:
     """근거에 적힌 별지 번호만 표기한다. 별지 없는 항목에 번호를 추정하지 않는다."""
@@ -31,7 +56,7 @@ def form_zone(row: dict) -> str:
         return "별지 " + "·".join(f"제{n}호" for n in numbers)
     if row["key"].startswith("common."):
         return "공통자료"
-    return "별지 번호 없는 작성자료 · " + re.sub(r"^3\.\d+\s*", "", row["section"])
+    return re.sub(r"^3\.\d+\s*", "", row["section"])
 
 
 def grouped_checklist() -> list[tuple[str, list[dict]]]:
@@ -63,8 +88,7 @@ def checklist(group: str = "") -> list[dict]:
             continue
         from .cap_fact_drafting import input_facts
         facts = input_facts(spec)
-        evidence = (["항목·값 표: " + " / ".join(f.template_header for f in facts),
-                     "기존 회사자료·연락망 (완성된 계획서가 있으면 선택 제출)"]
+        evidence = ([PREPARATION_EXAMPLES.get(spec.key, " / ".join(f.template_header for f in facts))]
                     if facts else list(dict.fromkeys(spec.suggested_evidence)))
         details = ("회사에서 확인할 정보: " + ", ".join(f.template_header for f in facts)
                    + ". 이 정보로 프로그램이 서술형 초안을 작성하고, 로컬 AI로 문장을 다듬습니다. 완성된 계획서는 필수가 아닙니다."
