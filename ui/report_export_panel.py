@@ -145,7 +145,6 @@ def render_workspace_download(project) -> None:
             st.session_state.pop(cache_key, None)
     else:
         st.caption("이 실행 환경에는 한컴오피스가 없어 HWP로 변환할 수 없습니다. Windows에서 한컴오피스를 설치하면 HWP 내려받기가 나타납니다.")
-    if not hwp_available or not st.session_state.get(cache_key):
-        st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
-                           mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
-                           width="stretch", type="primary" if not hwp_available else "secondary")
+    st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
+                       mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
+                       width="stretch", type="secondary" if hwp_available else "primary")
