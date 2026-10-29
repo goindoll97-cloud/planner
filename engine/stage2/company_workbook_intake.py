@@ -277,4 +277,11 @@ def corrections(project):
                      '확인된 문제': group['reason'], '수정 요청': '엑셀에서 값을 수정한 뒤 다시 올려 주세요.'}
             if entry not in rows:
                 rows.append(entry)
+    # 사고시나리오 계산에서 드러난 빈칸·오류도 이 표 한곳에서 알립니다(같은 칸을 이미 알렸으면 빼고).
+    try:
+        from . import scenario_pipeline
+        known = {row['파일·위치'] for row in rows}
+        rows += [row for row in scenario_pipeline.correction_rows(project, state['name']) if row['파일·위치'] not in known]
+    except Exception:          # 계산 문제로 보완 표가 멈추지 않게
+        pass
     return rows
