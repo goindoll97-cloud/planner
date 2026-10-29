@@ -47,7 +47,7 @@ def test_excel_only_page_upload_correction_and_latest_renamed_file(tmp_path, mon
     assert accepts['type'] == ['xlsx']
     assert accepts['accept_multiple_files'] is False
     labels = [d.proto.label for d in at.get('download_button')]
-    assert labels == ['회사 작성용 엑셀 내려받기 · 전체 항목']
+    assert labels == ['회사 작성용 엑셀 내려받기 · 전체 항목', '가상 회사 정보가 채워진 엑셀 내려받기']
     at.button(key='read_' + p.project_id).click().run()
     assert not at.exception, [e.value for e in at.exception]
     assert intake.current(load_project(p.project_id))['name'] == '작성.xlsx'
@@ -85,3 +85,47 @@ def test_failed_new_upload_keeps_previous_and_shows_error_table(tmp_path, monkey
     assert len(at.dataframe) == 1
     assert intake.current(load_project(p.project_id))['name'] == '정상.xlsx'
     assert any('정상.xlsx' in c.value for c in at.caption)
+
+
+def test_first_demo_upload_creates_workplace_without_registration_corner(tmp_path, monkeypatch):
+    from engine.stage2 import demo_company_workbook as demo
+    from engine.stage2.storage import list_projects
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / 'demo.xlsx'; source.write_bytes(demo.build())
+    at = AppTest.from_string(script(source, demo.FILENAME), default_timeout=90).run()
+    assert not at.exception
+    assert not list_projects()
+    assert not any(e.label == '새 사업장 만들기' for e in at.expander)
+    assert not at.text_input
+    assert any(d.proto.label == '가상 회사 정보가 채워진 엑셀 내려받기' for d in at.get('download_button'))
+    at.button(key='read_EXCEL-START').click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert len(list_projects()) == 1
+    p = load_project(at.session_state['_stage2_active_project_id'])
+    assert p.company_name == demo.COMPANY
+    assert p.cap_group == '1군'
+    assert not p.stage1_snapshot['legal_applicability_confirmed']
+    assert p.get_field('cap.business.representative').value == '김가상'
+    at.radio(key='evidence_step_' + p.project_id).set_value(4).run()
+    assert not at.exception
+    assert '규정서식 초안 DOCX 내려받기' in [b.proto.label for b in at.get('download_button')]
+
+
+def test_demo_upload_from_other_workplace_does_not_replace_its_data(tmp_path, monkeypatch):
+    from engine.stage2 import demo_company_workbook as demo
+    from engine.stage2.storage import list_projects
+    monkeypatch.chdir(tmp_path)
+    p = create_direct_cap_project('시험', cap_group='')
+    intake.apply(p, '원본.xlsx', workbook()); save_project(p)
+    before = load_project(p.project_id).to_dict()
+    source = tmp_path / 'demo.xlsx'; source.write_bytes(demo.build())
+    at = AppTest.from_string(script(source, demo.FILENAME), default_timeout=90)
+    at.session_state['_stage2_active_project_id'] = p.project_id
+    at.session_state['evidence_step_' + p.project_id] = 1
+    at.run().button(key='read_' + p.project_id).click().run()
+    assert not at.exception
+    assert len(list_projects()) == 2
+    assert load_project(p.project_id).company_name == before['company_name']
+    assert load_project(p.project_id).get_field('cap.business.representative').value == '김대표'
+    active = load_project(at.session_state['_stage2_active_project_id'])
+    assert active.company_name == demo.COMPANY

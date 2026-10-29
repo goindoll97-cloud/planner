@@ -101,19 +101,15 @@ class EvidencePageTests(unittest.TestCase):
         self.assertTrue(keep.exists())
         self.assertIn("사업장 2곳을 모두 지웠어요", " ".join(_texts(at)))
 
-    def test_training_project_does_not_forge_a_legal_decision_or_address(self):
+    def test_new_workplace_corner_and_training_creation_button_are_removed(self):
         at = self.run_page(step=1)
-        next(b for b in at.button if b.label == "가상 1군 사업장으로 연습 시작").click().run()
-        self.assertFalse(at.exception)
-        p = load_project(at.session_state["_stage2_active_project_id"])
-        self.assertEqual(p.cap_group, "1군")
-        self.assertFalse(p.stage1_snapshot["legal_applicability_confirmed"])
-        self.assertIsNone(p.get_field("business.address"))
+        self.assertFalse(any(e.label == "새 사업장 만들기" for e in at.expander))
+        self.assertFalse(any(b.label in {"만들기", "가상 1군 사업장으로 연습 시작"} for b in at.button))
 
     def test_only_company_workbook_download_is_available(self):
         at = self.run_page(step=1)
         labels = [b.proto.label for b in at.get("download_button")]
-        self.assertEqual(labels, ["회사 작성용 엑셀 내려받기 · 전체 항목"])
+        self.assertEqual(labels, ["회사 작성용 엑셀 내려받기 · 전체 항목", "가상 회사 정보가 채워진 엑셀 내려받기"])
         self.assertEqual(len(at.get("file_uploader")), 1)
 
     def test_legacy_project_opens_on_excel_step_and_preserves_its_data(self):

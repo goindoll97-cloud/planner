@@ -136,12 +136,13 @@ class CapStartTests(unittest.TestCase):
         self.assertIn(outcome.status, ("SYSTEM", "REQUEST", "NOT_REQUIRED", "STARTED"))
         self.assertNotEqual(outcome.status, "STARTED")
 
-    def test_judgement_page_offers_the_legal_start_and_cap_writing_starts_directly(self):
+    def test_judgement_page_offers_the_legal_start_and_cap_writing_starts_from_excel(self):
         page = (ROOT / "ui/judgement_page.py").read_text(encoding="utf-8")
         self.assertIn("cap_start_panel.render", page)
         writing = (ROOT / "ui/cap_common.py").read_text(encoding="utf-8")
         start = (ROOT / "ui/evidence_workspace_page.py").read_text(encoding="utf-8")
-        self.assertIn("create_direct_cap_project", start)       # 작성 시작은 사업장 업무 화면에서
+        self.assertIn("company_intake.project_for_upload", start)  # 작성 시작은 엑셀의 사업장명으로
+        self.assertNotIn("create_direct_cap_project", start)
         self.assertNotIn("create_direct_cap_project", writing)  # 작성 화면은 새로 만들지 않고 안내만
         self.assertNotIn("cap_start_panel.render", writing)
         self.assertNotIn("judgement_panel.render", writing)
