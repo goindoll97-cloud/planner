@@ -14,6 +14,7 @@ install_cap_final_form_runtime()
 # 행정서식과 이행점검은 ‘제출·이행 관리’에서 다룹니다. 내용은 ui/cap_common.py의 GROUPS.
 sections: dict[str, list] = {
     "사업장 업무": [st.Page("ui/evidence_workspace_page.py",title="자료 접수·확인할 일",icon="📂",default=True),
+                st.Page("ui/attachment_guide_page.py", title="도면·SDS 첨부 안내", icon="🗺️"),
                 # 사고시나리오는 파일로 프로그램이 계산하고, 사람은 지도에 사업장 경계만 그립니다.
                 st.Page("ui/scenario_results_page.py", title="사고시나리오 결과", icon="🧭"),
                 st.Page("ui/submission_management_page.py", title="제출·이행 관리", icon="📮")],
