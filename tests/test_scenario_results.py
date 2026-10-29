@@ -131,7 +131,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("RX-01", outcome.plan.skipped[0])
         problem = next(x for x in outcome.problems if x.where == "TK-02")
         self.assertIn("‘선정할 사고유형’", problem.fix)
-        self.assertIn("사고시나리오 검토자료", problem.fix)
+        self.assertIn("‘사고시나리오 검토’ 시트", problem.fix)
 
     def test_blank_choice_uses_the_program_proposal(self):
         p, _ = walk()
@@ -230,6 +230,42 @@ class SurveyTests(unittest.TestCase):
         self.assertEqual(f8.needs(p), [])
 
 
+class CompanyWorkbookSurveyTests(unittest.TestCase):
+    """자료 접수는 회사 작성용 엑셀 한 파일만 받으므로, 지도 조회 후보도 그 엑셀의 ‘주변 보호대상’ 시트에 채워 돌려줍니다."""
+
+    def test_map_candidates_go_into_the_current_company_workbook_and_read_back(self):
+        from engine.stage2 import company_workbook_intake as cwi
+        from engine.stage2 import demo_company_workbook as dw
+        from engine.stage2.direct_template import create_direct_cap_project
+
+        original = dw.build()
+        p = create_direct_cap_project(dw.COMPANY)
+        p.set_field("business.address", "주소", "울산광역시 남구 연습로 1", "USER_CONFIRMED")
+        cwi.apply(p, "회사작성.xlsx", original)
+        before = {r["보호대상 명칭"] for r in f8.saved_rows(p)}
+        with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
+                patch.object(vworld, "search", return_value=(MAP_OBJECTS, [])):
+            ss.confirm(p, _box(-75, -50, 75, 50), "브이월드 연속지적도 필지를 고른 경계")
+        filled = ss.company_workbook(p, original)
+        book = load_workbook(BytesIO(filled))
+        names = [c.value for c in book[ss.TARGET_SHEET_NAME]["A"][1:] if c.value]
+        self.assertEqual(names[:len(before)], [n for n in names if n in before])      # 회사가 적은 줄은 그대로
+        self.assertTrue({"연습 초등학교", "연습 아파트", "연습천"} <= set(names))
+        site = {r[0].value: r[1].value for r in book["사업장 정보"].iter_rows(min_row=2)}
+        self.assertIn("DEMO-01", site["지도 번호"])                                      # 회사가 적은 값은 바꾸지 않음
+        cwi.apply(p, "회사작성.xlsx", filled)                                            # 같은 엑셀로 다시 올림
+        self.assertTrue({"연습 초등학교", "연습 아파트", "연습천"} <= {r["보호대상 명칭"] for r in f8.saved_rows(p)})
+        self.assertTrue(before <= {r["보호대상 명칭"] for r in f8.saved_rows(p)})
+
+    def test_without_an_uploaded_workbook_the_blank_template_is_filled(self):
+        from engine.stage2 import company_workbook_intake as cwi
+
+        p, _ = walk("울산광역시 남구 연습로 1")
+        book = load_workbook(BytesIO(ss.company_workbook(p)))
+        self.assertIn(ss.TARGET_SHEET_NAME, book.sheetnames)
+        cwi.inspect(ss.company_workbook(p), "빈양식.xlsx")                                # 양식 검사를 통과
+
+
 class BoundaryPickingTests(unittest.TestCase):
     """주소를 찾으면 필지 경계가 표시되고, 필지를 눌러 더하거나 빼고, ‘이 경계로 확인’으로 이어서 계산합니다."""
 
@@ -315,6 +351,7 @@ class PageTests(unittest.TestCase):
         at = self._run(p)
         self.assertFalse(at.exception, at.exception)
         self.assertEqual([t.label for t in at.text_input], ["주소로 찾기"])   # 지도를 옮길 주소만. 시나리오·숫자는 적지 않음
+        self.assertTrue(any(d.label == "회사 작성용 엑셀에 주변 보호대상 채워 내려받기" for d in at.get("download_button")))
         self.assertEqual(len(at.number_input), 0)
         texts = " ".join(m.value for m in at.markdown)
         self.assertIn("피해반경", texts)

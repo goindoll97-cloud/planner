@@ -3,8 +3,8 @@
 화면에서 사람이 직접 하는 일은 지도에서 사업장 경계를 정하는 것 하나입니다(주소를 찾으면 필지 경계가 표시되고, 필지를 눌러
 더하거나 빼거나 직접 고친 뒤 ‘이 경계로 확인’을 누르면 주변 조회·거리 계산·시나리오 계산이 이어서 됩니다).
 - 시나리오 선정·피해반경·장외거리·보호대상 집계·시설빈도·위험도·공정안전보고서 별지 제19호의2는 프로그램이 계산합니다.
-- 고치고 싶으면 ‘사고시나리오 검토자료’(선정할 사고유형·경계까지 거리·물성·개시사건 개수)나 ‘주변 보호대상 조사표’ 파일을 고쳐
-  ‘사업장 업무 > 자료 올리기’에 다시 올립니다. 조사표는 이 화면에서 지도 조회 값을 채워 내려받습니다.
+- 고치고 싶으면 회사 작성용 엑셀의 ‘사고시나리오 검토’ 시트(선정할 사고유형·경계까지 거리·물성·개시사건 개수)나 ‘주변 보호대상’
+  시트를 고쳐 자료 접수 ①에 다시 올립니다. 이 화면에서는 지금 반영한 엑셀에 지도 조회 값을 채워 내려받을 수 있습니다.
 - 로컬 AI는 선정 근거 문장과 보호대상 분류 제안에만 씁니다(숫자는 계산 엔진에서만).
 """
 from __future__ import annotations
@@ -25,16 +25,17 @@ from ui import cap_common
 from ui import cap_frames as frames
 
 INTAKE_PAGE = "ui/evidence_workspace_page.py"
+SCENARIO_SHEET = "회사 작성용 엑셀의 ‘사고시나리오 검토’ 시트"
 KOREA = (36.4, 127.9)
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-def _to_intake(label: str = "파일 올리기·고치기: 사업장 업무 > 자료 올리기 →") -> None:
+def _to_intake(label: str = "고친 엑셀 올리기: 사업장 업무 > 자료 접수 ① →") -> None:
     try:
         st.page_link(INTAKE_PAGE, label=label)
     except Exception:          # 이 화면만 따로 띄웠을 때(시험 등)
-        st.caption("파일 올리기·고치기: 왼쪽 ‘사업장 업무 > 자료 올리기’")
+        st.caption("고친 엑셀 올리기: 왼쪽 ‘사업장 업무 > 자료 접수·확인할 일’의 ①")
 
 
 def _client(prefix: str):
@@ -219,7 +220,7 @@ def _boundary(project) -> None:
                 summary = ss.confirm(project, geometry, origin)
             save_project(project)
             text = (f"사업장 경계를 확인했습니다. 주변 지도 객체 {summary['objects']}개를 조회했고, 경계 밖 500m 안의 이름 있는 시설 "
-                    f"{summary['candidates']}곳을 ‘② 주변 보호대상’ 조사표에 미리 적었습니다.")
+                    f"{summary['candidates']}곳을 찾았습니다. ‘② 주변 보호대상’에서 엑셀에 채워 내려받으세요.")
             st.session_state[prefix + "note"] = ("success", text + "".join(" " + n for n in summary["notices"]))
             for name in ("parcels", "drawings", "drawn_from_parcels", "clicked"):
                 st.session_state.pop(prefix + name, None)
@@ -257,36 +258,54 @@ def _boundary(project) -> None:
 
 # ---------------------------------------------------------------- ② 주변 보호대상
 
+def _current_workbook(project) -> tuple[bytes | None, str]:
+    """지금 반영한 회사 작성용 엑셀 원본과 그 이름. 없으면 (None, 빈 양식 이름)."""
+    from engine.stage2 import cap_upload_template as tpl
+    from engine.stage2 import company_workbook_intake as company_intake
+    from engine.stage2.storage import load_attachment
+
+    current = company_intake.current(project) or {}
+    if current.get("sha256"):
+        content = load_attachment(project.project_id, current["sha256"])
+        if content:
+            return content, current.get("name") or tpl.COMPANY_FILENAME
+    return None, tpl.COMPANY_FILENAME
+
+
 def _targets(project) -> None:
     pid = project.project_id
-    st.caption("별지 제8호 보호대상은 ‘주변 보호대상 조사표’ 파일에서 읽습니다. 아래에서 조사표를 내려받으면 지도 조회로 찾은 "
-               "경계 밖 500m 안의 시설과 그린 경계에서 잰 거리가 미리 적혀 있습니다. 분류·거리·인원을 고쳐 다시 올리세요.")
+    st.caption("별지 제8호 보호대상은 회사 작성용 엑셀의 ‘주변 보호대상’ 시트와 ‘사업장 정보’ 시트의 조사 근거 항목에서 읽습니다. "
+               "아래 버튼은 지금 반영한 엑셀에 지도 조회로 찾은 경계 밖 500m 안의 시설과 확인한 경계에서 잰 거리를 더해 줍니다. "
+               "분류·거리·인원과 확인 항목(예/아니오)을 고쳐 자료 접수 ①에 그대로 다시 올리세요.")
     rows = f8.saved_rows(project)
     if f8.declared_no_target(project):
-        st.success("조사표에 ‘500m 안 보호대상 없음’으로 적혀 있습니다.")
+        st.success("엑셀에 ‘500m 안 보호대상 없음’으로 적혀 있습니다.")
     elif rows:
         frames.show(pd.DataFrame([{c: r.get(c, "") for c in ss.TARGET_COLUMNS} for r in rows]), hide_index=True, width="stretch")
     else:
-        st.info("아직 조사표를 올리지 않았습니다.")
+        st.info("엑셀의 ‘주변 보호대상’ 시트가 아직 비어 있습니다.")
     needs = f8.needs(project)
     if needs:
-        st.markdown("**조사표에서 고칠 것**")
+        st.markdown("**엑셀에서 고칠 것** (‘주변 보호대상’ 시트·‘사업장 정보’의 조사 근거 항목)")
         for need in needs:
             st.write("• " + need)
     candidates = ss.candidate_rows(project)
     st.caption(f"지도 조회 후보 {len(candidates)}곳" if candidates else
-               "지도 조회 후보가 없습니다(경계를 저장하고 ‘주소로 주변 지도 조회’를 누르면 채워집니다). 빈 조사표에 직접 적어도 됩니다.")
-    content = ss.workbook(project)
+               "지도 조회 후보가 없습니다(① 탭에서 경계를 확인하면 주변을 조회합니다). 엑셀의 ‘주변 보호대상’ 시트에 직접 적어도 됩니다.")
+    original, name = _current_workbook(project)
+    if original is None:
+        st.caption("반영한 회사 작성용 엑셀이 없어 빈 양식에 채웁니다.")
+    content = ss.company_workbook(project, original)
     if candidates and st.checkbox("로컬 AI로 분류 제안 보태기(이름 규칙으로 못 정한 시설만)", key=f"scn_ai_cls_{pid}"):
         client = _client(f"scn_cls_{pid}")
         if client is None:
             st.warning("로컬 AI를 찾지 못했습니다. 이름 규칙 제안만 넣습니다.")
-        elif st.button("AI 분류 제안을 넣어 조사표 만들기", key=f"scn_ai_make_{pid}"):
-            st.session_state[f"scn_ai_book_{pid}"] = ss.workbook(project, client)
+        elif st.button("AI 분류 제안을 넣어 엑셀 만들기", key=f"scn_ai_make_{pid}"):
+            st.session_state[f"scn_ai_book_{pid}"] = ss.company_workbook(project, original, client)
         content = st.session_state.get(f"scn_ai_book_{pid}", content)
-    st.download_button("주변 보호대상 조사표 내려받기 (엑셀)", content, file_name=ss.FILENAME, mime=XLSX,
+    st.download_button("회사 작성용 엑셀에 주변 보호대상 채워 내려받기", content, file_name=name, mime=XLSX,
                        key=f"scn_survey_{pid}", width="stretch")
-    _to_intake("채운 조사표 올리기: 사업장 업무 > 자료 올리기 →")
+    _to_intake()
 
 
 # ---------------------------------------------------------------- ③ 시나리오·영향범위
@@ -302,7 +321,7 @@ def _problems(outcome: sp.Outcome) -> None:
 def _scenarios(project, outcome: sp.Outcome) -> None:
     pid = project.project_id
     st.caption("대상 설비는 규정수량 비교(규정 제23조, 별표 2)로, 사고유형은 물질의 독성 구분·폭발한계로 정했습니다. 바꾸려면 "
-               "‘사고시나리오 검토자료’ 파일의 ‘선정할 사고유형’ 열을 고쳐(빼려면 ‘선정 안 함’) 다시 올리세요.")
+               f"{SCENARIO_SHEET}의 ‘선정할 사고유형’ 열을 고쳐(빼려면 ‘선정 안 함’) 다시 올리세요.")
     scenarios = sc.saved_scenarios(project)
     if not scenarios:
         st.info("시나리오 대상 설비가 아직 없습니다. 설비대장·제품목록·SDS 물성표를 올리면 규정수량으로 대상 설비를 정합니다.")
@@ -346,7 +365,7 @@ def _scenarios(project, outcome: sp.Outcome) -> None:
 # ---------------------------------------------------------------- ④ 시설빈도·위험도
 
 def _risk(project) -> None:
-    st.caption("장외로 영향이 나가는 시나리오만 시설빈도·위험도를 계산합니다. 개시사건 개수·완화장치는 ‘사고시나리오 검토자료’ 파일에서 읽습니다.")
+    st.caption("장외로 영향이 나가는 시나리오만 시설빈도·위험도를 계산합니다. 개시사건 개수·완화장치는 " + SCENARIO_SHEET + "에서 읽습니다.")
     form14 = build_cap_form14_data(project)
     if form14.scenario_rows:
         frames.show(pd.DataFrame(list(form14.scenario_rows)), hide_index=True, width="stretch")
@@ -385,7 +404,7 @@ def _psm(project, outcome: sp.Outcome) -> None:
             st.success(result.message)
         else:
             st.info((result.message or "관측 자료를 불러오지 못했습니다.") +
-                    " 공정안전보고서 사업개요 파일에 ‘대기온도(℃)’·‘습도(%)’를 적어 올려도 됩니다.")
+                    " 회사 자료에 ‘대기온도(℃)’·‘습도(%)’를 적어 올려도 됩니다.")
     weather, source = sp.weather_inputs(project)
     st.write(f"대기온도·습도: {weather.get('대기온도(℃)', '없음')} ℃ · {weather.get('습도(%)', '없음')} % "
              + (f"({source})" if source else ""))
@@ -407,7 +426,7 @@ def _psm(project, outcome: sp.Outcome) -> None:
 st.set_page_config(page_title="사고시나리오 결과", page_icon="🧭", layout="wide")
 st.title("🧭 사고시나리오 결과")
 st.caption("시나리오 선정·피해반경·장외거리·위험도는 회사 파일로 프로그램이 계산한 초안입니다. 화면에서는 지도에 사업장 경계만 그리고, "
-           "고칠 것은 ‘사고시나리오 검토자료’·‘주변 보호대상 조사표’ 파일을 고쳐 다시 올립니다.")
+           "고칠 것은 회사 작성용 엑셀의 ‘사고시나리오 검토’·‘주변 보호대상’ 시트를 고쳐 다시 올립니다.")
 project_id = cap_common._project_selector()
 if not project_id:
     st.stop()

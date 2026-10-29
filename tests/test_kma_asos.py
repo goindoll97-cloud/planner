@@ -122,7 +122,7 @@ class ScreenTests(unittest.TestCase):
         project = self._project("알 수 없는 마을 1")
         at = self._run(project)
         self.assertFalse(at.exception)
-        self.assertTrue(any("관측소를 찾지 못했습니다" in i.value and "사업개요 파일" in i.value for i in at.info))
+        self.assertTrue(any("관측소를 찾지 못했습니다" in i.value and "회사 자료" in i.value for i in at.info))
         self.assertEqual([t.label for t in at.text_input], ["주소로 찾기"])
 
 

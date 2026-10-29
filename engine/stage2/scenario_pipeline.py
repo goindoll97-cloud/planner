@@ -2,7 +2,7 @@
 
 사람은 화면에서 시나리오를 고르거나 숫자를 적지 않습니다.
 - 대상 설비는 규정수량 비교(규정 제23조, 별표 2)로 프로그램이 정하고, 사고유형은 물질의 독성 구분·폭발한계로 정합니다.
-- 바꾸고 싶으면 ‘사고시나리오 검토자료’ 파일의 ‘선정할 사고유형’(‘선정 안 함’ 포함)·‘공정안전보고서 시나리오 구분’ 열을 고쳐 다시 올립니다.
+- 바꾸고 싶으면 회사 작성용 엑셀의 ‘사고시나리오 검토’ 시트의 ‘선정할 사고유형’(‘선정 안 함’ 포함)·‘공정안전보고서 시나리오 구분’ 열을 고쳐 다시 올립니다.
 - 액위·경계까지 거리·연소열 같은 계산 입력과 개시사건 개수·완화장치도 같은 파일에서 읽습니다.
 - 보호대상은 별지 제8호 목록(주변 보호대상 조사표)에서 옵니다.
 숫자는 모두 계산 엔진(cap_release_workspace·cap_impact_workspace·psm_form19_2_workspace)에서 나옵니다. AI는 선정 근거
@@ -31,7 +31,7 @@ REASON_DRAFT_KEY = "cap.workspace.scenario_reason_drafts"
 KIND_COLUMN, REASON_COLUMN, PSM_COLUMN = "선정할 사고유형", "시나리오 선정 근거", "공정안전보고서 시나리오 구분"
 NOT_SELECTED = "선정 안 함"
 PSM_WORST, PSM_ALTERNATIVE, PSM_UNUSED = "최악", "대안", "사용 안 함"
-FILE_NAME = "사고시나리오 검토자료"
+FILE_NAME = "회사 작성용 엑셀의 ‘사고시나리오 검토’ 시트"   # 자료 접수는 회사 작성용 엑셀 한 파일
 REPORT_NAME = "영향범위_분석_근거서.docx"
 NOTE = ew.LINK_NOTE + ": 사고시나리오 결과(회사 파일·규정수량 판정으로 프로그램이 계산한 초안)"
 INPUT_COLUMNS = ("경계까지 거리(m)", "액위(m)", "누출지점 배관길이(m)", "비열비", "연소열", "비점", "액체비열", "기화열",
@@ -143,11 +143,11 @@ def plan(project: Stage2Project) -> Plan:
             continue
         if not kinds:
             out.problems.append(Problem(tag, f"‘{KIND_COLUMN}’ 값 ‘{choice}’을 알아보지 못했습니다.",
-                                        f"‘{FILE_NAME}’ 파일의 ‘{KIND_COLUMN}’에 ‘독성 누출’, ‘화재·폭발’ 또는 ‘{NOT_SELECTED}’을 적어 주세요."))
+                                        f"{FILE_NAME}의 ‘{KIND_COLUMN}’에 ‘독성 누출’, ‘화재·폭발’ 또는 ‘{NOT_SELECTED}’을 적어 주세요."))
             continue
         if tag not in facilities:
             out.problems.append(Problem(tag, "설비 목록에 없는 설비번호입니다.",
-                                        f"‘{FILE_NAME}’ 파일의 설비번호를 설비대장과 같게 고쳐 주세요."))
+                                        f"{FILE_NAME}의 설비번호를 설비대장과 같게 고쳐 주세요."))
             continue
         target = targets.get(tag)
         material = target.material if target else _clean(facilities[tag].get("취급물질"))
@@ -175,7 +175,7 @@ def plan(project: Stage2Project) -> Plan:
             out.scenarios.append(scenario)
             if not _clean(row.get("경계까지 거리(m)")):
                 out.problems.append(Problem(scenario["사고시나리오명"], "설비에서 사업장 경계까지 거리가 없어 장외거리를 구할 수 없습니다.",
-                                            f"‘{FILE_NAME}’ 파일에 설비번호 {tag}의 ‘경계까지 거리(m)’를 적어 주세요."))
+                                            f"{FILE_NAME}에 설비번호 {tag}의 ‘경계까지 거리(m)’를 적어 주세요."))
     return out
 
 
@@ -281,10 +281,10 @@ def _problems(project: Stage2Project, outcome: Outcome) -> None:
     for impact in outcome.impacts:
         if impact.is_off_site and not any(_clean(counts.get(impact.tag, {}).get(e)) for e in f14.EVENT_NAMES):
             outcome.problems.append(Problem(impact.name, "장외로 영향이 나가는데 개시사건 개수가 없습니다(별지 제14호 시설빈도).",
-                                            f"‘{FILE_NAME}’ 파일에 설비번호 {impact.tag}의 개시사건 개수와 ‘개수 산정근거’를 적어 주세요."))
+                                            f"{FILE_NAME}에 설비번호 {impact.tag}의 개시사건 개수와 ‘개수 산정근거’를 적어 주세요."))
     for result in outcome.psm:
         for problem in result.problems:
-            fix = ("공정안전보고서 사업개요 파일에 ‘대기온도(℃)’·‘습도(%)’를 적거나 ‘사고시나리오 결과’ 화면에서 기상청 자료로 채워 주세요."
+            fix = ("‘사고시나리오 결과’ 화면에서 기상청 자료로 대기온도·습도를 채우거나, 회사 자료에 ‘대기온도(℃)’·‘습도(%)’를 적어 주세요."
                    if "대기온도" in problem or "습도" in problem else _where_to_fix(problem, result.row.get("대상 설비번호", "")))
             outcome.problems.append(Problem(result.row.get("시나리오명", ""), problem, fix))
 
@@ -337,21 +337,21 @@ def refresh(project: Stage2Project) -> Outcome:
 def _where_to_fix(problem: str, tag: str) -> str:
     """계산 엔진의 문제 문장 → 어느 파일의 어느 항목을 고칠지."""
     rules = (
-        (("경계까지 거리", "사업장 경계까지"), f"‘{FILE_NAME}’ 파일에 설비번호 {tag}의 ‘경계까지 거리(m)’를 적어 주세요."),
-        (("액위",), f"‘{FILE_NAME}’ 파일에 설비번호 {tag}의 ‘액위(m)’를 적어 주세요."),
-        (("연소열",), f"‘{FILE_NAME}’ 파일에 설비번호 {tag}의 ‘연소열(kJ/kg)’을 적거나 SDS 물성표에 연소열을 적어 주세요."),
-        (("비점", "기화열", "액체비열"), f"‘{FILE_NAME}’ 파일에 설비번호 {tag}의 ‘비점(℃)’·‘액체비열(kJ/kg·K)’·‘기화열(kJ/kg)’을 적어 주세요."),
-        (("연결구",), "설비 사양서 파일에 이 설비의 ‘최대 연결구 크기(mm)’를 적어 주세요."),
-        (("운전온도", "운전압력"), "설비대장·운전조건표 파일에 이 설비의 운전압력·운전온도를 적어 주세요."),
-        (("비중",), "설비대장 또는 제품목록 파일에 비중을 적어 주세요."),
-        (("분자량", "증기압"), "SDS 물성표 파일에 이 물질의 분자량·증기압을 적어 주세요."),
-        (("최대보유량",), "설비대장 파일의 용량·최대보유량을 확인해 주세요."),
+        (("경계까지 거리", "사업장 경계까지"), f"{FILE_NAME}에 설비번호 {tag}의 ‘경계까지 거리(m)’를 적어 주세요."),
+        (("액위",), f"{FILE_NAME}에 설비번호 {tag}의 ‘액위(m)’를 적어 주세요."),
+        (("연소열",), f"{FILE_NAME}에 설비번호 {tag}의 ‘연소열(kJ/kg)’을 적어 주세요."),
+        (("비점", "기화열", "액체비열"), f"{FILE_NAME}에 설비번호 {tag}의 ‘비점(℃)’·‘액체비열(kJ/kg·K)’·‘기화열(kJ/kg)’을 적어 주세요."),
+        (("연결구",), "회사 작성용 엑셀의 ‘설비’ 시트에 이 설비의 ‘최대 연결구 크기(mm)’를 적어 주세요."),
+        (("운전온도", "운전압력"), "회사 작성용 엑셀의 ‘설비’ 시트에 이 설비의 운전압력·운전온도를 적어 주세요."),
+        (("비중",), "회사 작성용 엑셀의 ‘설비’ 또는 ‘물질’ 시트에 비중을 적어 주세요."),
+        (("분자량", "증기압"), "회사 작성용 엑셀의 ‘물질’ 시트에 이 물질의 분자량·증기압을 적어 주세요."),
+        (("최대보유량",), "회사 작성용 엑셀의 ‘설비’ 시트에서 용량·최대보유량을 확인해 주세요."),
         (("끝점", "ERPG", "AEGL", "독성"), "물질의 CAS 번호와 독성 끝점 자료를 확인해 주세요(SDS 물성표)."),
     )
     for words, fix in rules:
         if any(word in problem for word in words):
             return fix
-    return "계산 근거서의 가정과 입력 파일을 확인해 주세요."
+    return "영향범위 분석 근거서의 가정과 회사 작성용 엑셀의 입력값을 확인해 주세요."
 
 
 def report_docx(project: Stage2Project) -> bytes:

@@ -223,7 +223,7 @@ def _table_19_2(project) -> None:
     record = project.get_field(f19.TABLE_KEY)
     rows = [r for r in (record.value if record is not None and isinstance(record.value, list) else []) if isinstance(r, dict)]
     if not rows:
-        st.info("아직 계산된 시나리오 결과가 없습니다. 설비대장·SDS 물성표·사고시나리오 검토자료를 올리면 계산합니다.")
+        st.info("아직 계산된 시나리오 결과가 없습니다. 회사 작성용 엑셀(설비·물질·사고시나리오 검토 시트)을 올리면 계산합니다.")
         return
     frame = pd.DataFrame(rows).T
     frame.columns = [f"{i + 1}. {r.get('시나리오 구분', '')}" for i, r in enumerate(rows)]
