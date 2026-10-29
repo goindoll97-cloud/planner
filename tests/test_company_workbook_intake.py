@@ -13,6 +13,8 @@ def workbook(rep='김대표', pressure=0.2, include_tank=True):
     book = load_workbook(BytesIO(tpl.build_company()))
     ws = book[tpl.SITE_SHEET]
     for row in range(2, ws.max_row + 1):
+        if ws.cell(row, 1).value == '사업장명':
+            ws.cell(row, 2).value = '시험'
         if ws.cell(row, 1).value == '대표자':
             ws.cell(row, 2).value = rep
     if include_tank:

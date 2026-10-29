@@ -10,12 +10,11 @@ import re
 
 import streamlit as st
 
-from engine.stage2 import demo_authoring_company, scenario_triage
+from engine.stage2 import demo_company_workbook, scenario_triage
 from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import company_workbook_intake as company_intake
 from engine.stage2 import evidence_workspace as ew
-from engine.stage2.direct_template import create_direct_cap_project
 from engine.stage2.storage import delete_all_projects, list_projects, load_project, save_attachment, save_project
 
 STEPS = {1: "① 엑셀 작성·올리기", 2: "② 입력 확인·수정", 3: "③ 시나리오 후보", 4: "④ 작성·내려받기"}
@@ -161,30 +160,11 @@ def _project_header():
     projects = list_projects()
     done = st.session_state.pop("evidence_reset_done", None)
     if done is not None:
-        st.success(f"사업장 {done}곳을 모두 지웠어요. 새 사업장을 만들어 처음부터 시작하세요.")
-    with st.expander("새 사업장 만들기", expanded=not projects):
-        with st.form("evidence_new_project"):
-            name = st.text_input("사업장 이름")
-            address = st.text_input("사업장 주소")
-            if st.form_submit_button("만들기"):
-                try:
-                    project = create_direct_cap_project(name, address=address, cap_group="")
-                    save_project(project)
-                    st.session_state["_stage2_active_project_id"] = project.project_id
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
-            if st.form_submit_button("가상 1군 사업장으로 연습 시작", help="주소 없이 정상 작성 연습자료를 쓰는 전용 사업장을 만듭니다. 1군은 연습 설정이며 법적 대상 판정이 아닙니다."):
-                project = create_direct_cap_project(demo_authoring_company.COMPANY, cap_group="1군")
-                project.notes.append("주소·도면 제외 가상 작성 연습: 1군은 연습 설정이며 실제 법적 대상 판정이 아님")
-                save_project(project)
-                st.session_state["_stage2_active_project_id"] = project.project_id
-                st.session_state["evidence_goto"] = 1
-                st.session_state.setdefault("evidence_notes", []).append("가상 1군 연습 사업장을 만들었어요. 회사 작성용 엑셀을 내려받아 작성해 올리세요. 실제 법적 대상 판정은 수행하지 않았어요.")
-                st.rerun()
+        st.success(f"사업장 {done}곳을 모두 지웠어요. 작성한 엑셀을 올려 다시 시작하세요.")
     if not projects:
-        st.info("먼저 사업장을 만들어 주세요. 이름과 주소만 있으면 돼요.")
-        st.stop()
+        from engine.stage2.project import Stage2Project
+        return Stage2Project(project_id="EXCEL-START", company_name="", cap_required=True,
+                             scope_confirmed=True, cap_selected=True)
     _reset_all(len(projects))
     options = {p["project_id"]: p["company_name"] for p in projects}
     current = st.session_state.get("_stage2_active_project_id")
@@ -232,21 +212,29 @@ def _step_upload(project, found) -> None:
                        file_name=cap_upload_template.COMPANY_FILENAME,
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="cap_company_full_template")
+    st.download_button("가상 회사 정보가 채워진 엑셀 내려받기", demo_company_workbook.build(),
+                       file_name=demo_company_workbook.FILENAME,
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       key="cap_company_demo_template")
+    st.caption("가상 회사 엑셀은 값을 미리 채운 1군 작성 연습용입니다. 내려받은 파일을 그대로 올려 초안을 확인하세요. "
+               "실제 법적 판정·현장 확인 자료가 아니며 관련 보완은 남습니다.")
     st.caption("단답형은 ‘사업장 정보’ 시트의 값 열에, 목록은 한 행에 하나씩 적으세요. 예시는 읽지 않습니다. "
                "수정한 엑셀 전체를 다시 올리면 이름이 달라도 최신 내용으로 교체합니다. 도면·SDS·스캔본은 올리지 않습니다.")
-    _latest_workbook(project)
+    st.caption("엑셀의 사업장명으로 자료를 구분합니다. 처음 올리는 사업장은 파일을 읽은 뒤 자동으로 등록합니다.")
+    if project.company_name:
+        _latest_workbook(project)
     uploaded = st.file_uploader("작성한 회사 엑셀 선택 (.xlsx, 한 파일)", type=["xlsx"],
                                 accept_multiple_files=False, key="company_excel_" + pid)
     if st.button("엑셀 읽고 확인하기", type="primary", disabled=uploaded is None, key="read_" + pid):
-        from copy import deepcopy
-        candidate = deepcopy(project)
         try:
+            candidate = company_intake.project_for_upload(project, uploaded.name, uploaded.getvalue())
             changed = company_intake.apply(candidate, uploaded.name, uploaded.getvalue())
             if changed:
-                save_attachment(pid, uploaded.name, uploaded.getvalue(), note="최신 회사 작성용 엑셀 원본")
+                save_attachment(candidate.project_id, uploaded.name, uploaded.getvalue(), note="최신 회사 작성용 엑셀 원본")
                 save_project(candidate)
                 st.session_state.pop("narrative_progress_" + pid, None)
                 st.session_state.pop("evidence_change", None)
+            st.session_state["_stage2_active_project_id"] = candidate.project_id
             st.session_state.pop("company_upload_error_" + pid, None)
             st.session_state.setdefault("evidence_notes", []).append(
                 f"{uploaded.name}: 최신 엑셀로 반영했어요. ②에서 빠진 값과 고칠 칸을 확인하세요." if changed else
@@ -487,6 +475,9 @@ st.set_page_config(page_title="사업장 업무", page_icon="📂", layout="wide
 st.title("화학사고예방관리계획서 자료 정리")
 st.caption("회사 작성용 엑셀을 내려받아 작성하고 올리세요. 빠진 값과 잘못된 칸을 확인해 수정본을 다시 올리면 최신 내용으로 반영합니다.")
 _active = _project_header()
+if not _active.company_name:
+    _step_upload(_active, None)
+    st.stop()
 _triage = scenario_triage.evaluate(_active)
 _found = _collect(_active, _triage)
 _auto_publish(_active)

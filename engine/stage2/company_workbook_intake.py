@@ -25,6 +25,35 @@ def current(project):
     return record.value if record else None
 
 
+def project_for_upload(selected, name, content):
+    """엑셀의 사업장명으로 저장 대상을 찾는다. 적용에 성공하기 전에는 저장하지 않는다."""
+    sanitized, _ = inspect(content, name)
+    book = load_workbook(BytesIO(sanitized))
+    sheet = book[tpl.SITE_SHEET]
+    values = {str(row[0].value): row[1].value for row in sheet.iter_rows(min_row=2)}
+    company = str(values.get('사업장명') or '').strip()
+    if not company:
+        raise WorkbookFormatError([{'파일·위치': name + ' · 사업장 정보', '항목': '사업장명',
+            '확인된 문제': '엑셀에 사업장명이 없습니다.', '수정 요청': '사업장명 값을 채워 다시 올려 주세요.'}])
+    from .storage import list_projects, load_project
+    from .direct_template import create_direct_cap_project
+    if selected.company_name == company:
+        target = deepcopy(selected)
+    else:
+        matches = [p for p in list_projects() if p['company_name'] == company]
+        if len(matches) > 1:
+            raise WorkbookFormatError([{'파일·위치': name, '항목': '사업장 선택',
+                '확인된 문제': '같은 이름의 사업장이 여러 개 있습니다.',
+                '수정 요청': '화면에서 적용할 사업장을 선택한 뒤 다시 올려 주세요.'}])
+        target = load_project(matches[0]['project_id']) if matches else create_direct_cap_project(company)
+    from . import demo_company_workbook as demo
+    if book.properties.identifier == demo.IDENTIFIER and company == demo.COMPANY:
+        target.cap_group = '1군'
+        if demo.NOTICE not in target.notes:
+            target.notes.append(demo.NOTICE)
+    return target
+
+
 def inspect(content, name, group=''):
     """입력 오류는 위치와 함께 반환하고, 오류 셀은 자동 작성에서 제외한다."""
     issues = []
@@ -100,7 +129,9 @@ def inspect(content, name, group=''):
                     number = float(raw.replace(',', '').removesuffix('%'))
                     if not isfinite(number):
                         raise ValueError()
-                    if (item.unit == '%' or '(%)' in item.template_header) and not 0 <= number <= 100:
+                    if item.id == 'site.dike_required_ratio' and number < 0:
+                        reason = '필요용량 비율은 0 이상으로 입력해 주세요.'
+                    elif item.id != 'site.dike_required_ratio' and (item.unit == '%' or '(%)' in item.template_header) and not 0 <= number <= 100:
                         reason = '백분율은 0~100 범위로 입력해 주세요.'
                 except ValueError:
                     reason = '숫자만 입력하고 단위는 열 제목에 맞춰 주세요.'
