@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from hashlib import sha256
 
 from engine.stage2 import report_export as export
-from engine.stage2 import cap_hwp_export
 from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
 from ui import cap_frames as frames
@@ -122,33 +120,12 @@ def render_workspace_download(project) -> None:
         st.error("초안을 생성·검증하지 못했어요. 자료와 서식 구성을 확인한 뒤 다시 시도해 주세요.")
         return
     st.caption("현재 자료와 서술형을 포함한 초안입니다. 제출 전에 내용을 확인하고, 보완할 자료는 ②에서 확인하세요.")
-    hwp_available = cap_hwp_export.available()
     cache_key = "workspace_cap_hwp_" + project.project_id
-    hwp_bytes = None
-    hwp_error = None
-    if hwp_available:
-        fingerprint = sha256(draft.docx).hexdigest()
-        saved = st.session_state.get(cache_key)
-        if not saved or saved[0] != fingerprint:
-            try:
-                with st.spinner("한컴오피스로 HWP 파일을 만들고 있습니다."):
-                    saved = (fingerprint, cap_hwp_export.convert_docx_to_hwp(draft.docx), None)
-            except Exception as exc:
-                saved = (fingerprint, None, str(exc))
-            st.session_state[cache_key] = saved
-        hwp_bytes = saved[1]
-        hwp_error = saved[2] if len(saved) > 2 else None
-    else:
-        hwp_error = "이 실행 환경에는 한컴오피스가 없어 HWP로 변환할 수 없습니다. Windows에서 한컴오피스를 설치해 주세요."
-    if hwp_error:
-        st.warning(f"HWP 변환에 실패했습니다: {hwp_error}")
-        if hwp_available and st.button("HWP 변환 다시 시도", key=cache_key + "_retry", width="stretch"):
-            st.session_state.pop(cache_key, None)
-            st.rerun()
-    st.download_button("규정서식 초안 HWP 내려받기", data=hwp_bytes or b"",
+    st.caption("HWP 원본서식에 직접 작성하는 기능은 준비 중입니다.")
+    st.download_button("규정서식 초안 HWP 내려받기", data=b"",
                        file_name=draft.name.removesuffix(".docx") + ".hwp",
                        mime="application/x-hwp", key=cache_key + "_download",
-                       width="stretch", type="primary", disabled=hwp_bytes is None)
+                       width="stretch", disabled=True)
     st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
                        mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
-                       width="stretch", type="secondary")
+                       width="stretch", type="primary")
