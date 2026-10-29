@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from hashlib import sha256
 
 from engine.stage2 import report_export as export
+from engine.stage2 import cap_direct_hwp
 from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
 from ui import cap_frames as frames
@@ -119,13 +121,23 @@ def render_workspace_download(project) -> None:
     except Exception:
         st.error("초안을 생성·검증하지 못했어요. 자료와 서식 구성을 확인한 뒤 다시 시도해 주세요.")
         return
-    st.caption("현재 자료와 서술형을 포함한 초안입니다. 제출 전에 내용을 확인하고, 보완할 자료는 ②에서 확인하세요.")
+    st.caption("DOCX에는 현재 자료와 서술형이 포함됩니다. 제출 전에 내용을 확인하세요.")
     cache_key = "workspace_cap_hwp_" + project.project_id
-    st.caption("HWP 원본서식에 직접 작성하는 기능은 준비 중입니다.")
-    st.download_button("규정서식 초안 HWP 내려받기", data=b"",
+    fingerprint = sha256(draft.docx).hexdigest()
+    saved = st.session_state.get(cache_key + '_direct')
+    if not saved or saved[0] != fingerprint:
+        try:
+            with st.spinner('HWP 원본서식에 사업장 정보를 작성하고 있습니다.'):
+                saved = (fingerprint, cap_direct_hwp.build_partial_hwp(project))
+            st.session_state[cache_key + '_direct'] = saved
+        except Exception:
+            saved = None
+            st.warning('HWP 초안을 만들지 못했습니다. DOCX 초안을 내려받아 주세요.')
+    st.caption('HWP 시험 초안은 사업장 일반정보 일부만 작성합니다. 물질·설비·시나리오·서술형은 아직 자동 작성되지 않습니다. 원본에 포함된 예시도 확인해 주세요.')
+    st.download_button("규정서식 초안 HWP 내려받기", data=saved[1] if saved else b"",
                        file_name=draft.name.removesuffix(".docx") + ".hwp",
                        mime="application/x-hwp", key=cache_key + "_download",
-                       width="stretch", disabled=True)
+                       width="stretch", disabled=not saved)
     st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
                        mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
                        width="stretch", type="primary")
