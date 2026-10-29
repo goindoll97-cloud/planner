@@ -286,9 +286,8 @@ def _targets(project) -> None:
         st.info("엑셀의 ‘주변 보호대상’ 시트가 아직 비어 있습니다.")
     needs = f8.needs(project)
     if needs:
-        st.markdown("**엑셀에서 고칠 것** (‘주변 보호대상’ 시트·‘사업장 정보’의 조사 근거 항목)")
-        for need in needs:
-            st.write("• " + need)
+        st.warning(f"별지 제8호에 아직 고칠 점 {len(needs)}건이 있습니다(‘주변 보호대상’ 시트·‘사업장 정보’의 조사 근거 항목). "
+                   "자세한 내용은 자료 접수 ②에 모아 두었습니다.")
     candidates = ss.candidate_rows(project)
     st.caption(f"지도 조회 후보 {len(candidates)}곳" if candidates else
                "지도 조회 후보가 없습니다(① 탭에서 경계를 확인하면 주변을 조회합니다). 엑셀의 ‘주변 보호대상’ 시트에 직접 적어도 됩니다.")
@@ -311,11 +310,10 @@ def _targets(project) -> None:
 # ---------------------------------------------------------------- ③ 시나리오·영향범위
 
 def _problems(outcome: sp.Outcome) -> None:
+    """고칠 점은 자료 접수 ②의 한 표에 모읍니다(여기서는 몇 건인지만)."""
     if outcome.problems:
-        st.markdown("**파일에서 고칠 것**")
-        frames.show(pd.DataFrame([{"어디": p.where, "문제": p.what, "고칠 곳": p.fix} for p in outcome.problems]),
-                    hide_index=True, width="stretch")
-        _to_intake()
+        st.warning(f"계산에 필요한 값 {len(outcome.problems)}건이 비었거나 맞지 않습니다. 엑셀의 어느 칸을 고칠지는 자료 접수 ②에 모아 두었습니다.")
+        _to_intake("고칠 칸 보기: 사업장 업무 > 자료 접수 ② →")
 
 
 def _scenarios(project, outcome: sp.Outcome) -> None:
@@ -369,8 +367,8 @@ def _risk(project) -> None:
     form14 = build_cap_form14_data(project)
     if form14.scenario_rows:
         frames.show(pd.DataFrame(list(form14.scenario_rows)), hide_index=True, width="stretch")
-    for blocker in form14.blockers:
-        st.write("• " + blocker)
+    if form14.blockers:
+        st.warning(f"시설빈도 계산에 고칠 점 {len(form14.blockers)}건이 있습니다. 자세한 내용은 자료 접수 ②에 모아 두었습니다.")
     form15 = build_cap_form15_data(project)
     if form15.no_offsite_scenario or form15.scenario_rows:
         st.markdown("#### 위험도 (별지 제15호)")

@@ -1,6 +1,6 @@
 """사업장 업무 화면: 신입사원도 따라올 수 있게 단계별로 안내합니다.
 
-① 엑셀 작성·올리기 → ② 입력 확인·수정 → ③ 시나리오 후보 → ④ 작성·내려받기
+① 엑셀 작성·올리기 → ② 입력 확인·수정 → ③ 사고시나리오 → ④ 작성·내려받기
 
 보완 요청은 ②의 한 표에 모으고 ③은 후보 표, ④는 작성 동작과 간단한 진행 상태만 보여 줍니다.
 """
@@ -17,7 +17,7 @@ from engine.stage2 import company_workbook_intake as company_intake
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.storage import delete_all_projects, list_projects, load_project, save_attachment, save_project
 
-STEPS = {1: "① 엑셀 작성·올리기", 2: "② 입력 확인·수정", 3: "③ 시나리오 후보", 4: "④ 작성·내려받기"}
+STEPS = {1: "① 엑셀 작성·올리기", 2: "② 입력 확인·수정", 3: "③ 사고시나리오", 4: "④ 작성·내려받기"}
 MISSING_FIELDS = ("product", "inventory", "pressure", "temperature", "facility_type", "substance_state")
 
 # ---------------------------------------------------------------- 사람 말로 바꾸기
@@ -369,17 +369,41 @@ def _step_questions(project, found) -> None:
         st.info("먼저 ① 엑셀 작성·올리기에서 회사 작성용 엑셀을 올려 주세요.")
         return
     _coverage_panel(project, found)
-    _next_button(3, pid, "다음: 시나리오 후보 보기 →")
+    _next_button(3, pid, "다음: 사고시나리오 보기 →")
 
 
-# ---------------------------------------------------------------- ③ 시나리오 후보
+# ---------------------------------------------------------------- ③ 사고시나리오
 
-def _step_scenarios(project, found, triage) -> None:
-    pid, names = project.project_id, found["names"]
-    linked = [r for r in triage["rows"] if r["linked"]]
-    st.dataframe([{"순서": r["rank"], "설비": names(r["facility"]), "물질": names(r["material"]),
-                   "인식한 파일": " / ".join(dict.fromkeys(source["document"] for source in r["sources"].values() if source)),
-                   "비교 점수": round(r["score"], 1)} for r in linked], hide_index=True, width="stretch")
+def _step_scenarios(project) -> None:
+    """‘사고시나리오 결과’ 화면과 같은 선정 결과(규정수량·엑셀의 ‘사고시나리오 검토’ 시트)를 짧게 보여 줍니다.
+    지도·경계와 자세한 결과는 그 화면에서, 고칠 점은 ②에서 봅니다."""
+    from engine.stage2 import scenario_pipeline
+
+    pid = project.project_id
+    if scenario_pipeline.needs_refresh(project):
+        scenario_pipeline.refresh(project)
+        save_project(project)
+    outcome = scenario_pipeline.current(project)
+    impacts = {i.name: i for i in outcome.impacts}
+    scenarios = [s for s in scenario_pipeline.sc.saved_scenarios(project)]
+    st.caption("대상 설비는 규정수량(규정 제23조, 별표 2)으로, 사고유형은 물질의 독성·인화성으로 프로그램이 정했습니다. "
+               "바꾸려면 엑셀 ‘사고시나리오 검토’ 시트의 ‘선정할 사고유형’을 고쳐 다시 올리세요. 고칠 점은 ②에 모았습니다.")
+    if scenarios:
+        def meters(value):
+            return "" if value is None else round(value)
+        st.dataframe([{"사고시나리오": s.get("사고시나리오명"), "설비": s.get("대상 설비번호"), "물질": s.get("유해화학물질명"),
+                       "사고유형": s.get("사고유형"),
+                       "피해반경(m)": meters(impacts[s["사고시나리오명"]].radius_m) if s.get("사고시나리오명") in impacts else "",
+                       "장외거리(m)": meters(impacts[s["사고시나리오명"]].off_site_m) if s.get("사고시나리오명") in impacts else "",
+                       "선정 근거": s.get("선정 근거")} for s in scenarios], hide_index=True, width="stretch")
+    else:
+        st.info("규정수량 이상인 대상 설비가 아직 없습니다. 엑셀의 ‘설비’·‘물질’ 시트를 확인하세요.")
+    for line in outcome.plan.skipped:
+        st.caption("뺀 시나리오 — " + line)
+    try:
+        st.page_link("ui/scenario_results_page.py", label="지도에서 사업장 경계 확인·자세한 결과: 사고시나리오 결과 →")
+    except Exception:          # 이 화면만 따로 띄운 경우
+        st.caption("지도에서 사업장 경계 확인·자세한 결과: 왼쪽 ‘사업장 업무 > 사고시나리오 결과’")
     _next_button(4, pid, "다음: 작성·내려받기 →")
 
 
@@ -501,6 +525,6 @@ if _step == 1:
 elif _step == 2:
     _step_questions(_active, _found)
 elif _step == 3:
-    _step_scenarios(_active, _found, _triage)
+    _step_scenarios(_active)
 else:
     _step_export(_active, _found)

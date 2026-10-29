@@ -1,9 +1,9 @@
 import os
+from io import BytesIO
 import re
 import sys
 import tempfile
 import unittest
-from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -171,13 +171,42 @@ class EvidencePageTests(unittest.TestCase):
             self.assertEqual(leaked, [], f"{step}단계")
             self.assertEqual(len(at.json), 0, f"{step}단계")
 
-    def test_scenarios_show_only_ranked_table_without_detail_menus(self):
+    def test_scenarios_show_the_same_selection_as_the_scenario_page(self):
+        from engine.stage2 import company_workbook_intake as cwi, demo_company_workbook as dw
+        from engine.stage2 import cap_scenario_workspace as sc
+
+        project = create_direct_cap_project(dw.COMPANY)
+        cwi.apply(project, "회사작성.xlsx", dw.build())
+        save_project(project)
+        self.pid = project.project_id
         at = self.run_page(3)
         self.assertFalse(at.exception)
-        self.assertEqual(len(at.dataframe), 1)
-        self.assertIn("설비", at.dataframe[0].value.columns)
+        self.assertEqual(len(at.dataframe), 1)                        # 선정 결과 표 하나
+        frame = at.dataframe[0].value
+        self.assertTrue({"사고시나리오", "사고유형", "피해반경(m)", "장외거리(m)"} <= set(frame.columns))
+        self.assertNotIn("비교 점수", frame.columns)                    # 따로 매긴 점수 순위는 없음
+        self.assertEqual(list(frame["사고시나리오"]),
+                         [s["사고시나리오명"] for s in sc.saved_scenarios(load_project(self.pid))])
         self.assertFalse(any(e.label in ("순서는 어떻게 매기나요?", "조합별로 어떤 값을 썼는지 보기") for e in at.expander))
-        self.assertFalse(any(x.key == "combo_" + self.pid for x in at.selectbox))
+
+    def test_scenario_calculation_gaps_are_listed_in_step_2_with_cells(self):
+        from openpyxl import load_workbook
+        from engine.stage2 import company_workbook_intake as cwi, demo_company_workbook as dw
+
+        book = load_workbook(BytesIO(dw.build()))
+        sheet = book["사고시나리오 검토"]
+        column = [c.value for c in sheet[1]].index("연소열(kJ/kg)") + 1
+        for row in range(2, sheet.max_row + 1):
+            sheet.cell(row=row, column=column).value = None
+        out = BytesIO()
+        book.save(out)
+        project = create_direct_cap_project(dw.COMPANY)
+        cwi.apply(project, "회사작성.xlsx", out.getvalue())
+        rows = cwi.corrections(project)
+        heat = [r for r in rows if "연소열" in r["확인된 문제"]]
+        self.assertTrue(heat)
+        self.assertTrue(all(r["파일·위치"].startswith("회사작성.xlsx · 사고시나리오 검토!H") for r in heat), heat)
+        self.assertEqual(len({r["파일·위치"] for r in rows}), len({(r["파일·위치"], r["확인된 문제"]) for r in rows}))
 
     def test_write_uses_uploaded_facts_without_confirmation_gate(self):
         at = self.run_page(4)

@@ -45,6 +45,12 @@ class Problem:
     where: str          # 설비번호 또는 시나리오명
     what: str           # 무엇이 문제인지
     fix: str            # 어느 파일의 어느 항목을 고치면 되는지
+    tag: str = ""       # 설비번호(엑셀에서 줄을 찾을 때)
+    sheet: str = ""     # 고칠 회사 작성용 엑셀 시트
+    column: str = ""    # 고칠 열(머리글)
+
+
+SCENARIO_SHEET = "사고시나리오 검토"
 
 
 @dataclass
@@ -143,11 +149,12 @@ def plan(project: Stage2Project) -> Plan:
             continue
         if not kinds:
             out.problems.append(Problem(tag, f"‘{KIND_COLUMN}’ 값 ‘{choice}’을 알아보지 못했습니다.",
-                                        f"{FILE_NAME}의 ‘{KIND_COLUMN}’에 ‘독성 누출’, ‘화재·폭발’ 또는 ‘{NOT_SELECTED}’을 적어 주세요."))
+                                        f"{FILE_NAME}의 ‘{KIND_COLUMN}’에 ‘독성 누출’, ‘화재·폭발’ 또는 ‘{NOT_SELECTED}’을 적어 주세요.",
+                                        tag, SCENARIO_SHEET, KIND_COLUMN))
             continue
         if tag not in facilities:
             out.problems.append(Problem(tag, "설비 목록에 없는 설비번호입니다.",
-                                        f"{FILE_NAME}의 설비번호를 설비대장과 같게 고쳐 주세요."))
+                                        f"{FILE_NAME}의 설비번호를 ‘설비’ 시트와 같게 고쳐 주세요.", tag, SCENARIO_SHEET, "설비번호"))
             continue
         target = targets.get(tag)
         material = target.material if target else _clean(facilities[tag].get("취급물질"))
@@ -175,7 +182,8 @@ def plan(project: Stage2Project) -> Plan:
             out.scenarios.append(scenario)
             if not _clean(row.get("경계까지 거리(m)")):
                 out.problems.append(Problem(scenario["사고시나리오명"], "설비에서 사업장 경계까지 거리가 없어 장외거리를 구할 수 없습니다.",
-                                            f"{FILE_NAME}에 설비번호 {tag}의 ‘경계까지 거리(m)’를 적어 주세요."))
+                                            f"{FILE_NAME}에 설비번호 {tag}의 ‘경계까지 거리(m)’를 적어 주세요.",
+                                            tag, SCENARIO_SHEET, "경계까지 거리(m)"))
     return out
 
 
@@ -276,17 +284,21 @@ def _problems(project: Stage2Project, outcome: Outcome) -> None:
     """계산 엔진이 남긴 문제를 ‘어느 파일의 어느 항목’으로 바꿔 모읍니다."""
     for impact in outcome.impacts:
         for problem in impact.problems:
-            outcome.problems.append(Problem(impact.name, problem, _where_to_fix(problem, impact.tag)))
+            outcome.problems.append(Problem(impact.name, problem, _where_to_fix(problem, impact.tag), impact.tag,
+                                            *_cell_of(problem)))
     counts = frequency_inputs(project)
     for impact in outcome.impacts:
         if impact.is_off_site and not any(_clean(counts.get(impact.tag, {}).get(e)) for e in f14.EVENT_NAMES):
             outcome.problems.append(Problem(impact.name, "장외로 영향이 나가는데 개시사건 개수가 없습니다(별지 제14호 시설빈도).",
-                                            f"{FILE_NAME}에 설비번호 {impact.tag}의 개시사건 개수와 ‘개수 산정근거’를 적어 주세요."))
+                                            f"{FILE_NAME}에 설비번호 {impact.tag}의 개시사건 개수와 ‘개수 산정근거’를 적어 주세요.",
+                                            impact.tag, SCENARIO_SHEET, "개수 산정근거"))
     for result in outcome.psm:
         for problem in result.problems:
             fix = ("‘사고시나리오 결과’ 화면에서 기상청 자료로 대기온도·습도를 채우거나, 회사 자료에 ‘대기온도(℃)’·‘습도(%)’를 적어 주세요."
                    if "대기온도" in problem or "습도" in problem else _where_to_fix(problem, result.row.get("대상 설비번호", "")))
-            outcome.problems.append(Problem(result.row.get("시나리오명", ""), problem, fix))
+            tag = result.row.get("대상 설비번호", "")
+            cell = ("", "") if "대기온도" in problem or "습도" in problem else _cell_of(problem)
+            outcome.problems.append(Problem(result.row.get("시나리오명", ""), problem, fix, tag, *cell))
 
 
 def current(project: Stage2Project) -> Outcome:
@@ -352,6 +364,89 @@ def _where_to_fix(problem: str, tag: str) -> str:
         if any(word in problem for word in words):
             return fix
     return "영향범위 분석 근거서의 가정과 회사 작성용 엑셀의 입력값을 확인해 주세요."
+
+
+CELL_RULES = (     # 문제 문장의 낱말 → (회사 작성용 엑셀 시트, 열)
+    (("경계까지 거리", "사업장 경계까지"), (SCENARIO_SHEET, "경계까지 거리(m)")),
+    (("액위",), (SCENARIO_SHEET, "액위(m)")),
+    (("연소열",), (SCENARIO_SHEET, "연소열(kJ/kg)")),
+    (("비점",), (SCENARIO_SHEET, "비점(℃)")),
+    (("기화열",), (SCENARIO_SHEET, "기화열(kJ/kg)")),
+    (("액체비열",), (SCENARIO_SHEET, "액체비열(kJ/kg·K)")),
+    (("연결구",), ("설비", "최대 연결구 크기(mm)")),
+    (("운전온도",), ("설비", "운전온도(℃)")),
+    (("운전압력",), ("설비", "운전압력(MPa)")),
+    (("비중",), ("설비", "비중")),
+    (("분자량",), ("물질", "분자량")),
+    (("증기압",), ("물질", "증기압")),
+    (("최대보유량",), ("설비", "최대보유량(kg)")),
+)
+
+
+def _cell_of(problem: str) -> tuple[str, str]:
+    for words, cell in CELL_RULES:
+        if any(word in problem for word in words):
+            return cell
+    return "", ""
+
+
+def _row_of(project: Stage2Project, sheet: str, tag: str) -> int | None:
+    """회사 작성용 엑셀에서 이 설비번호(또는 그 설비의 취급물질)가 적힌 줄 번호."""
+    if not tag or not sheet:
+        return None
+    entity = f"facility:{tag}"
+    if sheet == "물질":
+        material = next((f["value"] for f in ew.graph_facts(project) if f["entity"] == entity and f["field"] == "product"), None)
+        names = {f["entity"] for f in ew.graph_facts(project) if f["field"] == "name" and f["value"] == material}
+        entity = next(iter(names), "")
+    for fact in ew.graph_facts(project):
+        location = str(fact.get("location") or "")
+        if fact["entity"] == entity and location.startswith(sheet + " 행 "):
+            found = re.search(r"행 (\d+)", location)
+            if found:
+                return int(found.group(1))
+    return None
+
+
+def correction_rows(project: Stage2Project, workbook_name: str) -> list[dict[str, str]]:
+    """사고시나리오 계산에서 나온 문제를 자료 접수 ② 표의 줄로(엑셀 시트!칸 위치와 함께). 같은 문제는 한 번만."""
+    from openpyxl.utils import get_column_letter
+
+    from copy import deepcopy
+
+    headers = _template_headers()
+    if needs_refresh(project):          # 엑셀을 막 올려 결과가 아직 없으면 사본으로 계산해 봅니다(원본은 바꾸지 않음)
+        project = deepcopy(project)
+        refresh(project)
+    rows, seen = [], set()
+    for problem in current(project).problems:
+        where = f"{workbook_name} · {problem.sheet}" if problem.sheet else workbook_name
+        row = _row_of(project, problem.sheet, problem.tag)
+        if row and problem.column in headers.get(problem.sheet, []):
+            where = f"{workbook_name} · {problem.sheet}!{get_column_letter(headers[problem.sheet].index(problem.column) + 1)}{row}"
+        elif problem.sheet and problem.tag:
+            where += f" (설비번호 {problem.tag} 줄)"
+        key = (where, problem.what)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"파일·위치": where, "항목": f"사고시나리오 · {problem.where}", "확인된 문제": problem.what,
+                     "수정 요청": problem.fix})
+    return rows
+
+
+_HEADERS: dict[str, list[str]] = {}
+
+
+def _template_headers() -> dict[str, list[str]]:
+    if not _HEADERS:
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from . import cap_upload_template as tpl
+
+        book = load_workbook(BytesIO(tpl.build_company()))
+        _HEADERS.update({ws.title: [str(c.value or "") for c in ws[1]] for ws in book})
+    return _HEADERS
 
 
 def report_docx(project: Stage2Project) -> bytes:
