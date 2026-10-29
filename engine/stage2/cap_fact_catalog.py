@@ -250,6 +250,12 @@ def identifier_headers(kind: str) -> frozenset[str]:
 
 def psm_tables() -> dict[str, list[Fact]]:
     """공정안전보고서 표 서식 번호 → 그 표의 사실(열 순서)."""
+    return {table: items for table, items in input_tables().items()
+            if any("PSM" in item.docs for item in items)}
+
+
+def input_tables() -> dict[str, list[Fact]]:
+    """화사계와 공정안전보고서의 반복 입력표 전체."""
     out: dict[str, list[Fact]] = {}
     for item in all_facts():
         if item.kind == "psm_table":
@@ -260,7 +266,7 @@ def psm_tables() -> dict[str, list[Fact]]:
 def table_header_map(table: str) -> dict[str, str]:
     """공정안전보고서 표 하나의 머리글 표기 → 읽을 항목(식별자 열 포함)."""
     out: dict[str, str] = {}
-    for item in psm_tables().get(table, ()):
+    for item in input_tables().get(table, ()):
         for header in item.headers:
             out.setdefault(header_key(header), item.evidence_field)
     return out
@@ -268,7 +274,7 @@ def table_header_map(table: str) -> dict[str, str]:
 
 def table_key_fields(table: str) -> list[str]:
     """그 표의 한 줄을 구별하는 열(식별자 사실)의 항목 이름."""
-    return [item.evidence_field for item in psm_tables().get(table, ()) if item.identifier]
+    return [item.evidence_field for item in input_tables().get(table, ()) if item.identifier]
 
 
 def by_evidence_field(kind: str) -> dict[str, Fact]:

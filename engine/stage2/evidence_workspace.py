@@ -65,8 +65,8 @@ TEXT_OPTIONS = {f.evidence_field: f.options for f in catalog.all_facts()
                 if f.evidence_field in TEXT_FIELDS and f.format == "choice" and f.options}
 CATALOG_HEADERS = {kind: catalog.header_map(kind) for kind in ("facility", "material", "detector", "site", "target")}
 # 공정안전보고서 표(별지 제14·16·17호 등): 서식 번호 → 머리글 → 항목, 그리고 한 줄을 구별하는 열
-PSM_TABLE_HEADERS = {table: catalog.table_header_map(table) for table in catalog.psm_tables()}
-PSM_TABLE_KEYS = {table: catalog.table_key_fields(table) for table in catalog.psm_tables()}
+PSM_TABLE_HEADERS = {table: catalog.table_header_map(table) for table in catalog.input_tables()}
+PSM_TABLE_KEYS = {table: catalog.table_key_fields(table) for table in catalog.input_tables()}
 PSM_KNOWN_HEADERS = frozenset(h for headers in PSM_TABLE_HEADERS.values() for h in headers)
 DETECTOR_ID_HEADERS = frozenset(catalog.identifier_headers("detector"))
 TARGET_ID_HEADERS = frozenset(catalog.identifier_headers("target"))   # 주변 보호대상 조사표(보호대상 명칭)
@@ -1702,7 +1702,7 @@ def _applicability_values(project, chosen, tables):
 def _psm_table_rows(chosen):
     """공정안전보고서 표 서식 번호 → (행 목록, 근거 사실들). 제17호의5는 가스감지기 사실로 만듭니다."""
     out = {}
-    for table, items in catalog.psm_tables().items():
+    for table, items in catalog.input_tables().items():
         columns = {item.evidence_field: item.column for item in items}
         rows, used = [], []
         for entity, values in chosen.items():
@@ -1825,8 +1825,12 @@ def _table_values(project, chosen):
 
     tables = _psm_table_rows(chosen)
     for table, (rows, facts) in tables.items():
+        if table.startswith("cap-"):
+            items = catalog.input_tables()[table]
+            out[items[0].field_key] = (rows, facts, catalog.file_label(items[0].file))
+            continue
         spec = pt.SPECS[table]
-        keys = [next(i.column for i in catalog.psm_tables().get(table, ()) if i.evidence_field == f) for f in
+        keys = [next(i.column for i in catalog.input_tables().get(table, ()) if i.evidence_field == f) for f in
                 catalog.table_key_fields(table)] if table != "17-5" else [spec.unique]
         record = project.get_field(spec.key)
         existing = record.value if record and isinstance(record.value, list) else []   # 예전에 적은 다른 줄은 지우지 않음

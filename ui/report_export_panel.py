@@ -121,7 +121,7 @@ def render_workspace_download(project) -> None:
     except Exception:
         st.error("초안을 생성·검증하지 못했어요. 자료와 서식 구성을 확인한 뒤 다시 시도해 주세요.")
         return
-    st.caption("DOCX에는 현재 자료와 서술형이 포함됩니다. 제출 전에 내용을 확인하세요.")
+    st.caption("현재 자료와 서술형을 넣은 DOCX 초안입니다. 제출 전에 내용을 확인하세요.")
     cache_key = "workspace_cap_hwp_" + project.project_id
     fingerprint = sha256(draft.docx).hexdigest()
     saved = st.session_state.get(cache_key + '_direct')
