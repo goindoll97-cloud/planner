@@ -284,3 +284,15 @@ class ProgressBoardTests(unittest.TestCase):
         for removed in ("버전관리 열기", "새 사업장은", "서술형 포함 DOCX", "제출 행정서식", "점검하고 내려받기"):
             self.assertNotIn(removed, text)
 
+
+
+def test_document_validation_rows_point_to_a_sheet_or_screen_not_a_placeholder():
+    from ui import evidence_workspace_page as page
+    rows = page._excel_issue_rows([
+        {'파일·위치': 'a.xlsx', '항목': '별지 제6호', '확인된 문제': '유해화학물질 명세', '_keys': ('inventory.chemicals', 'cap.chemical.details')},
+        {'파일·위치': 'a.xlsx', '항목': '별지 제12호', '확인된 문제': '영향범위', '_keys': ('cap.offsite.scenario_impact_table',)},
+        {'파일·위치': 'a.xlsx', '항목': '별지 제1호', '확인된 문제': '승인 DB', '_keys': ('zz.unknown',)}])
+    assert '물질' in rows[0]['시트']
+    assert '③' in rows[1]['시트']
+    assert '승인 DB' in rows[2]['시트']
+    assert not any('특정 불가' in r['시트'] for r in rows)
