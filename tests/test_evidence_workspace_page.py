@@ -136,8 +136,8 @@ class EvidencePageTests(unittest.TestCase):
         self.assertEqual(list(frame.columns), ["시트", "행", "열", "항목", "확인된 문제"])
         self.assertTrue(any("사업장 정보" == str(v) for v in frame["시트"]))
         self.assertTrue(any("B열" in str(v) for v in frame["열"]))
-        at.button(key="replace_excel_" + self.pid).click().run()
-        self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 1)
+        self.assertFalse([b for b in at.button if b.key == "replace_excel_" + self.pid])
+        self.assertTrue(any("최신본으로 인식" in i.value for i in at.info))
 
     def test_step_four_lists_narrative_items_and_makes_rule_drafts(self):
         project = load_project(self.pid)

@@ -271,6 +271,7 @@ def _latest_workbook(project):
     st.caption(f"현재 반영한 최신 엑셀: {state['name']} · {when} (한국 시간)")
 
 
+NOT_EXCEL = '엑셀 입력 아님'
 _STEP3_PREFIXES = ('cap.offsite.', 'cap.site.surrounding_environment', 'documents.')
 
 
@@ -281,7 +282,7 @@ def _validation_location(item) -> dict:
         return {'시트': '파일 전체', '행': '—', '열': '—'}
     keys = set(item.get('_keys') or ())
     if keys and all(k.startswith(_STEP3_PREFIXES) for k in keys):
-        return {'시트': '엑셀 입력 아님 · ③ 시나리오·주변 조사 화면', '행': '—', '열': '—'}
+        return {'시트': NOT_EXCEL + ' · ③ 시나리오·주변 조사 화면', '행': '—', '열': '—'}
     sheets, headers = [], []
     text = f"{item.get('항목', '')} {item.get('확인된 문제', '')}"
     for fact in cat.facts(docs=['CAP']):
@@ -300,7 +301,7 @@ def _validation_location(item) -> dict:
                 headers.append(fact.template_header)
     if sheets:
         return {'시트': ' · '.join(sheets) + ' (관련 시트)', '행': '—', '열': ' · '.join(headers[:3]) or '—'}
-    return {'시트': '엑셀 입력 아님 · 법령 승인 DB·판정 확인', '행': '—', '열': '—'}
+    return {'시트': NOT_EXCEL + ' · 법령 승인 DB·판정 확인', '행': '—', '열': '—'}
 
 
 def _excel_issue_rows(rows, content=None):
@@ -423,16 +424,20 @@ def _coverage_panel(project, found) -> None:
                                      "수정 요청": "관련 입력값과 적용 기준을 확인해 주세요. 도면·SDS 원본은 올리지 않습니다."})
             except Exception:
                 st.error("문서 검증을 완료하지 못했습니다. 입력 검사 통과만으로 문서가 완성된 것은 아닙니다.")
-        st.caption("시트·행·열을 찾아 엑셀을 고친 뒤 전체 파일을 다시 올려 주세요. 문서 검증 결과는 칸 단위가 아니라 관련 시트 또는 확인 화면을 표시합니다.")
-        if rows:
-            from engine.stage2.storage import load_attachment
-            current = company_intake.current(project)
-            content = load_attachment(project.project_id, current['sha256'])
-            st.dataframe(_excel_issue_rows(rows, content), hide_index=True, width="stretch")
+        st.caption("시트·행·열을 찾아 엑셀을 고친 뒤 전체 파일을 다시 올려 주세요. 엑셀로 고칠 수 없는 문서 검증 결과는 이 표에 넣지 않습니다.")
+        from engine.stage2.storage import load_attachment
+        current = company_intake.current(project)
+        content = load_attachment(project.project_id, current['sha256'])
+        table = _excel_issue_rows(rows, content) if rows else []
+        fixable = [r for r in table if not r['시트'].startswith(NOT_EXCEL)]
+        if fixable:
+            st.dataframe(fixable, hide_index=True, width="stretch")
         else:
             st.success("엑셀 입력 검사에서 고칠 항목이 없습니다. 법령 기준과 문서 작성 가능 여부는 별도로 검증합니다.")
-        st.button("수정한 엑셀 다시 올리기", key="replace_excel_" + project.project_id,
-                  on_click=_go, args=(1, project.project_id), type="primary")
+        if len(fixable) < len(table):
+            st.caption(f"엑셀로 고칠 수 없는 문서 검증 {len(table) - len(fixable)}건(법령 승인 DB·판정, ③ 시나리오·주변 조사 계산)은 "
+                       "이 표에서 제외했습니다. ③ 화면과 ④ 작성 단계에서 확인합니다.")
+        st.info("엑셀을 고친 뒤 ① 엑셀 작성·올리기에 수정본을 올리면 자동으로 최신본으로 인식됩니다. 그곳에 업로드해 주세요.")
         return
 
 def _step_questions(project, found) -> None:
