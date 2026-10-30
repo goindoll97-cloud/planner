@@ -271,6 +271,38 @@ def _latest_workbook(project):
     st.caption(f"현재 반영한 최신 엑셀: {state['name']} · {when} (한국 시간)")
 
 
+_STEP3_PREFIXES = ('cap.offsite.', 'cap.site.surrounding_environment', 'documents.')
+
+
+def _validation_location(item) -> dict:
+    """문서 검증 결과는 엑셀 칸이 아니라 점검 항목 단위라서, 연결된 입력 위치(엑셀 시트·③ 화면)를 알려 준다."""
+    from engine.stage2 import cap_fact_catalog as cat, cap_upload_template as tpl
+    if '_keys' not in item:
+        return {'시트': '파일 전체', '행': '—', '열': '—'}
+    keys = set(item.get('_keys') or ())
+    if keys and all(k.startswith(_STEP3_PREFIXES) for k in keys):
+        return {'시트': '엑셀 입력 아님 · ③ 시나리오·주변 조사 화면', '행': '—', '열': '—'}
+    sheets, headers = [], []
+    text = f"{item.get('항목', '')} {item.get('확인된 문제', '')}"
+    for fact in cat.facts(docs=['CAP']):
+        if not fact.readable or not (fact.field_key in keys or any(t[0] in keys for t in fact.targets)):
+            continue
+        if fact.kind == 'psm_table':
+            sheet = tpl.sheet_title(fact.table)
+        elif fact.kind in cat.SITE_KINDS:
+            sheet = tpl.SITE_SHEET
+        else:
+            sheet = tpl.ENTITY_SHEETS.get('scenario' if fact.file == tpl.SCENARIO_FILE else fact.kind)
+        if sheet and sheet not in (tpl.ENTITY_SHEETS['scenario'], tpl.ENTITY_SHEETS['target']):
+            if sheet not in sheets:
+                sheets.append(sheet)
+            if fact.template_header and fact.template_header in text and fact.template_header not in headers:
+                headers.append(fact.template_header)
+    if sheets:
+        return {'시트': ' · '.join(sheets) + ' (관련 시트)', '행': '—', '열': ' · '.join(headers[:3]) or '—'}
+    return {'시트': '엑셀 입력 아님 · 법령 승인 DB·판정 확인', '행': '—', '열': '—'}
+
+
 def _excel_issue_rows(rows, content=None):
     """파일명 대신 실제 엑셀의 시트·행·열 제목을 표시한다. 특정 불가한 검증은 추측하지 않는다."""
     from io import BytesIO
@@ -295,7 +327,7 @@ def _excel_issue_rows(rows, content=None):
                 title = str(book[sheet][f'{col}1'].value or '')
             location = {'시트': sheet, '행': f'{row}행', '열': f'{col}열' + (f' · {title}' if title else '')}
         else:
-            location = {'시트': '문서 검증 · 입력 칸 특정 불가', '행': '—', '열': '—'}
+            location = _validation_location(item)
         result.append({**location, '항목': item.get('항목', ''), '확인된 문제': item.get('확인된 문제', '')})
     return result
 
@@ -387,11 +419,11 @@ def _coverage_panel(project, found) -> None:
                 for issue in (*state.text_issues, *state.manual_issues):
                     if issue.status != "PASS":
                         rows.append({"파일·위치": company_intake.current(project)['name'], "항목": issue.legal_item,
-                                     "확인된 문제": issue.message,
+                                     "확인된 문제": issue.message, "_keys": tuple(issue.field_keys),
                                      "수정 요청": "관련 입력값과 적용 기준을 확인해 주세요. 도면·SDS 원본은 올리지 않습니다."})
             except Exception:
                 st.error("문서 검증을 완료하지 못했습니다. 입력 검사 통과만으로 문서가 완성된 것은 아닙니다.")
-        st.caption("시트·행·열을 찾아 엑셀을 고친 뒤 전체 파일을 다시 올려 주세요. 위치를 특정할 수 없는 문서 검증 결과는 별도로 확인해 주세요.")
+        st.caption("시트·행·열을 찾아 엑셀을 고친 뒤 전체 파일을 다시 올려 주세요. 문서 검증 결과는 칸 단위가 아니라 관련 시트 또는 확인 화면을 표시합니다.")
         if rows:
             from engine.stage2.storage import load_attachment
             current = company_intake.current(project)
