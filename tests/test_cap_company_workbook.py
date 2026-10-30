@@ -15,9 +15,11 @@ def save(book):
 
 def test_full_company_workbook_has_all_input_facts_and_no_results():
     book = load_workbook(BytesIO(tpl.build_company()))
-    assert len(book.sheetnames) == 8
-    assert '사고시나리오 검토' not in book.sheetnames
+    assert len(book.sheetnames) == 9
     assert '주변 보호대상' not in book.sheetnames
+    scenario_headers = [c.value for c in book['사고시나리오 검토'][1]]
+    assert {'액위(m)', '비열비', '배관누출', '개수 산정근거', '수동적 완화장치'} <= set(scenario_headers)
+    assert not {'경계까지 거리(m)', '사고원점 좌표'} & set(scenario_headers)      # 지도로 확인하는 값
     assert [c.value for c in book[tpl.SITE_SHEET][1]][:2] == ['항목', '값']
     assert book[tpl.SITE_SHEET].max_column == 3
     assert all(book[tpl.SITE_SHEET].cell(r, 2).value is None for r in range(2, book[tpl.SITE_SHEET].max_row + 1))
@@ -30,8 +32,8 @@ def test_full_company_workbook_has_all_input_facts_and_no_results():
         else:
             title = tpl.sheet_title(item.table) if item.table else (
                 tpl.ENTITY_SHEETS['scenario'] if item.file == tpl.SCENARIO_FILE else tpl.ENTITY_SHEETS[item.kind])
-            if title in {'사고시나리오 검토', '주변 보호대상'}:
-                continue  # ③ 화면에서 작성하는 항목
+            if item.id in tpl.MAP_SCENARIO_IDS or title == '주변 보호대상':
+                continue  # 지도로 확인하는 값은 엑셀에 적지 않는다
             assert item.template_header in [c.value for c in book[title][1]], item.id
     assert '안내' not in book.sheetnames
     assert not any('첨부' in s for s in book.sheetnames)
