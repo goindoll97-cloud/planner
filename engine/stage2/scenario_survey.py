@@ -4,8 +4,8 @@
 - 주소점의 필지 경계(브이월드 연속지적도)를 초안으로 불러올 수 있고, 사람이 지도에서 고쳐 그립니다.
 - 도면에서 뽑은 경계는 GeoJSON이나 꼭짓점 좌표 CSV(경도·위도)로 올릴 수 있습니다.
 - 경계를 저장하면 주변 지도 객체까지의 거리를 그 경계에서 잽니다.
-보호대상의 분류·거리·인원은 화면에서 고르지 않습니다. 프로그램이 지도 조회 값을 미리 채운 조사표(엑셀)를 내려받아
-사람이 고쳐 ‘자료 올리기’로 다시 올리면 별지 제8호에 들어갑니다. 분류 제안은 이름 규칙과(있으면) 로컬 AI로 하되,
+보호대상의 분류·거리·인원은 화면에서 고르지 않습니다. 프로그램이 회사 작성용 엑셀의 ‘주변 보호대상’ 시트에 지도 조회 값을
+미리 채워 주면(company_workbook), 사람이 고쳐 자료 접수 ①에 다시 올려 별지 제8호에 들어갑니다. 분류 제안은 이름 규칙과(있으면) 로컬 AI로 하되,
 법정 분류 목록에 없는 값은 버립니다.
 """
 from __future__ import annotations
@@ -22,6 +22,7 @@ from . import evidence_workspace as ew
 from .project import Stage2Project
 
 TARGET_SHEET, METHOD_SHEET, GUIDE_SHEET = "보호대상", "조사 방법", "안내"
+TARGET_SHEET_NAME = "주변 보호대상"          # 회사 작성용 엑셀의 시트 이름
 FILENAME = "주변보호대상_조사표.xlsx"
 TARGET_COLUMNS = ("보호대상 명칭", "보호대상 구분", "세부유형", "주소·위치", "사업장 경계와 거리(m)", "GIS/현장 근거",
                   "거주민수", "근로자수")
@@ -287,6 +288,54 @@ def workbook(project: Stage2Project, client=None) -> bytes:
         guide.append([text])
         guide.cell(row=guide.max_row, column=1).alignment = Alignment(wrap_text=True)
     guide.column_dimensions["A"].width = 120
+    out = BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def company_workbook(project: Stage2Project, original: bytes | None = None, client=None) -> bytes:
+    """회사 작성용 엑셀(지금 반영한 원본, 없으면 빈 양식)의 ‘주변 보호대상’ 시트에 지도 조회 후보를 더하고,
+    ‘사업장 정보’의 조사 근거 칸 중 빈 것만 채웁니다. 사람이 고쳐 ①에 그대로 다시 올리면 별지 제8호가 채워집니다.
+    회사가 이미 적은 값은 바꾸지 않고, 확인 여부(예/아니오) 칸은 사람이 적도록 비워 둡니다."""
+    from openpyxl import load_workbook
+    from . import cap_upload_template as tpl
+
+    book = load_workbook(BytesIO(original or tpl.build_company()))
+    sheet = book[TARGET_SHEET_NAME] if TARGET_SHEET_NAME in book.sheetnames else None
+    added = 0
+    if sheet is not None:
+        headers = {str(c.value).strip(): c.column for c in sheet[1] if c.value}
+        name_col = headers.get("보호대상 명칭", 1)
+        names = {f8._norm(sheet.cell(row=r, column=name_col).value) for r in range(2, sheet.max_row + 1)
+                 if sheet.cell(row=r, column=name_col).value}
+        row = 2
+        for candidate in candidate_rows(project, client):
+            if f8._norm(candidate["보호대상 명칭"]) in names:
+                continue
+            while sheet.cell(row=row, column=name_col).value not in (None, ""):
+                row += 1
+            for column, value in candidate.items():
+                if column in headers and value not in (None, ""):
+                    sheet.cell(row=row, column=headers[column]).value = value
+            names.add(f8._norm(candidate["보호대상 명칭"]))
+            added += 1
+        total = sum(1 for r in range(2, sheet.max_row + 1) if sheet.cell(row=r, column=name_col).value)
+    else:
+        total = 0
+    if tpl.SITE_SHEET in book.sheetnames:
+        site = book[tpl.SITE_SHEET]
+        boundary = survey.boundary_record(project) if survey.boundary(project) is not None else {}
+        data = survey.survey(project) if survey.survey(project) and survey.is_current(project) else {}
+        defaults = {
+            "확인한 지도·도면과 확인일": f"브이월드 공간자료 조회 {(data.get('checked_at') or '')[:10]}" if data else "",
+            "경계·거리 확인 방법": (f"지도에서 확인한 사업장 경계({boundary.get('source', '')})에서 각 대상까지 최소거리를 재고 "
+                              "경계 밖 500m 안을 확인") if boundary else "",
+            "지도 번호": ",".join(str(i) for i in range(1, total + 1)) if added and total else "",
+        }
+        for r in range(2, site.max_row + 1):
+            label = str(site.cell(row=r, column=1).value or "").strip()
+            if defaults.get(label) and site.cell(row=r, column=2).value in (None, ""):
+                site.cell(row=r, column=2).value = defaults[label]
     out = BytesIO()
     book.save(out)
     return out.getvalue()
