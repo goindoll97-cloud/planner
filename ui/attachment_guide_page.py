@@ -35,8 +35,8 @@ ROWS = [
 ]
 
 
-st.set_page_config(page_title="도면·SDS 첨부 안내", page_icon="🗺️", layout="wide")
-st.title("도면·SDS 첨부 안내")
+st.set_page_config(page_title="도면·MSDS 첨부 안내", page_icon="🗺️", layout="wide")
+st.title("도면·MSDS 첨부 안내")
 st.caption("회사 작성용 엑셀에는 사람이 적는 값만 입력합니다. 아래 자료는 계획서 초안과 대조해 해당 위치에 사람이 직접 준비할 파일입니다.")
 st.table(ROWS)
 st.caption("표의 ‘관련’은 내용을 확인할 계획서 위치입니다. 적용 범위와 실제 제출자료는 사업장 조건 및 현행 작성 기준으로 확인하세요.")

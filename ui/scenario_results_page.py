@@ -271,13 +271,37 @@ def _current_workbook(project) -> tuple[bytes | None, str]:
     return None, tpl.COMPANY_FILENAME
 
 
+def _target_editor(project, rows) -> None:
+    """지도로 찾은 후보 표. 분류·거주민수·근로자수는 지도·현장을 확인해 여기서 적고, 제출 버튼으로 반영합니다."""
+    st.markdown("**지도에서 위치를 확인하고, 아래 표의 구분·거주민수·근로자수를 확인해 적어 주세요.**")
+    editable = ("보호대상 구분", "세부유형", "거주민수", "근로자수", "GIS/현장 근거")
+    frame = pd.DataFrame([{c: r.get(c, "") for c in ss.TARGET_COLUMNS} for r in rows])
+    config = {c: st.column_config.NumberColumn(c, min_value=0, step=1) for c in ("거주민수", "근로자수")}
+    edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"scn_targets_{project.project_id}",
+                            disabled=[c for c in ss.TARGET_COLUMNS if c not in editable], column_config=config)
+    if st.button("확인한 보호대상 제출", type="primary", key=f"scn_targets_submit_{project.project_id}"):
+        saved = {f8._norm(r.get("보호대상 명칭")): r for r in rows}
+        merged = []
+        for record in edited.to_dict("records"):
+            record = {k: ("" if pd.isna(v) else v) for k, v in record.items()}
+            merged.append({**saved.get(f8._norm(record.get("보호대상 명칭")), {}), **record})
+        f8.save(project, merged, no_target=False, status="USER_CONFIRMED")
+        try:
+            sp.refresh(project)
+        except Exception as exc:
+            st.warning(f"사고시나리오를 다시 계산하지 못했습니다({type(exc).__name__}).")
+        save_project(project)
+        st.success("확인한 보호대상을 반영하고 영향범위를 다시 계산했습니다.")
+        st.rerun()
+
+
 def _targets(project) -> None:
     st.caption("확인한 경계에서 주변 지역을 검색한 결과입니다. 분류·거주민수·근로자수는 현장 자료로 확인하기 전까지 후보입니다.")
     rows = f8.saved_rows(project)
     if f8.declared_no_target(project):
         st.success("500m 안 보호대상 없음으로 기록되어 있습니다.")
     elif rows:
-        frames.show(pd.DataFrame([{c: r.get(c, "") for c in ss.TARGET_COLUMNS} for r in rows]), hide_index=True, width="stretch")
+        _target_editor(project, rows)
     else:
         st.info("① 사업장 경계·지도에서 경계를 확인하면 주변을 검색합니다.")
     needs = f8.needs(project)

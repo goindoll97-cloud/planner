@@ -47,3 +47,24 @@ def test_uploaded_demo_generates_narratives_scenarios_and_docx_without_forging_a
     assert 'TK-01' in text
     assert 'AI 초안' in text
     assert not draft.state.final_ready
+
+
+def test_reuploading_the_workbook_keeps_map_survey_results(tmp_path, monkeypatch):
+    from openpyxl import load_workbook
+    from engine.stage2 import evidence_workspace as ew
+    monkeypatch.chdir(tmp_path)
+    project = intake.project_for_upload(Stage2Project(project_id='EXCEL-START', company_name=''), demo.FILENAME, demo.build())
+    intake.apply(project, demo.FILENAME, demo.build())
+    project.set_field(ew.SURVEY_KEY, '보호대상', [{'보호대상 명칭': '가상학교'}], 'HOLD')
+    rows = project.get_field(ew.SCENARIO_INPUT_KEY).value
+    next(r for r in rows if r['설비번호'] == 'TK-01').update({'경계까지 거리(m)': 120, '사고원점 좌표': '35,127'})
+    project.set_field(ew.SCENARIO_INPUT_KEY, '시나리오 입력', rows, 'HOLD')
+    book = load_workbook(BytesIO(demo.build()))
+    book['설비']['B2'] = '가상 톨루엔 저장탱크(수정)'
+    out = BytesIO()
+    book.save(out)
+    assert intake.apply(project, demo.FILENAME, out.getvalue())
+    assert [r['보호대상 명칭'] for r in project.get_field(ew.SURVEY_KEY).value] == ['가상학교']
+    tk = next(r for r in project.get_field(ew.SCENARIO_INPUT_KEY).value if r['설비번호'] == 'TK-01')
+    assert tk['경계까지 거리(m)'] == 120 and tk['사고원점 좌표'] == '35,127'
+    assert str(tk['액위(m)']) == '6'       # 회사 엑셀의 시나리오 입력값은 그대로 읽힌다

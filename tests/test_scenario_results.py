@@ -250,12 +250,15 @@ class CompanyWorkbookSurveyTests(unittest.TestCase):
         self.assertTrue({"연습 초등학교", "연습 아파트", "연습천"} <= {r["보호대상 명칭"] for r in f8.saved_rows(p)})
         self.assertTrue(before <= {r["보호대상 명칭"] for r in f8.saved_rows(p)})
 
-    def test_without_an_uploaded_workbook_the_initial_template_has_no_scenario_sheets(self):
+    def test_without_an_uploaded_workbook_the_initial_template_has_no_map_inputs(self):
         from engine.stage2 import cap_upload_template as tpl
         p, _ = walk("울산광역시 남구 연습로 1")
         book = load_workbook(BytesIO(tpl.build_company()))
         self.assertNotIn(ss.TARGET_SHEET_NAME, book.sheetnames)
-        self.assertNotIn('사고시나리오 검토', book.sheetnames)
+        headers = [c.value for c in book['사고시나리오 검토'][1]]
+        self.assertIn('액위(m)', headers)
+        self.assertNotIn('경계까지 거리(m)', headers)
+        self.assertNotIn('사고원점 좌표', headers)
 
 
 class BoundaryPickingTests(unittest.TestCase):

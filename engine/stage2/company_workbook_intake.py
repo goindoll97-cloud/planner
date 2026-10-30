@@ -69,8 +69,14 @@ def inspect(content, name, group=''):
         book = load_workbook(BytesIO(content))
     except (BadZipFile, ValueError, OSError, KeyError) as exc:
         raise WorkbookFormatError([{'파일·위치': name, '항목': '엑셀 읽기', '확인된 문제': '파일을 열지 못했습니다.', '수정 요청': 'Excel에서 .xlsx로 다시 저장한 뒤 올려 주세요.'}]) from exc
-    expected = load_workbook(BytesIO(tpl.build_company(include_scenario_sheets=True)))
-    optional_sheets = {tpl.ENTITY_SHEETS['scenario'], tpl.ENTITY_SHEETS['target']}
+    expected = load_workbook(BytesIO(tpl.build_company()))
+    legacy = load_workbook(BytesIO(tpl.build_company(include_scenario_sheets=True)))
+    scenario_title, target_title = tpl.ENTITY_SHEETS['scenario'], tpl.ENTITY_SHEETS['target']
+    if target_title in book.sheetnames or (scenario_title in book.sheetnames and [
+            c.value for c in book[scenario_title][1]][:legacy[scenario_title].max_column] == [
+            c.value for c in legacy[scenario_title][1]]):
+        expected = legacy                                  # 지도 항목이 있는 이전 양식도 그대로 읽는다.
+    optional_sheets = {scenario_title, target_title}
     for ws in expected:
         if ws.title not in book.sheetnames:
             if ws.title in optional_sheets:
@@ -261,9 +267,36 @@ def apply(project, name, content):
         'uploaded_at': datetime.now(timezone.utc).isoformat(), 'issues': issues}, 'FILE_READ')
     if ew.catalog_preview(work) or ew.publishing_plan(work):
         ew.publish(work, replace_existing=True)
+    _keep_map_survey(work, removed)
     project.fields = work.fields
     project.__dict__.pop('_evidence_memo', None)
     return True
+
+
+MAP_INPUT_COLUMNS = ('경계까지 거리(m)', '사고원점 좌표')
+
+
+def _keep_map_survey(work, removed):
+    """지도로 확인한 값은 회사 엑셀에 없으므로, 엑셀을 고쳐 다시 올려도 지우지 않고 되살린다."""
+    from .project import FieldRecord
+    for key in (ew.SURVEY_KEY, ew.SURVEY_REVIEW_KEY):
+        if key in removed and work.get_field(key) is None:
+            work.fields[key] = FieldRecord.from_dict(removed[key])
+    old = removed.get(ew.SCENARIO_INPUT_KEY)
+    if not old or not isinstance(old.get('value'), list):
+        return
+    kept = {str(r.get('설비번호', '')).strip(): {c: r[c] for c in MAP_INPUT_COLUMNS if r.get(c) not in (None, '')}
+            for r in old['value'] if isinstance(r, dict)}
+    kept = {k: v for k, v in kept.items() if k and v}
+    record = work.get_field(ew.SCENARIO_INPUT_KEY)
+    rows = [dict(r) for r in record.value] if record is not None and isinstance(record.value, list) else []
+    seen = {str(r.get('설비번호', '')).strip() for r in rows}
+    for row in rows:
+        for column, value in kept.get(str(row.get('설비번호', '')).strip(), {}).items():
+            row.setdefault(column, value)
+    rows += [{'설비번호': tag, **values} for tag, values in kept.items() if tag not in seen]
+    if rows:
+        work.set_field(ew.SCENARIO_INPUT_KEY, old.get('label') or '사고시나리오 설비별 입력', rows, old.get('status') or 'HOLD')
 
 
 def corrections(project):
