@@ -8,11 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_attachment_guide_is_a_sidebar_page_with_text_only():
     app = (ROOT / 'app.py').read_text(encoding='utf-8')
-    assert 'st.Page("ui/attachment_guide_page.py", title="도면·SDS 첨부 안내"' in app
+    assert 'st.Page("ui/attachment_guide_page.py", title="도면·MSDS 첨부 안내"' in app
 
     at = AppTest.from_file(str(ROOT / 'ui/attachment_guide_page.py')).run()
     assert not at.exception
-    assert at.title[0].value == '도면·SDS 첨부 안내'
+    assert at.title[0].value == '도면·MSDS 첨부 안내'
     assert not at.get('file_uploader')
     assert not at.get('download_button')
 
