@@ -146,7 +146,8 @@ def company_columns() -> dict[str, Any]:
     return out
 
 
-MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin"}      # 지도로 확인하는 값은 회사가 엑셀에 적지 않습니다.
+MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin",        # 지도로 확인하는 값
+                     "facility.scenario_kinds", "facility.scenario_reason"}  # 프로그램이 제안·작성하는 값. 회사가 엑셀에 적지 않습니다.
 
 
 def build_company(*, include_scenario_sheets: bool = False) -> bytes:

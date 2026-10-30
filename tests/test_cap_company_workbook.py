@@ -19,7 +19,7 @@ def test_full_company_workbook_has_all_input_facts_and_no_results():
     assert '주변 보호대상' not in book.sheetnames
     scenario_headers = [c.value for c in book['사고시나리오 검토'][1]]
     assert {'액위(m)', '비열비', '배관누출', '개수 산정근거', '수동적 완화장치'} <= set(scenario_headers)
-    assert not {'경계까지 거리(m)', '사고원점 좌표'} & set(scenario_headers)      # 지도로 확인하는 값
+    assert not {'경계까지 거리(m)', '사고원점 좌표', '선정할 사고유형', '시나리오 선정 근거'} & set(scenario_headers)      # 지도·프로그램이 채우는 값
     assert [c.value for c in book[tpl.SITE_SHEET][1]][:2] == ['항목', '값']
     assert book[tpl.SITE_SHEET].max_column == 3
     assert all(book[tpl.SITE_SHEET].cell(r, 2).value is None for r in range(2, book[tpl.SITE_SHEET].max_row + 1))
