@@ -37,9 +37,8 @@ def test_uploaded_demo_generates_narratives_scenarios_and_docx_without_forging_a
     assert project.get_field('cap.workspace.dike_rule').value['비율(%)'] == '110'
     assert len(cap_fact_drafting.generate(project)) == 14
     scenarios = scenario_pipeline.refresh(project)
-    assert len(scenarios.plan.scenarios) == 4
-    assert len(scenarios.impacts) == 4
-    assert scenarios.problems == []
+    assert len(scenarios.plan.scenarios) >= 4  # ③에서 경계 확인 후 상세 계산을 진행한다.
+    assert any('경계까지 거리' in issue.what for issue in scenarios.problems)
     draft = report_export.build_cap_workspace_draft(project)
     doc = Document(BytesIO(draft.docx))
     text = '\n'.join([p.text for p in doc.paragraphs] + [c.text for t in doc.tables for r in t.rows for c in r.cells])

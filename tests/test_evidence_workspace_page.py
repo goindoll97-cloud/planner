@@ -133,9 +133,9 @@ class EvidencePageTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(len(at.dataframe), 1)
         frame = at.dataframe[0].value
-        self.assertEqual(list(frame.columns), ["파일·위치", "항목", "확인된 문제", "수정 요청"])
-        self.assertTrue(any("회사작성.xlsx" in str(v) for v in frame["파일·위치"]))
-        self.assertTrue(any("사업장 정보!B" in str(v) for v in frame["파일·위치"]))
+        self.assertEqual(list(frame.columns), ["시트", "행", "열", "항목", "확인된 문제"])
+        self.assertTrue(any("사업장 정보" == str(v) for v in frame["시트"]))
+        self.assertTrue(any("B열" in str(v) for v in frame["열"]))
         at.button(key="replace_excel_" + self.pid).click().run()
         self.assertEqual(at.radio(key="evidence_step_" + self.pid).value, 1)
 
@@ -171,11 +171,14 @@ class EvidencePageTests(unittest.TestCase):
             self.assertEqual(leaked, [], f"{step}단계")
             self.assertEqual(len(at.json), 0, f"{step}단계")
 
-    def test_scenarios_show_only_ranked_table_without_detail_menus(self):
+    def test_scenarios_show_map_and_ranked_table_without_detail_menus(self):
         at = self.run_page(3)
         self.assertFalse(at.exception)
-        self.assertEqual(len(at.dataframe), 1)
-        self.assertIn("설비", at.dataframe[0].value.columns)
+        self.assertTrue(any("설비" in table.value.columns for table in at.dataframe))
+        self.assertTrue(any(button.key == "scn_map_" + self.pid + "_confirm" for button in at.button))
+        at.button(key="scenario_review_save_" + self.pid).click().run()
+        self.assertFalse(at.exception)
+        self.assertIsNotNone(load_project(self.pid).get_field("cap.workspace.scenario_inputs"))
         self.assertFalse(any(e.label in ("순서는 어떻게 매기나요?", "조합별로 어떤 값을 썼는지 보기") for e in at.expander))
         self.assertFalse(any(x.key == "combo_" + self.pid for x in at.selectbox))
 

@@ -121,6 +121,13 @@ def confirm(project: Stage2Project, geometry: dict, origin: str, *, collect=None
     data = survey.survey(project)
     notices += [str(n) for n in data.get("notices", []) if "실패" in str(n) or "미완료" in str(n)]
     candidates = candidate_rows(project)
+    if candidates:
+        current = f8.saved_rows(project)
+        names = {f8._norm(row.get('보호대상 명칭')) for row in current}
+        added = [row for row in candidates if f8._norm(row['보호대상 명칭']) not in names]
+        if added:
+            # 지도 검색 결과는 자동 작성 후보로 저장한다. 분류·인원·현장 확인은 확정하지 않는다.
+            f8.save(project, [*current, *added], no_target=False, status='HOLD')
     try:
         (refresh or sp.refresh)(project)
     except Exception as exc:

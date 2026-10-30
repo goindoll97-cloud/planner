@@ -146,10 +146,19 @@ def company_columns() -> dict[str, Any]:
     return out
 
 
-def build_company() -> bytes:
-    """회사 배포용 전체 항목 양식. 이미지·스캔 자료 제출란은 만들지 않습니다."""
+def build_company(*, include_scenario_sheets: bool = False) -> bytes:
+    """회사 배포용 양식. 시나리오·주변 조사는 ③에서 진행하며 이전 양식도 읽습니다."""
     project = Stage2Project(project_id="COMPANY-BLANK", company_name="", cap_required=True)
-    return build(project, complete=True)
+    data = build(project, complete=True)
+    if include_scenario_sheets:
+        return data
+    from openpyxl import load_workbook
+    book = load_workbook(BytesIO(data))
+    for title in (ENTITY_SHEETS['scenario'], ENTITY_SHEETS['target']):
+        del book[title]
+    out = BytesIO()
+    book.save(out)
+    return out.getvalue()
 
 
 def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", docs=None, complete: bool = False) -> bytes:

@@ -69,9 +69,12 @@ def inspect(content, name, group=''):
         book = load_workbook(BytesIO(content))
     except (BadZipFile, ValueError, OSError, KeyError) as exc:
         raise WorkbookFormatError([{'파일·위치': name, '항목': '엑셀 읽기', '확인된 문제': '파일을 열지 못했습니다.', '수정 요청': 'Excel에서 .xlsx로 다시 저장한 뒤 올려 주세요.'}]) from exc
-    expected = load_workbook(BytesIO(tpl.build_company()))
+    expected = load_workbook(BytesIO(tpl.build_company(include_scenario_sheets=True)))
+    optional_sheets = {tpl.ENTITY_SHEETS['scenario'], tpl.ENTITY_SHEETS['target']}
     for ws in expected:
         if ws.title not in book.sheetnames:
+            if ws.title in optional_sheets:
+                continue
             issue(ws.title, 'A1', '시트', '필요한 시트가 없습니다.', '빈 시트도 삭제하지 말고 원래 양식에 값을 옮겨 주세요.')
             continue
         actual = book[ws.title]
@@ -153,6 +156,8 @@ def inspect(content, name, group=''):
         table_items[title] = [identity] + [i for i in items if not i.identifier]
     table_items.update({tpl.sheet_title(t): items for t, items in wanted['tables'].items()})
     for title, items in table_items.items():
+        if title not in book.sheetnames:
+            continue
         ws = book[title]
         by_header = {i.template_header: i for i in items}
         headers = [c.value for c in ws[1]][:-1]
@@ -178,6 +183,8 @@ def inspect(content, name, group=''):
     facilities = {str(book['설비'].cell(r, 1).value).strip() for r in range(2, book['설비'].max_row + 1)
                   if book['설비'].cell(r, 1).value is not None}
     for title, header in [('사고시나리오 검토', '설비번호'), ('안전밸브', '보호대상 설비번호')]:
+        if title not in book.sheetnames:
+            continue
         ws = book[title]
         col = next(c.column for c in ws[1] if c.value == header)
         for row in range(2, ws.max_row + 1):
