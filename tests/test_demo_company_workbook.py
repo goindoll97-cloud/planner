@@ -68,3 +68,15 @@ def test_reuploading_the_workbook_keeps_map_survey_results(tmp_path, monkeypatch
     tk = next(r for r in project.get_field(ew.SCENARIO_INPUT_KEY).value if r['설비번호'] == 'TK-01')
     assert tk['경계까지 거리(m)'] == 120 and tk['사고원점 좌표'] == '35,127'
     assert str(tk['액위(m)']) == '6'       # 회사 엑셀의 시나리오 입력값은 그대로 읽힌다
+
+
+def test_workbook_emergency_facts_fill_the_form16_summary(tmp_path, monkeypatch):
+    from engine.stage2.cap_form16_engine import build_cap_form16_data
+    monkeypatch.chdir(tmp_path)
+    project = intake.project_for_upload(Stage2Project(project_id='EXCEL-START', company_name=''), demo.FILENAME, demo.build())
+    intake.apply(project, demo.FILENAME, demo.build())
+    data = build_cap_form16_data(project)
+    assert not [b for b in data.company_blockers if '회사 확정자료가 없습니다' in b]
+    values = dict(data.internal_summary + data.external_summary)
+    assert '박가상' in values['가동중지 권한·절차']
+    assert '가상 집결지 A' in values['주민 경보·대피']

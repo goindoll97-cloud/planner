@@ -139,6 +139,20 @@ def _form1_sources(project: Stage2Project) -> tuple[dict[str, dict[str, Any]], d
     return by_name, by_cas
 
 
+# 회사 작성용 엑셀의 단답형 비상대응 사실이 저장되는 곳. 전용 확정자료가 없을 때 같은 뜻의 사실로 요약을 채운다.
+COMPANY_FACT_KEYS = {
+    "비상대응조직·임무": ("cap.facts.emergency_org",),
+    "가동중지 권한·절차": ("cap.facts.shutdown",),
+    "사업장 내부 정보전달": ("cap.facts.communication",),
+    "사고원인 조사·재발방지": ("cap.facts.investigation",),
+    "사고복구": ("cap.facts.recovery",),
+    "지역사회 소통": ("cap.facts.community",),
+    "지역비상대응기관·인근사업장 공조": ("cap.facts.mutual_aid",),
+    "주민 경보·대피": ("cap.facts.evacuation",),
+    "지역사회 고지": ("cap.facts.public_notice",),
+}
+
+
 def _summary_block(
     project: Stage2Project,
     specs: Sequence[tuple[str, tuple[str, ...]]],
@@ -148,7 +162,7 @@ def _summary_block(
     rows: list[tuple[str, str]] = []
     blockers: list[str] = []
     for label, keys in specs:
-        value = _confirmed_text(project, *keys)
+        value = _confirmed_text(project, *keys) or _confirmed_text(project, *COMPANY_FACT_KEYS.get(label, ()))
         rows.append((label, value))
         if not value:
             blockers.append(f"{blocker_prefix}: {label}의 회사 확정자료가 없습니다.")
