@@ -15,7 +15,9 @@ def save(book):
 
 def test_full_company_workbook_has_all_input_facts_and_no_results():
     book = load_workbook(BytesIO(tpl.build_company()))
-    assert len(book.sheetnames) == 10
+    assert len(book.sheetnames) == 8
+    assert '사고시나리오 검토' not in book.sheetnames
+    assert '주변 보호대상' not in book.sheetnames
     assert [c.value for c in book[tpl.SITE_SHEET][1]][:2] == ['항목', '값']
     assert book[tpl.SITE_SHEET].max_column == 3
     assert all(book[tpl.SITE_SHEET].cell(r, 2).value is None for r in range(2, book[tpl.SITE_SHEET].max_row + 1))
@@ -28,6 +30,8 @@ def test_full_company_workbook_has_all_input_facts_and_no_results():
         else:
             title = tpl.sheet_title(item.table) if item.table else (
                 tpl.ENTITY_SHEETS['scenario'] if item.file == tpl.SCENARIO_FILE else tpl.ENTITY_SHEETS[item.kind])
+            if title in {'사고시나리오 검토', '주변 보호대상'}:
+                continue  # ③ 화면에서 작성하는 항목
             assert item.template_header in [c.value for c in book[title][1]], item.id
     assert '안내' not in book.sheetnames
     assert not any('첨부' in s for s in book.sheetnames)
@@ -44,7 +48,7 @@ def test_blank_company_workbook_examples_are_not_ingested():
 
 def test_company_workbook_reads_every_filled_sheet_and_replaces_same_name():
     p = create_direct_cap_project('시험', address='주소', cap_group='')
-    book = load_workbook(BytesIO(tpl.build_company()))
+    book = load_workbook(BytesIO(tpl.build_company(include_scenario_sheets=True)))
     sheet = book[tpl.SITE_SHEET]
     rep_row = next(r for r in range(2, sheet.max_row + 1) if sheet.cell(r, 1).value == '대표자')
     sheet.cell(rep_row, 2, '김시험')
@@ -88,7 +92,7 @@ def test_company_workbook_reads_every_filled_sheet_and_replaces_same_name():
 
 
 def test_every_full_workbook_input_survives_reading_with_source_location():
-    book = load_workbook(BytesIO(tpl.build_company()))
+    book = load_workbook(BytesIO(tpl.build_company(include_scenario_sheets=True)))
     wanted = tpl.company_columns()
     for r, item in enumerate(wanted['site'], 2):
         book[tpl.SITE_SHEET].cell(r, 2, item.options[0] if item.options else ('10' if item.format == 'number' else f'확인값 {r}'))

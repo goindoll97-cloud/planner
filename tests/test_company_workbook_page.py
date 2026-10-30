@@ -50,10 +50,13 @@ def test_excel_only_page_upload_correction_and_latest_renamed_file(tmp_path, mon
     assert labels == ['회사 작성용 엑셀 내려받기 · 전체 항목', '가상 회사 정보가 채워진 엑셀 내려받기']
     at.button(key='read_' + p.project_id).click().run()
     assert not at.exception, [e.value for e in at.exception]
+    assert any(item.proto.value == 100 for item in at.get('progress'))
     assert intake.current(load_project(p.project_id))['name'] == '작성.xlsx'
     assert len(at.dataframe) == 1
     frame = at.dataframe[0].value
-    assert any('설비!' in v for v in frame['파일·위치'])
+    assert any('설비' == v for v in frame['시트'])
+    assert any('행' in v for v in frame['행'])
+    assert any('열' in v for v in frame['열'])
     assert any('압력' in v for v in frame['항목'])
     assert '김대표' == load_project(p.project_id).get_field('cap.business.representative').value
     at.button(key='replace_excel_' + p.project_id).click().run()

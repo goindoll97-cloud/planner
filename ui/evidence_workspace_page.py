@@ -226,15 +226,20 @@ def _step_upload(project, found) -> None:
     uploaded = st.file_uploader("작성한 회사 엑셀 선택 (.xlsx, 한 파일)", type=["xlsx"],
                                 accept_multiple_files=False, key="company_excel_" + pid)
     if st.button("엑셀 읽고 확인하기", type="primary", disabled=uploaded is None, key="read_" + pid):
+        progress = st.progress(0, text="엑셀 양식을 확인하고 있습니다.")
         try:
             candidate = company_intake.project_for_upload(project, uploaded.name, uploaded.getvalue())
+            progress.progress(0.35, text="사업장과 입력값을 확인했습니다. 내용을 반영하고 있습니다.")
             changed = company_intake.apply(candidate, uploaded.name, uploaded.getvalue())
+            progress.progress(0.75, text="읽은 내용을 저장하고 있습니다.")
             if changed:
                 save_attachment(candidate.project_id, uploaded.name, uploaded.getvalue(), note="최신 회사 작성용 엑셀 원본")
                 save_project(candidate)
                 st.session_state.pop("narrative_progress_" + pid, None)
                 st.session_state.pop("evidence_change", None)
             st.session_state["_stage2_active_project_id"] = candidate.project_id
+            progress.progress(1.0, text="엑셀 읽기 완료 · ②에서 입력 결과를 확인하세요.")
+            st.session_state["company_upload_result_" + candidate.project_id] = "엑셀 읽기 완료 · ②에서 입력 결과를 확인하세요."
             st.session_state.pop("company_upload_error_" + pid, None)
             st.session_state.setdefault("evidence_notes", []).append(
                 f"{uploaded.name}: 최신 엑셀로 반영했어요. ②에서 빠진 값과 고칠 칸을 확인하세요." if changed else
@@ -250,7 +255,7 @@ def _step_upload(project, found) -> None:
     errors = st.session_state.get("company_upload_error_" + pid)
     if errors:
         st.error("이번 파일은 반영하지 못했습니다. 아래 내용을 고쳐 다시 올려 주세요.")
-        st.dataframe(errors, hide_index=True, width="stretch")
+        st.dataframe(_excel_issue_rows(errors, uploaded.getvalue() if uploaded else None), hide_index=True, width="stretch")
     if company_intake.current(project):
         _next_button(2, pid, "다음: 입력 확인·수정 →")
 
@@ -264,6 +269,35 @@ def _latest_workbook(project):
     from zoneinfo import ZoneInfo
     when = datetime.fromisoformat(state['uploaded_at']).astimezone(ZoneInfo('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')
     st.caption(f"현재 반영한 최신 엑셀: {state['name']} · {when} (한국 시간)")
+
+
+def _excel_issue_rows(rows, content=None):
+    """파일명 대신 실제 엑셀의 시트·행·열 제목을 표시한다. 특정 불가한 검증은 추측하지 않는다."""
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+    book = None
+    if content:
+        try:
+            book = load_workbook(BytesIO(content), read_only=True)
+        except Exception:
+            pass
+    result = []
+    for item in rows:
+        source = item.get('파일·위치', '')
+        match = re.search(r'·\s*(.+?)(?:!([A-Z]+)(\d+)|\s+행\s+(\d+)\s+열\s+(\d+))\b', source)
+        if match:
+            sheet = match.group(1).strip()
+            row = int(match.group(3) or match.group(4))
+            col = match.group(2) or get_column_letter(int(match.group(5)))
+            title = ''
+            if book and sheet in book.sheetnames:
+                title = str(book[sheet][f'{col}1'].value or '')
+            location = {'시트': sheet, '행': f'{row}행', '열': f'{col}열' + (f' · {title}' if title else '')}
+        else:
+            location = {'시트': '문서 검증 · 입력 칸 특정 불가', '행': '—', '열': '—'}
+        result.append({**location, '항목': item.get('항목', ''), '확인된 문제': item.get('확인된 문제', '')})
+    return result
 
 
 # ---------------------------------------------------------------- ② 파일별 보완 요청
@@ -342,6 +376,9 @@ def _coverage_panel(project, found) -> None:
     """보완 요청을 필요한 사실 표 한 곳에 모읍니다."""
     if company_intake.current(project):
         _latest_workbook(project)
+        done = st.session_state.pop("company_upload_result_" + project.project_id, None)
+        if done:
+            st.progress(1.0, text=done)
         rows = company_intake.corrections(project)
         if project.cap_in_scope:
             from engine.stage2 import report_export
@@ -354,9 +391,12 @@ def _coverage_panel(project, found) -> None:
                                      "수정 요청": "관련 입력값과 적용 기준을 확인해 주세요. 도면·SDS 원본은 올리지 않습니다."})
             except Exception:
                 st.error("문서 검증을 완료하지 못했습니다. 입력 검사 통과만으로 문서가 완성된 것은 아닙니다.")
-        st.caption("아래 시트와 셀의 값을 엑셀에서 고친 뒤 전체 파일을 다시 올려 주세요. 수정 사유는 적지 않아도 됩니다.")
+        st.caption("시트·행·열을 찾아 엑셀을 고친 뒤 전체 파일을 다시 올려 주세요. 위치를 특정할 수 없는 문서 검증 결과는 별도로 확인해 주세요.")
         if rows:
-            st.dataframe(rows, hide_index=True, width="stretch")
+            from engine.stage2.storage import load_attachment
+            current = company_intake.current(project)
+            content = load_attachment(project.project_id, current['sha256'])
+            st.dataframe(_excel_issue_rows(rows, content), hide_index=True, width="stretch")
         else:
             st.success("엑셀 입력 검사에서 고칠 항목이 없습니다. 법령 기준과 문서 작성 가능 여부는 별도로 검증합니다.")
         st.button("수정한 엑셀 다시 올리기", key="replace_excel_" + project.project_id,
@@ -375,8 +415,33 @@ def _step_questions(project, found) -> None:
 # ---------------------------------------------------------------- ③ 시나리오 후보
 
 def _step_scenarios(project, found, triage) -> None:
+    from engine.stage2 import scenario_survey, scenario_pipeline
+    from ui.scenario_results_page import _boundary
+
     pid, names = project.project_id, found["names"]
+    st.caption("지도에서 사업장 경계를 확인하면 주변 지역을 검색하고 사고시나리오를 다시 계산합니다. 검색 결과는 확인 전 후보입니다.")
+    _boundary(project)
+    candidates = scenario_survey.candidate_rows(project)
+    if candidates:
+        st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
+        st.dataframe(candidates, hide_index=True, width="stretch")
     linked = [r for r in triage["rows"] if r["linked"]]
+    existing = scenario_pipeline.file_inputs(project)
+    tags = list(dict.fromkeys(r['facility'].split(':', 1)[-1] for r in linked))
+    if tags:
+        st.caption("설비별 사고유형은 비워 두면 규칙으로 제안합니다. 설비 위치 좌표가 없으면 경계까지 거리는 지도만으로 알 수 없어 회사에서 확인한 값을 적어야 합니다.")
+        review = st.data_editor([
+            {'설비번호': tag, '선정할 사고유형': existing.get(tag, {}).get('선정할 사고유형', ''),
+             '경계까지 거리(m)': existing.get(tag, {}).get('경계까지 거리(m)', ''),
+             '액위(m)': existing.get(tag, {}).get('액위(m)', '')}
+            for tag in tags], hide_index=True, num_rows='fixed', disabled=['설비번호'],
+            key='scenario_review_' + pid)
+        if st.button('시나리오 확인값 반영', key='scenario_review_save_' + pid):
+            values = review.to_dict('records') if hasattr(review, 'to_dict') else review
+            project.set_field(scenario_pipeline.INPUT_KEY, '설비별 시나리오 확인값', values, 'USER_CONFIRMED')
+            scenario_pipeline.refresh(project)
+            save_project(project)
+            st.rerun()
     st.dataframe([{"순서": r["rank"], "설비": names(r["facility"]), "물질": names(r["material"]),
                    "인식한 파일": " / ".join(dict.fromkeys(source["document"] for source in r["sources"].values() if source)),
                    "비교 점수": round(r["score"], 1)} for r in linked], hide_index=True, width="stretch")

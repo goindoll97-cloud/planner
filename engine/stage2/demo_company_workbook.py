@@ -55,6 +55,8 @@ def build():
         if value is not None:
             book[template.SITE_SHEET].cell(row, 2, value)
     for kind, title in template.ENTITY_SHEETS.items():
+        if title not in book.sheetnames:
+            continue
         prefix = ('facility' if kind == 'scenario' else kind) + ':'
         ws = book[title]
         columns = {cell.value: cell.column for cell in ws[1]}

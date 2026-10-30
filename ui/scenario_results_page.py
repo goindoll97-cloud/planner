@@ -3,8 +3,7 @@
 화면에서 사람이 직접 하는 일은 지도에서 사업장 경계를 정하는 것 하나입니다(주소를 찾으면 필지 경계가 표시되고, 필지를 눌러
 더하거나 빼거나 직접 고친 뒤 ‘이 경계로 확인’을 누르면 주변 조회·거리 계산·시나리오 계산이 이어서 됩니다).
 - 시나리오 선정·피해반경·장외거리·보호대상 집계·시설빈도·위험도·공정안전보고서 별지 제19호의2는 프로그램이 계산합니다.
-- 고치고 싶으면 회사 작성용 엑셀의 ‘사고시나리오 검토’ 시트(선정할 사고유형·경계까지 거리·물성·개시사건 개수)나 ‘주변 보호대상’
-  시트를 고쳐 자료 접수 ①에 다시 올립니다. 이 화면에서는 지금 반영한 엑셀에 지도 조회 값을 채워 내려받을 수 있습니다.
+- 사업장 업무 ③에서 경계를 확인하고 주변 보호대상 후보와 설비별 시나리오 확인값을 반영합니다.
 - 로컬 AI는 선정 근거 문장과 보호대상 분류 제안에만 씁니다(숫자는 계산 엔진에서만).
 """
 from __future__ import annotations
@@ -25,7 +24,7 @@ from ui import cap_common
 from ui import cap_frames as frames
 
 INTAKE_PAGE = "ui/evidence_workspace_page.py"
-SCENARIO_SHEET = "회사 작성용 엑셀의 ‘사고시나리오 검토’ 시트"
+SCENARIO_SHEET = "사업장 업무 ③ 시나리오 후보 화면"
 KOREA = (36.4, 127.9)
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -220,7 +219,7 @@ def _boundary(project) -> None:
                 summary = ss.confirm(project, geometry, origin)
             save_project(project)
             text = (f"사업장 경계를 확인했습니다. 주변 지도 객체 {summary['objects']}개를 조회했고, 경계 밖 500m 안의 이름 있는 시설 "
-                    f"{summary['candidates']}곳을 찾았습니다. ‘② 주변 보호대상’에서 엑셀에 채워 내려받으세요.")
+                    f"{summary['candidates']}곳을 확인 전 후보로 기록했습니다.")
             st.session_state[prefix + "note"] = ("success", text + "".join(" " + n for n in summary["notices"]))
             for name in ("parcels", "drawings", "drawn_from_parcels", "clicked"):
                 st.session_state.pop(prefix + name, None)
@@ -273,39 +272,21 @@ def _current_workbook(project) -> tuple[bytes | None, str]:
 
 
 def _targets(project) -> None:
-    pid = project.project_id
-    st.caption("별지 제8호 보호대상은 회사 작성용 엑셀의 ‘주변 보호대상’ 시트와 ‘사업장 정보’ 시트의 조사 근거 항목에서 읽습니다. "
-               "아래 버튼은 지금 반영한 엑셀에 지도 조회로 찾은 경계 밖 500m 안의 시설과 확인한 경계에서 잰 거리를 더해 줍니다. "
-               "분류·거리·인원과 확인 항목(예/아니오)을 고쳐 자료 접수 ①에 그대로 다시 올리세요.")
+    st.caption("확인한 경계에서 주변 지역을 검색한 결과입니다. 분류·거주민수·근로자수는 현장 자료로 확인하기 전까지 후보입니다.")
     rows = f8.saved_rows(project)
     if f8.declared_no_target(project):
-        st.success("엑셀에 ‘500m 안 보호대상 없음’으로 적혀 있습니다.")
+        st.success("500m 안 보호대상 없음으로 기록되어 있습니다.")
     elif rows:
         frames.show(pd.DataFrame([{c: r.get(c, "") for c in ss.TARGET_COLUMNS} for r in rows]), hide_index=True, width="stretch")
     else:
-        st.info("엑셀의 ‘주변 보호대상’ 시트가 아직 비어 있습니다.")
+        st.info("① 사업장 경계·지도에서 경계를 확인하면 주변을 검색합니다.")
     needs = f8.needs(project)
     if needs:
-        st.markdown("**엑셀에서 고칠 것** (‘주변 보호대상’ 시트·‘사업장 정보’의 조사 근거 항목)")
+        st.markdown("**현장 확인이 필요한 내용**")
         for need in needs:
             st.write("• " + need)
     candidates = ss.candidate_rows(project)
-    st.caption(f"지도 조회 후보 {len(candidates)}곳" if candidates else
-               "지도 조회 후보가 없습니다(① 탭에서 경계를 확인하면 주변을 조회합니다). 엑셀의 ‘주변 보호대상’ 시트에 직접 적어도 됩니다.")
-    original, name = _current_workbook(project)
-    if original is None:
-        st.caption("반영한 회사 작성용 엑셀이 없어 빈 양식에 채웁니다.")
-    content = ss.company_workbook(project, original)
-    if candidates and st.checkbox("로컬 AI로 분류 제안 보태기(이름 규칙으로 못 정한 시설만)", key=f"scn_ai_cls_{pid}"):
-        client = _client(f"scn_cls_{pid}")
-        if client is None:
-            st.warning("로컬 AI를 찾지 못했습니다. 이름 규칙 제안만 넣습니다.")
-        elif st.button("AI 분류 제안을 넣어 엑셀 만들기", key=f"scn_ai_make_{pid}"):
-            st.session_state[f"scn_ai_book_{pid}"] = ss.company_workbook(project, original, client)
-        content = st.session_state.get(f"scn_ai_book_{pid}", content)
-    st.download_button("회사 작성용 엑셀에 주변 보호대상 채워 내려받기", content, file_name=name, mime=XLSX,
-                       key=f"scn_survey_{pid}", width="stretch")
-    _to_intake()
+    st.caption(f"지도 조회 후보 {len(candidates)}곳" if candidates else "지도 조회 후보가 없습니다. 경계를 확인한 뒤 주변 검색 결과를 확인하세요.")
 
 
 # ---------------------------------------------------------------- ③ 시나리오·영향범위
@@ -320,8 +301,8 @@ def _problems(outcome: sp.Outcome) -> None:
 
 def _scenarios(project, outcome: sp.Outcome) -> None:
     pid = project.project_id
-    st.caption("대상 설비는 규정수량 비교(규정 제23조, 별표 2)로, 사고유형은 물질의 독성 구분·폭발한계로 정했습니다. 바꾸려면 "
-               f"{SCENARIO_SHEET}의 ‘선정할 사고유형’ 열을 고쳐(빼려면 ‘선정 안 함’) 다시 올리세요.")
+    st.caption("대상 설비는 규정수량 비교(규정 제23조, 별표 2)로, 사고유형은 물질의 독성 구분·폭발한계로 정했습니다. "
+               f"설비별 확인값은 {SCENARIO_SHEET}에서 반영합니다.")
     scenarios = sc.saved_scenarios(project)
     if not scenarios:
         st.info("시나리오 대상 설비가 아직 없습니다. 설비대장·제품목록·SDS 물성표를 올리면 규정수량으로 대상 설비를 정합니다.")
@@ -423,32 +404,36 @@ def _psm(project, outcome: sp.Outcome) -> None:
             st.caption("서식 주석 ⑯: 해당사항이 없는 항목은 생략할 수 있습니다. 근거 없는 값은 채우지 않습니다.")
 
 
-st.set_page_config(page_title="사고시나리오 결과", page_icon="🧭", layout="wide")
-st.title("🧭 사고시나리오 결과")
-st.caption("시나리오 선정·피해반경·장외거리·위험도는 회사 파일로 프로그램이 계산한 초안입니다. 화면에서는 지도에 사업장 경계만 그리고, "
-           "고칠 것은 회사 작성용 엑셀의 ‘사고시나리오 검토’·‘주변 보호대상’ 시트를 고쳐 다시 올립니다.")
-project_id = cap_common._project_selector()
-if not project_id:
-    st.stop()
-project = load_project(project_id)
-if sp.needs_refresh(project):
-    with st.spinner("새로 올린 파일로 시나리오를 다시 계산합니다."):
-        sp.refresh(project)
-    save_project(project)
-outcome = sp.current(project)
+def render_page() -> None:
+    st.set_page_config(page_title="사고시나리오 결과", page_icon="🧭", layout="wide")
+    st.title("🧭 사고시나리오 결과")
+    st.caption("시나리오 선정·피해반경·장외거리·위험도는 회사 자료로 프로그램이 계산한 초안입니다. 경계와 설비별 확인값은 사업장 업무 ③에서 반영합니다.")
+    project_id = cap_common._project_selector()
+    if not project_id:
+        st.stop()
+    project = load_project(project_id)
+    if sp.needs_refresh(project):
+        with st.spinner("새로 올린 파일로 시나리오를 다시 계산합니다."):
+            sp.refresh(project)
+        save_project(project)
+    outcome = sp.current(project)
 
-labels = ["① 사업장 경계·지도", "② 주변 보호대상(별지 제8호)", "③ 사고시나리오(별지 제12·13호)", "④ 시설빈도·위험도(별지 제14·15호)"]
-if project.psm_in_scope:
-    labels.append("⑤ 공정안전보고서 별지 제19호의2")
-tabs = st.tabs(labels)
-with tabs[0]:
-    _boundary(project)
-with tabs[1]:
-    _targets(project)
-with tabs[2]:
-    _scenarios(project, outcome)
-with tabs[3]:
-    _risk(project)
-if project.psm_in_scope:
-    with tabs[4]:
-        _psm(project, outcome)
+    labels = ["① 사업장 경계·지도", "② 주변 보호대상(별지 제8호)", "③ 사고시나리오(별지 제12·13호)", "④ 시설빈도·위험도(별지 제14·15호)"]
+    if project.psm_in_scope:
+        labels.append("⑤ 공정안전보고서 별지 제19호의2")
+    tabs = st.tabs(labels)
+    with tabs[0]:
+        _boundary(project)
+    with tabs[1]:
+        _targets(project)
+    with tabs[2]:
+        _scenarios(project, outcome)
+    with tabs[3]:
+        _risk(project)
+    if project.psm_in_scope:
+        with tabs[4]:
+            _psm(project, outcome)
+
+
+if __name__ == "__main__":
+    render_page()
