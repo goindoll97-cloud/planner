@@ -59,8 +59,8 @@ def test_excel_only_page_upload_correction_and_latest_renamed_file(tmp_path, mon
     assert any('열' in v for v in frame['열'])
     assert any('압력' in v for v in frame['항목'])
     assert '김대표' == load_project(p.project_id).get_field('cap.business.representative').value
-    at.button(key='replace_excel_' + p.project_id).click().run()
-    assert at.radio(key='evidence_step_' + p.project_id).value == 1
+    assert not [b for b in at.button if b.key == 'replace_excel_' + p.project_id]
+    assert any('최신본으로 인식' in i.value for i in at.info)
     source.write_bytes(workbook('이대표', include_tank=False))
     updated = AppTest.from_string(script(source, '수정본.xlsx'), default_timeout=90)
     updated.session_state['_stage2_active_project_id'] = p.project_id

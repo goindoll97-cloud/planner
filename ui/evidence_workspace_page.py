@@ -431,8 +431,7 @@ def _coverage_panel(project, found) -> None:
             st.dataframe(_excel_issue_rows(rows, content), hide_index=True, width="stretch")
         else:
             st.success("엑셀 입력 검사에서 고칠 항목이 없습니다. 법령 기준과 문서 작성 가능 여부는 별도로 검증합니다.")
-        st.button("수정한 엑셀 다시 올리기", key="replace_excel_" + project.project_id,
-                  on_click=_go, args=(1, project.project_id), type="primary")
+        st.info("엑셀을 고친 뒤 ① 엑셀 작성·올리기에 수정본을 올리면 자동으로 최신본으로 인식됩니다. 그곳에 업로드해 주세요.")
         return
 
 def _step_questions(project, found) -> None:
