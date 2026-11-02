@@ -124,16 +124,16 @@ def render_workspace_download(project) -> None:
     st.caption("현재 자료와 서술형을 넣은 DOCX 초안입니다. 제출 전에 내용을 확인하세요.")
     cache_key = "workspace_cap_hwp_" + project.project_id
     fingerprint = sha256(draft.docx).hexdigest()
-    saved = st.session_state.get(cache_key + '_direct')
+    saved = st.session_state.get(cache_key + '_draft')
     if not saved or saved[0] != fingerprint:
         try:
-            with st.spinner('HWP 원본서식에 사업장 정보를 작성하고 있습니다.'):
-                saved = (fingerprint, cap_direct_hwp.build_partial_hwp(project))
-            st.session_state[cache_key + '_direct'] = saved
+            with st.spinner('HWP 원본서식에 초안을 작성하고 있습니다.'):
+                saved = (fingerprint, cap_direct_hwp.build_hwp_draft(draft.docx))
+            st.session_state[cache_key + '_draft'] = saved
         except Exception:
             saved = None
             st.warning('HWP 초안을 만들지 못했습니다. DOCX 초안을 내려받아 주세요.')
-    st.caption('HWP 시험 초안은 사업장 일반정보 일부만 작성합니다. 물질·설비·시나리오·서술형은 아직 자동 작성되지 않습니다. 원본에 포함된 예시도 확인해 주세요.')
+    st.caption('HWP 초안은 DOCX 초안과 같은 규정서식 값과 서술형을 원본서식에 작성합니다. 자료가 없는 칸은 빈칸이나 [확인 필요]로 남고, 도면·위치도는 들어가지 않습니다.')
     st.download_button("규정서식 초안 HWP 내려받기", data=saved[1] if saved else b"",
                        file_name=draft.name.removesuffix(".docx") + ".hwp",
                        mime="application/x-hwp", key=cache_key + "_download",

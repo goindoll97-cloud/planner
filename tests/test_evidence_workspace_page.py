@@ -278,7 +278,7 @@ class ProgressBoardTests(unittest.TestCase):
         self.assertTrue(any("아래에서 내려받으세요" in x.value for x in at.success))
         downloads = [b.proto.label for b in at.get("download_button")]
         self.assertEqual(downloads, ["규정서식 초안 HWP 내려받기", "규정서식 초안 DOCX 내려받기"])
-        self.assertTrue(any("일부만 작성" in c.value for c in at.caption))
+        self.assertTrue(any("원본서식에 작성" in c.value for c in at.caption))
         self.assertFalse(at.error)
         text = " ".join(_texts(at))
         for removed in ("버전관리 열기", "새 사업장은", "서술형 포함 DOCX", "제출 행정서식", "점검하고 내려받기"):
