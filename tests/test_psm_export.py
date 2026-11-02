@@ -107,4 +107,4 @@ class CapPanelRenderTests(unittest.TestCase):
         self.assertTrue(any("초안입니다" in i.value for i in at.caption))
         self.assertEqual([d.proto.label for d in at.get("download_button")],
                          ["규정서식 초안 HWP 내려받기", "규정서식 초안 DOCX 내려받기"])
-        self.assertTrue(any("일부만 작성" in c.value for c in at.caption))
+        self.assertTrue(any("원본서식에 작성" in c.value for c in at.caption))
