@@ -7,7 +7,7 @@ import streamlit as st
 from hashlib import sha256
 
 from engine.stage2 import report_export as export
-from engine.stage2 import cap_direct_hwp
+from engine.stage2 import cap_hwp_export
 from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
 from ui import cap_frames as frames
@@ -124,20 +124,40 @@ def render_workspace_download(project) -> None:
     st.caption("현재 자료와 서술형을 넣은 DOCX 초안입니다. 제출 전에 내용을 확인하세요.")
     cache_key = "workspace_cap_hwp_" + project.project_id
     fingerprint = sha256(draft.docx).hexdigest()
-    saved = st.session_state.get(cache_key + '_direct')
+    saved = st.session_state.get(cache_key + "_filled")
     if not saved or saved[0] != fingerprint:
         try:
-            with st.spinner('HWP 원본서식에 사업장 정보를 작성하고 있습니다.'):
-                saved = (fingerprint, cap_direct_hwp.build_partial_hwp(project))
-            st.session_state[cache_key + '_direct'] = saved
+            with st.spinner("현재 DOCX 내용을 한글 초안에 반영하고 있습니다."):
+                saved = (fingerprint, cap_hwp_export.build_workspace_hwp(project, draft.docx))
+            st.session_state[cache_key + "_filled"] = saved
         except Exception:
             saved = None
-            st.warning('HWP 초안을 만들지 못했습니다. DOCX 초안을 내려받아 주세요.')
-    st.caption('HWP 시험 초안은 사업장 일반정보 일부만 작성합니다. 물질·설비·시나리오·서술형은 아직 자동 작성되지 않습니다. 원본에 포함된 예시도 확인해 주세요.')
-    st.download_button("규정서식 초안 HWP 내려받기", data=saved[1] if saved else b"",
+            st.warning("HWP 초안을 만들거나 검증하지 못했습니다. 작성된 DOCX 초안을 내려받아 주세요.")
+    hwp = saved[1] if saved else None
+    if hwp:
+        if hwp.mode == "docx_converted":
+            st.caption(
+                "현재 DOCX의 사업장·물질·설비·사고시나리오·서술형 내용을 HWP로 변환했습니다. "
+                "한컴오피스에서 표·병합·쪽 배치를 최종 확인해 주세요."
+            )
+        elif hwp.mode == "official_mapped":
+            st.warning(
+                "전체 DOCX를 HWP로 변환할 수 없어 법정 원본서식에 확인된 항목만 작성했습니다. "
+                "물질·설비·시나리오·서술형의 일부는 미작성일 수 있습니다. "
+                "모든 내용이 필요한 경우 DOCX를 이용하세요."
+            )
+            st.caption(f"HWP 원본서식 자동 기입 {hwp.applied_count}칸 · 일부만 작성된 초안")
+        else:
+            st.warning(
+                "HWP 시험 초안은 사업장 일반정보 일부만 작성합니다. "
+                "물질·설비·시나리오·서술형은 작성되지 않았습니다. DOCX를 이용하세요."
+            )
+        if hwp.warnings:
+            st.caption(hwp.warnings[0])
+    st.download_button("규정서식 초안 HWP 내려받기", data=hwp.data if hwp else b"",
                        file_name=draft.name.removesuffix(".docx") + ".hwp",
                        mime="application/x-hwp", key=cache_key + "_download",
-                       width="stretch", disabled=not saved)
+                       width="stretch", disabled=hwp is None)
     st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
                        mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
                        width="stretch", type="primary")
