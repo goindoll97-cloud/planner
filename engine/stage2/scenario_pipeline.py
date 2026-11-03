@@ -36,7 +36,7 @@ REPORT_NAME = "영향범위_분석_근거서.docx"
 NOTE = ew.LINK_NOTE + ": 사고시나리오 결과(회사 파일·규정수량 판정으로 프로그램이 계산한 초안)"
 INPUT_COLUMNS = ("경계까지 거리(m)", "액위(m)", "누출지점 배관길이(m)", "비열비", "연소열", "비점", "액체비열", "기화열",
                  "증발잠열(kcal/kg)", "액체비열(kcal/kg·℃)", "증기밀도(kg/m3)", "사고원점 좌표")
-OUTPUT_KEYS = (sc.SCENARIO_KEY, iw.IMPACT_TABLE_KEY, iw.TARGETS_KEY, iw.SUMMARY_KEY, iw.DOCUMENT_KEY,
+OUTPUT_KEYS = (sc.SCENARIO_KEY, iw.IMPACT_TABLE_KEY, iw.TARGETS_KEY, iw.SCENARIO_TARGETS_KEY, iw.SUMMARY_KEY, iw.DOCUMENT_KEY,
                iw.NO_SCENARIO_KEY, f14.FREQUENCY_KEY, f19.TABLE_KEY)
 
 
@@ -277,6 +277,14 @@ def _problems(project: Stage2Project, outcome: Outcome) -> None:
     for impact in outcome.impacts:
         for problem in impact.problems:
             outcome.problems.append(Problem(impact.name, problem, _where_to_fix(problem, impact.tag)))
+    from .cap_geo_coordinates import valid_origin
+    saved_scenarios = {str(row.get("사고시나리오명") or ""): row for row in sc.saved_scenarios(project)}
+    for impact in outcome.impacts:
+        if impact.is_off_site and not valid_origin(saved_scenarios.get(impact.name, {}).get("사고원점 좌표")):
+            outcome.problems.append(Problem(
+                impact.name, "사고원점의 실제 WGS84 좌표가 없어 별지 제12호에 확정 기재할 수 없습니다.",
+                f"③ 시나리오 후보에서 설비번호 {impact.tag}의 ‘사고원점 좌표’를 지도·도면으로 확인해 입력해 주세요."
+            ))
     counts = frequency_inputs(project)
     for impact in outcome.impacts:
         if impact.is_off_site and not any(_clean(counts.get(impact.tag, {}).get(e)) for e in f14.EVENT_NAMES):
