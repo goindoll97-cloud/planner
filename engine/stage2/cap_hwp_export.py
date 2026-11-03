@@ -95,7 +95,7 @@ def _require_company_text(data: bytes, company_name: str) -> None:
         for cell in row
     ]
     fragments.append(str(paragraphs))
-    compact = lambda value: re.sub(r"\\s+", "", value)
+    compact = lambda value: re.sub(r"\s+", "", value)
     if compact(company_name) not in compact(" ".join(fragments)):
         raise RuntimeError(
             "HWP 문서에 사업장명이 들어 있지 않습니다. 빈 변환본을 내려받을 수 없습니다."
