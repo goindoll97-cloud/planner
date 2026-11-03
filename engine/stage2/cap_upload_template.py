@@ -150,16 +150,17 @@ MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin",        # �
                      "facility.scenario_kinds", "facility.scenario_reason"}  # 프로그램이 제안·작성하는 값. 회사가 엑셀에 적지 않습니다.
 
 
-def build_company(*, include_scenario_sheets: bool = False) -> bytes:
+def build_company(*, include_scenario_sheets: bool = False, include_target_sheet: bool = False) -> bytes:
     """회사 배포용 양식. 시나리오 시트에는 회사가 아는 물성·개시사건 개수·완화장치만 두고,
     지도로 얻는 경계 거리·사고원점·주변 보호대상은 ③에서 조사하므로 넣지 않습니다.
     include_scenario_sheets=True는 지도 항목까지 있는 이전 양식(업로드 호환용)입니다."""
     project = Stage2Project(project_id="COMPANY-BLANK", company_name="", cap_required=True)
-    return build(project, complete=True, with_map_inputs=include_scenario_sheets)
+    return build(project, complete=True, with_map_inputs=include_scenario_sheets,
+                 with_target_inputs=include_target_sheet)
 
 
 def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", docs=None, complete: bool = False,
-          with_map_inputs: bool = True) -> bytes:
+          with_map_inputs: bool = True, with_target_inputs: bool = False) -> bytes:
     from openpyxl import Workbook
     from openpyxl.comments import Comment
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -168,7 +169,8 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
     wanted = company_columns() if complete else columns(project, only_blank=only_blank, group=group, docs=docs)
     if not with_map_inputs:
         wanted["scenario"] = [i for i in wanted.get("scenario", []) if i.id not in MAP_SCENARIO_IDS]
-        wanted["target"] = []
+        if not with_target_inputs:
+            wanted["target"] = []
     book = Workbook()
     book.remove(book.active)
     bold, head_fill = Font(bold=True), PatternFill("solid", fgColor="DDEBF7")
