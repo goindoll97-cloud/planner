@@ -15,26 +15,27 @@ def save(book):
 
 def test_full_company_workbook_has_all_input_facts_and_no_results():
     book = load_workbook(BytesIO(tpl.build_company()))
-    assert len(book.sheetnames) == 9
+    assert len(book.sheetnames) == 10
+    assert tpl.HELP_SHEET in book.sheetnames
     assert '주변 보호대상' not in book.sheetnames
     scenario_headers = [c.value for c in book['사고시나리오 검토'][1]]
     assert {'액위(m)', '비열비', '배관누출', '개수 산정근거', '수동적 완화장치'} <= set(scenario_headers)
     assert not {'경계까지 거리(m)', '사고원점 좌표', '선정할 사고유형', '시나리오 선정 근거'} & set(scenario_headers)      # 지도·프로그램이 채우는 값
     assert [c.value for c in book[tpl.SITE_SHEET][1]][:2] == ['항목', '값']
-    assert book[tpl.SITE_SHEET].max_column == 3
+    assert book[tpl.SITE_SHEET].max_column == 4
     assert all(book[tpl.SITE_SHEET].cell(r, 2).value is None for r in range(2, book[tpl.SITE_SHEET].max_row + 1))
     generated = drafting.generated_fact_ids()
     for item in cat.facts(docs=['CAP']):
         if item.id in generated or item.source not in {'company', 'project', 'survey'} or not item.readable:
             continue
         if item.kind in cat.SITE_KINDS:
-            assert item.template_header in {r[0].value for r in book[tpl.SITE_SHEET].iter_rows(min_row=2)}, item.id
+            assert tpl.display_header(item.template_header) in {r[0].value for r in book[tpl.SITE_SHEET].iter_rows(min_row=2)}, item.id
         else:
             title = tpl.sheet_title(item.table) if item.table else (
                 tpl.ENTITY_SHEETS['scenario'] if item.file == tpl.SCENARIO_FILE else tpl.ENTITY_SHEETS[item.kind])
             if item.id in tpl.MAP_SCENARIO_IDS or title == '주변 보호대상':
                 continue  # 지도로 확인하는 값은 엑셀에 적지 않는다
-            assert item.template_header in [c.value for c in book[title][1]], item.id
+            assert tpl.display_header(item.template_header) in [c.value for c in book[title][1]], item.id
     assert '안내' not in book.sheetnames
     assert not any('첨부' in s for s in book.sheetnames)
 
@@ -103,7 +104,7 @@ def test_every_full_workbook_input_survives_reading_with_source_location():
         ws = book[title]
         ws.cell(2, 1, {'facility':'TK-01','scenario':'TK-01','material':'P-01','detector':'GD-01','target':'학교'}[kind])
         for item in wanted[kind]:
-            col = next(c.column for c in ws[1] if c.value == item.template_header)
+            col = next(c.column for c in ws[1] if c.value == tpl.display_header(item.template_header))
             value = item.options[0] if item.options else ('108-88-3' if item.evidence_field == 'cas' else '10')
             ws.cell(2, col, value)
             expected.append(item.evidence_field)
