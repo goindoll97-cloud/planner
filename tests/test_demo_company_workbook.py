@@ -8,27 +8,41 @@ from engine.stage2 import company_workbook_intake as intake, cap_fact_drafting, 
 from engine.stage2.project import Stage2Project
 
 
-def test_filled_workbook_uses_same_schema_and_keeps_examples_separate():
+def test_training_workbook_layout_reads_back_into_company_schema():
     empty = load_workbook(BytesIO(template.build_company()))
     filled = load_workbook(BytesIO(demo.build()))
-    assert filled.sheetnames == empty.sheetnames
-    for ws in filled:
-        assert [c.value for c in ws[1]] == [c.value for c in empty[ws.title][1]]
     assert filled.properties.identifier == demo.IDENTIFIER
     assert '가상' in filled.properties.description
-    assert not any(ws._images for ws in filled)
-    assert [r[2].value for r in filled[template.SITE_SHEET].iter_rows(min_row=2)] == [
-        r[1].value for r in filled[template.SITE_SHEET].iter_rows(min_row=2)]
-    assert not any(c.comment for ws in filled for row in ws for c in row)
+    assert template.HELP_SHEET not in filled.sheetnames
+    assert set(empty.sheetnames) - {template.HELP_SHEET} <= set(filled.sheetnames)
+    # 표 시트: 1행 머리글, 2행 작성 요령, 3행 작성 예시, 4행부터 입력
+    for ws in filled:
+        if ws.cell(1, ws.max_column).value == intake.TRAINING_MARK:
+            assert all(ws.cell(3, c).value not in (None, '') for c in range(1, ws.max_column)), ws.title
+            assert ws.freeze_panes == 'B4'
     assert all('SDS' not in str(c.value).replace('MSDS', '') for ws in filled
                for row in ws for c in row if c.value is not None)
-    help_rows = list(filled[template.HELP_SHEET].values)
-    assert len(help_rows) > 200
-    assert any(r[1] == '사내 전달 방법' and '무전 전파' in str(r[2]) for r in help_rows)
-    assert len([r for r in filled['설비'].iter_rows(min_row=2) if r[0].value]) == 4
-    _, issues = intake.inspect(demo.build(), demo.FILENAME, '1군')
+    assert len([r for r in filled['설비'].iter_rows(min_row=intake.TRAINING_FIRST_ROW) if r[0].value]) == 4
+    converted, issues = intake.inspect(demo.build(), demo.FILENAME, '1군')
     assert issues == []
+    book = load_workbook(BytesIO(converted))
+    assert book.sheetnames == empty.sheetnames
+    for ws in book:
+        assert [c.value for c in ws[1]] == [c.value for c in empty[ws.title][1]]
+    # 예시 행은 사실로 읽지 않는다: 설비 4개, 최대보유량은 설계용량×비중(별표 1)
+    rows = [r for r in book['설비'].iter_rows(min_row=2, values_only=True) if r[0]]
+    assert [r[0] for r in rows] == ['TK-01', 'TK-02', 'RX-01', 'CY-01']
+    inventory = {r[0]: r[8] for r in rows}
+    assert inventory == {'TK-01': 435000, 'TK-02': 23400, 'RX-01': 4350, 'CY-01': 1000}
 
+
+def test_training_workbook_errors_point_at_the_training_file_cells():
+    book = load_workbook(BytesIO(demo.build()))
+    book['설비']['E6'] = '반응시설'          # RX-01 행(4행부터 입력)
+    out = BytesIO()
+    book.save(out)
+    _, issues = intake.inspect(out.getvalue(), '수정본.xlsx', '1군')
+    assert [(i['파일·위치'], i['항목']) for i in issues] == [('수정본.xlsx · 설비!E6', '시설유형')]
 
 
 def test_training_workbook_without_custom_id_remains_practice_only(tmp_path, monkeypatch):

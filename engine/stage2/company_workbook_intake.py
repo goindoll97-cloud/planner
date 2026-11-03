@@ -20,6 +20,92 @@ class WorkbookFormatError(ValueError):
         self.issues = issues
 
 
+# ---------------------------------------------------------------------------
+# 신입사원용 가상 회사 파일(2행 작성 요령·3행 예시·4행부터 입력)을 회사 양식 구조로 바꿔 읽는다.
+TRAINING_MARK = '행 안내'          # 표 시트 맨 끝 열 머리글
+TRAINING_FIRST_ROW = 4             # 2행 요령·3행 예시는 사실 추출·계산·초안에서 제외
+TRAINING_RENAMED = {               # 회사 양식 열 이름 → 연습 파일 열 이름
+    '폭발한계 하한': '폭발한계 하한(%)', '폭발한계 상한': '폭발한계 상한(%)', '증기압': '증기압(mmHg)',
+    '경보 설정값': '경보 설정값 1차(H)', '설정압력': '설정압력(MPa)',
+    '보호기기 운전압력': '(자동) 보호기기 운전압력(MPa)', '보호기기 설계압력': '(자동) 보호기기 설계압력(MPa)',
+}
+# 회사 양식의 사업장 정보 항목 중 연습 파일에서 별지 16호 표 시트로 옮긴 것: (시트, [열], 구분자)
+TRAINING_MOVED = {
+    '지역사회 소통 대상': ('별지16-6-2 지역사회소통', ['참석 대상'], ', '),
+    '지역사회 소통 방법': ('별지16-6-2 지역사회소통', ['종류', '소통방법'], ', '),
+    '지역사회 소통 주기': ('별지16-6-2 지역사회소통', ['일정'], ', '),
+    '지역사회 소통 담당·장소': ('별지16-6-2 지역사회소통', ['장소'], ', '),
+    '주민 경보 방법': ('별지16-7-1 대피경보', ['대상 명칭', '대피경보 방법'], ', '),
+    '고지 대상': ('별지16-10 지역사회고지', ['고지 대상 목록'], ', '),
+    '고지 방법': ('별지16-10 지역사회고지', ['고지 방법'], ', '),
+    '고지 내용': ('별지16-10 지역사회고지', ['고지 내용'], ', '),
+    '지역사회 고지 일정·담당자': ('별지16-10 지역사회고지', ['고지 예정 시기', '담당자'], ', '),
+    '응급의료기관·전화·이송 방법': ('별지16-8 응급의료', ['병원명', '주소', '전화번호', '이송 방법'], ', '),
+    '대피장소별 위치·수용인원·연락처': ('별지16-9 대피장소', ['대피장소(구체적 위치)', '수용 인원(명)', '사업장으로부터 거리(m)', '연락처'], ', '),
+}
+
+
+def is_training_layout(book):
+    return any(ws.max_column and ws.cell(1, ws.max_column).value == TRAINING_MARK for ws in book.worksheets)
+
+
+def _training_rows(ws, with_row=False):
+    headers = {c.value: c.column for c in ws[1] if c.value}
+    for row in range(TRAINING_FIRST_ROW, ws.max_row + 1):
+        values = {h: ws.cell(row, col).value for h, col in headers.items() if h != TRAINING_MARK}
+        if any(v not in (None, '') for v in values.values()):
+            yield (row, headers, values) if with_row else values
+
+
+def _from_training_layout(content):
+    """연습 파일을 빈 회사 양식에 옮겨 담은 bytes와 위치표({(시트, 옮긴 칸): 연습 파일 칸}).
+
+    예시 행·자동 점검 열·추가 시트는 옮기지 않는다. 오류는 위치표로 연습 파일의 실제 칸을 알린다.
+    """
+    from openpyxl.utils import get_column_letter as col_letter
+    where = {}
+    src = load_workbook(BytesIO(content), data_only=True)
+    out = load_workbook(BytesIO(tpl.build_company()))
+    site = {str(r[0].value): r[1].value for r in src[tpl.SITE_SHEET].iter_rows(min_row=2) if r[0].value}
+    site_rows = {str(r[0].value): r[0].row for r in src[tpl.SITE_SHEET].iter_rows(min_row=2) if r[0].value}
+    for row in range(2, out[tpl.SITE_SHEET].max_row + 1):
+        label = out[tpl.SITE_SHEET].cell(row, 1).value
+        src_label = '주소' if label == '우편번호/주소' else label
+        if src_label in site_rows:
+            where[(tpl.SITE_SHEET, f'A{row}')] = f'A{site_rows[src_label]}'
+            where[(tpl.SITE_SHEET, f'B{row}')] = f'B{site_rows[src_label]}'
+        if label == '우편번호/주소':
+            zip_code = str(site.get('우편번호') or '').strip()
+            value = ' '.join(x for x in (zip_code if zip_code.strip('0') else '', str(site.get('주소') or '').strip()) if x)
+        elif label in TRAINING_MOVED and label not in site:
+            title, cols, sep = TRAINING_MOVED[label]
+            parts = [' '.join(str(r[c]) for c in cols if r.get(c) not in (None, ''))
+                     for r in (_training_rows(src[title]) if title in src.sheetnames else [])]
+            value = sep.join(p for p in parts if p) or None
+        else:
+            value = site.get(label)
+        out[tpl.SITE_SHEET].cell(row, 2, value)
+    for ws in out.worksheets:
+        if ws.title == tpl.SITE_SHEET or ws.title not in src.sheetnames:
+            continue
+        headers = [c.value for c in ws[1]]
+        inputs = [h for h in headers[:-2] if h]
+        for row, (src_row, src_cols, values) in enumerate(_training_rows(src[ws.title], with_row=True), 2):
+            for col, header in enumerate(inputs, 1):
+                name = TRAINING_RENAMED.get(header, header)
+                src_col = src_cols.get(name, src_cols.get(header, col))
+                where[(ws.title, f'{col_letter(col)}{row}')] = f'{col_letter(src_col)}{src_row}'
+                value = values.get(name, values.get(header))
+                if value not in (None, ''):
+                    ws.cell(row, col, value)
+    out.properties.identifier = src.properties.identifier or ''
+    out.properties.title = src.properties.title
+    out.properties.description = src.properties.description
+    buffer = BytesIO()
+    out.save(buffer)
+    return buffer.getvalue(), where
+
+
 def current(project):
     record = project.get_field(KEY)
     return record.value if record else None
@@ -62,7 +148,9 @@ def project_for_upload(selected, name, content):
 def inspect(content, name, group=''):
     """입력 오류는 위치와 함께 반환하고, 오류 셀은 자동 작성에서 제외한다."""
     issues = []
+    where = {}
     def issue(sheet, cell, label, reason, fix):
+        cell = where.get((sheet, cell), cell)
         issues.append({'파일·위치': f'{name} · {sheet}!{cell}', '항목': label,
                        '확인된 문제': reason, '수정 요청': fix})
     if not name.lower().endswith('.xlsx') or len(content) > 20 * 1024 * 1024:
@@ -72,6 +160,9 @@ def inspect(content, name, group=''):
             if sum(i.file_size for i in z.infolist()) > ew.MAX_UNZIPPED:
                 raise ValueError('엑셀 압축 해제 크기가 너무 큽니다.')
         book = load_workbook(BytesIO(content))
+        if is_training_layout(book):
+            content, where = _from_training_layout(content)
+            book = load_workbook(BytesIO(content))
     except (BadZipFile, ValueError, OSError, KeyError) as exc:
         raise WorkbookFormatError([{'파일·위치': name, '항목': '엑셀 읽기', '확인된 문제': '파일을 열지 못했습니다.', '수정 요청': 'Excel에서 .xlsx로 다시 저장한 뒤 올려 주세요.'}]) from exc
     expected = load_workbook(BytesIO(tpl.build_company()))
