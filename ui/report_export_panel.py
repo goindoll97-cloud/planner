@@ -158,7 +158,7 @@ def render_workspace_download(project) -> None:
     st.download_button("규정서식 초안 HWP 내려받기", data=hwp.data if hwp else b"",
                        file_name=draft.name.removesuffix(".docx") + ".hwp",
                        mime="application/x-hwp", key=cache_key + "_download",
-                       width="stretch", disabled=hwp is None)
+                       width="stretch", disabled=hwp is None, type="primary")
     st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
                        mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
                        width="stretch", type="primary")
