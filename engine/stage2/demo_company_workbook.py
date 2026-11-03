@@ -1,17 +1,14 @@
-"""실제 회사 양식의 값 칸에 가상 회사를 채운 업로드·출력 연습 파일."""
+"""신입사원용 가상 회사 작성완료 연습 파일(업로드·출력 연습 겸용)."""
+import base64
 from functools import lru_cache
-from io import BytesIO
-import re
+from pathlib import Path
 
-from openpyxl import load_workbook
-
-from . import cap_upload_template as template, demo_authoring_company as demo
-from . import evidence_workspace as ew
-from .direct_template import create_direct_cap_project
+from . import demo_authoring_company as demo
 
 COMPANY = demo.COMPANY
 FILENAME = '화사계_가상회사_작성완료_연습용.xlsx'
-IDENTIFIER = 'planner-synthetic-company-workbook-v1'
+IDENTIFIER = 'planner-synthetic-company-workbook-v2'
+LEGACY_IDENTIFIERS = ('planner-synthetic-company-workbook-v1',)
 NOTICE = '가상 회사·인물·수치로 작성한 1군 작성 연습용입니다. 실제 법적 대상 판정·현장 확인을 뜻하지 않으며 실제 제출에 사용하지 마세요.'
 
 SITE_VALUES = {
@@ -95,111 +92,14 @@ SCENARIO_VALUES = {
 }
 
 
+ASSET = Path(__file__).resolve().parents[2] / 'data' / 'templates' / 'cap' / 'cap_demo_company_workbook.xlsx.b64'
+
+
 @lru_cache(maxsize=1)
 def build():
-    # 검증된 가상 회사의 물질·설비·비상대응 사실을 재사용한다.
-    project = create_direct_cap_project(COMPANY, cap_group='1군')
-    for name, content in demo.files().items():
-        ew.ingest(project, name, content, ew.classify_document(name, content))
-    entities = {}
-    for slot in ew.slots(project):
-        if slot['chosen']:
-            entities.setdefault(slot['entity'], {})[slot['field']] = slot['chosen']['value']
-    book = load_workbook(BytesIO(template.build_company()))
-    wanted = template.company_columns()
-    for row, item in enumerate(wanted['site'], 2):
-        value = SITE_VALUES.get(item.id, entities[ew.SITE_ENTITY].get(item.evidence_field))
-        if value is not None:
-            book[template.SITE_SHEET].cell(row, 2, value)
-    for kind, title in template.ENTITY_SHEETS.items():
-        if title not in book.sheetnames:
-            continue
-        prefix = ('facility' if kind == 'scenario' else kind) + ':'
-        ws = book[title]
-        columns = {cell.value: cell.column for cell in ws[1]}
-        for row, (entity, values) in enumerate(((e, v) for e, v in entities.items() if e.startswith(prefix)), 2):
-            ws.cell(row, 1, entity.split(':', 1)[1])
-            for item in wanted[kind]:
-                value = values.get(item.evidence_field)
-                if kind == 'material' and item.id == 'material.product_type':
-                    value = '혼합물' if entity.endswith('P-02') else '단일물질'
-                if kind == 'facility' and item.id == 'facility.pid_number':
-                    value = '가상-PID-' + entity.split(':', 1)[1]
-                if kind == 'facility' and item.id == 'facility.process_type':
-                    value = '반응' if entity.endswith('RX-01') else '변화없음'
-                if kind == 'scenario':
-                    value = SCENARIO_VALUES.get(entity.split(':', 1)[1], {}).get(item.template_header)
-                if kind == 'target' and item.id == 'target.location':
-                    value = '가상 사업장 주변 위치(실제 주소·현장 확인 아님)'
-                if value is not None:
-                    ws.cell(row, columns[template.display_header(item.template_header)], value)
-    # 추가 명세도 실제 양식의 입력 열에만 넣는다. 예시 열은 변경하지 않는다.
-    tables = {
-        'cap-components': [
-            {'혼합제품 코드': 'P-02', '혼합제품명': '가상 염산 35%', '구성성분 CAS 번호': '7647-01-0', '구성성분명': '염화수소', '구성성분 함량(%)': 35},
-            {'혼합제품 코드': 'P-02', '혼합제품명': '가상 염산 35%', '구성성분 CAS 번호': '7732-18-5', '구성성분명': '물', '구성성분 함량(%)': 65},
-        ],
-        'cap-waste': [{'시설번호': 'SC-01', '시설명': '가상 스크러버', '처리대상 물질': '암모니아',
-                       '처리방식': '습식 세정', '처리용량': '1000 m3/h', '연결 설비·배관': 'CY-01', '최종 배출지점': '가상 배출구'}],
-        'cap-relief': [{'안전밸브·파열판 번호': 'PSV-01', '보호대상 설비번호': 'RX-01', '형식': '안전밸브',
-                        '설정압력': '0.6 MPa', '배출용량': '1200 kg/h', '정격용량': '1300 kg/h',
-                        '노즐크기 입구': '25A', '노즐크기 출구': '40A', '배출물질': '가상 반응기 증기',
-                        '배출상태': '기체', '보호기기 운전압력': '0.3 MPa', '보호기기 설계압력': '0.8 MPa',
-                        '몸체재질': 'SUS304', 'TRIM 재질': 'SUS316', '정밀도': '±3%',
-                        '최종 배출·처리 지점': 'SC-01', '배출원인': '가상 냉각 이상', '관련 P&ID 번호': '가상-PID-RX-01'}],
-        'cap-change': [{'일자': '2026-10-01', '변경항목': '가상 감지기 GD-01', '변경의 종류': '점검 기록',
-                        '변경 내용(변경전 → 변경후)': '정기 점검 전 → 점검 완료(가상)', '후속조치': '차단 연동 기능 확인 연습', '담당자': '이담당'}],
-    }
-    for table, rows in tables.items():
-        for row, values in enumerate(rows, 2):
-            for col, item in enumerate(wanted['tables'][table], 1):
-                book[template.sheet_title(table)].cell(row, col, values.get(item.column))
-    # The example column is an actual answer model: mirror the SAME complete
-    # synthetic answer instead of offering generic instructions at odds with it.
-    site = book[template.SITE_SHEET]
-    site_example = next(c.column for c in site[1] if c.value == template.EXAMPLE_HEADER)
-    for row in range(2, site.max_row + 1):
-        site.cell(row, site_example, site.cell(row, 2).value)
+    """신입사원용 가상 회사 작성완료 파일(2행 작성 요령·3행 예시·4행부터 입력).
 
-    for sheet in book.worksheets:
-        if sheet.title in {template.SITE_SHEET, template.HELP_SHEET}:
-            continue
-        headers = [c.value for c in sheet[1]]
-        example_col = headers.index(template.EXAMPLE_HEADER) + 1
-        for row in range(2, sheet.max_row + 1):
-            actual = [(headers[col - 1], sheet.cell(row, col).value)
-                      for col in range(1, example_col)
-                      if sheet.cell(row, col).value not in (None, "")]
-            if actual:
-                sheet.cell(row, example_col,
-                           " | ".join(f"{label}: {value}" for label, value in actual))
-    # Detailed help examples also use the filled synthetic values by header,
-    # including columns with no sample value (shown explicitly as unconfirmed).
-    help_sheet = book[template.HELP_SHEET]
-    for row in range(2, help_sheet.max_row + 1):
-        sheet_name = help_sheet.cell(row, 1).value
-        label = help_sheet.cell(row, 2).value
-        target = book[sheet_name]
-        if sheet_name == template.SITE_SHEET:
-            answer = next((target.cell(r, 2).value for r in range(2, target.max_row + 1)
-                           if target.cell(r, 1).value == label), None)
-        else:
-            col = next((c.column for c in target[1] if c.value == label), None)
-            answer = next((target.cell(r, col).value for r in range(2, target.max_row + 1)
-                           if col and target.cell(r, col).value not in (None, "")), None)
-        help_sheet.cell(row, 3,
-                        "미기재: 실제 사업장 자료 확인 후 입력" if answer in (None, "")
-                        else str(answer))
-
-    for sheet in book.worksheets:
-        for row in sheet:
-            for cell in row:
-                if isinstance(cell.value, str):
-                    cell.value = re.sub(r"(?<!M)SDS", "MSDS", cell.value)
-
-    book.properties.identifier = IDENTIFIER
-    book.properties.title = COMPANY + ' · 가상 회사 작성 연습'
-    book.properties.description = NOTICE
-    out = BytesIO()
-    book.save(out)
-    return out.getvalue()
+    빈 회사 양식과 달리 열마다 예시 행·자동 점검 열·별지 16호 표 시트를 둔다.
+    업로드하면 company_workbook_intake가 회사 양식 구조로 바꿔 읽는다.
+    """
+    return base64.b64decode(ASSET.read_text(encoding='ascii'), validate=False)
