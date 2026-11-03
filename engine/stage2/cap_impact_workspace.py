@@ -64,7 +64,7 @@ def _number(value: object) -> float | None:
 def _targets_within(project: Stage2Project, distance_m: float) -> list[dict[str, Any]]:
     # Pending map candidates are not confirmed receptors and must not affect counts.
     record = project.get_field(f8.SITE_KEY)
-    if record is None or record.status not in CONFIRMED_STATUSES:
+    if record is None or record.status not in CONFIRMED_STATUSES or not f8.scope_reviewed(project):
         return []
     out = []
     for row in f8.saved_rows(project):
@@ -119,7 +119,8 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
     today = date.today().isoformat()
     weather = rw.default_weather(project, worst_case)
     evidence = f"자체 영향범위 분석 근거서 {today}"
-    address = f8.address(project)
+    survey_record = project.get_field(f8.SITE_KEY)
+    survey_confirmed = bool(survey_record and survey_record.status in CONFIRMED_STATUSES and f8.scope_reviewed(project))
     scenarios = {str(s.get("사고시나리오명")): s for s in sc.saved_scenarios(project)}
     off_site = [i for i in impacts if i.is_off_site]
 
@@ -144,9 +145,11 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
         rows.append({
             "사고시나리오명": impact.name, "유해화학물질명": impact.material, "대상 설비번호": impact.tag,
             "사고유형": impact.kind, "장외거리(m)": round(impact.off_site_m, 1),
-            "거주민수": impact.people("거주민수"), "근로자수": impact.people("근로자수"),
-            "갑종 보호대상 수": impact.count("갑종"), "을종 보호대상 수": impact.count("을종"),
-            "환경수용체 수": impact.count("환경수용체"),
+            "거주민수": impact.people("거주민수") if survey_confirmed else "",
+            "근로자수": impact.people("근로자수") if survey_confirmed else "",
+            "갑종 보호대상 수": impact.count("갑종") if survey_confirmed else "",
+            "을종 보호대상 수": impact.count("을종") if survey_confirmed else "",
+            "환경수용체 수": impact.count("환경수용체") if survey_confirmed else "",
             "사고원점 좌표": confirmed_origin(scenario.get("사고원점 좌표")),
             "KORA/GIS 근거": f"{evidence} ({impact.basis or '기술지침 2021-3, KOSHA GUIDE P-92-2023'}; {weather.label})",
         })
@@ -170,9 +173,9 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
         "총괄영향범위 산출방법": "시나리오별 영향범위(끝점 도달거리)를 사업장 경계 기준 원형으로 보고 최외곽을 총괄영향범위로 함(풍향·지형 미반영, 보수적)",
         "총괄영향범위 결과 요약": summary_text(impacts),
         "GIS/KORA 근거": evidence,
-        "보호대상 없음 여부": "예" if not listed else "아니오",
-        "총괄영향범위 내 거주민수": sum(int(_number(t.get("거주민수")) or 0) for t in union.values()),
-        "총괄영향범위 내 근로자수": sum(int(_number(t.get("근로자수")) or 0) for t in union.values()),
+        "보호대상 없음 여부": ("예" if not listed else "아니오") if survey_confirmed else "미확인",
+        "총괄영향범위 내 거주민수": sum(int(_number(t.get("거주민수")) or 0) for t in union.values()) if survey_confirmed else "",
+        "총괄영향범위 내 근로자수": sum(int(_number(t.get("근로자수")) or 0) for t in union.values()) if survey_confirmed else "",
     }], "CALCULATED", note="cap_impact_workspace")
     project.set_field(DOCUMENT_KEY, "영향범위 분석 근거서", f"프로그램 생성 자체 분석 근거서({today})", "CALCULATED",
                       evidence=list(evidence_refs or []), note="내려받은 근거서를 화학사고예방관리계획서에 첨부한다(규정 제23조 ⑥)")
