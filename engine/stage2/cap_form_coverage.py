@@ -453,6 +453,29 @@ def audit_cap_form_coverage(project: Stage2Project) -> tuple[CAPFormCoverageItem
         "시나리오별 물질·설비·사고유형·장외거리·거주민/근로자·보호대상 수·사고원점·근거",
         "회사 화학물질/설비목록과 교차검증하며 AI가 공간값을 생성하지 않음",
     ))
+    # A boundary-distance comparison can identify potential receptors but
+    # cannot prove that an actual incident-origin plume/circle intersects them.
+    # Treat such generated candidates as pending GIS review, even when the
+    # aggregate Form 12 numeric fields happen to be populated.
+    spatial_record = project.get_field("cap.offsite.population_and_protected_targets")
+    spatial_rows = spatial_record.value if spatial_record and isinstance(spatial_record.value, list) else []
+    spatial_verified = bool(
+        spatial_record and spatial_record.status in {"VERIFIED", "USER_CONFIRMED"}
+        and spatial_rows and all(
+            isinstance(row, Mapping)
+            and str(row.get("사고시나리오명") or "").strip()
+            and str(row.get("GIS 근거") or row.get("GIS/현장 근거") or "").strip()
+            for row in spatial_rows
+        )
+    )
+    items.append(CAPFormCoverageItem(
+        12, "사고시나리오 사업장 주변지역 영향 평가", "시나리오별 보호대상 공간중첩 검증",
+        READY if spatial_verified else EXTERNAL_ANALYSIS,
+        "확인된 사고원점·영향범위 형상 + GIS 보호대상 위치",
+        ("cap.offsite.population_and_protected_targets",),
+        "각 사고시나리오명과 보호대상명을 연결한 GIS 중첩확정자료",
+        "경계거리 기반 잠정 후보는 서식에 표시하더라도 공간중첩 검증 완료로 인정하지 않음",
+    ))
     items.append(CAPFormCoverageItem(
         13, "총괄영향범위 사업장 주변지역 영향 평가", "총괄영향범위 확정요약·보호대상 목록·결과파일",
         READY if form13.ready else EXTERNAL_ANALYSIS,
