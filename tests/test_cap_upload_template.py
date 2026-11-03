@@ -30,7 +30,7 @@ def _fill(content: bytes, new_ids: dict[str, list[str]]) -> bytes:
     book = load_workbook(BytesIO(content))
     by_header = {}
     for item in catalog.facts(company=True):
-        for header in item.headers[:1]:
+        for header in item.headers:
             by_header[(item.kind if item.kind not in catalog.SITE_KINDS else "site", header)] = item
     if tpl.SITE_SHEET in book.sheetnames:
         sheet = book[tpl.SITE_SHEET]
@@ -41,7 +41,7 @@ def _fill(content: bytes, new_ids: dict[str, list[str]]) -> bytes:
         if title not in book.sheetnames:
             continue
         sheet = book[title]
-        headers = [c.value for c in sheet[1] if c.value != "예시 (입력하지 마세요)"]
+        headers = [c.value for c in sheet[1] if c.value not in (tpl.EXAMPLE_HEADER, tpl.GUIDANCE_HEADER)]
         for code in new_ids.get(kind, []):
             sheet.append([code] + [""] * (len(headers) - 1))
         for r in range(2, sheet.max_row + 1):
@@ -72,7 +72,10 @@ class TemplateTests(unittest.TestCase):
         self.assertNotIn("우편번호/주소", site_headers)        # 직접 입력한 주소가 있음
         book = load_workbook(BytesIO(tpl.build(p)))
         self.assertNotIn(tpl.GUIDE_SHEET, book.sheetnames)
-        self.assertEqual(book[tpl.SITE_SHEET]["C1"].value, "예시 (입력하지 마세요)")
+        self.assertEqual(book[tpl.SITE_SHEET]["C1"].value, tpl.EXAMPLE_HEADER)
+        self.assertEqual(book[tpl.SITE_SHEET]["D1"].value, tpl.GUIDANCE_HEADER)
+        self.assertIn(tpl.HELP_SHEET, book.sheetnames)
+        self.assertFalse(any(c.comment for sh in book for row in sh for c in row))
         self.assertEqual([c.value for c in book["설비"][1]][:3], ["설비번호", "설비명", "단위공장·공정"])
         self.assertEqual(book["가스감지기"]["A1"].value, "감지기 번호")
 
