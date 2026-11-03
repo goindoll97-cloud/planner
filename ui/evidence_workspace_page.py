@@ -212,7 +212,7 @@ def _step_upload(project, found) -> None:
                        file_name=cap_upload_template.COMPANY_FILENAME,
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="cap_company_full_template")
-    st.download_button("가상 회사 정보가 채워진 엑셀 내려받기", demo_company_workbook.build(),
+    st.download_button("가상회사 작성완료 예시 엑셀 내려받기 · 신입사원용", demo_company_workbook.build(),
                        file_name=demo_company_workbook.FILENAME,
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="cap_company_demo_template")
