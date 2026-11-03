@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from .project import CONFIRMED_STATUSES, Stage2Project
+from .cap_geo_coordinates import confirmed_origin
 
 
 YES = {"예", "yes", "y", "true", "1", "없음", "해당"}
@@ -184,7 +185,8 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
         a_count = _int_nonnegative(_row_value(row, "갑종 보호대상 수", "갑종수"))
         b_count = _int_nonnegative(_row_value(row, "을종 보호대상 수", "을종수"))
         env_count = _int_nonnegative(_row_value(row, "환경수용체 수", "환경수용체수"))
-        origin = _clean(_row_value(row, "사고원점 좌표", "사고원점의 좌표", "사고원점"))
+        origin_raw = _clean(_row_value(row, "사고원점 좌표", "사고원점의 좌표", "사고원점"))
+        origin = confirmed_origin(origin_raw)
         evidence = _clean(_row_value(row, "KORA/GIS 근거", "KORA 결과근거", "근거자료"))
 
         if not chemical:
@@ -211,7 +213,7 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
             if value is None:
                 blockers.append(f"{label}: {name}를 0 이상의 정수로 확인해 주세요.")
         if not origin:
-            blockers.append(f"{label}: 사고원점 좌표가 비어 있습니다.")
+            blockers.append(f"{label}: 실제 사고원점 좌표(위도,경도 또는 경도,위도)를 확인해 주세요. 주소는 좌표가 아닙니다.")
         if not evidence:
             blockers.append(f"{label}: KORA/GIS 결과 근거 식별자가 비어 있습니다.")
 
