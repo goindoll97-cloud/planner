@@ -8,6 +8,18 @@ from engine.stage2 import company_workbook_intake as intake, cap_fact_drafting, 
 from engine.stage2.project import Stage2Project
 
 
+
+def test_only_one_current_employee_training_download_is_offered():
+    from pathlib import Path
+
+    page = (Path(__file__).resolve().parents[1] / "ui" / "evidence_workspace_page.py").read_text(encoding="utf-8")
+    assert demo.FILENAME == "화사계_가상회사_작성완료_신입사원용_수정.xlsx"
+    assert "화사계_가상회사_작성완료_연습용.xlsx" not in page
+    assert page.count("demo_company_workbook.build()") == 1
+    assert page.count("key=\"cap_company_demo_template\"") == 1
+    assert "가상회사 작성완료 예시 엑셀 내려받기 · 신입사원용" in page
+
+
 def test_training_workbook_layout_reads_back_into_company_schema():
     empty = load_workbook(BytesIO(template.build_company()))
     filled = load_workbook(BytesIO(demo.build()))
