@@ -279,19 +279,59 @@ def _target_editor(project, rows) -> None:
     config = {c: st.column_config.NumberColumn(c, min_value=0, step=1) for c in ("거주민수", "근로자수")}
     edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"scn_targets_{project.project_id}",
                             disabled=[c for c in ss.TARGET_COLUMNS if c not in editable], column_config=config)
+    prior = f8.review(project)
+    survey_data = survey.survey(project) if survey.is_current(project) else {}
+    boundary = survey.boundary_record(project) if survey.boundary(project) is not None else {}
+    with st.expander("법정 500m 범위 조사 완료 확인(초안 확정 전 필수)"):
+        st.caption("지도 조회 후보는 자동으로 확정되지 않습니다. 아래 내용은 실제 지도·현장 확인 후 표시하세요.")
+        checks = {
+            key: st.checkbox(label, value=bool((prior.get("확인항목") or {}).get(key)),
+                             key=f"scn_scope_{project.project_id}_{key}")
+            for key, label in f8.REVIEW_ITEMS
+        }
+        source = st.text_area(
+            "확인한 지도·도면과 확인일",
+            value=prior.get("사용자료·확인일") or (
+                f"지도 조회 {(survey_data.get('checked_at') or '')[:10]}" if survey_data else ""),
+            key=f"scn_scope_source_{project.project_id}",
+        )
+        method = st.text_area(
+            "사업장 경계·보호대상 거리 확인 방법",
+            value=prior.get("경계·거리 확인방법") or (
+                f"{boundary.get('source')}에서 각 보호대상까지 최소거리 확인" if boundary else ""),
+            key=f"scn_scope_method_{project.project_id}",
+        )
+        numbers = st.text_area(
+            "지도에 표시한 보호대상 번호(쉼표로 구분)",
+            value=prior.get("지도 번호") or "",
+            placeholder="예: 1,2,3",
+            key=f"scn_scope_numbers_{project.project_id}",
+        )
     if st.button("확인한 보호대상 제출", type="primary", key=f"scn_targets_submit_{project.project_id}"):
         saved = {f8._norm(r.get("보호대상 명칭")): r for r in rows}
         merged = []
         for record in edited.to_dict("records"):
             record = {k: ("" if pd.isna(v) else v) for k, v in record.items()}
             merged.append({**saved.get(f8._norm(record.get("보호대상 명칭")), {}), **record})
-        f8.save(project, merged, no_target=False, status="USER_CONFIRMED")
+        review_problems = f8.review_issues(merged, False, checks, source, method, numbers)
+        scope_ok = not review_problems
+        # Unreviewed suggestions must not acquire the USER_CONFIRMED status.
+        # The explicit four checks also attest the complete statutory area.
+        f8.save(project, merged, no_target=False, scope_reviewed=scope_ok,
+                status="USER_CONFIRMED" if scope_ok else "HOLD")
+        if scope_ok:
+            f8.save_review(project, checks, source, method, numbers)
+        else:
+            f8.invalidate_review(project)
         try:
             sp.refresh(project)
         except Exception as exc:
             st.warning(f"사고시나리오를 다시 계산하지 못했습니다({type(exc).__name__}).")
         save_project(project)
-        st.success("확인한 보호대상을 반영하고 영향범위를 다시 계산했습니다.")
+        if scope_ok:
+            st.success("보호대상 검토 완료 자료를 저장하고 영향범위를 다시 계산했습니다.")
+        else:
+            st.warning("후보 목록을 보류 상태로 저장했습니다. 500m 범위·분류·위치·지도 번호를 확인해야 법정서식에 확정 반영됩니다.")
         st.rerun()
 
 

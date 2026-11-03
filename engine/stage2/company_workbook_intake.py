@@ -72,10 +72,17 @@ def inspect(content, name, group=''):
     expected = load_workbook(BytesIO(tpl.build_company()))
     legacy = load_workbook(BytesIO(tpl.build_company(include_scenario_sheets=True)))
     scenario_title, target_title = tpl.ENTITY_SHEETS['scenario'], tpl.ENTITY_SHEETS['target']
-    if target_title in book.sheetnames or (scenario_title in book.sheetnames and [
-            c.value for c in book[scenario_title][1]][:legacy[scenario_title].max_column] == [
-            c.value for c in legacy[scenario_title][1]]):
-        expected = legacy                                  # 지도 항목이 있는 이전 양식도 그대로 읽는다.
+    # Two valid GIS-enriched layouts: the old scenario sheet with location
+    # columns and the current scenario sheet plus a map-generated target sheet.
+    old_scenario_headers = (
+        scenario_title in book.sheetnames
+        and [c.value for c in book[scenario_title][1]][:legacy[scenario_title].max_column]
+        == [c.value for c in legacy[scenario_title][1]]
+    )
+    if old_scenario_headers:
+        expected = legacy
+    elif target_title in book.sheetnames:
+        expected = load_workbook(BytesIO(tpl.build_company(include_target_sheet=True)))
     optional_sheets = {scenario_title, target_title}
     for ws in expected:
         if ws.title not in book.sheetnames:

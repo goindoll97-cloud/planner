@@ -8,6 +8,7 @@ from hashlib import sha256
 
 from engine.stage2 import report_export as export
 from engine.stage2 import cap_hwp_export
+from engine.stage2 import cap_template_gap_audit
 from engine.stage2.ai_drafting import ai_written_items
 from engine.stage2 import psm_admin_forms
 from ui import cap_frames as frames
@@ -122,6 +123,24 @@ def render_workspace_download(project) -> None:
         st.error("초안을 생성·검증하지 못했어요. 자료와 서식 구성을 확인한 뒤 다시 시도해 주세요.")
         return
     st.caption("현재 자료와 서술형을 넣은 DOCX 초안입니다. 제출 전에 내용을 확인하세요.")
+    with st.expander("법정서식 · 회사 엑셀 · GIS 결과 누락 점검표"):
+        st.caption("각 입력항목과 서식별 작성 가능성을 대조합니다. 이 점검표는 실제 HWP/DOCX의 모든 셀 검수를 대체하지 않습니다.")
+        try:
+            audit = cap_template_gap_audit.rows(project)
+            unmapped = [r for r in audit if "대응 열이 없습니다" in r["확인·수정 사항"]]
+            st.write(f"점검 항목 {len(audit)}건 · 회사 엑셀 매핑 누락 의심 {len(unmapped)}건")
+            if unmapped:
+                st.warning("회사 작성 엑셀에 연결되지 않은 항목이 있습니다. 아래 점검표를 확인해 주세요.")
+            st.dataframe(pd.DataFrame(audit), hide_index=True, width="stretch")
+            st.download_button(
+                "서식별 입력·계산·GIS 누락 점검표 CSV 내려받기",
+                data=cap_template_gap_audit.csv_bytes(project),
+                file_name="화사계_법정서식_엑셀_GIS_누락점검표.csv",
+                mime="text/csv", key="cap_form_gap_audit_" + project.project_id,
+                width="stretch",
+            )
+        except Exception:
+            st.warning("서식별 매핑 점검표를 만들지 못했습니다. 계산·지도 자료를 확인해 주세요.")
     cache_key = "workspace_cap_hwp_" + project.project_id
     fingerprint = sha256(draft.docx).hexdigest()
     saved = st.session_state.get(cache_key + "_filled")

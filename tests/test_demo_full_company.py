@@ -33,7 +33,8 @@ from engine.stage2.cap_site_lookup import Candidate
 
 D, C = d.DATA, d.DATA["company"]
 # 승인 DB(법령 기준표)가 있어야 풀리는 것과, 최종 제출 전 사람이 확인하라는 안내
-ALLOWED = ("승인 DB", "법령 DB", "별표 2", "별표 3", "Stage 1 판정", "적용하지 않습니다")
+ALLOWED = ("승인 DB", "법령 DB", "별표 2", "별표 3", "Stage 1 판정", "적용하지 않습니다",
+           "실제 사고원점 좌표")
 
 
 REAL = "울산광역시 남구 연습로 1"           # 실제 주소 판 시험용(조회는 가짜 응답으로 대신함)
@@ -172,7 +173,8 @@ class FullDemoTests(unittest.TestCase):
         self.assertEqual(len(self.impacts), 4)
         self.assertTrue(all(i.radius_m and not i.problems for i in self.impacts), [(i.name, i.problems) for i in self.impacts])
         self.assertGreaterEqual(self.applied["scenarios"], 1)
-        self.assertEqual(self.applied["problems"], [])
+        self.assertTrue(self.applied["problems"])
+        self.assertTrue(all("사고원점" in what for _, what in self.applied["problems"]))
         kinds = {s["대상 설비번호"]: s["사고유형"] for s in sc.saved_scenarios(self.p)}
         self.assertEqual(kinds, {"TK-01": sc.FIRE, "TK-02": sc.TOXIC, "RX-01": sc.FIRE, "CY-01": sc.TOXIC})   # 08 파일의 선정
 

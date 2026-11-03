@@ -111,7 +111,8 @@ class PipelineTests(unittest.TestCase):
     def test_file_choice_decides_the_accident_kind_and_numbers_come_from_the_engines(self):
         kinds = {s["대상 설비번호"]: s["사고유형"] for s in sc.saved_scenarios(self.p)}
         self.assertEqual(kinds, {"TK-01": sc.FIRE, "TK-02": sc.TOXIC, "RX-01": sc.FIRE, "CY-01": sc.TOXIC})
-        self.assertEqual(self.outcome.problems, [])
+        self.assertTrue(self.outcome.problems)
+        self.assertTrue(all("사고원점" in p.what for p in self.outcome.problems))
         self.assertTrue(all(i.radius_m for i in self.outcome.impacts))
         reason = next(s for s in sc.saved_scenarios(self.p) if s["대상 설비번호"] == "TK-01")["선정 근거"]
         self.assertIn("규정수량", reason)
@@ -249,6 +250,28 @@ class CompanyWorkbookSurveyTests(unittest.TestCase):
         self.assertEqual(p.get_field(f8.SITE_KEY).status, 'HOLD')
         self.assertTrue({"연습 초등학교", "연습 아파트", "연습천"} <= {r["보호대상 명칭"] for r in f8.saved_rows(p)})
         self.assertTrue(before <= {r["보호대상 명칭"] for r in f8.saved_rows(p)})
+
+    def test_gis_enriched_company_workbook_adds_target_sheet_without_legacy_columns(self):
+        from engine.stage2 import cap_upload_template as tpl, company_workbook_intake as cwi
+        from engine.stage2.direct_template import create_direct_cap_project
+
+        p = create_direct_cap_project("지도엑셀테스트", address="울산광역시 남구 연습로 1")
+        with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
+                patch.object(vworld, "search", return_value=(MAP_OBJECTS, [])):
+            ss.confirm(p, _box(-75, -50, 75, 50), "사용자 확인 경계")
+        original = tpl.build_company()
+        enriched = ss.company_workbook(p, original)
+        book = load_workbook(BytesIO(enriched))
+        self.assertIn(ss.TARGET_SHEET_NAME, book.sheetnames)
+        names = [book[ss.TARGET_SHEET_NAME].cell(row, 1).value
+                 for row in range(2, book[ss.TARGET_SHEET_NAME].max_row + 1)]
+        self.assertIn("연습 초등학교", names)
+        scenario_headers = [c.value for c in book["사고시나리오 검토"][1]]
+        self.assertNotIn("경계까지 거리(m)", scenario_headers)
+        self.assertNotIn("사고원점 좌표", scenario_headers)
+        sanitized, issues = cwi.inspect(enriched, "지도보완.xlsx")
+        self.assertTrue(sanitized.startswith(b"PK"))
+        self.assertFalse(any("시트" in issue["항목"] or "열 이름" in issue["항목"] for issue in issues))
 
     def test_without_an_uploaded_workbook_the_initial_template_has_no_map_inputs(self):
         from engine.stage2 import cap_upload_template as tpl

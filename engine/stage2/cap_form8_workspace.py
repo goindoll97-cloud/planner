@@ -259,15 +259,21 @@ def review_issues(rows: list[Mapping[str, Any]], no_target: bool, checks: Mappin
 
 def save_review(project: Stage2Project, checks: Mapping[str, bool], source: str,
                 method: str, map_numbers: str, evidence: list[EvidenceRef] | None = None) -> None:
+    existing = project.get_field(SITE_KEY)
+    previous = project.get_field(REVIEW_KEY)
+    attachments = (list(evidence) if evidence is not None else
+                   list(existing.evidence) if existing and existing.evidence else
+                   list(previous.evidence) if previous and previous.evidence else [])
     project.set_field(REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {
         "확인항목": {key: bool(checks.get(key)) for key, _ in REVIEW_ITEMS},
         "사용자료·확인일": source.strip(), "경계·거리 확인방법": method.strip(),
         "지도 번호": map_numbers.strip(),
-    }, "USER_CONFIRMED", evidence=evidence)
-    # 점검은 보호대상 목록(SITE_KEY)에 근거자료가 붙어 있는지 봅니다. 확인에 쓴 지도·도면을 목록에도 연결합니다.
+    }, "USER_CONFIRMED", evidence=attachments)
+    # Preserve map evidence across successive review-only edits.
     site = project.get_field(SITE_KEY)
     if site is not None:
-        project.set_field(SITE_KEY, site.label, site.value, site.status, evidence=list(evidence or []), note=site.note)
+        project.set_field(SITE_KEY, site.label, site.value, site.status,
+                          evidence=attachments, note=site.note)
 
 
 def save(project: Stage2Project, rows: list[Mapping[str, Any]], no_target: bool, evidence: str = "",

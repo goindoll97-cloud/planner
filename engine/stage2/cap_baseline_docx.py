@@ -953,61 +953,71 @@ def _fill_form12(tables, project: Stage2Project) -> None:
     prepared = build_cap_form12_data(project)
 
     if prepared.rows:
-        first = prepared.rows[0]
-        _fill_label_rows(
-            scenario_table,
-            {
-                "사고시나리오명": first.get("사고시나리오명", ""),
-                "사고시나리오 명": first.get("사고시나리오명", ""),
-                "유해화학물질명": first.get("유해화학물질명", ""),
-                "대상 설비번호": first.get("대상 설비번호", ""),
-                "사고유형": first.get("사고유형", ""),
-                "장외거리": first.get("장외거리(m)", ""),
-                "장외거리(m)": first.get("장외거리(m)", ""),
-                "거주민수": first.get("거주민수", ""),
-                "근로자수": first.get("근로자수", ""),
-                "사고원점의 좌표": first.get("사고원점 좌표", ""),
-                "사고원점 좌표": first.get("사고원점 좌표", ""),
-            },
-            start=1,
-        )
-        summaries = []
-        for row in prepared.rows:
-            summaries.append(
-                " / ".join(
-                    part for part in (
-                        f"시나리오: {_clean(row.get('사고시나리오명'))}",
-                        f"물질: {_clean(row.get('유해화학물질명'))}",
-                        f"설비: {_clean(row.get('대상 설비번호'))}",
-                        f"사고유형: {_clean(row.get('사고유형'))}",
-                        f"장외거리: {_clean(row.get('장외거리(m)'))} m",
-                        f"거주민: {_clean(row.get('거주민수'))}명",
-                        f"근로자: {_clean(row.get('근로자수'))}명",
-                        f"사고원점: {_clean(row.get('사고원점 좌표'))}",
-                        f"근거: {_clean(row.get('KORA/GIS 근거'))}",
-                    )
-                    if part and not part.endswith(": ")
-                )
+        # One copy of the statutory scenario detail table for every scenario.
+        # Clone the untouched template BEFORE writing values so later tables
+        # cannot accidentally inherit the previous scenario's facts.
+        scenario_tables = [scenario_table]
+        for _ in prepared.rows[1:]:
+            scenario_tables.append(_clone_table_after(scenario_tables[-1]))
+        for record, target_table in zip(prepared.rows, scenario_tables):
+            _fill_label_rows(
+                target_table,
+                {
+                    "사고시나리오명": record.get("사고시나리오명", ""),
+                    "사고시나리오 명": record.get("사고시나리오명", ""),
+                    "유해화학물질명": record.get("유해화학물질명", ""),
+                    "대상 설비번호": record.get("대상 설비번호", ""),
+                    "사고유형": record.get("사고유형", ""),
+                    "장외거리": record.get("장외거리(m)", ""),
+                    "장외거리(m)": record.get("장외거리(m)", ""),
+                    "거주민수": record.get("거주민수", ""),
+                    "근로자수": record.get("근로자수", ""),
+                    "사고원점의 좌표": record.get("사고원점 좌표", ""),
+                    "사고원점 좌표": record.get("사고원점 좌표", ""),
+                },
+                start=1,
             )
-        if len(scenario_table.rows) > 1:
-            cells = _unique_cells(scenario_table.rows[1])
-            if cells:
-                _append_value(cells[-1], "\n".join(summaries))
+            # Keep the evidence trail near its OWN scenario, not in the
+            # first scenario's cells as a misleading combined narrative.
+            if len(target_table.rows) > 1:
+                cells = _unique_cells(target_table.rows[1])
+                if cells:
+                    detail = " / ".join(
+                        part for part in (
+                            f"시나리오: {_clean(record.get('사고시나리오명'))}",
+                            f"물질: {_clean(record.get('유해화학물질명'))}",
+                            f"설비: {_clean(record.get('대상 설비번호'))}",
+                            f"사고유형: {_clean(record.get('사고유형'))}",
+                            f"장외거리: {_clean(record.get('장외거리(m)'))} m",
+                            f"거주민: {_clean(record.get('거주민수'))}명",
+                            f"근로자: {_clean(record.get('근로자수'))}명",
+                            f"사고원점: {_clean(record.get('사고원점 좌표'))}",
+                            f"근거: {_clean(record.get('KORA/GIS 근거'))}",
+                        ) if part and not part.endswith(": ")
+                    )
+                    _append_value(cells[-1], detail)
 
-    # Form 12 protected-target rows are scenario-specific. Do not reuse the
-    # overall Form 13 target list unless the company/GIS data explicitly names
-    # the scenario to which each target belongs.
-    source_targets = base._rows(project, "cap.offsite.population_and_protected_targets")
+    # Form 12 needs scenario-linked targets. Confirmed per-scenario GIS rows
+    # take precedence over the conservative boundary-distance candidates.
+    confirmed_targets = base._rows(project, "cap.offsite.population_and_protected_targets")
     scenario_names = {_clean(row.get("사고시나리오명")) for row in prepared.rows}
+    linked = [row for row in confirmed_targets
+              if _clean(base._row_value(row, "사고시나리오명", "시나리오명")) in scenario_names
+              and _clean(base._row_value(row, "사고시나리오명", "시나리오명"))]
+    provisional = not bool(linked)
+    source_targets = linked or base._rows(project, "cap.offsite.scenario_protected_target_candidates")
     rows = []
-    for idx, row in enumerate(source_targets, 1):
+    for row in source_targets:
         scenario = _clean(base._row_value(row, "사고시나리오명", "시나리오명"))
         if not scenario or scenario not in scenario_names:
             continue
+        name = base._row_value(row, "보호대상 명칭", "명칭")
+        if provisional:
+            name = str(name) + " [잠정: 경계거리 기반·공간중첩 미검증]"
         rows.append([
-            str(idx),
+            str(len(rows) + 1),
             base._row_value(row, "보호대상 종류", "세부유형", "종류"),
-            base._row_value(row, "보호대상 명칭", "명칭"),
+            f"{scenario} / {name}",
             base._row_value(row, "장외거리(m)", "사업장 경계와 거리(m)", "거리(m)"),
         ])
     _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
