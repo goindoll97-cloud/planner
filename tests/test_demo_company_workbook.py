@@ -30,6 +30,22 @@ def test_filled_workbook_uses_same_schema_and_keeps_examples_separate():
     assert issues == []
 
 
+
+def test_training_workbook_without_custom_id_remains_practice_only(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    book = load_workbook(BytesIO(demo.build()))
+    book.properties.identifier = ""
+    out = BytesIO()
+    book.save(out)
+    project = intake.project_for_upload(
+        Stage2Project(project_id="SYNTH-START", company_name=""),
+        "수정한 연습용 회사.xlsx", out.getvalue(),
+    )
+    assert project.cap_group == "1군"
+    assert not project.stage1_snapshot["legal_applicability_confirmed"]
+
+
+
 def test_uploaded_demo_generates_narratives_scenarios_and_docx_without_forging_approval(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     selected = Stage2Project(project_id='EXCEL-START', company_name='')
