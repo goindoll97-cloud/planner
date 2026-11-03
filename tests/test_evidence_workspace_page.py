@@ -145,7 +145,7 @@ class EvidencePageTests(unittest.TestCase):
         save_project(project)
         at = self.run_page(4)
         self.assertFalse(at.exception)
-        self.assertEqual(len(at.dataframe), 0)
+        self.assertEqual(len(at.dataframe), 1)  # 법정서식·회사엑셀·GIS 누락 점검표
         at.button(key="write_" + self.pid).click().run()
         self.assertFalse(at.exception)
         self.assertIsNotNone(load_project(self.pid).get_field("inventory.facilities"))
@@ -273,11 +273,12 @@ class ProgressBoardTests(unittest.TestCase):
         at.session_state["evidence_step_" + self.pid] = 4
         at.run()
         self.assertFalse(at.exception)
-        self.assertEqual(len(at.dataframe), 0)
+        self.assertEqual(len(at.dataframe), 1)  # 법정서식·회사엑셀·GIS 누락 점검표
         at.button(key="write_" + self.pid).click().run()
         self.assertTrue(any("아래에서 내려받으세요" in x.value for x in at.success))
         downloads = [b.proto.label for b in at.get("download_button")]
-        self.assertEqual(downloads, ["규정서식 초안 HWP 내려받기", "규정서식 초안 DOCX 내려받기"])
+        self.assertEqual(downloads, ["서식별 입력·계산·GIS 누락 점검표 CSV 내려받기",
+                                     "규정서식 초안 HWP 내려받기", "규정서식 초안 DOCX 내려받기"])
         self.assertTrue(any("일부만 작성" in c.value for c in at.caption))
         self.assertFalse(at.error)
         text = " ".join(_texts(at))
