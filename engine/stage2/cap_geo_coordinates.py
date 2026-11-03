@@ -13,7 +13,7 @@ import re
 def valid_origin(value: object) -> bool:
     text = str(value or "").strip().strip("()[]")
     parts = [part.strip() for part in text.split(",")]
-    if len(parts) != 2 or not all(re.fullmatch(r"[+-]?\\d+(?:\\.\\d+)?", x) for x in parts):
+    if len(parts) != 2 or not all(re.fullmatch(r"[+-]?\d+(?:\.\d+)?", x) for x in parts):
         return False
     first, second = (float(x) for x in parts)
     if not math.isfinite(first) or not math.isfinite(second):
