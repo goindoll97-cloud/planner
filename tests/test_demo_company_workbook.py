@@ -18,10 +18,32 @@ def test_filled_workbook_uses_same_schema_and_keeps_examples_separate():
     assert '가상' in filled.properties.description
     assert not any(ws._images for ws in filled)
     assert [r[2].value for r in filled[template.SITE_SHEET].iter_rows(min_row=2)] == [
-        r[2].value for r in empty[template.SITE_SHEET].iter_rows(min_row=2)]
+        r[1].value for r in filled[template.SITE_SHEET].iter_rows(min_row=2)]
+    assert not any(c.comment for ws in filled for row in ws for c in row)
+    assert all('SDS' not in str(c.value).replace('MSDS', '') for ws in filled
+               for row in ws for c in row if c.value is not None)
+    help_rows = list(filled[template.HELP_SHEET].values)
+    assert len(help_rows) > 200
+    assert any(r[1] == '사내 전달 방법' and '무전 전파' in str(r[2]) for r in help_rows)
     assert len([r for r in filled['설비'].iter_rows(min_row=2) if r[0].value]) == 4
     _, issues = intake.inspect(demo.build(), demo.FILENAME, '1군')
     assert issues == []
+
+
+
+def test_training_workbook_without_custom_id_remains_practice_only(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    book = load_workbook(BytesIO(demo.build()))
+    book.properties.identifier = ""
+    out = BytesIO()
+    book.save(out)
+    project = intake.project_for_upload(
+        Stage2Project(project_id="SYNTH-START", company_name=""),
+        "수정한 연습용 회사.xlsx", out.getvalue(),
+    )
+    assert project.cap_group == "1군"
+    assert not project.stage1_snapshot["legal_applicability_confirmed"]
+
 
 
 def test_uploaded_demo_generates_narratives_scenarios_and_docx_without_forging_approval(tmp_path, monkeypatch):

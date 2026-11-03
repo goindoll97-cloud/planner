@@ -1,6 +1,7 @@
 """실제 회사 양식의 값 칸에 가상 회사를 채운 업로드·출력 연습 파일."""
 from functools import lru_cache
 from io import BytesIO
+import re
 
 from openpyxl import load_workbook
 
@@ -37,6 +38,10 @@ SITE_VALUES = {
     'narrative.shutdown.권한자': '가상 제1공장 운전책임자 박가상',
     'narrative.shutdown.판단기준': '가상 감지기 경보 2단계 이상 또는 누출 확인 시',
     'narrative.shutdown.방법': '가상 긴급차단밸브 작동 후 공급 중단',
+    'narrative.change_management.기록': (
+        '변경일·위험성검토·승인·교육·후속조치를 변경관리대장에 기록'
+        '(가상 사내 절차; 보존기간은 별도 확인)'
+    ),
     'narrative.communication.수단': '가상 비상방송·무전기·사내 전화',
     'narrative.communication.방법': '상황 발생 즉시 방송 후 대응반에 무전 전파(가상)',
     'narrative.communication.담당': '가상 안전환경팀 이담당',
@@ -44,7 +49,7 @@ SITE_VALUES = {
     'narrative.recovery.순서': '누출 차단 → 잔류물 제거 → 설비 점검 → 재가동 승인(가상)',
     'narrative.recovery.환경조치': '가상 흡착포 회수·폐기물 위탁 처리',
     'narrative.investigation.책임': '가상 안전환경팀장 이담당',
-    'narrative.investigation.방법': '사고 후 7일 이내 원인 조사 보고서 작성(가상)',
+    'narrative.investigation.방법': '사고 발생 후 운전기록과 관계자 진술을 조사해 원인조사보고서 작성(가상 사내 절차)',
     'narrative.investigation.재발방지': '개선 과제를 등록하고 분기별 이행 점검(가상)',
     'narrative.community.대상': '가상 주민회관·인근 마을 대표',
     'narrative.community.방법': '연 1회 설명회와 안내문 배포(가상)',
@@ -127,7 +132,7 @@ def build():
                 if kind == 'target' and item.id == 'target.location':
                     value = '가상 사업장 주변 위치(실제 주소·현장 확인 아님)'
                 if value is not None:
-                    ws.cell(row, columns[item.template_header], value)
+                    ws.cell(row, columns[template.display_header(item.template_header)], value)
     # 추가 명세도 실제 양식의 입력 열에만 넣는다. 예시 열은 변경하지 않는다.
     tables = {
         'cap-components': [
@@ -149,6 +154,49 @@ def build():
         for row, values in enumerate(rows, 2):
             for col, item in enumerate(wanted['tables'][table], 1):
                 book[template.sheet_title(table)].cell(row, col, values.get(item.column))
+    # The example column is an actual answer model: mirror the SAME complete
+    # synthetic answer instead of offering generic instructions at odds with it.
+    site = book[template.SITE_SHEET]
+    site_example = next(c.column for c in site[1] if c.value == template.EXAMPLE_HEADER)
+    for row in range(2, site.max_row + 1):
+        site.cell(row, site_example, site.cell(row, 2).value)
+
+    for sheet in book.worksheets:
+        if sheet.title in {template.SITE_SHEET, template.HELP_SHEET}:
+            continue
+        headers = [c.value for c in sheet[1]]
+        example_col = headers.index(template.EXAMPLE_HEADER) + 1
+        for row in range(2, sheet.max_row + 1):
+            actual = [(headers[col - 1], sheet.cell(row, col).value)
+                      for col in range(1, example_col)
+                      if sheet.cell(row, col).value not in (None, "")]
+            if actual:
+                sheet.cell(row, example_col,
+                           " | ".join(f"{label}: {value}" for label, value in actual))
+    # Detailed help examples also use the filled synthetic values by header,
+    # including columns with no sample value (shown explicitly as unconfirmed).
+    help_sheet = book[template.HELP_SHEET]
+    for row in range(2, help_sheet.max_row + 1):
+        sheet_name = help_sheet.cell(row, 1).value
+        label = help_sheet.cell(row, 2).value
+        target = book[sheet_name]
+        if sheet_name == template.SITE_SHEET:
+            answer = next((target.cell(r, 2).value for r in range(2, target.max_row + 1)
+                           if target.cell(r, 1).value == label), None)
+        else:
+            col = next((c.column for c in target[1] if c.value == label), None)
+            answer = next((target.cell(r, col).value for r in range(2, target.max_row + 1)
+                           if col and target.cell(r, col).value not in (None, "")), None)
+        help_sheet.cell(row, 3,
+                        "미기재: 실제 사업장 자료 확인 후 입력" if answer in (None, "")
+                        else str(answer))
+
+    for sheet in book.worksheets:
+        for row in sheet:
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.value = re.sub(r"(?<!M)SDS", "MSDS", cell.value)
+
     book.properties.identifier = IDENTIFIER
     book.properties.title = COMPANY + ' · 가상 회사 작성 연습'
     book.properties.description = NOTICE

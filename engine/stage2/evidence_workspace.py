@@ -280,6 +280,9 @@ def _read_xlsx(content):
     tables = []
     try:
         for sheet in values.worksheets:
+            # A reference-only sheet must never be parsed as company facts.
+            if sheet.title == "항목별 작성안내":
+                continue
             if (sheet.max_row or 0) > MAX_ROWS:
                 raise ValueError("한 시트에 10,000행 이하로 나눠 주세요.")
             fsheet = formulas[sheet.title]
@@ -308,7 +311,12 @@ def _read_xlsx(content):
                             flags[(r, c)] = "merged"
             # 양식의 예시 열은 값·항목 탐지 전 제거하여 초안에 섞이지 않게 합니다.
             if grid:
-                keep = [c for c, value in enumerate(grid[0]) if value != "예시 (입력하지 마세요)"]
+                non_input_headers = {
+                    "예시 (입력하지 마세요)",
+                    "작성 예시 (회사 값 아님)",
+                    "작성 안내·법령 참고 (입력하지 마세요)",
+                }
+                keep = [c for c, value in enumerate(grid[0]) if value not in non_input_headers]
                 grid = [[row[c] for c in keep] for row in grid]
                 positions = {old: new for new, old in enumerate(keep)}
                 flags = {(r, positions[c]): v for (r, c), v in flags.items() if c in positions}

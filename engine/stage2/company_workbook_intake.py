@@ -47,7 +47,12 @@ def project_for_upload(selected, name, content):
                 '수정 요청': '화면에서 적용할 사업장을 선택한 뒤 다시 올려 주세요.'}])
         target = load_project(matches[0]['project_id']) if matches else create_direct_cap_project(company)
     from . import demo_company_workbook as demo
-    if book.properties.identifier == demo.IDENTIFIER and company == demo.COMPANY:
+    training_copy = (
+        tpl.HELP_SHEET in book.sheetnames
+        and book[tpl.SITE_SHEET].cell(1, 3).value == tpl.EXAMPLE_HEADER
+        and book[tpl.HELP_SHEET].cell(1, 1).value == "시트"
+    )
+    if company == demo.COMPANY and (book.properties.identifier == demo.IDENTIFIER or training_copy):
         target.cap_group = '1군'
         if demo.NOTICE not in target.notes:
             target.notes.append(demo.NOTICE)
@@ -76,14 +81,14 @@ def inspect(content, name, group=''):
     # columns and the current scenario sheet plus a map-generated target sheet.
     old_scenario_headers = (
         scenario_title in book.sheetnames
-        and [c.value for c in book[scenario_title][1]][:legacy[scenario_title].max_column]
-        == [c.value for c in legacy[scenario_title][1]]
+        and [c.value for c in book[scenario_title][1]][:legacy[scenario_title].max_column - 2]
+        == [c.value for c in legacy[scenario_title][1]][:legacy[scenario_title].max_column - 2]
     )
     if old_scenario_headers:
         expected = legacy
     elif target_title in book.sheetnames:
         expected = load_workbook(BytesIO(tpl.build_company(include_target_sheet=True)))
-    optional_sheets = {scenario_title, target_title}
+    optional_sheets = {scenario_title, target_title, tpl.HELP_SHEET}
     for ws in expected:
         if ws.title not in book.sheetnames:
             if ws.title in optional_sheets:
@@ -94,13 +99,29 @@ def inspect(content, name, group=''):
         if actual.max_row > ew.MAX_ROWS or actual.max_column > ew.MAX_COLUMNS:
             issue(ws.title, 'A1', '표 크기', '읽을 수 있는 행·열 수를 초과했습니다.', '불필요한 빈 행·열을 제거해 주세요.')
             continue
-        for col in range(1, ws.max_column + 1):
-            if actual.cell(1, col).value != ws.cell(1, col).value:
-                issue(ws.title, actual.cell(1, col).coordinate, '열 이름', '양식의 열 이름이나 순서가 바뀌었습니다.', f'열 제목을 ‘{ws.cell(1, col).value}’로 복원해 주세요.')
-        if actual.max_column > ws.max_column and any(
+        if ws.title == tpl.HELP_SHEET:
+            # The last sheet is documentation. It must never affect facts.
+            continue
+        input_count = ws.max_column - 2
+        for col in range(1, input_count + 1):
+            current, expected_title = actual.cell(1, col).value, ws.cell(1, col).value
+            # Accept legacy company workbooks that still say SDS.
+            if current not in (expected_title, expected_title.replace("MSDS", "SDS")):
+                issue(ws.title, actual.cell(1, col).coordinate, '열 이름',
+                      '양식의 열 이름이나 순서가 바뀌었습니다.',
+                      f'열 제목을 ‘{expected_title}’로 복원해 주세요.')
+        example_col = input_count + 1
+        if actual.cell(1, example_col).value not in (tpl.EXAMPLE_HEADER, '예시 (입력하지 마세요)'):
+            issue(ws.title, actual.cell(1, example_col).coordinate, '예시 열',
+                  '회사 입력열 뒤의 예시 열 제목이 바뀌었습니다.', '공식 작성용 엑셀의 예시 열을 유지해 주세요.')
+        if actual.cell(1, example_col + 1).value not in (None, tpl.GUIDANCE_HEADER):
+            issue(ws.title, actual.cell(1, example_col + 1).coordinate, '작성 안내 열',
+                  '작성 안내 열의 머리글이 바뀌었습니다.', '공식 작성용 엑셀의 안내 열을 유지해 주세요.')
+        if actual.max_column > input_count + 2 and any(
                 actual.cell(r, c).value is not None for r in range(1, actual.max_row + 1)
-                for c in range(ws.max_column + 1, actual.max_column + 1)):
-            issue(ws.title, 'A1', '추가 열', '양식에 없는 열에 내용이 있습니다.', '내용을 양식의 해당 입력 칸으로 옮겨 주세요.')
+                for c in range(input_count + 3, actual.max_column + 1)):
+            issue(ws.title, 'A1', '추가 열', '양식에 없는 열에 내용이 있습니다.',
+                  '내용을 양식의 해당 입력 칸으로 옮겨 주세요.')
     extras = set(book.sheetnames) - set(expected.sheetnames)
     for title in sorted(extras):
         issue(title, 'A1', '추가 시트', '양식에 없는 시트는 읽을 수 없습니다.', '추가 자료를 원래 양식의 해당 입력란에 옮겨 주세요.')
@@ -172,8 +193,10 @@ def inspect(content, name, group=''):
         if title not in book.sheetnames:
             continue
         ws = book[title]
-        by_header = {i.template_header: i for i in items}
-        headers = [c.value for c in ws[1]][:-1]
+        by_header = {tpl.display_header(i.template_header): i for i in items}
+        by_header.update({i.template_header: i for i in items})
+        guide_present = ws.cell(1, ws.max_column).value == tpl.GUIDANCE_HEADER
+        headers = [c.value for c in ws[1]][:-2 if guide_present else -1]
         active = []
         seen = {}
         for row in range(2, ws.max_row + 1):

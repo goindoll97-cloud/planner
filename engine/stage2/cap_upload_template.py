@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import re
 from typing import Any
 
 from . import cap_fact_catalog as catalog
@@ -24,6 +25,13 @@ SITE_SHEET = "사업장 정보"
 ENTITY_SHEETS = {"facility": "설비", "material": "물질", "detector": "가스감지기", "scenario": "사고시나리오 검토", "target": "주변 보호대상"}
 SCENARIO_FILE = "scenario_review"        # 설비별 사고시나리오 입력은 설비 시트와 따로 둡니다(열이 많음)
 GUIDE_SHEET = "안내"
+HELP_SHEET = "항목별 작성안내"
+EXAMPLE_HEADER = "작성 예시 (회사 값 아님)"
+GUIDANCE_HEADER = "작성 안내·법령 참고 (입력하지 마세요)"
+
+
+def display_header(text: str) -> str:
+    return re.sub(r"(?<!M)SDS", "MSDS", str(text))
 EXTRA_ROWS = {"facility": 5, "material": 5, "detector": 10, "scenario": 5, "target": 10}     # 새 대상을 적을 빈 줄
 ID_HEADER = {"facility": "설비번호", "material": "제품코드", "detector": "감지기 번호", "scenario": "설비번호", "target": "보호대상 명칭"}
 NAME_FIELD = {"facility": "name", "material": "name"}
@@ -62,6 +70,66 @@ def _help(item: catalog.Fact) -> str:
     parts.append("쓰이는 곳: " + item.used_in_text)
     return " · ".join(parts)
 
+
+
+LEGAL_CAP = "https://www.law.go.kr/admRulInfoP.do?admRulSeq=2100000279958"
+LEGAL_MSDS = "https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=18712"
+LEGAL_PSM = "https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000259798"
+
+
+def _legal_reference(item: catalog.Fact) -> str:
+    if "SDS" in item.template_header or item.kind == "material":
+        return LEGAL_MSDS
+    if item.id.startswith(("narrative.change_management.", "narrative.community.",
+                           "narrative.public_notice.", "site.company_notice_", "site.survey_")):
+        return LEGAL_CAP
+    if "사고조사" in item.name:
+        return LEGAL_PSM
+    return ""
+
+
+def _guidance(item: catalog.Fact) -> str:
+    if item.id.startswith("narrative.change_management."):
+        return ("변경일·변경 전후·검토·승인·교육·조치기록을 실제 대장과 대조하세요. "
+                "변경관리대장 5년 보존은 모든 사업장의 법정 보존기간으로 확인되지 않습니다. "
+                "화학사고예방관리계획서 이행 등에 관한 규정 제4조제2항의 주요취급시설 "
+                "변경내역 관리대장 연간 제출과 구분하세요.")
+    if item.id.startswith("narrative.investigation."):
+        return ("사고조사 책임자·시점·원인·재발방지 조치와 실제 보존기준을 확인하세요. "
+                "가상의 7일 기한을 일반적인 법정 기한으로 간주하지 마세요.")
+    if "SDS" in item.template_header or item.kind == "material":
+        return ("최신 물질안전보건자료(MSDS)와 값·단위·작성/개정일을 대조하고 "
+                "해당 시 제출번호도 확인하세요. " + _help(item))
+    if item.id.startswith(("narrative.community.", "narrative.public_notice.", "site.company_notice_")):
+        return ("회사 자체 소통 일정과 법정 지역사회 고지는 구분해야 합니다. "
+                "승인 계획과 현행 이행 규정의 대상·고지 주기를 확인하세요. " + _help(item))
+    if item.id.startswith("site.survey_"):
+        return ("지도 검색후보만으로 법정 전수조사를 완료 처리하지 마세요. "
+                "실제 사업장 경계·거리·분류를 현장과 대조하세요. " + _help(item))
+    return _help(item)
+
+
+def _sample_example(item: catalog.Fact) -> str:
+    """Use realistic synthetic company text, never generic 'ask someone' instructions."""
+    from . import demo_company_workbook as demo
+    if item.id in demo.SITE_VALUES:
+        return display_header(str(demo.SITE_VALUES[item.id]))
+    if item.file == SCENARIO_FILE:
+        value = demo.SCENARIO_VALUES.get("TK-01", {}).get(item.template_header)
+        if value is not None:
+            return display_header(str(value))
+    result = _example(item)
+    if item.kind == "narrative" and any(phrase in result for phrase in
+                                        ("확인해 입력", "미정이면 미확인", "확인 후 입력")):
+        example = {
+            "방법": "상황 발생 즉시 비상방송 후 대응반에 무전 전파(가상)",
+            "절차": "변경요청서 접수, 위험성 검토, 공장장 승인, 작업자 교육(가상)",
+            "주기": "분기 1회 실시하고 점검표에 기록(가상 사내 일정)",
+            "대상": "제1공장 근로자 12명과 주변 주민대표(가상)",
+            "담당": "가상 안전환경팀 이담당",
+        }
+        return example.get(item.column, f"안전환경팀이 {item.name}을 매월 점검하고 기록(가상)")
+    return display_header(result)
 
 def _wanted(rows: list[dict[str, Any]], only_blank: bool) -> list[catalog.Fact]:
     """양식에 넣을 사실: 빈칸(일부 대상만 빈 것 포함)인 회사 사실. 충돌·확인은 원본 파일을 고쳐야 하므로 넣지 않습니다."""
@@ -162,7 +230,6 @@ def build_company(*, include_scenario_sheets: bool = False, include_target_sheet
 def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", docs=None, complete: bool = False,
           with_map_inputs: bool = True, with_target_inputs: bool = False) -> bytes:
     from openpyxl import Workbook
-    from openpyxl.comments import Comment
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.worksheet.datavalidation import DataValidation
 
@@ -195,8 +262,7 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
         for cell in sheet[1]:
             cell.font, cell.fill = bold, head_fill
         for row, item in enumerate(wanted["site"], start=2):
-            sheet.cell(row=row, column=1, value=item.template_header).font = bold
-            sheet.cell(row=row, column=1).comment = Comment(_help(item), "양식")
+            sheet.cell(row=row, column=1, value=display_header(item.template_header)).font = bold
             if item.kind == "narrative":
                 sheet.cell(row=row, column=2).alignment = Alignment(wrap_text=True, vertical="top")
             choices(sheet, item, "B", row, row)
@@ -212,11 +278,9 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
         name_item = next((i for i in catalog.facts(kinds=["facility" if kind == "scenario" else kind])
                           if i.evidence_field == NAME_FIELD.get(kind)), None)
         header_items = ([name_item] if name_item else []) + [i for i in items if i is not name_item]   # 이름을 번호 바로 옆에
-        sheet.append([ID_HEADER[kind]] + [i.template_header for i in header_items])
+        sheet.append([ID_HEADER[kind]] + [display_header(i.template_header) for i in header_items])
         for column, cell in enumerate(sheet[1], start=1):
             cell.font, cell.fill = bold, head_fill
-            if column > 1:
-                cell.comment = Comment(_help(header_items[column - 2]), "양식")
             sheet.column_dimensions[cell.column_letter].width = max(12, min(30, len(str(cell.value)) * 2 + 2))
         for entity in known:
             line = [entity.split(":", 1)[1]] + [""] * len(header_items)
@@ -230,10 +294,9 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
 
     for table, items in wanted["tables"].items():
         sheet = book.create_sheet(sheet_title(table))
-        sheet.append([i.template_header for i in items])
+        sheet.append([display_header(i.template_header) for i in items])
         for column, cell in enumerate(sheet[1], start=1):
             cell.font, cell.fill = bold, head_fill
-            cell.comment = Comment(_help(items[column - 1]), "양식")
             sheet.column_dimensions[cell.column_letter].width = max(12, min(30, len(str(cell.value)) * 2 + 2))
         keys = [i for i in items if i.identifier]
         known = [] if complete else status.entities(project, "psm_table", table)
@@ -247,33 +310,64 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
             choices(sheet, item, sheet.cell(row=1, column=column).column_letter, 2, len(known) + 1 + TABLE_EXTRA_ROWS)
         sheet.freeze_panes = "A2"
 
-    # 예시는 별도 열에만 두며 읽기 엔진에서 제외합니다.
+    # Help is visible in the worksheet instead of hidden Excel comments.
     from openpyxl.utils import get_column_letter
+    lookup = {}
     for sheet in book.worksheets:
-        col = sheet.max_column + 1
-        sheet.cell(1, col, "예시 (입력하지 마세요)")
         if sheet.title == SITE_SHEET:
-            for row, item in enumerate(wanted["site"], 2):
-                sheet.cell(row, col, _example(item))
+            items = wanted["site"]
         else:
-            items = next((wanted.get(k, []) for k, title in ENTITY_SHEETS.items() if title == sheet.title), None)
+            items = next((wanted.get(k, []) for k, title in ENTITY_SHEETS.items()
+                          if title == sheet.title), None)
             if items is None:
-                items = next((v for t, v in wanted["tables"].items() if sheet_title(t) == sheet.title), [])
-            text = " / ".join(f"{i.template_header}: {_example(i)}" for i in items)
-            if complete:
-                text = " / ".join(f"{i.template_header}: {_example(i)}" for i in items[:2])
-                text += " · 나머지 항목의 예시·단위는 열 제목의 메모를 확인하세요."
-            # 번호가 없는 예시 전용 줄은 만들지 않습니다.
+                items = next((v for t, v in wanted["tables"].items()
+                              if sheet_title(t) == sheet.title), [])
+        lookup[sheet.title] = [(display_header(i.template_header), i) for i in items]
+        col = sheet.max_column + 1
+        guide_col = col + 1
+        sheet.cell(1, col, EXAMPLE_HEADER)
+        sheet.cell(1, guide_col, GUIDANCE_HEADER)
+        if sheet.title == SITE_SHEET:
+            for row, item in enumerate(items, 2):
+                sheet.cell(row, col, _sample_example(item))
+                reference = _legal_reference(item)
+                sheet.cell(row, guide_col, _guidance(item) + ("\\n법령·자료: " + reference if reference else ""))
+        else:
             for row in range(2, max(sheet.max_row, 2) + 1):
-                sheet.cell(row, col, text)
-        sheet.column_dimensions[get_column_letter(col)].width = 65
-        for cell in sheet[get_column_letter(col)]:
+                preview = " | ".join(
+                    f"{display_header(i.template_header)}: {_sample_example(i)}" for i in items[:5])
+                sheet.cell(row, col, preview + " | 나머지는 항목별 작성안내 참조")
+                sheet.cell(row, guide_col, "모든 입력 열의 구체적 예시·단위·법령 참고는 '항목별 작성안내' 시트에 있습니다.")
+        for index, fill in ((col, "FFF2CC"), (guide_col, "E7EFF8")):
+            letter = get_column_letter(index)
+            sheet.column_dimensions[letter].width = 65 if index == col else 75
+            for cell in sheet[letter]:
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                cell.fill = PatternFill("solid", fgColor=fill)
+
+    help_sheet = book.create_sheet(HELP_SHEET)
+    help_sheet.append(["시트", "항목", EXAMPLE_HEADER, "작성 안내·법령 기준", "공식 근거 URL"])
+    for sheet_name, entries in lookup.items():
+        for header, item in entries:
+            help_sheet.append([sheet_name, header, _sample_example(item), _guidance(item), _legal_reference(item)])
+    for cell in help_sheet[1]:
+        cell.font, cell.fill = bold, head_fill
+    for letter, width in (("A", 21), ("B", 36), ("C", 65), ("D", 85), ("E", 75)):
+        help_sheet.column_dimensions[letter].width = width
+    for row in help_sheet.iter_rows(min_row=2):
+        for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
-            cell.fill = PatternFill("solid", fgColor="FFF2CC")
-    if not book.worksheets:
-        book.create_sheet(SITE_SHEET).append(["항목", "값", "예시 (입력하지 마세요)"])
+        row[2].fill = PatternFill("solid", fgColor="FFF2CC")
+        row[3].fill = PatternFill("solid", fgColor="E7EFF8")
+        help_sheet.row_dimensions[row[0].row].height = 47
+    help_sheet.freeze_panes = "C2"
+    help_sheet.auto_filter.ref = help_sheet.dimensions
+    if not lookup:
+        book.create_sheet(SITE_SHEET).append(["항목", "값", EXAMPLE_HEADER, GUIDANCE_HEADER])
     if complete:
         for sheet in book:
+            if sheet.title == HELP_SHEET:
+                continue
             sheet.freeze_panes = "B2"
             sheet.sheet_view.zoomScale = 85
             sheet.auto_filter.ref = sheet.dimensions
@@ -285,19 +379,11 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
             sheet.print_title_rows = "1:1"
             sheet.print_options.horizontalCentered = True
             for row in sheet.iter_rows(min_row=2, max_row=max(sheet.max_row, 11)):
-                for cell in row[:-1]:
+                for cell in row[:-2]:
                     cell.alignment = Alignment(wrap_text=True, vertical="top")
                     if sheet.title != SITE_SHEET or cell.column == 2:
                         cell.fill = PatternFill("solid", fgColor="E2F0D9")
                 sheet.row_dimensions[row[0].row].height = 45 if sheet.title == SITE_SHEET else 36
-            if sheet.title != SITE_SHEET:
-                items = next((wanted.get(k, []) for k, title in ENTITY_SHEETS.items() if title == sheet.title), None)
-                if items is None:
-                    items = next(v for t, v in wanted["tables"].items() if sheet_title(t) == sheet.title)
-                for cell in list(sheet[1])[:-1]:
-                    item = next((i for i in items if i.template_header == cell.value), None)
-                    if item:
-                        cell.comment = Comment(_help(item) + "\n예시: " + _example(item), "작성 방법")
             if sheet.title == SITE_SHEET:
                 sheet.column_dimensions["B"].width = 45
                 sheet.freeze_panes = "B2"
@@ -306,10 +392,6 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
                     text = str(row[2].value or "")
                     lines = ceil(sum(2 if ord(c) > 127 else 1 for c in text) / 60)
                     sheet.row_dimensions[row[0].row].height = max(45, min(300, lines * 15 + 8))
-            sheet.cell(1, 1).comment = Comment(
-                "연두색 칸에 회사 사실만 입력하세요. 1군 전용 항목은 예시에서 표시합니다. "
-                "모르면 추측하지 말고 미확인으로 남기세요. 반복 목록은 한 행에 한 대상을 적고 행을 추가할 수 있습니다. "
-                "예시와 설명은 회사 정보로 읽지 않습니다.", "작성 방법")
     out = BytesIO()
     book.save(out)
     return out.getvalue()
