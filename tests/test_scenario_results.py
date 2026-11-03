@@ -255,7 +255,7 @@ class CompanyWorkbookSurveyTests(unittest.TestCase):
         from engine.stage2.direct_template import create_direct_cap_project
 
         p = create_direct_cap_project("지도엑셀테스트", address="울산광역시 남구 연습로 1")
-        with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \\
+        with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
                 patch.object(vworld, "search", return_value=(MAP_OBJECTS, [])):
             ss.confirm(p, _box(-75, -50, 75, 50), "사용자 확인 경계")
         original = tpl.build_company()
