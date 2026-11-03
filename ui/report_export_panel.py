@@ -152,6 +152,7 @@ def render_workspace_download(project) -> None:
                 "HWP 시험 초안은 사업장 일반정보 일부만 작성합니다. "
                 "물질·설비·시나리오·서술형은 작성되지 않았습니다. DOCX를 이용하세요."
             )
+            st.caption("사업장 일반정보 일부만 작성된 HWP 시험 초안입니다.")
         if hwp.warnings:
             st.caption(hwp.warnings[0])
     st.download_button("규정서식 초안 HWP 내려받기", data=hwp.data if hwp else b"",
