@@ -259,6 +259,11 @@ def review_issues(rows: list[Mapping[str, Any]], no_target: bool, checks: Mappin
 
 def save_review(project: Stage2Project, checks: Mapping[str, bool], source: str,
                 method: str, map_numbers: str, evidence: list[EvidenceRef] | None = None) -> None:
+    existing = project.get_field(SITE_KEY)
+    previous = project.get_field(REVIEW_KEY)
+    attachments = (list(evidence) if evidence is not None else
+                   list(existing.evidence) if existing and existing.evidence else
+                   list(previous.evidence) if previous and previous.evidence else [])
     project.set_field(REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {
         "확인항목": {key: bool(checks.get(key)) for key, _ in REVIEW_ITEMS},
         "사용자료·확인일": source.strip(), "경계·거리 확인방법": method.strip(),
