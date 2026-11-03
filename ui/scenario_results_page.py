@@ -307,13 +307,14 @@ def _target_editor(project, rows) -> None:
             placeholder="예: 1,2,3",
             key=f"scn_scope_numbers_{project.project_id}",
         )
-    scope_ok = all(checks.values()) and bool(source.strip()) and bool(method.strip()) and bool(numbers.strip())
     if st.button("확인한 보호대상 제출", type="primary", key=f"scn_targets_submit_{project.project_id}"):
         saved = {f8._norm(r.get("보호대상 명칭")): r for r in rows}
         merged = []
         for record in edited.to_dict("records"):
             record = {k: ("" if pd.isna(v) else v) for k, v in record.items()}
             merged.append({**saved.get(f8._norm(record.get("보호대상 명칭")), {}), **record})
+        review_problems = f8.review_issues(merged, False, checks, source, method, numbers)
+        scope_ok = not review_problems
         # Unreviewed suggestions must not acquire the USER_CONFIRMED status.
         # The explicit four checks also attest the complete statutory area.
         f8.save(project, merged, no_target=False, scope_reviewed=scope_ok,
