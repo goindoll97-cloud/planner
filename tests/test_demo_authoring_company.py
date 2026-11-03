@@ -36,7 +36,8 @@ class AuthoringDemoTests(unittest.TestCase):
         outcome = sp.refresh(p)
         self.assertEqual(len(outcome.plan.scenarios), 4)
         self.assertEqual(len(outcome.impacts), 4)
-        self.assertEqual(outcome.problems, [])
+        self.assertTrue(outcome.problems)
+        self.assertTrue(all("사고원점" in p.what for p in outcome.problems))
         self.assertIsNone(p.get_field('cap.workspace.facilities'))  # FILE_READ 사실을 수동 승인으로 바꾸지 않음
         draft = rx.build_cap_workspace_draft(p)
         doc = Document(BytesIO(draft.docx))
