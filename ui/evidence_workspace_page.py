@@ -453,7 +453,7 @@ def _step_questions(project, found) -> None:
 
 def _step_scenarios(project, found, triage) -> None:
     from engine.stage2 import scenario_survey, scenario_pipeline
-    from ui.scenario_results_page import _boundary
+    from ui.scenario_results_page import _boundary, _current_workbook
 
     pid, names = project.project_id, found["names"]
     st.caption("지도에서 사업장 경계를 확인하면 주변 지역을 검색하고 사고시나리오를 다시 계산합니다. 검색 결과는 확인 전 후보입니다.")
@@ -462,14 +462,27 @@ def _step_scenarios(project, found, triage) -> None:
     if candidates:
         st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
         st.dataframe(candidates, hide_index=True, width="stretch")
+        st.caption("지도에서 찾은 값은 확인 전 후보입니다. 아래 엑셀을 내려받아 법정 분류·거리·인원을 확인한 후 ①에 다시 올릴 수 있습니다.")
+        try:
+            original, _ = _current_workbook(project)
+            enriched = scenario_survey.company_workbook(project, original=original)
+            st.download_button(
+                "지도 조회 보호대상 포함 회사 작성 엑셀 내려받기",
+                data=enriched, file_name="화사계_회사작성용_지도조사보완.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="workspace_gis_excel_" + pid, width="stretch",
+            )
+        except Exception:
+            st.warning("지도 후보가 포함된 엑셀을 만들지 못했습니다. 기본 회사 작성용 엑셀을 사용하세요.")
     linked = [r for r in triage["rows"] if r["linked"]]
     existing = scenario_pipeline.file_inputs(project)
     tags = list(dict.fromkeys(r['facility'].split(':', 1)[-1] for r in linked))
     if tags:
-        st.caption("설비별 사고유형은 비워 두면 규칙으로 제안합니다. 설비 위치 좌표가 없으면 경계까지 거리는 지도만으로 알 수 없어 회사에서 확인한 값을 적어야 합니다.")
+        st.caption("설비별 사고유형은 비워 두면 규칙으로 제안합니다. 경계까지 거리와 사고원점 위치는 설비 도면·지도에서 확인해 적어 주세요. 사고원점 좌표는 WGS84 숫자 두 개(위도,경도 또는 경도,위도)로 입력합니다. 주소를 좌표로 대체하지 않습니다.")
         review = st.data_editor([
             {'설비번호': tag, '선정할 사고유형': existing.get(tag, {}).get('선정할 사고유형', ''),
              '경계까지 거리(m)': existing.get(tag, {}).get('경계까지 거리(m)', ''),
+             '사고원점 좌표': existing.get(tag, {}).get('사고원점 좌표', ''),
              '액위(m)': existing.get(tag, {}).get('액위(m)', '')}
             for tag in tags], hide_index=True, num_rows='fixed', disabled=['설비번호'],
             key='scenario_review_' + pid)
