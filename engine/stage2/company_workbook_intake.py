@@ -47,7 +47,12 @@ def project_for_upload(selected, name, content):
                 '수정 요청': '화면에서 적용할 사업장을 선택한 뒤 다시 올려 주세요.'}])
         target = load_project(matches[0]['project_id']) if matches else create_direct_cap_project(company)
     from . import demo_company_workbook as demo
-    if book.properties.identifier == demo.IDENTIFIER and company == demo.COMPANY:
+    training_copy = (
+        tpl.HELP_SHEET in book.sheetnames
+        and book[tpl.SITE_SHEET].cell(1, 3).value == tpl.EXAMPLE_HEADER
+        and book[tpl.HELP_SHEET].cell(1, 1).value == "시트"
+    )
+    if company == demo.COMPANY and (book.properties.identifier == demo.IDENTIFIER or training_copy):
         target.cap_group = '1군'
         if demo.NOTICE not in target.notes:
             target.notes.append(demo.NOTICE)
