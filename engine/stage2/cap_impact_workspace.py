@@ -17,11 +17,13 @@ from . import cap_dispersion as disp
 from . import cap_form8_workspace as f8
 from . import cap_release_workspace as rw
 from . import cap_scenario_workspace as sc
-from .project import Stage2Project
+from .cap_geo_coordinates import confirmed_origin
+from .project import CONFIRMED_STATUSES, Stage2Project
 
 IMPACT_TABLE_KEY = "cap.offsite.scenario_impact_table"
 SUMMARY_KEY = "cap.offsite.overall_impact_summary"
 TARGETS_KEY = "cap.offsite.population_and_protected_targets"
+SCENARIO_TARGETS_KEY = "cap.offsite.scenario_protected_target_candidates"
 NO_SCENARIO_KEY = "cap.offsite.no_offsite_scenario"
 DOCUMENT_KEY = "documents.kora_impact_result"
 LISTED_RANGE_M = 500.0  # 별지 제8호가 다루는 사업장 경계 밖 범위
@@ -60,6 +62,10 @@ def _number(value: object) -> float | None:
 
 
 def _targets_within(project: Stage2Project, distance_m: float) -> list[dict[str, Any]]:
+    # Pending map candidates are not confirmed receptors and must not affect counts.
+    record = project.get_field(f8.SITE_KEY)
+    if record is None or record.status not in CONFIRMED_STATUSES:
+        return []
     out = []
     for row in f8.saved_rows(project):
         distance = _number(row.get("사업장 경계와 거리(m)"))
@@ -117,18 +123,31 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
     scenarios = {str(s.get("사고시나리오명")): s for s in sc.saved_scenarios(project)}
     off_site = [i for i in impacts if i.is_off_site]
 
-    rows, union = [], {}
+    rows, union, scenario_candidates = [], {}, []
     for impact in off_site:
         scenario = scenarios.get(impact.name, {})
         for target in impact.targets:
             union[(str(target.get("보호대상 명칭") or ""), str(target.get("보호대상 구분") or ""))] = target
+            # The program currently compares boundary distances, not each
+            # incident-origin radius against a receptor's GIS geometry.
+            # These are explicitly provisional candidates, never certified
+            # per-scenario geographic intersections.
+            scenario_candidates.append({
+                "사고시나리오명": impact.name,
+                "보호대상 명칭": target.get("보호대상 명칭", ""),
+                "보호대상 종류": target.get("세부유형", ""),
+                "보호대상 구분": target.get("보호대상 구분", ""),
+                "사업장 경계와 거리(m)": target.get("사업장 경계와 거리(m)", ""),
+                "GIS/현장 근거": target.get("GIS/현장 근거", ""),
+                "공간중첩 상태": "잠정 후보(경계거리 기반, 사고원점별 공간중첩 미검증)",
+            })
         rows.append({
             "사고시나리오명": impact.name, "유해화학물질명": impact.material, "대상 설비번호": impact.tag,
             "사고유형": impact.kind, "장외거리(m)": round(impact.off_site_m, 1),
             "거주민수": impact.people("거주민수"), "근로자수": impact.people("근로자수"),
             "갑종 보호대상 수": impact.count("갑종"), "을종 보호대상 수": impact.count("을종"),
             "환경수용체 수": impact.count("환경수용체"),
-            "사고원점 좌표": str(scenario.get("사고원점 좌표") or "").strip() or (f"주소 기준: {address}" if address else ""),
+            "사고원점 좌표": confirmed_origin(scenario.get("사고원점 좌표")),
             "KORA/GIS 근거": f"{evidence} ({impact.basis or '기술지침 2021-3, KOSHA GUIDE P-92-2023'}; {weather.label})",
         })
     project.set_field(IMPACT_TABLE_KEY, "사고시나리오별 영향평가(자체 계산)", rows, "CALCULATED",
@@ -144,6 +163,9 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
             "GIS 근거": target.get("GIS/현장 근거") or evidence,
         })
     project.set_field(TARGETS_KEY, "총괄영향범위 내 보호대상(자체 계산)", listed, "CALCULATED", note="별지 제8호 목록에서 집계")
+    project.set_field(SCENARIO_TARGETS_KEY, "시나리오별 영향범위 잠정 보호대상",
+                      scenario_candidates, "CALCULATED",
+                      note="보수적 경계거리 후보. 사고원점 기반 GIS 공간중첩을 확인하기 전까지 확정 대상이 아님.")
     project.set_field(SUMMARY_KEY, "총괄영향범위 요약(자체 계산)", [{
         "총괄영향범위 산출방법": "시나리오별 영향범위(끝점 도달거리)를 사업장 경계 기준 원형으로 보고 최외곽을 총괄영향범위로 함(풍향·지형 미반영, 보수적)",
         "총괄영향범위 결과 요약": summary_text(impacts),
