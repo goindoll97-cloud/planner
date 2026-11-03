@@ -26,7 +26,7 @@ def _project_with_targets():
     ], no_target=False)
     sc.save_scenarios(project, [{
         "사고시나리오명": "E-1 염소 독성 누출", "대상 설비번호": "E-1", "유해화학물질명": "염소", "사고유형": sc.TOXIC,
-        rw.BOUNDARY_COLUMN: "30"}])
+        rw.BOUNDARY_COLUMN: "30", "사고원점 좌표": "35.477900,129.358900"}])
     return project
 
 
@@ -42,6 +42,48 @@ class ImpactWorkspaceTests(unittest.TestCase):
                                   if t["사업장 경계와 거리(m)"] <= expected_range})
         self.assertEqual(impact.count("갑종"), 1)
         self.assertEqual(impact.people("근로자수"), 30)
+
+    def test_unreviewed_map_candidates_cannot_inflate_impact_counts(self):
+        project = _project_with_targets()
+        record = project.get_field(f8.SITE_KEY)
+        project.set_field(f8.SITE_KEY, record.label, record.value, "HOLD")
+        [impact] = iw.evaluate(project)
+        self.assertEqual(impact.targets, ())
+        self.assertEqual(impact.people("근로자수"), 0)
+
+    def test_missing_incident_origin_is_not_replaced_with_a_site_address(self):
+        project = _project_with_targets()
+        scenarios = sc.saved_scenarios(project)
+        scenarios[0].pop("사고원점 좌표")
+        sc.save_scenarios(project, scenarios)
+        iw.apply_to_forms(project, iw.evaluate(project))
+        form12 = impact_engine.build_cap_form12_data(project)
+        self.assertEqual(form12.rows[0]["사고원점 좌표"], "")
+        self.assertTrue(any("사고원점" in b for b in form12.blockers))
+        self.assertNotIn("주소 기준:", str(project.get_field(iw.IMPACT_TABLE_KEY).value))
+
+    def test_scenario_specific_provisional_targets_are_labeled_as_unverified(self):
+        project = _project_with_targets()
+        iw.apply_to_forms(project, iw.evaluate(project))
+        rec = project.get_field(iw.SCENARIO_TARGETS_KEY)
+        self.assertIsNotNone(rec)
+        self.assertTrue(rec.value)
+        self.assertTrue(all(row["사고시나리오명"] == "E-1 염소 독성 누출" for row in rec.value))
+        self.assertTrue(all("미검증" in row["공간중첩 상태"] for row in rec.value))
+
+    def test_multiple_scenarios_get_separate_detail_tables_in_docx(self):
+        from engine.stage2.cap_baseline_docx import build_cap_baseline_draft
+        project = _project_with_targets()
+        cases = sc.saved_scenarios(project)
+        copy = dict(cases[0])
+        copy["사고시나리오명"] = "E-1 염소 독성 누출 2"
+        sc.save_scenarios(project, cases + [copy])
+        iw.apply_to_forms(project, iw.evaluate(project))
+        doc = Document(BytesIO(build_cap_baseline_draft(project)))
+        self.assertGreater(len(doc.tables), 44)
+        all_text = "\\n".join(c.text for table in doc.tables for row in table.rows for c in row.cells)
+        self.assertIn("E-1 염소 독성 누출 2", all_text)
+        self.assertIn("잠정:", all_text)
 
     def test_range_beyond_500m_warns_that_far_receptors_are_not_listed(self):
         [impact] = iw.evaluate(_project_with_targets(), worst_case=True)
