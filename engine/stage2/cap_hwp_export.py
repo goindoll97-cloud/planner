@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import platform
+import re
 
 from hwpx.hwp5.reader import read_hwp5
 
@@ -68,3 +70,89 @@ def convert_docx_to_hwp(docx: bytes) -> bytes:
         if not parsed.sections:
             raise RuntimeError("변환된 HWP 파일에 본문이 없습니다.")
         return result
+
+
+@dataclass(frozen=True)
+class CAPHWPWorkspaceDraft:
+    """A real HWP file, plus the extent to which it was populated."""
+    data: bytes
+    mode: str  # "docx_converted", "official_mapped", "basic_only"
+    applied_count: int = 0
+    warnings: tuple[str, ...] = ()
+
+
+def _require_company_text(data: bytes, company_name: str) -> None:
+    """Reject an HWP that opened successfully but lost the business information."""
+    if not company_name:
+        return
+    from .evidence_workspace import read_document
+
+    tables, paragraphs = read_document("draft.hwp", data)
+    fragments = [
+        str(cell)
+        for table in tables
+        for row in table.rows
+        for cell in row
+    ]
+    fragments.append(str(paragraphs))
+    compact = lambda value: re.sub(r"\\s+", "", value)
+    if compact(company_name) not in compact(" ".join(fragments)):
+        raise RuntimeError(
+            "HWP 문서에 사업장명이 들어 있지 않습니다. 빈 변환본을 내려받을 수 없습니다."
+        )
+
+
+def build_workspace_hwp(project, completed_docx: bytes) -> CAPHWPWorkspaceDraft:
+    """Export the completed CAP DOCX, falling back to a clearly labeled partial HWP.
+
+    A Windows Hancom installation can convert the actual DOCX draft, including
+    narratives. On other systems, populate the supplied original HWPX wherever
+    the statutory-cell mapper has safe targets. Never call that partial output
+    equivalent to the completed DOCX.
+    """
+    if not completed_docx.startswith(b"PK"):
+        raise ValueError("작성된 DOCX 파일을 확인할 수 없습니다.")
+
+    warnings: list[str] = []
+    if available():
+        try:
+            converted = convert_docx_to_hwp(completed_docx)
+            _require_company_text(converted, project.company_name)
+            return CAPHWPWorkspaceDraft(data=converted, mode="docx_converted")
+        except Exception:
+            warnings.append(
+                "완성된 DOCX의 HWP 변환에 실패하여 원본서식 부분 작성본을 제공합니다."
+            )
+    else:
+        warnings.append(
+            "DOCX 전체를 HWP로 변환하려면 프로그램 실행 컴퓨터에 Windows, 한컴오피스와 pyhwpx가 필요합니다."
+        )
+
+    from . import cap_direct_hwp
+    from .hwp5_binary import from_hwpx
+
+    try:
+        from .cap_hwpx import build_cap_hwpx_draft
+
+        rendered = build_cap_hwpx_draft(
+            project, template_bytes=cap_direct_hwp.SOURCE.read_bytes()
+        )
+        if rendered.applied_count:
+            hwp = from_hwpx(rendered.data)
+            _require_company_text(hwp, project.company_name)
+            return CAPHWPWorkspaceDraft(
+                data=hwp,
+                mode="official_mapped",
+                applied_count=rendered.applied_count,
+                warnings=tuple(warnings + list(rendered.warnings)),
+            )
+    except Exception:
+        warnings.append(
+            "일부 법정서식 항목 자동 입력에 실패하여 사업장 일반정보만 작성합니다."
+        )
+
+    basic = cap_direct_hwp.build_partial_hwp(project)
+    _require_company_text(basic, project.company_name)
+    return CAPHWPWorkspaceDraft(
+        data=basic, mode="basic_only", warnings=tuple(warnings)
+    )
