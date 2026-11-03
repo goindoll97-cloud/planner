@@ -6,7 +6,7 @@ from pathlib import Path
 from . import demo_authoring_company as demo
 
 COMPANY = demo.COMPANY
-FILENAME = '화사계_가상회사_작성완료_연습용.xlsx'
+FILENAME = '화사계_가상회사_작성완료_신입사원용_수정.xlsx'
 IDENTIFIER = 'planner-synthetic-company-workbook-v2'
 LEGACY_IDENTIFIERS = ('planner-synthetic-company-workbook-v1',)
 NOTICE = '가상 회사·인물·수치로 작성한 1군 작성 연습용입니다. 실제 법적 대상 판정·현장 확인을 뜻하지 않으며 실제 제출에 사용하지 마세요.'
