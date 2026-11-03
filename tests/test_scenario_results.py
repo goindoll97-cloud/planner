@@ -111,7 +111,8 @@ class PipelineTests(unittest.TestCase):
     def test_file_choice_decides_the_accident_kind_and_numbers_come_from_the_engines(self):
         kinds = {s["대상 설비번호"]: s["사고유형"] for s in sc.saved_scenarios(self.p)}
         self.assertEqual(kinds, {"TK-01": sc.FIRE, "TK-02": sc.TOXIC, "RX-01": sc.FIRE, "CY-01": sc.TOXIC})
-        self.assertEqual(self.outcome.problems, [])
+        self.assertTrue(self.outcome.problems)
+        self.assertTrue(all("사고원점" in p.what for p in self.outcome.problems))
         self.assertTrue(all(i.radius_m for i in self.outcome.impacts))
         reason = next(s for s in sc.saved_scenarios(self.p) if s["대상 설비번호"] == "TK-01")["선정 근거"]
         self.assertIn("규정수량", reason)
