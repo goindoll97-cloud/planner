@@ -64,7 +64,7 @@ def _number(value: object) -> float | None:
 def _targets_within(project: Stage2Project, distance_m: float) -> list[dict[str, Any]]:
     # Pending map candidates are not confirmed receptors and must not affect counts.
     record = project.get_field(f8.SITE_KEY)
-    if record is None or record.status not in CONFIRMED_STATUSES or not f8.scope_reviewed(project):
+    if record is None or record.status not in CONFIRMED_STATUSES:
         return []
     out = []
     for row in f8.saved_rows(project):
