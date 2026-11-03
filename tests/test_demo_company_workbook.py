@@ -17,7 +17,7 @@ def test_only_one_current_employee_training_download_is_offered():
     assert "화사계_가상회사_작성완료_연습용.xlsx" not in page
     assert page.count("demo_company_workbook.build()") == 1
     assert page.count("key=\"cap_company_demo_template\"") == 1
-    assert "가상회사 작성완료 예시 엑셀 내려받기 · 신입사원용" in page
+    assert "가상 회사 정보가 채워진 엑셀 내려받기" in page
 
 
 def test_training_workbook_layout_reads_back_into_company_schema():
