@@ -202,7 +202,8 @@ def _link(project: Stage2Project, key: str) -> None:
     """계산 결과도 회사 파일에서 이어진 초안으로 표시합니다(파일을 다시 올리면 보류로 바뀌어 다시 계산)."""
     record = project.get_field(key)
     if record is not None:
-        project.set_field(key, record.label, record.value, record.status, evidence=list(record.evidence), note=NOTE)
+        note = (record.note + " · " + NOTE) if key == iw.SCENARIO_TARGETS_KEY and record.note else NOTE
+        project.set_field(key, record.label, record.value, record.status, evidence=list(record.evidence), note=note)
 
 
 def _frequency_rows(project: Stage2Project, scenarios: list[dict[str, Any]], off_site: set[str]) -> list[dict[str, Any]]:
