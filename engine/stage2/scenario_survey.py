@@ -309,6 +309,27 @@ def company_workbook(project: Stage2Project, original: bytes | None = None, clie
 
     book = load_workbook(BytesIO(original or tpl.build_company()))
     sheet = book[TARGET_SHEET_NAME] if TARGET_SHEET_NAME in book.sheetnames else None
+    if sheet is None:
+        # The normal company workbook deliberately omits GIS inputs. Exporting
+        # a map-enriched copy must add the approved target columns (rather than
+        # silently dropping every candidate from this export).
+        from copy import copy
+        template = load_workbook(BytesIO(tpl.build_company(include_target_sheet=True)))
+        source = template[TARGET_SHEET_NAME]
+        sheet = book.create_sheet(TARGET_SHEET_NAME)
+        for source_row in source:
+            for src in source_row:
+                dst = sheet[src.coordinate]
+                dst.value = src.value
+                if src.has_style:
+                    dst._style = copy(src._style)
+                if src.comment:
+                    dst.comment = copy(src.comment)
+        for key, dimension in source.column_dimensions.items():
+            sheet.column_dimensions[key].width = dimension.width
+        sheet.freeze_panes = source.freeze_panes
+        for validation in source.data_validations.dataValidation:
+            sheet.add_data_validation(copy(validation))
     added = 0
     if sheet is not None:
         headers = {str(c.value).strip(): c.column for c in sheet[1] if c.value}
