@@ -48,6 +48,23 @@ def test_training_workbook_layout_reads_back_into_company_schema():
     assert inventory == {'TK-01': 435000, 'TK-02': 23400, 'RX-01': 4350, 'CY-01': 1000}
 
 
+
+def test_training_excel_dropdowns_only_apply_to_company_input_rows():
+    book = load_workbook(BytesIO(demo.build()))
+    detector = book["가스감지기"]
+    col = next(c.column_letter for c in detector[1] if c.value == "연동여부")
+    matches = [v for v in detector.data_validations.dataValidation
+               if f"{col}4" in v.sqref]
+    assert len(matches) == 1
+    assert "예" in matches[0].formula1 and "아니오" in matches[0].formula1
+    assert f"{col}3" not in matches[0].sqref  # Example is not an editable fact.
+
+    material = book["물질"]
+    tox_col = next(c.column_letter for c in material[1] if c.value == "독성구분")
+    assert any("구분 3" in v.formula1 for v in material.data_validations.dataValidation
+               if f"{tox_col}4" in v.sqref)
+
+
 def test_training_workbook_errors_point_at_the_training_file_cells():
     book = load_workbook(BytesIO(demo.build()))
     book['설비']['E6'] = '반응시설'          # RX-01 행(4행부터 입력)

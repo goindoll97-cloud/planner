@@ -42,6 +42,98 @@ TABLE_EXTRA_ROWS = 10
 COMPANY_FILENAME = "화사계_회사작성용_전체항목.xlsx"
 CAP_TABLE_TITLES = {"cap-relief": "안전밸브", "cap-waste": "처리시설", "cap-change": "변경내역", "cap-components": "혼합제품 구성성분"}
 
+# Choices in the catalog are closed, legally/formally constrained values.
+# The following are shortcuts for *observed company facts* (drawings/MSDS);
+# they are helpful suggestions, not a purported exhaustive legal list.
+FACT_DROPDOWNS: dict[str, tuple[str, ...]] = {
+    "material.toxicity_route": ("흡입", "경구", "경피", "해당 없음", "자료 없음"),
+    "material.toxicity_category": ("구분 1", "구분 2", "구분 3", "구분 4", "구분 5", "해당 없음", "자료 없음"),
+    "material.corrosive": ("유", "무", "해당 없음", "자료 없음"),
+    "detector.interlock": ("예", "아니오"),
+    "detector.install_type": ("고정식", "휴대식", "고정식·휴대식"),
+    "facility.dike_type": ("방류벽", "방지턱", "트렌치", "이중벽용기", "이중배관", "기타"),
+    "cap-relief.9": ("기체", "액체", "2상", "증기"),
+    "psm.t16.후열처리여부": ("예", "아니오"),
+    "psm.t17.배출상태": ("기체", "액체", "2상", "증기"),
+    "psm.t19.실내외 구분": ("실내", "실외"),
+    "psm.temergency-resources.구분": ("장비", "인력"),
+    "facility.psm15_후열처리 여부": ("예", "아니오"),
+}
+
+# These choices match defined checkbox/dropdown fields on the CAP statutory
+# general-information form; they are *not* computed legal outcomes.
+STATUTORY_CHOICE_IDS = {
+    "site.submission_type", "site.joint_emergency_plan",
+    "site.other_system_review", "site.residents_in_overall_range",
+    "site.recent_accident",
+}
+
+
+def option_values(item: catalog.Fact) -> tuple[str, ...]:
+    """Return the closed catalog options, else optional factual entry suggestions."""
+    return item.options or FACT_DROPDOWNS.get(item.id, ())
+
+
+def add_choice_validation(sheet, item: catalog.Fact, address: str) -> bool:
+    """Excel dropdown: reject non-catalog values; allow other genuine MSDS/drawing facts."""
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    options = option_values(item)
+    if not options:
+        return False
+    joined = ",".join(options)
+    if len(joined) > 250:  # Excel inline list constraint; do not emit broken validation.
+        return False
+    closed = item.format == "choice"
+    prompt = ("목록의 항목을 선택하세요. 해당 사실을 모르면 비워 두세요." if closed else
+              "목록에서 고르세요. 실제 MSDS·도면 값이 다르면 직접 입력할 수 있습니다.")
+    validation = DataValidation(
+        type="list", formula1=f'"{joined}"', allow_blank=True,
+        showDropDown=False, showInputMessage=True, promptTitle="회사 사실 선택",
+        prompt=prompt, showErrorMessage=closed, errorStyle="stop",
+        errorTitle="허용된 선택값이 아닙니다",
+        error="법정서식 또는 입력 규격의 선택값 중에서 고르세요.")
+    sheet.add_data_validation(validation)
+    validation.add(address)
+    return True
+
+
+def apply_training_dropdowns(book) -> None:
+    """Add the same dropdowns to the older two-help-row training layout.
+
+    Row 2 is instruction, row 3 is example; both must remain unconstrained.
+    Only editable cells from row 4 onward get validation.
+    """
+    wanted = company_columns()
+    sheet_items: dict[str, list[catalog.Fact]] = {
+        SITE_SHEET: wanted["site"],
+        **{name: wanted[kind] for kind, name in ENTITY_SHEETS.items()},
+        **{sheet_title(table): items for table, items in wanted["tables"].items()},
+    }
+    for sheet in book.worksheets:
+        items = sheet_items.get(sheet.title)
+        if not items:
+            continue
+        # Replace any older list validation so that Excel has one policy per cell.
+        sheet.data_validations.dataValidation = [
+            dv for dv in sheet.data_validations.dataValidation if dv.type != "list"
+        ]
+        by_header = {display_header(item.template_header): item for item in items}
+        if sheet.title == SITE_SHEET:
+            for row in range(2, sheet.max_row + 1):
+                item = by_header.get(str(sheet.cell(row, 1).value or ""))
+                if item:
+                    add_choice_validation(sheet, item, f"B{row}")
+        else:
+            start = 4 if any(cell.value == "행 안내" for cell in sheet[1]) else 2
+            last = max(sheet.max_row + 20, start + 50)
+            for cell in sheet[1]:
+                item = by_header.get(str(cell.value or ""))
+                if item:
+                    letter = cell.column_letter
+                    add_choice_validation(sheet, item, f"{letter}{start}:{letter}{last}")
+
+
 
 def filename(project: Stage2Project) -> str:
     docs = status.project_docs(project)
@@ -61,8 +153,10 @@ def _help(item: catalog.Fact) -> str:
     parts = []
     if item.unit:
         parts.append(f"단위 {item.unit}")
-    if item.options:
-        parts.append("선택: " + " / ".join(item.options))
+    options = option_values(item)
+    if options:
+        kind = "고정 선택지" if item.format == "choice" else "회사 사실 선택 예시(목록 외 실제 값도 가능)"
+        parts.append(kind + ": " + " / ".join(options))
     if item.condition:
         parts.append("해당 시: " + item.condition)
     if item.note:
@@ -73,11 +167,14 @@ def _help(item: catalog.Fact) -> str:
 
 
 LEGAL_CAP = "https://www.law.go.kr/admRulInfoP.do?admRulSeq=2100000279958"
+LEGAL_CAP_WRITING = "https://law.go.kr/admRulLsInfoP.do?admRulSeq=2100000285508"
 LEGAL_MSDS = "https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=18712"
 LEGAL_PSM = "https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000259798"
 
 
 def _legal_reference(item: catalog.Fact) -> str:
+    if item.id in STATUTORY_CHOICE_IDS:
+        return LEGAL_CAP_WRITING
     if "SDS" in item.template_header or item.kind == "material":
         return LEGAL_MSDS
     if item.id.startswith(("narrative.change_management.", "narrative.community.",
@@ -89,6 +186,9 @@ def _legal_reference(item: catalog.Fact) -> str:
 
 
 def _guidance(item: catalog.Fact) -> str:
+    if item.id in STATUTORY_CHOICE_IDS:
+        return ("작성 규정의 사업장 일반정보 서식에 해당하는 선택형 항목입니다. "
+                "실제 회사 사실을 확인하여 목록에서 고르세요. " + _help(item))
     if item.id.startswith("narrative.change_management."):
         return ("변경일·변경 전후·검토·승인·교육·조치기록을 실제 대장과 대조하세요. "
                 "변경관리대장 5년 보존은 모든 사업장의 법정 보존기간으로 확인되지 않습니다. "
@@ -231,8 +331,6 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
           with_map_inputs: bool = True, with_target_inputs: bool = False) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.worksheet.datavalidation import DataValidation
-
     wanted = company_columns() if complete else columns(project, only_blank=only_blank, group=group, docs=docs)
     if not with_map_inputs:
         wanted["scenario"] = [i for i in wanted.get("scenario", []) if i.id not in MAP_SCENARIO_IDS]
@@ -247,14 +345,7 @@ def build(project: Stage2Project, *, only_blank: bool = True, group: str = "", d
             names[slot["entity"]] = str(slot["chosen"]["value"])
 
     def choices(sheet, item, column_letter, first_row, last_row):
-        if item.format != "choice" or not item.options:
-            return
-        listed = ",".join(item.options)
-        if len(listed) > 250:
-            return
-        validation = DataValidation(type="list", formula1=f'"{listed}"', allow_blank=True, showErrorMessage=False)
-        sheet.add_data_validation(validation)
-        validation.add(f"{column_letter}{first_row}:{column_letter}{last_row}")
+        add_choice_validation(sheet, item, f"{column_letter}{first_row}:{column_letter}{last_row}")
 
     if wanted["site"]:
         sheet = book.create_sheet(SITE_SHEET)

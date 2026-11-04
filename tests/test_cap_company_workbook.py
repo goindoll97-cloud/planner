@@ -40,6 +40,34 @@ def test_full_company_workbook_has_all_input_facts_and_no_results():
     assert not any('첨부' in s for s in book.sheetnames)
 
 
+
+def test_dropdowns_distinguish_formal_choice_from_company_fact_suggestions():
+    book = load_workbook(BytesIO(tpl.build_company()))
+    site = book[tpl.SITE_SHEET]
+    row = next(r for r in range(2, site.max_row + 1)
+               if site.cell(r, 1).value == "제출구분")
+    fixed = [dv for dv in site.data_validations.dataValidation if f"B{row}" in dv.sqref]
+    assert len(fixed) == 1
+    assert fixed[0].showErrorMessage is True
+    assert fixed[0].errorStyle == "stop"
+    assert "신규제출" in fixed[0].formula1
+
+    cases = {
+        "물질": ("독성구분", "구분 3"),
+        "가스감지기": ("연동여부", "아니오"),
+        "안전밸브": ("배출상태", "2상"),
+        "설비": ("확산방지설비 종류", "방류벽"),
+    }
+    for title, (header, expected) in cases.items():
+        sheet = book[title]
+        column = next(c.column_letter for c in sheet[1] if c.value == header)
+        matches = [dv for dv in sheet.data_validations.dataValidation if f"{column}2" in dv.sqref]
+        assert len(matches) == 1, (title, header)
+        assert expected in matches[0].formula1
+        assert matches[0].showErrorMessage is False  # Real MSDS/drawing values can differ.
+    assert "작성 예시 (회사 값 아님)" in [c.value for c in book["설비"][1]]
+
+
 def test_blank_company_workbook_examples_are_not_ingested():
     p = create_direct_cap_project('시험', address='주소', cap_group='')
     data = tpl.build_company()
