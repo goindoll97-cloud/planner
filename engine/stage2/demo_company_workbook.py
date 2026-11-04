@@ -1,5 +1,6 @@
 """신입사원용 가상 회사 작성완료 연습 파일(업로드·출력 연습 겸용)."""
 import base64
+from io import BytesIO
 from functools import lru_cache
 from pathlib import Path
 
@@ -102,4 +103,13 @@ def build():
     빈 회사 양식과 달리 열마다 예시 행·자동 점검 열·별지 16호 표 시트를 둔다.
     업로드하면 company_workbook_intake가 회사 양식 구조로 바꿔 읽는다.
     """
-    return base64.b64decode(ASSET.read_text(encoding='ascii'), validate=False)
+    from openpyxl import load_workbook
+
+    from . import cap_upload_template as tpl
+
+    original = base64.b64decode(ASSET.read_text(encoding='ascii'), validate=False)
+    book = load_workbook(BytesIO(original))
+    tpl.apply_training_dropdowns(book)
+    out = BytesIO()
+    book.save(out)
+    return out.getvalue()
