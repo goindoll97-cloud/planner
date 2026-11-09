@@ -261,7 +261,10 @@ def inspect(content, name, group=''):
         missing = value is None or str(value).strip() in {'', '미확인', '확인 필요', '[확인 필요]'}
         reason = ''
         if missing:
-            if item.required or value not in (None, '') or item.id == 'cap-components.4':
+            # Initial fact-only files deliberately omit calculated outputs and
+            # the separate GIS review checklist; these are NOT company facts.
+            deferred = tpl.minimal_excludes(item)
+            if (item.required and not deferred) or value not in (None, '') or item.id == 'cap-components.4':
                 reason = '필요한 값이 비어 있거나 아직 확인되지 않았습니다.'
         elif cell.data_type == 'f':
             reason = '수식 대신 확인한 값을 입력해 주세요.'

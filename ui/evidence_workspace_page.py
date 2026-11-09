@@ -208,7 +208,7 @@ def _status_line(project, found) -> None:
 def _step_upload(project, found) -> None:
     pid = project.project_id
     st.write("엑셀을 내려받아 연두색 입력 칸을 채운 뒤 올려 주세요.")
-    st.download_button("회사 작성용 엑셀 내려받기 · 전체 항목", cap_upload_template.build_company(),
+    st.download_button("회사 작성용 엑셀 내려받기 · 최소 사실 입력", cap_upload_template.build_minimal_company(),
                        file_name=cap_upload_template.COMPANY_FILENAME,
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="cap_company_full_template")

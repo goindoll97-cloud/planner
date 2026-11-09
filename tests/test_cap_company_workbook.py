@@ -72,6 +72,57 @@ def test_dropdowns_distinguish_formal_choice_from_company_fact_suggestions():
     assert "작성 예시 (회사 값 아님)" in [c.value for c in book["설비"][1]]
 
 
+
+
+def test_downloaded_company_workbook_asks_facts_not_program_results():
+    from engine.stage2 import company_workbook_intake as intake
+
+    content = tpl.build_minimal_company()
+    book = load_workbook(BytesIO(content))
+    assert intake.is_training_layout(book)
+    site_labels = {r[0].value for r in book[tpl.SITE_SHEET].iter_rows(min_row=2)}
+    assert "총괄영향범위내 주민여부" not in site_labels
+    assert not any(label.startswith(("500m ", "사업장 부지 경계와 검토 범위를",
+                                     "확인한 지도·도면과 확인일")) for label in site_labels)
+
+    facility_headers = [c.value for c in book["설비"][1]]
+    scenario_headers = [c.value for c in book["사고시나리오 검토"][1]]
+    assert "최대보유량(kg)" not in facility_headers
+    assert "선정할 사고유형" not in scenario_headers
+    assert "시나리오 선정 근거" not in scenario_headers
+    assert "필요용량(m3)" not in facility_headers
+    assert book["설비"]["A2"].value is not None
+    assert book["설비"]["A3"].value is None
+    assert str(book["설비"].cell(2, book["설비"].max_column).value).startswith(
+        "◀ 2행은 작성 예시"
+    )
+
+    # Row-2 examples must never be imported, and old full-schema workbook
+    # columns still exist internally for backward compatibility.
+    converted, positions = intake._from_training_layout(content)
+    converted_book = load_workbook(BytesIO(converted))
+    canonical = load_workbook(BytesIO(tpl.build_company()))
+    for title in canonical.sheetnames:
+        assert [c.value for c in converted_book[title][1]] == [c.value for c in canonical[title][1]]
+    assert all(not r[0].value for r in converted_book["설비"].iter_rows(min_row=2))
+    assert positions  # Site-label source positions are retained for error messages.
+
+
+def test_legacy_company_workbook_and_new_minimal_file_both_keep_structured_choices():
+    from engine.stage2 import company_workbook_intake as intake
+
+    legacy = load_workbook(BytesIO(tpl.build_company()))
+    minimal = load_workbook(BytesIO(tpl.build_minimal_company()))
+    def facility_dv(book):
+        sheet = book["설비"]
+        col = next(c.column_letter for c in sheet[1] if c.value == "시설유형")
+        return [dv for dv in sheet.data_validations.dataValidation
+                if f"{col}3" in dv.sqref]
+    assert facility_dv(legacy) and facility_dv(minimal)
+    assert intake.is_training_layout(minimal)
+    assert not intake.is_training_layout(legacy)
+
+
 def test_blank_company_workbook_examples_are_not_ingested():
     p = create_direct_cap_project('시험', address='주소', cap_group='')
     data = tpl.build_company()

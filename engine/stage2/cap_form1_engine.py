@@ -228,6 +228,11 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
     messages.extend(screen.messages)
 
     by_name, by_cas = _chemical_index(chemicals)
+    # Facility inventory is a derived result, not mandatory user-entered kg.
+    # Prefer an explicitly evidenced amount when present; otherwise calculate
+    # per facility from volume, density, process type, and operating conditions.
+    from . import cap_workspace as cap_ws
+    auto_holdings = cap_ws.compute_holdings(project, facilities) if facilities else []
     facility_rows: list[dict[str, Any]] = []
     holding_by_row: dict[int, float] = {}
 
@@ -238,7 +243,7 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
     if not default_unit_plant:
         default_unit_plant = _clean(project.site_name)
 
-    for facility in facilities:
+    for facility, computed_holding in zip(facilities, auto_holdings):
         material = _clean(_row_value(facility, "취급물질", "물질명"))
         cas = _clean(_row_value(facility, "CAS 번호", "CAS No."))
         chem_no = by_cas.get(cas) if cas else None
@@ -250,7 +255,10 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
         if not cas:
             cas = _clean(_row_value(chem, "CAS 번호", "CAS No.", "화학물질식별번호"))
         pct = _row_value(chem, "함량(%)", "함량", "농도(%)")
-        ton = _facility_holding_ton(facility)
+        explicit_ton = _facility_holding_ton(facility)
+        ton = explicit_ton if explicit_ton is not None else (
+            None if computed_holding.excluded else computed_holding.ton
+        )
         if chem_no and ton is not None:
             holding_by_row[chem_no] = holding_by_row.get(chem_no, 0.0) + ton
         elif material and ton is None:

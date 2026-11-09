@@ -39,6 +39,103 @@ FILENAME = "화학사고예방관리계획서_빈칸전용양식.xlsx"
 PSM_FILENAME = "공정안전보고서_업로드양식.xlsx"
 BOTH_FILENAME = "사업장자료_업로드양식.xlsx"
 TABLE_EXTRA_ROWS = 10
+
+# The first company workbook asks only for company facts. These IDs are
+# already computed/proposed by program engines, or requested separately in
+# the GIS review step. Keep them in the internal full schema for old uploads.
+AUTO_MANAGED_INPUT_IDS = frozenset({
+    "site.residents_in_overall_range",
+    "facility.inventory",
+    "facility.scenario_kinds",
+    "facility.scenario_reason",
+    "facility.psm_scenario_kind",
+    "facility.dike_required_direct",
+    "facility.dike_required_basis",
+})
+GIS_REVIEW_INPUT_PREFIX = "site.survey_"
+
+
+def minimal_excludes(item: catalog.Fact) -> bool:
+    """Omit program outputs and GIS-stage attestations from initial company entry."""
+    return item.id in AUTO_MANAGED_INPUT_IDS or item.id.startswith(GIS_REVIEW_INPUT_PREFIX)
+
+
+def minimize_company_workbook(book, *, blank: bool = False) -> None:
+    """Remove calculation/judgment columns without changing the *intake* schema.
+
+    Blank company templates get a row-2 example (never treated as a fact).
+    Current filled training books already have a row-2 example. Their actual
+    company values remain in rows 3+; only generated/judgment inputs are removed.
+    Previously issued full workbooks remain readable by the full-schema parser.
+    """
+    wanted = company_columns()
+    site = book[SITE_SHEET]
+    excluded_site = {display_header(item.template_header) for item in wanted["site"] if minimal_excludes(item)}
+    for row in range(site.max_row, 1, -1):
+        if str(site.cell(row, 1).value or "") in excluded_site:
+            site.delete_rows(row, 1)
+    # Deleting rows does not relocate Excel validations. Rebuild all the site
+    # dropdowns against the new item positions below.
+    site.data_validations.dataValidation = [dv for dv in site.data_validations.dataValidation if dv.type != "list"]
+
+    by_sheet = {
+        **{title: wanted[kind] for kind, title in ENTITY_SHEETS.items()},
+        **{sheet_title(table): items for table, items in wanted["tables"].items()},
+    }
+    for sheet in book.worksheets:
+        if sheet.title not in by_sheet:
+            continue
+        items = by_sheet[sheet.title]
+        excluded_headers = {display_header(item.template_header) for item in items if minimal_excludes(item)}
+        for column in range(sheet.max_column, 0, -1):
+            if str(sheet.cell(1, column).value or "") in excluded_headers:
+                sheet.delete_cols(column, 1)
+        if excluded_headers:
+            sheet.data_validations.dataValidation = [
+                dv for dv in sheet.data_validations.dataValidation if dv.type != "list"
+            ]
+        if blank and sheet.max_column > 1:
+            # Convert the old empty company template into the same structure
+            # as the actual training file: row 2 example, row 3+ facts.
+            if sheet.cell(1, sheet.max_column - 1).value == EXAMPLE_HEADER:
+                sheet.delete_cols(sheet.max_column - 1, 1)
+            by_header = {display_header(item.template_header): item for item in items}
+            for column in range(1, sheet.max_column):
+                item = by_header.get(str(sheet.cell(1, column).value or ""))
+                if item is not None:
+                    sheet.cell(2, column).value = _sample_example(item)
+                elif column == 1:
+                    sheet.cell(2, column).value = {
+                        "설비": "TK-01", "물질": "P-01", "가스감지기": "GD-01",
+                        "사고시나리오 검토": "TK-01"
+                    }.get(sheet.title, "예시-01")
+            sheet.cell(2, sheet.max_column).value = (
+                "◀ 2행은 작성 예시입니다(회사 값 아님, 지우지 마세요). "
+                "실제 회사 사실은 3행부터 입력합니다. 계산·판정은 프로그램이 수행합니다."
+            )
+            # All blank input rows are preserved; example rows must not be used.
+            sheet.freeze_panes = "B3"
+    if HELP_SHEET in book.sheetnames:
+        help_sheet = book[HELP_SHEET]
+        removed = {(title, display_header(item.template_header))
+                   for title, items in by_sheet.items() for item in items if minimal_excludes(item)}
+        removed |= {(SITE_SHEET, header) for header in excluded_site}
+        for row in range(help_sheet.max_row, 1, -1):
+            if (str(help_sheet.cell(row, 1).value or ""),
+                str(help_sheet.cell(row, 2).value or "")) in removed:
+                help_sheet.delete_rows(row, 1)
+    apply_training_dropdowns(book)
+
+
+def build_minimal_company() -> bytes:
+    """User-facing, fact-only Excel; the legacy full schema stays for intake."""
+    from openpyxl import load_workbook
+    book = load_workbook(BytesIO(build_company()))
+    minimize_company_workbook(book, blank=True)
+    out = BytesIO()
+    book.save(out)
+    return out.getvalue()
+
 COMPANY_FILENAME = "화사계_회사작성용_전체항목.xlsx"
 CAP_TABLE_TITLES = {"cap-relief": "안전밸브", "cap-waste": "처리시설", "cap-change": "변경내역", "cap-components": "혼합제품 구성성분",
                     # 별지 제16호 5~10번 표(1군). 서식 표와 같은 열로 한 줄에 하나씩 받는다.

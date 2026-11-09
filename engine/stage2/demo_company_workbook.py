@@ -109,7 +109,7 @@ def build():
 
     original = base64.b64decode(ASSET.read_text(encoding='ascii'), validate=False)
     book = load_workbook(BytesIO(original))
-    tpl.apply_training_dropdowns(book)
+    tpl.minimize_company_workbook(book)
     out = BytesIO()
     book.save(out)
     return out.getvalue()
