@@ -46,8 +46,15 @@ def test_training_workbook_layout_reads_back_into_company_schema():
     # 예시 행은 사실로 읽지 않는다: 설비 4개, 최대보유량은 설계용량×비중(별표 1)
     rows = [r for r in book['설비'].iter_rows(min_row=2, values_only=True) if r[0]]
     assert [r[0] for r in rows] == ['TK-01', 'TK-02', 'RX-01', 'CY-01']
-    inventory = {r[0]: r[8] for r in rows}
-    assert inventory == {'TK-01': 435000, 'TK-02': 23400, 'RX-01': 4350, 'CY-01': 1000}
+    inventory_col = next(c.column - 1 for c in book['설비'][1] if c.value == '최대보유량(kg)')
+    assert all(r[inventory_col] is None for r in rows)  # Calculated, not typed by a new employee.
+    from engine.stage2.cap_form1_engine import build_cap_form1_data
+    from engine.stage2.project import Stage2Project
+    project = intake.project_for_upload(Stage2Project(project_id='CALC-TEST', company_name=''),
+                                        demo.FILENAME, demo.build())
+    intake.apply(project, demo.FILENAME, demo.build())
+    f1 = build_cap_form1_data(project)
+    assert any(row['취급량(ton)'] not in ('', None) for row in f1.facility_rows)
     assert len([r for r in book['별지16-5 유관기관'].iter_rows(min_row=2) if r[0].value]) >= 2
 
 
