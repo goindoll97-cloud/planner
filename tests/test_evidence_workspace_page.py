@@ -109,7 +109,7 @@ class EvidencePageTests(unittest.TestCase):
     def test_only_company_workbook_download_is_available(self):
         at = self.run_page(step=1)
         labels = [b.proto.label for b in at.get("download_button")]
-        self.assertEqual(labels, ["회사 작성용 엑셀 내려받기 · 전체 항목", "가상 회사 정보가 채워진 엑셀 내려받기"])
+        self.assertEqual(labels, ["회사 작성용 엑셀 내려받기 · 최소 사실 입력", "가상 회사 정보가 채워진 엑셀 내려받기"])
         self.assertEqual(len(at.get("file_uploader")), 1)
 
     def test_legacy_project_opens_on_excel_step_and_preserves_its_data(self):
