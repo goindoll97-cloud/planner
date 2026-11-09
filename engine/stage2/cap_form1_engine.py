@@ -243,7 +243,7 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
     if not default_unit_plant:
         default_unit_plant = _clean(project.site_name)
 
-    for facility in facilities:
+    for facility, computed_holding in zip(facilities, auto_holdings):
         material = _clean(_row_value(facility, "취급물질", "물질명"))
         cas = _clean(_row_value(facility, "CAS 번호", "CAS No."))
         chem_no = by_cas.get(cas) if cas else None
