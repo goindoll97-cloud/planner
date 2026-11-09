@@ -172,12 +172,15 @@ class OutputTests(unittest.TestCase):
 
         p = _project()
         fd.refresh_rule_drafts(p)
+        # 회사 사실로 프로그램이 쓴 서술형은 사람 승인 없이 바로 확정되고, AI 작성 점검 목록에도 오르지 않는다.
+        record = p.get_field(drafting.ai_draft_field_key("CAP", "cap.prevention.safety_management"))
+        self.assertEqual(record.status, "CALCULATED")
+        self.assertTrue(drafting.is_program_written(record))
         rows = {r["requirement_key"]: r for r in drafting.ai_written_items(p, "CAP")}
-        self.assertIn("cap.prevention.safety_management", rows)
-        self.assertIn("AI 초안", rows["cap.prevention.safety_management"]["state"])
+        self.assertNotIn("cap.prevention.safety_management", rows)
         outputs = rx.build_outputs(p, "CAP")
         text = "\n".join(par.text for par in Document(BytesIO(outputs.review_docx)).paragraphs)
-        self.assertIn("[AI 초안", text)
+        self.assertNotIn("[AI 초안", text)
         self.assertIn("안전관리 책임자: 공장장", text)
         self.assertIn(d.DATA["emergency"]["shutdown"], text)        # 회사 문서의 글은 그대로
 

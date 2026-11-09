@@ -33,7 +33,7 @@ def rows(project) -> list[dict[str, str]]:
 
     for item in catalog.facts(docs=("CAP",)):
         if item.source == "company" and item.id in generated:
-            channel = "프로그램 서술형 초안(회사 근거 확인 필요)"
+            channel = "프로그램 작성 서술형(회사 사실로 바로 작성)"
         elif item.source == "company":
             channel = "회사 작성용 엑셀"
         elif item.source == "project":

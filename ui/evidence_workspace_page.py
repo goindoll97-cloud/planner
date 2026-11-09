@@ -507,7 +507,7 @@ def _step_export(project, found) -> None:
     if st.button("작성하기", type="primary", key="write_" + project.project_id):
         _auto_publish(project)
         st.success("초안을 작성했어요. 아래에서 내려받으세요.")
-    st.caption("서술형 초안 " + str(sum(bool(i.company_text or i.draft) for system in cap_fact_drafting.systems(project) for i in cap_fact_drafting.items(project, system))) + "개 작성됨")
+    st.caption("서술형 " + str(sum(bool(i.company_text or i.draft) for system in cap_fact_drafting.systems(project) for i in cap_fact_drafting.items(project, system))) + "개 작성됨")
     _narrative_drafts(project)
     from ui.report_export_panel import render_workspace_download
     render_workspace_download(project)
@@ -579,7 +579,7 @@ def _narrative_drafts(project) -> None:
         save_project(project)
         checks = sum(r["checks"] for r in results)
         st.session_state.setdefault("evidence_notes", []).append(
-            (f"서술형 초안 {len(results)}개를 만들었어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
+            (f"서술형 {len(results)}개를 작성했어요." + (f" ‘[확인 필요]’ {checks}곳을 채워 주세요." if checks else ""))
             if results else "작성할 서술형이 없어요. 완성 문서는 그대로 사용하며, 근거가 없는 항목은 ②에서 필요한 자료를 확인해 주세요.")
         st.rerun()
 

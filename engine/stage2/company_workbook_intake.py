@@ -42,17 +42,39 @@ TRAINING_MOVED = {
     '지역사회 고지 일정·담당자': ('별지16-10 지역사회고지', ['고지 예정 시기', '담당자'], ', '),
     '응급의료기관·전화·이송 방법': ('별지16-8 응급의료', ['병원명', '주소', '전화번호', '이송 방법'], ', '),
     '대피장소별 위치·수용인원·연락처': ('별지16-9 대피장소', ['대피장소(구체적 위치)', '수용 인원(명)', '사업장으로부터 거리(m)', '연락처'], ', '),
+    '대피 장소': ('별지16-9 대피장소', ['대피장소(구체적 위치)'], ', '),
 }
+# 최소 사실 입력형 파일: 표 시트마다 1행 머리글·2행 작성 예시·3행부터 입력, 맨 끝 열은 작성 안내.
+# 예시 열이 없고 2행 안내 칸이 아래 문구로 시작한다. 도면·이미지는 사람이 따로 첨부하므로
+# ‘첨부 도면’ 같은 양식 밖 시트는 읽지 않는다.
+MINIMAL_FIRST_ROW = 3
+MINIMAL_MARK = '◀ 2행은 작성 예시'
+
+
+def _layout(book):
+    """(안내 열 머리글, 첫 입력 행) 또는 회사 양식 그대로면 None."""
+    for ws in book.worksheets:
+        if ws.title in (tpl.SITE_SHEET, tpl.HELP_SHEET) or not ws.max_column:
+            continue
+        last = ws.cell(1, ws.max_column).value
+        if last == TRAINING_MARK:
+            return TRAINING_MARK, TRAINING_FIRST_ROW
+        if (last == tpl.GUIDANCE_HEADER and ws.max_column > 1
+                and ws.cell(1, ws.max_column - 1).value != tpl.EXAMPLE_HEADER
+                and str(ws.cell(2, ws.max_column).value or '').startswith(MINIMAL_MARK)):
+            return tpl.GUIDANCE_HEADER, MINIMAL_FIRST_ROW
+    return None
 
 
 def is_training_layout(book):
-    return any(ws.max_column and ws.cell(1, ws.max_column).value == TRAINING_MARK for ws in book.worksheets)
+    return _layout(book) is not None
 
 
-def _training_rows(ws, with_row=False):
+def _training_rows(ws, with_row=False, layout=(TRAINING_MARK, TRAINING_FIRST_ROW)):
+    mark, first_row = layout
     headers = {c.value: c.column for c in ws[1] if c.value}
-    for row in range(TRAINING_FIRST_ROW, ws.max_row + 1):
-        values = {h: ws.cell(row, col).value for h, col in headers.items() if h != TRAINING_MARK}
+    for row in range(first_row, ws.max_row + 1):
+        values = {h: ws.cell(row, col).value for h, col in headers.items() if h != mark}
         if any(v not in (None, '') for v in values.values()):
             yield (row, headers, values) if with_row else values
 
@@ -65,32 +87,35 @@ def _from_training_layout(content):
     from openpyxl.utils import get_column_letter as col_letter
     where = {}
     src = load_workbook(BytesIO(content), data_only=True)
+    layout = _layout(src) or (TRAINING_MARK, TRAINING_FIRST_ROW)
     out = load_workbook(BytesIO(tpl.build_company()))
     site = {str(r[0].value): r[1].value for r in src[tpl.SITE_SHEET].iter_rows(min_row=2) if r[0].value}
     site_rows = {str(r[0].value): r[0].row for r in src[tpl.SITE_SHEET].iter_rows(min_row=2) if r[0].value}
     for row in range(2, out[tpl.SITE_SHEET].max_row + 1):
         label = out[tpl.SITE_SHEET].cell(row, 1).value
-        src_label = '주소' if label == '우편번호/주소' else label
+        src_label = '주소' if label == '우편번호/주소' and label not in site_rows else label
         if src_label in site_rows:
             where[(tpl.SITE_SHEET, f'A{row}')] = f'A{site_rows[src_label]}'
             where[(tpl.SITE_SHEET, f'B{row}')] = f'B{site_rows[src_label]}'
-        if label == '우편번호/주소':
+        if label == '우편번호/주소' and site.get(label) not in (None, ''):
+            value = site[label]
+        elif label == '우편번호/주소':
             zip_code = str(site.get('우편번호') or '').strip()
             value = ' '.join(x for x in (zip_code if zip_code.strip('0') else '', str(site.get('주소') or '').strip()) if x)
-        elif label in TRAINING_MOVED and label not in site:
+        elif label in TRAINING_MOVED and site.get(label) in (None, ''):
             title, cols, sep = TRAINING_MOVED[label]
             parts = [' '.join(str(r[c]) for c in cols if r.get(c) not in (None, ''))
-                     for r in (_training_rows(src[title]) if title in src.sheetnames else [])]
+                     for r in (_training_rows(src[title], layout=layout) if title in src.sheetnames else [])]
             value = sep.join(p for p in parts if p) or None
         else:
             value = site.get(label)
         out[tpl.SITE_SHEET].cell(row, 2, value)
     for ws in out.worksheets:
-        if ws.title == tpl.SITE_SHEET or ws.title not in src.sheetnames:
+        if ws.title in (tpl.SITE_SHEET, tpl.HELP_SHEET) or ws.title not in src.sheetnames:
             continue
         headers = [c.value for c in ws[1]]
         inputs = [h for h in headers[:-2] if h]
-        for row, (src_row, src_cols, values) in enumerate(_training_rows(src[ws.title], with_row=True), 2):
+        for row, (src_row, src_cols, values) in enumerate(_training_rows(src[ws.title], with_row=True, layout=layout), 2):
             for col, header in enumerate(inputs, 1):
                 name = TRAINING_RENAMED.get(header, header)
                 src_col = src_cols.get(name, src_cols.get(header, col))
@@ -360,10 +385,11 @@ def apply(project, name, content):
     managed.update({'business.company_name', ew.KEY})
     from . import scenario_pipeline
     managed.update(scenario_pipeline.OUTPUT_KEYS)
+    from . import ai_drafting as drafting
     removed = {}
     for key, record in list(work.fields.items()):
         if ((key in managed and key != 'business.company_name')
-                or record.note.startswith(ew.LINK_NOTE) or record.status == 'AI_DRAFT'):
+                or record.note.startswith(ew.LINK_NOTE) or drafting.is_replaceable_draft(record)):
             removed[key] = deepcopy(record.to_dict())
             del work.fields[key]
     history = work.get_field(HISTORY_KEY)

@@ -110,7 +110,7 @@ def test_uploaded_demo_generates_narratives_scenarios_and_docx_without_forging_a
     assert demo.COMPANY in text
     assert '김가상' in text
     assert 'TK-01' in text
-    assert 'AI 초안' in text
+    assert 'AI 초안' not in text          # 서술형은 프로그램이 바로 확정(승인 단계 없음)
     assert not draft.state.final_ready
 
 

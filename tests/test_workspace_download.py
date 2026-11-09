@@ -18,7 +18,7 @@ class WorkspaceDownloadTests(unittest.TestCase):
         self.assertGreaterEqual(len(doc.tables), 16)
         text = '\n'.join(p.text for p in doc.paragraphs)
         self.assertIn('안전관리 책임자: 공장장', text)
-        self.assertIn('AI 초안', text)
+        self.assertNotIn('AI 초안', text)
         self.assertIn('초안', draft.name)
         self.assertGreater(draft.state.hold + draft.state.review, 0)
         self.assertIn(b'REVIEW_ONLY', draft.provenance_json)

@@ -162,8 +162,9 @@ def register_reference(project, name, content):
 
 
 def _invalidate(project):
+    from . import ai_drafting as drafting
     for record in project.fields.values():
-        if record.note.startswith("공통정보 연결") or record.status == "AI_DRAFT":
+        if record.note.startswith("공통정보 연결") or drafting.is_replaceable_draft(record):
             record.status = "HOLD"          # 새 파일로 다시 반영·다시 쓸 초안
 
 

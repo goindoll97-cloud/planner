@@ -204,6 +204,7 @@ def build_cap_form11_data(project: Stage2Project) -> CAPForm11Data:
         emergency_power = _clean(_row_value(row, "비상전원 여부"))
         drawing = _clean(_row_value(row, "관련 도면번호", "도면번호"))
         note = _clean(_row_value(row, "비고"))
+        explosion_proof = _clean(_row_value(row, "방폭형 여부", "방폭형"))
 
         if not detector_id:
             blockers.append(f"{label}: 감지기 번호(Tag)가 비어 있습니다.")
@@ -249,6 +250,8 @@ def build_cap_form11_data(project: Stage2Project) -> CAPForm11Data:
             blockers.append(f"{label}: 유지관리 또는 점검·교정주기가 비어 있습니다.")
 
         remarks = []
+        if explosion_proof:
+            remarks.append(f"방폭형: {explosion_proof}")
         if action:
             remarks.append(f"연동조치: {action}")
         if emergency_power:

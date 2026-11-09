@@ -571,7 +571,7 @@ def validate_selected_scope(project: Stage2Project) -> CrossValidationReport:
             ),
             (
                 13, form13,
-                ("cap.offsite.overall_impact_summary", "cap.offsite.population_and_protected_targets", "documents.kora_impact_result"),
+                ("cap.offsite.overall_impact_summary", "cap.offsite.population_and_protected_targets"),
                 "별지 제13호 총괄영향범위 사업장 주변지역 영향 평가",
             ),
         ):

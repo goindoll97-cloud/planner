@@ -40,7 +40,12 @@ PSM_FILENAME = "공정안전보고서_업로드양식.xlsx"
 BOTH_FILENAME = "사업장자료_업로드양식.xlsx"
 TABLE_EXTRA_ROWS = 10
 COMPANY_FILENAME = "화사계_회사작성용_전체항목.xlsx"
-CAP_TABLE_TITLES = {"cap-relief": "안전밸브", "cap-waste": "처리시설", "cap-change": "변경내역", "cap-components": "혼합제품 구성성분"}
+CAP_TABLE_TITLES = {"cap-relief": "안전밸브", "cap-waste": "처리시설", "cap-change": "변경내역", "cap-components": "혼합제품 구성성분",
+                    # 별지 제16호 5~10번 표(1군). 서식 표와 같은 열로 한 줄에 하나씩 받는다.
+                    "cap-16-5": "별지16-5 유관기관", "cap-16-6-1": "별지16-6-1 사전정보공유",
+                    "cap-16-6-2": "별지16-6-2 지역사회소통", "cap-16-7-1": "별지16-7-1 대피경보",
+                    "cap-16-7-2": "별지16-7-2 지자체경보전달", "cap-16-8": "별지16-8 응급의료",
+                    "cap-16-9": "별지16-9 대피장소", "cap-16-10": "별지16-10 지역사회고지"}
 
 # Choices in the catalog are closed, legally/formally constrained values.
 # The following are shortcuts for *observed company facts* (drawings/MSDS);
@@ -314,8 +319,9 @@ def company_columns() -> dict[str, Any]:
     return out
 
 
-MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin",        # 지도로 확인하는 값
-                     "facility.scenario_kinds", "facility.scenario_reason"}  # 프로그램이 제안·작성하는 값. 회사가 엑셀에 적지 않습니다.
+# 지도로 확인하는 값. 회사가 엑셀에 적지 않습니다.
+# ‘선정할 사고유형’·‘시나리오 선정 근거’는 프로그램 판단을 바꿀 때만 적는 열이라 양식에 둡니다(비우면 프로그램이 정함).
+MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin"}
 
 
 def build_company(*, include_scenario_sheets: bool = False, include_target_sheet: bool = False) -> bytes:
