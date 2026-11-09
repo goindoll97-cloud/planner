@@ -47,7 +47,7 @@ def test_excel_only_page_upload_correction_and_latest_renamed_file(tmp_path, mon
     assert accepts['type'] == ['xlsx']
     assert accepts['accept_multiple_files'] is False
     labels = [d.proto.label for d in at.get('download_button')]
-    assert labels == ['회사 작성용 엑셀 내려받기 · 전체 항목', '가상 회사 정보가 채워진 엑셀 내려받기']
+    assert labels == ['회사 작성용 엑셀 내려받기 · 최소 사실 입력', '가상 회사 정보가 채워진 엑셀 내려받기']
     at.button(key='read_' + p.project_id).click().run()
     assert not at.exception, [e.value for e in at.exception]
     assert any(item.proto.value == 100 for item in at.get('progress'))
