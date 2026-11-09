@@ -255,7 +255,10 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
         if not cas:
             cas = _clean(_row_value(chem, "CAS 번호", "CAS No.", "화학물질식별번호"))
         pct = _row_value(chem, "함량(%)", "함량", "농도(%)")
-        ton = _facility_holding_ton(facility)
+        explicit_ton = _facility_holding_ton(facility)
+        ton = explicit_ton if explicit_ton is not None else (
+            None if computed_holding.excluded else computed_holding.ton
+        )
         if chem_no and ton is not None:
             holding_by_row[chem_no] = holding_by_row.get(chem_no, 0.0) + ton
         elif material and ton is None:
