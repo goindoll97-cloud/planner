@@ -228,6 +228,11 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
     messages.extend(screen.messages)
 
     by_name, by_cas = _chemical_index(chemicals)
+    # Facility inventory is a derived result, not mandatory user-entered kg.
+    # Prefer an explicitly evidenced amount when present; otherwise calculate
+    # per facility from volume, density, process type, and operating conditions.
+    from . import cap_workspace as cap_ws
+    auto_holdings = cap_ws.compute_holdings(project, facilities) if facilities else []
     facility_rows: list[dict[str, Any]] = []
     holding_by_row: dict[int, float] = {}
 
