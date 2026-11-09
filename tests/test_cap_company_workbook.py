@@ -105,7 +105,7 @@ def test_downloaded_company_workbook_asks_facts_not_program_results():
     for title in canonical.sheetnames:
         assert [c.value for c in converted_book[title][1]] == [c.value for c in canonical[title][1]]
     assert all(not r[0].value for r in converted_book["설비"].iter_rows(min_row=2))
-    assert positions == {}
+    assert positions  # Site-label source positions are retained for error messages.
 
 
 def test_legacy_company_workbook_and_new_minimal_file_both_keep_structured_choices():
