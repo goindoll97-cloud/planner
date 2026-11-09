@@ -25,16 +25,18 @@ def test_training_workbook_layout_reads_back_into_company_schema():
     filled = load_workbook(BytesIO(demo.build()))
     assert filled.properties.identifier == demo.IDENTIFIER
     assert '가상' in filled.properties.description
-    assert template.HELP_SHEET not in filled.sheetnames
-    assert set(empty.sheetnames) - {template.HELP_SHEET} <= set(filled.sheetnames)
-    # 표 시트: 1행 머리글, 2행 작성 요령, 3행 작성 예시, 4행부터 입력
-    for ws in filled:
-        if ws.cell(1, ws.max_column).value == intake.TRAINING_MARK:
-            assert all(ws.cell(3, c).value not in (None, '') for c in range(1, ws.max_column)), ws.title
-            assert ws.freeze_panes == 'B4'
-    assert all('SDS' not in str(c.value).replace('MSDS', '') for ws in filled
+    assert set(empty.sheetnames) <= set(filled.sheetnames)
+    assert '첨부 도면' in filled.sheetnames          # 도면은 사람이 첨부, 목록만 적는다(읽지 않음)
+    # 최소 사실 입력형: 1행 머리글, 2행 작성 예시(예시 열 없음), 3행부터 입력
+    tables = [ws for ws in filled if str(ws.cell(2, ws.max_column).value or '').startswith(intake.MINIMAL_MARK)]
+    assert {ws.title for ws in tables} >= set(empty.sheetnames) - {template.SITE_SHEET, template.HELP_SHEET}
+    for ws in tables:
+        assert template.EXAMPLE_HEADER not in [c.value for c in ws[1]], ws.title
+        assert ws.cell(2, 1).value not in (None, ''), ws.title
+        assert ws.freeze_panes == 'B3', ws.title
+    assert all('SDS' not in str(c.value).replace('MSDS', '') for ws in filled if ws.title != template.HELP_SHEET
                for row in ws for c in row if c.value is not None)
-    assert len([r for r in filled['설비'].iter_rows(min_row=intake.TRAINING_FIRST_ROW) if r[0].value]) == 4
+    assert len([r for r in filled['설비'].iter_rows(min_row=intake.MINIMAL_FIRST_ROW) if r[0].value]) == 4
     converted, issues = intake.inspect(demo.build(), demo.FILENAME, '1군')
     assert issues == []
     book = load_workbook(BytesIO(converted))
@@ -46,6 +48,7 @@ def test_training_workbook_layout_reads_back_into_company_schema():
     assert [r[0] for r in rows] == ['TK-01', 'TK-02', 'RX-01', 'CY-01']
     inventory = {r[0]: r[8] for r in rows}
     assert inventory == {'TK-01': 435000, 'TK-02': 23400, 'RX-01': 4350, 'CY-01': 1000}
+    assert len([r for r in book['별지16-5 유관기관'].iter_rows(min_row=2) if r[0].value]) >= 2
 
 
 
@@ -54,24 +57,24 @@ def test_training_excel_dropdowns_only_apply_to_company_input_rows():
     detector = book["가스감지기"]
     col = next(c.column_letter for c in detector[1] if c.value == "연동여부")
     matches = [v for v in detector.data_validations.dataValidation
-               if f"{col}4" in v.sqref]
+               if f"{col}3" in v.sqref]
     assert len(matches) == 1
     assert "예" in matches[0].formula1 and "아니오" in matches[0].formula1
-    assert f"{col}3" not in matches[0].sqref  # Example is not an editable fact.
+    assert f"{col}2" not in matches[0].sqref  # Example is not an editable fact.
 
     material = book["물질"]
     tox_col = next(c.column_letter for c in material[1] if c.value == "독성구분")
     assert any("구분 3" in v.formula1 for v in material.data_validations.dataValidation
-               if f"{tox_col}4" in v.sqref)
+               if f"{tox_col}3" in v.sqref)
 
 
 def test_training_workbook_errors_point_at_the_training_file_cells():
     book = load_workbook(BytesIO(demo.build()))
-    book['설비']['E6'] = '반응시설'          # RX-01 행(4행부터 입력)
+    book['설비']['E5'] = '반응시설'          # RX-01 행(3행부터 입력)
     out = BytesIO()
     book.save(out)
     _, issues = intake.inspect(out.getvalue(), '수정본.xlsx', '1군')
-    assert [(i['파일·위치'], i['항목']) for i in issues] == [('수정본.xlsx · 설비!E6', '시설유형')]
+    assert [(i['파일·위치'], i['항목']) for i in issues] == [('수정본.xlsx · 설비!E5', '시설유형')]
 
 
 def test_training_workbook_without_custom_id_remains_practice_only(tmp_path, monkeypatch):

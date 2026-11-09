@@ -163,7 +163,7 @@ def project_for_upload(selected, name, content):
         and book[tpl.SITE_SHEET].cell(1, 3).value == tpl.EXAMPLE_HEADER
         and book[tpl.HELP_SHEET].cell(1, 1).value == "시트"
     )
-    if company == demo.COMPANY and (book.properties.identifier == demo.IDENTIFIER or training_copy):
+    if company == demo.COMPANY and (book.properties.identifier in (demo.IDENTIFIER, *demo.LEGACY_IDENTIFIERS) or training_copy):
         target.cap_group = '1군'
         if demo.NOTICE not in target.notes:
             target.notes.append(demo.NOTICE)

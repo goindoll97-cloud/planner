@@ -39,7 +39,7 @@ def _minimal_workbook() -> bytes:
         if label == '화학사고예방관리계획서 결과번호':
             site.cell(row, 2, '해당 없음(신규제출)')
         if label == '대피 장소':
-            site.cell(row, 2, None)          # 별지16-9 시트에서 채운다
+            site.cell(row, 2).value = None   # 별지16-9 시트에서 채운다
     for ws in book.worksheets[1:]:
         ws.delete_cols(ws.max_column - 1)            # 예시 열
         ws.insert_rows(2)

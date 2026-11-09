@@ -104,11 +104,13 @@ def add_choice_validation(sheet, item: catalog.Fact, address: str) -> bool:
 
 
 def apply_training_dropdowns(book) -> None:
-    """Add the same dropdowns to the older two-help-row training layout.
+    """Add the catalog dropdowns to a training workbook without constraining its example rows.
 
-    Row 2 is instruction, row 3 is example; both must remain unconstrained.
-    Only editable cells from row 4 onward get validation.
+    Older layout: row 2 instruction, row 3 example, input from row 4 (last header '행 안내').
+    Minimal-input layout: row 2 example, input from row 3 (guide cell in row 2 starts with '◀ 2행은 작성 예시').
+    Other list dropdowns the file already has (e.g. 별지16 '구분') are kept.
     """
+    from openpyxl.utils import range_boundaries
     wanted = company_columns()
     sheet_items: dict[str, list[catalog.Fact]] = {
         SITE_SHEET: wanted["site"],
@@ -119,19 +121,32 @@ def apply_training_dropdowns(book) -> None:
         items = sheet_items.get(sheet.title)
         if not items:
             continue
-        # Replace any older list validation so that Excel has one policy per cell.
-        sheet.data_validations.dataValidation = [
-            dv for dv in sheet.data_validations.dataValidation if dv.type != "list"
-        ]
         by_header = {display_header(item.template_header): item for item in items}
+        site = sheet.title == SITE_SHEET
+        if site:   # 사업장 정보는 행마다 항목이 다르다: 카탈로그 선택지가 있는 행만 바꾼다.
+            targets = {row for row in range(2, sheet.max_row + 1)
+                       if (item := by_header.get(str(sheet.cell(row, 1).value or ""))) and option_values(item)}
+        else:
+            targets = {cell.column for cell in sheet[1]
+                       if (item := by_header.get(str(cell.value or ""))) and option_values(item)}
+
+        def covers(dv) -> bool:
+            return any(range_boundaries(str(r))[1 if site else 0] in targets for r in dv.sqref.ranges)
+
+        # Replace older list validations on catalog columns so that Excel has one policy per cell.
+        sheet.data_validations.dataValidation = [
+            dv for dv in sheet.data_validations.dataValidation if dv.type != "list" or not covers(dv)
+        ]
         if sheet.title == SITE_SHEET:
             for row in range(2, sheet.max_row + 1):
                 item = by_header.get(str(sheet.cell(row, 1).value or ""))
                 if item:
                     add_choice_validation(sheet, item, f"B{row}")
         else:
-            start = 4 if any(cell.value == "행 안내" for cell in sheet[1]) else 2
-            last = max(sheet.max_row + 20, start + 50)
+            guide = str(sheet.cell(2, sheet.max_column).value or "")
+            start = (4 if any(cell.value == "행 안내" for cell in sheet[1])
+                     else 3 if guide.startswith("◀ 2행은 작성 예시") else 2)
+            last = max(sheet.max_row + 20, start + 50, 200)
             for cell in sheet[1]:
                 item = by_header.get(str(cell.value or ""))
                 if item:
