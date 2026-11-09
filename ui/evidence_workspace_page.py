@@ -209,7 +209,7 @@ def _step_upload(project, found) -> None:
     pid = project.project_id
     st.write("엑셀을 내려받아 연두색 입력 칸을 채운 뒤 올려 주세요.")
     st.download_button("회사 작성용 엑셀 내려받기 · 최소 사실 입력", cap_upload_template.build_minimal_company(),
-                       file_name=cap_upload_template.COMPANY_FILENAME,
+                       file_name="화사계_회사작성용_최소사실입력.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        key="cap_company_full_template")
     st.download_button("가상 회사 정보가 채워진 엑셀 내려받기", demo_company_workbook.build(),
