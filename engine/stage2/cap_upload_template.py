@@ -40,7 +40,12 @@ PSM_FILENAME = "공정안전보고서_업로드양식.xlsx"
 BOTH_FILENAME = "사업장자료_업로드양식.xlsx"
 TABLE_EXTRA_ROWS = 10
 COMPANY_FILENAME = "화사계_회사작성용_전체항목.xlsx"
-CAP_TABLE_TITLES = {"cap-relief": "안전밸브", "cap-waste": "처리시설", "cap-change": "변경내역", "cap-components": "혼합제품 구성성분"}
+CAP_TABLE_TITLES = {"cap-relief": "안전밸브", "cap-waste": "처리시설", "cap-change": "변경내역", "cap-components": "혼합제품 구성성분",
+                    # 별지 제16호 5~10번 표(1군). 서식 표와 같은 열로 한 줄에 하나씩 받는다.
+                    "cap-16-5": "별지16-5 유관기관", "cap-16-6-1": "별지16-6-1 사전정보공유",
+                    "cap-16-6-2": "별지16-6-2 지역사회소통", "cap-16-7-1": "별지16-7-1 대피경보",
+                    "cap-16-7-2": "별지16-7-2 지자체경보전달", "cap-16-8": "별지16-8 응급의료",
+                    "cap-16-9": "별지16-9 대피장소", "cap-16-10": "별지16-10 지역사회고지"}
 
 # Choices in the catalog are closed, legally/formally constrained values.
 # The following are shortcuts for *observed company facts* (drawings/MSDS);
@@ -99,11 +104,13 @@ def add_choice_validation(sheet, item: catalog.Fact, address: str) -> bool:
 
 
 def apply_training_dropdowns(book) -> None:
-    """Add the same dropdowns to the older two-help-row training layout.
+    """Add the catalog dropdowns to a training workbook without constraining its example rows.
 
-    Row 2 is instruction, row 3 is example; both must remain unconstrained.
-    Only editable cells from row 4 onward get validation.
+    Older layout: row 2 instruction, row 3 example, input from row 4 (last header '행 안내').
+    Minimal-input layout: row 2 example, input from row 3 (guide cell in row 2 starts with '◀ 2행은 작성 예시').
+    Other list dropdowns the file already has (e.g. 별지16 '구분') are kept.
     """
+    from openpyxl.utils import range_boundaries
     wanted = company_columns()
     sheet_items: dict[str, list[catalog.Fact]] = {
         SITE_SHEET: wanted["site"],
@@ -114,19 +121,32 @@ def apply_training_dropdowns(book) -> None:
         items = sheet_items.get(sheet.title)
         if not items:
             continue
-        # Replace any older list validation so that Excel has one policy per cell.
-        sheet.data_validations.dataValidation = [
-            dv for dv in sheet.data_validations.dataValidation if dv.type != "list"
-        ]
         by_header = {display_header(item.template_header): item for item in items}
+        site = sheet.title == SITE_SHEET
+        if site:   # 사업장 정보는 행마다 항목이 다르다: 카탈로그 선택지가 있는 행만 바꾼다.
+            targets = {row for row in range(2, sheet.max_row + 1)
+                       if (item := by_header.get(str(sheet.cell(row, 1).value or ""))) and option_values(item)}
+        else:
+            targets = {cell.column for cell in sheet[1]
+                       if (item := by_header.get(str(cell.value or ""))) and option_values(item)}
+
+        def covers(dv) -> bool:
+            return any(range_boundaries(str(r))[1 if site else 0] in targets for r in dv.sqref.ranges)
+
+        # Replace older list validations on catalog columns so that Excel has one policy per cell.
+        sheet.data_validations.dataValidation = [
+            dv for dv in sheet.data_validations.dataValidation if dv.type != "list" or not covers(dv)
+        ]
         if sheet.title == SITE_SHEET:
             for row in range(2, sheet.max_row + 1):
                 item = by_header.get(str(sheet.cell(row, 1).value or ""))
                 if item:
                     add_choice_validation(sheet, item, f"B{row}")
         else:
-            start = 4 if any(cell.value == "행 안내" for cell in sheet[1]) else 2
-            last = max(sheet.max_row + 20, start + 50)
+            guide = str(sheet.cell(2, sheet.max_column).value or "")
+            start = (4 if any(cell.value == "행 안내" for cell in sheet[1])
+                     else 3 if guide.startswith("◀ 2행은 작성 예시") else 2)
+            last = max(sheet.max_row + 20, start + 50, 200)
             for cell in sheet[1]:
                 item = by_header.get(str(cell.value or ""))
                 if item:
@@ -314,8 +334,9 @@ def company_columns() -> dict[str, Any]:
     return out
 
 
-MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin",        # 지도로 확인하는 값
-                     "facility.scenario_kinds", "facility.scenario_reason"}  # 프로그램이 제안·작성하는 값. 회사가 엑셀에 적지 않습니다.
+# 지도로 확인하는 값. 회사가 엑셀에 적지 않습니다.
+# ‘선정할 사고유형’·‘시나리오 선정 근거’는 프로그램 판단을 바꿀 때만 적는 열이라 양식에 둡니다(비우면 프로그램이 정함).
+MAP_SCENARIO_IDS = {"facility.boundary_distance", "facility.origin"}
 
 
 def build_company(*, include_scenario_sheets: bool = False, include_target_sheet: bool = False) -> bytes:

@@ -15,12 +15,16 @@ def save(book):
 
 def test_full_company_workbook_has_all_input_facts_and_no_results():
     book = load_workbook(BytesIO(tpl.build_company()))
-    assert len(book.sheetnames) == 10
+    assert len(book.sheetnames) == 18
+    assert [t for t in book.sheetnames if t.startswith('별지16-')] == [
+        '별지16-5 유관기관', '별지16-6-1 사전정보공유', '별지16-6-2 지역사회소통', '별지16-7-1 대피경보',
+        '별지16-7-2 지자체경보전달', '별지16-8 응급의료', '별지16-9 대피장소', '별지16-10 지역사회고지']
     assert tpl.HELP_SHEET in book.sheetnames
     assert '주변 보호대상' not in book.sheetnames
     scenario_headers = [c.value for c in book['사고시나리오 검토'][1]]
     assert {'액위(m)', '비열비', '배관누출', '개수 산정근거', '수동적 완화장치'} <= set(scenario_headers)
-    assert not {'경계까지 거리(m)', '사고원점 좌표', '선정할 사고유형', '시나리오 선정 근거'} & set(scenario_headers)      # 지도·프로그램이 채우는 값
+    assert not {'경계까지 거리(m)', '사고원점 좌표'} & set(scenario_headers)      # 지도에서 채우는 값
+    assert {'선정할 사고유형', '시나리오 선정 근거'} <= set(scenario_headers)      # 비워 두면 프로그램이 판단
     assert [c.value for c in book[tpl.SITE_SHEET][1]][:2] == ['항목', '값']
     assert book[tpl.SITE_SHEET].max_column == 4
     assert all(book[tpl.SITE_SHEET].cell(r, 2).value is None for r in range(2, book[tpl.SITE_SHEET].max_row + 1))

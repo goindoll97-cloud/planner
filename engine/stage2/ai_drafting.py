@@ -705,6 +705,19 @@ def approve_ai_draft(project: Stage2Project, system: str, requirement_key: str, 
     )
 
 
+PROGRAM_WRITTEN = "program_written"
+
+
+def is_program_written(record) -> bool:
+    """회사 파일 사실로 프로그램이 쓴 화학사고예방관리계획서 서술형(사람 승인 없이 바로 확정)."""
+    return bool(record is not None and isinstance(record.value, Mapping) and record.value.get(PROGRAM_WRITTEN))
+
+
+def is_replaceable_draft(record) -> bool:
+    """새 파일을 올리면 지우거나 다시 써야 하는 초안: 승인 전 AI 초안 또는 프로그램이 쓴 서술형."""
+    return record is not None and (record.status == "AI_DRAFT" or is_program_written(record))
+
+
 def ai_written_items(project: Stage2Project, system: str) -> list[dict[str, Any]]:
     """AI가 쓴 글이 들어 있는 항목 목록. 제출 전에 사람이 한 번 더 점검하도록 화면·검증정보·점검표에 쓴다."""
     system = _normalize_system(system)
@@ -715,12 +728,15 @@ def ai_written_items(project: Stage2Project, system: str) -> list[dict[str, Any]
         if record is None or not isinstance(record.value, Mapping) or not str(record.value.get("draft_text") or "").strip():
             continue
         value = record.value
-        approved = record.status == "USER_CONFIRMED"
+        program = is_program_written(record)
+        if program and str(value.get("model") or "") == "규칙 초안(AI 없이 사실만 이어 씀)":
+            continue    # AI 없이 회사 사실만 이은 문장은 AI 작성 항목이 아니다.
+        approved = record.status == "USER_CONFIRMED" or program
         rows.append({
             "requirement_key": requirement_key,
             "label": spec.label,
             "section": spec.section,
-            "state": "담당자 확인 완료" if approved else (
+            "state": "프로그램 작성 확정(AI가 다듬은 문장)" if program else "담당자 확인 완료" if approved else (
                 "확인 전 초안(초안 문서에 ‘AI 초안’으로 표시)" if system == "CAP" else "확인 전 초안(문서에 반영되지 않음)"),
             "approved": approved,
             "model": str(value.get("model") or ""),

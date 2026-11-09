@@ -146,10 +146,11 @@ COMPANY_FACT_KEYS = {
     "사업장 내부 정보전달": ("cap.facts.communication",),
     "사고원인 조사·재발방지": ("cap.facts.investigation",),
     "사고복구": ("cap.facts.recovery",),
-    "지역사회 소통": ("cap.facts.community",),
-    "지역비상대응기관·인근사업장 공조": ("cap.facts.mutual_aid",),
-    "주민 경보·대피": ("cap.facts.evacuation",),
-    "지역사회 고지": ("cap.facts.public_notice",),
+    "지역사회 소통": ("cap.facts.community", "cap.form16.info_sharing", "cap.form16.communication"),
+    "지역비상대응기관·인근사업장 공조": ("cap.facts.mutual_aid", "cap.form16.agencies", "cap.form16.local_gov"),
+    "주민 경보·대피": ("cap.facts.evacuation", "cap.form16.warning", "cap.form16.shelters"),
+    "응급의료": ("cap.form16.medical",),
+    "지역사회 고지": ("cap.facts.public_notice", "cap.form16.notice"),
 }
 
 
@@ -162,7 +163,8 @@ def _summary_block(
     rows: list[tuple[str, str]] = []
     blockers: list[str] = []
     for label, keys in specs:
-        value = _confirmed_text(project, *keys) or _confirmed_text(project, *COMPANY_FACT_KEYS.get(label, ()))
+        value = _confirmed_text(project, *keys) or next(
+            (text for key in COMPANY_FACT_KEYS.get(label, ()) if (text := _confirmed_text(project, key))), "")
         rows.append((label, value))
         if not value:
             blockers.append(f"{blocker_prefix}: {label}의 회사 확정자료가 없습니다.")

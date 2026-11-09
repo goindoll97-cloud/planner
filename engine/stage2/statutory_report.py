@@ -527,9 +527,11 @@ def _add_narrative_requirement(doc: Document, spec, project: Stage2Project, *, a
     if not values and getattr(spec, "system", "") in ("CAP", "PSM"):
         draft = _file_fact_draft_text(project, spec.system, spec.key)
         if draft:
-            # 화학사고예방관리계획서는 결과물이 늘 초안이므로, 회사 사실로 만든 서술형 초안을 표시와 함께 넣습니다.
-            note = doc.add_paragraph()
-            note.add_run("[AI 초안 · 회사 파일에서 읽은 사실만으로 썼습니다. ‘[확인 필요]’ 부분을 채우고 내용을 확인해 고쳐 쓰세요]").italic = True
+            # 화학사고예방관리계획서 서술형은 프로그램이 회사 사실로 쓰고 바로 확정한다. 승인 전 초안(예전 방식)만 표시한다.
+            record = project.get_field(f"ai_draft.{spec.system.lower()}.{spec.key}")
+            if record is not None and record.status == "AI_DRAFT":
+                note = doc.add_paragraph()
+                note.add_run("[AI 초안 · 회사 파일에서 읽은 사실만으로 썼습니다. ‘[확인 필요]’ 부분을 채우고 내용을 확인해 고쳐 쓰세요]").italic = True
             for line in draft.splitlines():
                 if line.strip():
                     doc.add_paragraph(line.strip())
@@ -548,10 +550,10 @@ def _add_narrative_requirement(doc: Document, spec, project: Stage2Project, *, a
 
 
 def _file_fact_draft_text(project: Stage2Project, system: str, requirement_key: str) -> str:
-    """회사 파일 사실로 만든 서술형 초안(결과물은 늘 초안이라 ‘AI 초안’ 표시와 함께 넣습니다).
+    """회사 파일 사실로 만든 서술형(화학사고예방관리계획서는 프로그램이 쓰고 바로 확정, 승인 표시 없이 넣습니다).
     공정안전보고서는 예전 방식의 확인 전 AI 초안은 넣지 않고, 파일 사실로 만든 초안만 넣습니다."""
     record = project.get_field(f"ai_draft.{system.lower()}.{requirement_key}")
-    if record is None or record.status not in ("AI_DRAFT", "USER_CONFIRMED") or not isinstance(record.value, Mapping):
+    if record is None or record.status not in ("AI_DRAFT", "USER_CONFIRMED", "CALCULATED") or not isinstance(record.value, Mapping):
         return ""
     if system == "PSM" and not record.value.get("from_catalog_facts"):
         return ""
@@ -1383,7 +1385,7 @@ def _cap_form13(doc: Document, project: Stage2Project) -> None:
         doc.add_paragraph("총괄영향범위 내 보호대상 없음(회사/GIS 확정)")
     else:
         doc.add_paragraph(MISSING)
-    _add_attachment_line(doc, "KORA/GIS 총괄영향범위 결과파일", _doc_value(project, "documents.kora_impact_result"))
+    _add_attachment_line(doc, "영향범위 분석 근거서(프로그램 계산)", _doc_value(project, "documents.kora_impact_result"))
     if prepared.blockers:
         note = doc.add_paragraph()
         note.add_run("확인 필요: ").bold = True

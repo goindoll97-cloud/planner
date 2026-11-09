@@ -42,7 +42,7 @@ class AuthoringDemoTests(unittest.TestCase):
         draft = rx.build_cap_workspace_draft(p)
         doc = Document(BytesIO(draft.docx))
         self.assertGreaterEqual(len(doc.tables), 16)
-        self.assertIn('AI 초안', '\n'.join(p.text for p in doc.paragraphs))
+        self.assertNotIn('AI 초안', '\n'.join(p.text for p in doc.paragraphs))
         self.assertFalse(draft.state.final_ready)  # 제외한 주소·도면·현장조사 등은 보완으로 남음
 
     def test_archive_contains_only_supported_uploads_without_addresses_or_images(self):

@@ -179,7 +179,7 @@ def items(project: Stage2Project, system: str = "CAP") -> list[Item]:
                 item.missing.append(fact.name)
         record = _draft_record(project, system, spec.key)
         if record is not None and isinstance(record.value, dict) and str(record.value.get("draft_text") or "").strip():
-            if record.status in ("AI_DRAFT", "USER_CONFIRMED"):
+            if record.status in ("AI_DRAFT", "USER_CONFIRMED", "CALCULATED"):
                 item.draft = str(record.value.get("draft_text") or "")
             else:
                 item.stale = True
@@ -265,6 +265,12 @@ def _store(project: Stage2Project, item: Item, text: str, model: str) -> None:
     value = dict(record.value)
     value["basis"] = [{"항목": b.label, "값": b.value, "출처": b.source} for b in item.basis]
     value["from_catalog_facts"] = True
+    if item.system == "CAP":
+        # 화학사고예방관리계획서 서술형은 회사 사실로 프로그램이 쓰고 바로 확정한다(사람 승인 단계 없음).
+        value[drafting.PROGRAM_WRITTEN] = True
+        project.set_field(record.key, record.label, value, "CALCULATED",
+                          note="회사 파일 사실로 프로그램이 쓴 서술형(별도 승인 없이 계획서에 반영). 근거가 없는 부분은 [확인 필요]로 남김.")
+        return
     project.set_field(record.key, record.label, value, record.status,
                       note="회사 파일에서 읽은 사실만 쓴 서술형 초안. 근거가 없는 부분은 [확인 필요]로 남김.")
 

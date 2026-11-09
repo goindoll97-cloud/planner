@@ -101,15 +101,6 @@ def _confirmed_rows(project: Stage2Project, *keys: str) -> list[dict[str, Any]]:
     return []
 
 
-def _confirmed_document(project: Stage2Project, key: str) -> bool:
-    rec = project.get_field(key)
-    return bool(
-        rec is not None
-        and rec.status in CONFIRMED_STATUSES
-        and rec.value not in (None, "", {}, [])
-    )
-
-
 def _known_names(project: Stage2Project, key: str, aliases: tuple[str, ...]) -> set[str]:
     rows = _confirmed_rows(project, key)
     out: set[str] = set()
@@ -286,10 +277,7 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
     if workers is None:
         blockers.append("총괄영향범위 내 근로자수를 0 이상의 정수로 확인해 주세요.")
 
-    if not _confirmed_document(project, "documents.kora_impact_result"):
-        blockers.append(
-            "총괄영향범위 형상과 공간분석을 확인할 KORA/GIS 결과파일이 첨부·확인되지 않았습니다."
-        )
+    # 영향범위는 프로그램(③ 시나리오·영향범위)에서 계산해 적는다. 별도 결과파일 첨부를 요구하지 않는다.
 
     out_targets: list[dict[str, Any]] = []
     if no_targets is False and not targets:

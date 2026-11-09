@@ -8,8 +8,8 @@ from . import demo_authoring_company as demo
 
 COMPANY = demo.COMPANY
 FILENAME = '화사계_가상회사_작성완료_신입사원용_수정.xlsx'
-IDENTIFIER = 'planner-synthetic-company-workbook-v2'
-LEGACY_IDENTIFIERS = ('planner-synthetic-company-workbook-v1',)
+IDENTIFIER = 'planner-synthetic-company-workbook-v3'
+LEGACY_IDENTIFIERS = ('planner-synthetic-company-workbook-v1', 'planner-synthetic-company-workbook-v2')
 NOTICE = '가상 회사·인물·수치로 작성한 1군 작성 연습용입니다. 실제 법적 대상 판정·현장 확인을 뜻하지 않으며 실제 제출에 사용하지 마세요.'
 
 SITE_VALUES = {
@@ -98,10 +98,10 @@ ASSET = Path(__file__).resolve().parents[2] / 'data' / 'templates' / 'cap' / 'ca
 
 @lru_cache(maxsize=1)
 def build():
-    """신입사원용 가상 회사 작성완료 파일(2행 작성 요령·3행 예시·4행부터 입력).
+    """신입사원용 가상 회사 작성완료 파일(최소 사실 입력형: 1행 머리글·2행 작성 예시·3행부터 입력).
 
-    빈 회사 양식과 달리 열마다 예시 행·자동 점검 열·별지 16호 표 시트를 둔다.
-    업로드하면 company_workbook_intake가 회사 양식 구조로 바꿔 읽는다.
+    빈 회사 양식과 달리 예시 열 대신 2행 예시를 두고, 사람이 따로 첨부할 ‘첨부 도면’ 목록 시트를 둔다.
+    업로드하면 company_workbook_intake가 회사 양식 구조로 바꿔 읽는다(첨부 도면 시트는 읽지 않음).
     """
     from openpyxl import load_workbook
 

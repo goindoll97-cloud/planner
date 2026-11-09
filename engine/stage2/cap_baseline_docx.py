@@ -385,6 +385,11 @@ def _fill_form2(tables, project: Stage2Project) -> None:
     unit_plant = base._text(project, "cap.business.unit_plant_name", default=project.site_name or "")
     if unit_plant:
         _append_value(context_cells[3], unit_plant)
+    numbers = _unique_cells(context_table.rows[1])
+    for cell, key in ((numbers[1], "cap.business.receipt_number"), (numbers[3], "cap.business.result_number")):
+        value = base._text(project, key, default="")
+        if value:
+            _append_value(cell, value)
 
     prepared = build_cap_form2_readiness(project)
     change_log = [] if prepared.status == FORM2_NOT_APPLICABLE else list(prepared.rows)
@@ -1223,8 +1228,16 @@ def _fill_form16(tables, project: Stage2Project) -> None:
     # Legacy structured tables remain supported. If the company supplied only
     # narrative confirmed facts, keep the original table structure and place
     # that narrative in its first answer row instead of inventing columns.
-    contact_rows = []
-    for row in base._rows(project, "cap.prevention.emergency_system"):
+    # 엑셀 ‘별지16-5 유관기관’ 시트는 한 줄에 기관 하나 → 서식 한 행에 두 기관씩 채운다.
+    agencies = [
+        (base._row_value(row, "관계기관"), base._row_value(row, "전화번호"))
+        for row in base._rows(project, "cap.form16.agencies")
+    ]
+    contact_rows = [
+        [*agencies[i], *(agencies[i + 1] if i + 1 < len(agencies) else ("", ""))]
+        for i in range(0, len(agencies), 2)
+    ]
+    for row in ([] if contact_rows else base._rows(project, "cap.prevention.emergency_system")):
         contact_rows.append([
             base._row_value(row, "관계기관"), base._row_value(row, "전화번호"),
             base._row_value(row, "관계기관2", "관계기관"), base._row_value(row, "전화번호2", "전화번호"),
@@ -1242,7 +1255,7 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     notice_rows = []
-    for row in base._rows(project, "cap.external.community_coordination"):
+    for row in base._rows(project, "cap.form16.info_sharing", "cap.external.community_coordination"):
         notice_rows.append([
             base._row_value(row, "대상 기관(협의체)명", "기관명"),
             base._row_value(row, "제공 정보"),
@@ -1263,7 +1276,7 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     coordination_rows = []
-    for row in base._rows(project, "cap.external.community_coordination"):
+    for row in base._rows(project, "cap.form16.communication", "cap.external.community_coordination"):
         coordination_rows.append([
             base._row_value(row, "종류"), base._row_value(row, "참석 대상"),
             base._row_value(row, "일정"), base._row_value(row, "장소"),
@@ -1284,7 +1297,7 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     evac_rows = []
-    for row in base._rows(project, "cap.external.evacuation"):
+    for row in base._rows(project, "cap.form16.warning", "cap.external.evacuation"):
         evac_rows.append([
             base._row_value(row, "구분"), base._row_value(row, "대상 명칭"),
             base._row_value(row, "대피경보 방법"), base._row_value(row, "연락처"),
@@ -1299,9 +1312,9 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     local_gov_rows = []
-    for row in base._rows(project, "cap.external.evacuation"):
+    for row in base._rows(project, "cap.form16.local_gov", "cap.external.evacuation"):
         local_gov_rows.append([
-            base._row_value(row, "지자체ㆍ협의체명", "지자체명"),
+            base._row_value(row, "지자체ㆍ협의체명", "지자체·협의체명", "지자체명"),
             base._row_value(row, "담당부서"), base._row_value(row, "대상"),
             base._row_value(row, "대피경보 방법"), base._row_value(row, "연락처"),
         ])
@@ -1314,7 +1327,7 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     hospital_rows = []
-    for row in base._rows(project, "cap.external.evacuation"):
+    for row in base._rows(project, "cap.form16.medical", "cap.external.evacuation"):
         if not base._row_value(row, "병원명"):
             continue
         hospital_rows.append([
@@ -1330,11 +1343,11 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     shelter_rows = []
-    for row in base._rows(project, "cap.external.evacuation"):
-        if not base._row_value(row, "대피장소"):
+    for row in base._rows(project, "cap.form16.shelters", "cap.external.evacuation"):
+        if not base._row_value(row, "대피장소(구체적 위치)", "대피장소"):
             continue
         shelter_rows.append([
-            base._row_value(row, "대피장소"), base._row_value(row, "수용 인원"),
+            base._row_value(row, "대피장소(구체적 위치)", "대피장소"), base._row_value(row, "수용 인원(명)", "수용 인원"),
             base._row_value(row, "사업장으로부터 거리(m)", "거리"),
             base._row_value(row, "연락처"),
         ])
@@ -1347,7 +1360,7 @@ def _fill_form16(tables, project: Stage2Project) -> None:
         )
 
     disclosure_rows = []
-    for row in base._rows(project, "cap.external.community_notice"):
+    for row in base._rows(project, "cap.form16.notice", "cap.external.community_notice"):
         disclosure_rows.append([
             base._row_value(row, "고지 방법", "방법"),
             base._row_value(row, "고지 대상 목록", "대상"),

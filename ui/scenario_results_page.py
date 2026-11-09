@@ -385,7 +385,7 @@ def _scenarios(project, outcome: sp.Outcome) -> None:
         "거주민/근로자": f"{i.people('거주민수')}/{i.people('근로자수')}", "근거": i.basis} for i in outcome.impacts]),
         hide_index=True, width="stretch")
     st.write(iw.summary_text(outcome.impacts))
-    st.caption("방향(풍향)·지형을 반영하지 않은 사업장 경계 기준 원형 범위입니다(보수적). 결과는 초안이며 KORA 등 동등 프로그램 결과와 대조해 확정합니다.")
+    st.caption("방향(풍향)·지형을 반영하지 않은 사업장 경계 기준 원형 범위입니다(보수적). 이 결과가 별지 제12·13호에 바로 쓰이며, 별도 결과파일을 올리지 않습니다.")
     _problems(outcome)
     left, right = st.columns(2)
     left.download_button("영향범위 분석 근거서 내려받기 (DOCX)", sp.report_docx(project), file_name=sp.REPORT_NAME, mime=DOCX,

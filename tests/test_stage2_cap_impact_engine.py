@@ -115,14 +115,14 @@ class CAPImpactEngineTests(unittest.TestCase):
 
         self.assertTrue(any("V-999" in blocker for blocker in result.blockers))
 
-    def test_form13_requires_confirmed_kora_or_gis_result_file(self):
+    def test_form13_does_not_ask_for_an_impact_result_file(self):
+        # 영향범위는 프로그램에서 계산해 적으므로 KORA/GIS 결과파일 첨부를 요구하지 않는다.
         project = self._project()
         project.fields.pop("documents.kora_impact_result", None)
 
         result = build_cap_form13_data(project)
 
-        self.assertTrue(any("결과파일" in blocker for blocker in result.blockers))
-        self.assertFalse(result.ready)
+        self.assertFalse(any("결과파일" in blocker for blocker in result.blockers))
 
     def test_form13_does_not_infer_overall_geometry_from_scenario_distance(self):
         project = self._project()
