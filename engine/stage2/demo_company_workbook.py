@@ -115,7 +115,7 @@ def _repair_demo_facts(book, tpl) -> None:
         position = ws.max_column
         ws.insert_cols(position)
         ws.cell(1, position, name)
-        ws.cell(2, position, "예 / 아니오: 제품 SDS 제9항에서 상온·상압 물성 확인")
+        ws.cell(2, position, "예 / 아니오: 제품 MSDS 제9항에서 상온·상압 물성 확인")
         headers = {str(cell.value or ""): cell.column for cell in ws[1]}
     cas_column = headers["CAS 번호"]
     state_column = headers[name]
@@ -136,10 +136,10 @@ def _repair_demo_facts(book, tpl) -> None:
         ):
             help_sheet.append([
                 "물질", name, "예 / 아니오",
-                "상온·상압에서의 제품 물성은 제품 SDS 제9항을 확인합니다. "
+                "상온·상압에서의 제품 물성은 제품 MSDS 제9항을 확인합니다. "
                 "가압해 액체로 보관 중인 가스는 상온·상압 액체와 구별합니다. "
                 "예시 판단은 실제 사업장 물성 확인을 대체하지 않습니다.",
-                "제품 SDS 제9항(물리·화학적 특성)",
+                "제품 MSDS 제9항(물리·화학적 특성)",
             ])
 
 
