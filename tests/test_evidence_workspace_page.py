@@ -195,8 +195,10 @@ class EvidencePageTests(unittest.TestCase):
              "사업장 경계와 거리(m)": 2, "GIS/현장 근거": "지도 후보",
              "거주민수": "", "근로자수": ""},
         ]
-        with patch("engine.stage2.scenario_survey.candidate_rows", return_value=candidates), \\
-             patch("engine.stage2.scenario_survey.company_workbook", return_value=b"excel"):
+        with (
+            patch("engine.stage2.scenario_survey.candidate_rows", return_value=candidates),
+            patch("engine.stage2.scenario_survey.company_workbook", return_value=b"excel"),
+        ):
             at = self.run_page(3)
         self.assertFalse(at.exception)
         editors = [e for e in at.get("data_editor")
