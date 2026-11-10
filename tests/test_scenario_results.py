@@ -212,7 +212,8 @@ class SurveyTests(unittest.TestCase):
                                        {"name": "연습천", "category": "환경수용체", "subtype": "없는 분류"}]})
         rows = {r["보호대상 명칭"]: r for r in ss.candidate_rows(p, client)}
         self.assertEqual(set(rows), set(names))
-        self.assertEqual((rows["연습 초등학교"]["보호대상 구분"], rows["연습 아파트"]["보호대상 구분"]), ("갑종", "갑종"))
+        self.assertEqual(rows["연습 초등학교"]["보호대상 구분"], "갑종")
+        self.assertEqual(rows["연습 아파트"]["보호대상 구분"], "")  # 이름만 보고 AI가 갑종으로 지정해도 버림
         self.assertEqual(rows["연습천"]["보호대상 구분"], "")            # 법정 분류 목록에 없는 AI 답은 버림
         self.assertTrue(all(0 < r["사업장 경계와 거리(m)"] <= 500 for r in rows.values()))
         book = load_workbook(BytesIO(ss.workbook(p, client)))
