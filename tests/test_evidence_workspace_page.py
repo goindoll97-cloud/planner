@@ -3,6 +3,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
@@ -181,6 +182,33 @@ class EvidencePageTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertFalse(any(e.label in ("순서는 어떻게 매기나요?", "조합별로 어떤 값을 썼는지 보기") for e in at.expander))
         self.assertFalse(any(x.key == "combo_" + self.pid for x in at.selectbox))
+
+
+    def test_500m_candidate_table_has_legal_choices_and_explanation(self):
+        candidates = [
+            {"보호대상 명칭": "전남대학교", "보호대상 구분": "갑종",
+             "세부유형": "교육·연구시설", "주소·위치": "광주",
+             "사업장 경계와 거리(m)": 0, "GIS/현장 근거": "지도 후보",
+             "거주민수": "", "근로자수": ""},
+            {"보호대상 명칭": "북구청", "보호대상 구분": "",
+             "세부유형": "", "주소·위치": "광주",
+             "사업장 경계와 거리(m)": 2, "GIS/현장 근거": "지도 후보",
+             "거주민수": "", "근로자수": ""},
+        ]
+        with patch("engine.stage2.scenario_survey.candidate_rows", return_value=candidates), \\
+             patch("engine.stage2.scenario_survey.company_workbook", return_value=b"excel"):
+            at = self.run_page(3)
+        self.assertFalse(at.exception)
+        editors = [e for e in at.get("data_editor")
+                   if "보호대상 구분" in e.value.columns]
+        self.assertEqual(len(editors), 1)
+        self.assertEqual(len(editors[0].value), 2)
+        texts = " ".join(_texts(at))
+        for expected in ("갑종 보호대상", "을종 보호대상", "환경수용체", "법정 선택지",
+                         "별표 4", "학교", "주택"):
+            self.assertIn(expected, texts)
+        self.assertFalse(any(e.key == "protected_targets_confirm_" + self.pid
+                             for e in at.button))
 
     def test_write_uses_uploaded_facts_without_confirmation_gate(self):
         at = self.run_page(4)
