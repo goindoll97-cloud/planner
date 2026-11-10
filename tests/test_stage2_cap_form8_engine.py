@@ -223,11 +223,11 @@ class CAPForm8EngineTests(unittest.TestCase):
         data = build_cap_baseline_draft(project)
         doc = Document(BytesIO(data))
         form6_text = "\n".join(
-            cell.text for row in doc.tables[15].rows for cell in row.cells
+            cell.text for row in doc.tables[9].rows for cell in row.cells
         )
         form8_text = "\n".join(
             cell.text
-            for table_index in (17, 18)
+            for table_index in (11, 12)
             for row in doc.tables[table_index].rows
             for cell in row.cells
         )
