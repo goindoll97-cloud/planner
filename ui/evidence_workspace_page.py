@@ -14,6 +14,7 @@ from engine.stage2 import demo_company_workbook, scenario_triage
 from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import company_workbook_intake as company_intake
+from engine.stage2 import cap_intake_issue_routing as issue_routing
 from engine.stage2 import evidence_workspace as ew
 from engine.stage2.storage import delete_all_projects, list_projects, load_project, save_attachment, save_project
 
@@ -413,15 +414,21 @@ def _coverage_panel(project, found) -> None:
         if done:
             st.progress(1.0, text=done)
         rows = company_intake.corrections(project)
+        deferred_counts = {issue_routing.LEGAL: 0, issue_routing.MAP: 0}
         if project.cap_in_scope:
             from engine.stage2 import report_export
             try:
                 state = report_export.evaluate(project, "CAP")
                 for issue in (*state.text_issues, *state.manual_issues):
-                    if issue.status != "PASS":
-                        rows.append({"파일·위치": company_intake.current(project)['name'], "항목": issue.legal_item,
-                                     "확인된 문제": issue.message, "_keys": tuple(issue.field_keys),
-                                     "수정 요청": "관련 입력값과 적용 기준을 확인해 주세요. 도면·SDS 원본은 올리지 않습니다."})
+                    route = issue_routing.route_issue(issue)
+                    if route in deferred_counts:
+                        deferred_counts[route] += 1
+                        continue
+                    if route == issue_routing.INFORMATION:
+                        continue
+                    rows.append({"파일·위치": company_intake.current(project)['name'], "항목": issue.legal_item,
+                                 "확인된 문제": issue.message, "_keys": tuple(issue.field_keys),
+                                 "수정 요청": "필요한 실제 회사 사실을 엑셀에 적어 다시 올려 주세요."})
             except Exception:
                 st.error("문서 검증을 완료하지 못했습니다. 입력 검사 통과만으로 문서가 완성된 것은 아닙니다.")
         st.caption("시트·행·열을 찾아 엑셀을 고친 뒤 전체 파일을 다시 올려 주세요. 엑셀로 고칠 수 없는 문서 검증 결과는 이 표에 넣지 않습니다.")
@@ -434,9 +441,17 @@ def _coverage_panel(project, found) -> None:
             st.dataframe(fixable, hide_index=True, width="stretch")
         else:
             st.success("엑셀 입력 검사에서 고칠 항목이 없습니다. 법령 기준과 문서 작성 가능 여부는 별도로 검증합니다.")
-        if len(fixable) < len(table):
-            st.caption(f"엑셀로 고칠 수 없는 문서 검증 {len(table) - len(fixable)}건(법령 승인 DB·판정, ③ 시나리오·주변 조사 계산)은 "
-                       "이 표에서 제외했습니다. ③ 화면과 ④ 작성 단계에서 확인합니다.")
+        # Do not disguise downstream validation as an Excel upload error.
+        # These issues remain unchanged in final document-readiness checks.
+        deferred_map = deferred_counts[issue_routing.MAP]
+        deferred_legal = deferred_counts[issue_routing.LEGAL]
+        if deferred_map or deferred_legal or len(fixable) < len(table):
+            st.caption(
+                f"초기 엑셀 수정 대상에서 제외: 법령·작성수준 검증 {deferred_legal}건은 "
+                f"④ 최종 문서 검증, 지도·시나리오 영향평가 {deferred_map}건은 "
+                "③ 지도·시나리오 확인 단계에서 다룹니다. "
+                "이 검증이 완료됐다는 뜻은 아니며, 제출 전에 남은 항목을 확인해야 합니다."
+            )
         st.info("엑셀을 고친 뒤 ① 엑셀 작성·올리기에 수정본을 올리면 자동으로 최신본으로 인식됩니다. 그곳에 업로드해 주세요.")
         return
 
@@ -456,7 +471,11 @@ def _step_scenarios(project, found, triage) -> None:
     from ui.scenario_results_page import _boundary, _current_workbook
 
     pid, names = project.project_id, found["names"]
-    st.caption("지도에서 사업장 경계를 확인하면 주변 지역을 검색하고 사고시나리오를 다시 계산합니다. 검색 결과는 확인 전 후보입니다.")
+    st.caption(
+        "지도에서 사업장 경계를 확인하면 주변 보호대상 후보를 검색하고 사고시나리오를 검토합니다. "
+        "검색 결과는 확인 전 후보입니다. 별지 제12·13호의 실제 영향범위·주민 수까지 "
+        "확정하려면 사고원점, 영향거리, 보호대상 위치의 공간중첩과 근거자료를 별도로 확인해야 합니다."
+    )
     _boundary(project)
     candidates = scenario_survey.candidate_rows(project)
     if candidates:
