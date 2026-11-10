@@ -48,6 +48,8 @@ def refresh_boundary_distances(project: Stage2Project) -> bool:
     if not record or not isinstance(record.value, list):
         return False
     rows = [dict(item) if isinstance(item, Mapping) else item for item in record.value]
+    fingerprint = (surroundings.boundary_record(project).get("fingerprint")
+                   if surroundings.boundary(project) is not None else "")
     changed = False
     for row in rows:
         if not isinstance(row, dict):
@@ -63,6 +65,9 @@ def refresh_boundary_distances(project: Stage2Project) -> bool:
         except (ValueError, TypeError):
             # Coordinates are preserved for review; a stale distance is not.
             distance = ""
+        if record.key == scenario_pipeline.MAP_INPUT_KEY and row.get("_boundary_fingerprint") != fingerprint:
+            row["_boundary_fingerprint"] = fingerprint
+            changed = True
         if str(row.get("경계까지 거리(m)") if row.get("경계까지 거리(m)") is not None else "").strip() != str(distance):
             row["경계까지 거리(m)"] = distance
             changed = True
@@ -99,6 +104,7 @@ def save_location(project: Stage2Project, tag: str, lat: float, lon: float) -> t
 
     by_tag["사고원점 좌표"] = origin
     by_tag["경계까지 거리(m)"] = distance
+    by_tag["_boundary_fingerprint"] = surroundings.boundary_record(project).get("fingerprint")
     project.set_field(
         scenario_pipeline.MAP_INPUT_KEY,
         "설비별 지도 지정 사고원점 및 경계 최단거리",
