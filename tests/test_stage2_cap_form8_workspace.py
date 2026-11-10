@@ -62,6 +62,17 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         same, second_count, _ = f8.classify_rows(updated)
         self.assertEqual((same, second_count), (updated, 0))
 
+    def test_unverified_apartments_remain_unclassified_even_with_subtype_hint(self):
+        for housing_name in ("늘봄아파트", "새솔 공동주택", "행복빌라", "마루 주상복합"):
+            self.assertTrue(f8.requires_housing_review(housing_name))
+            self.assertEqual(f8.classification_suggestion(housing_name)[:2], ("", ""))
+            for hint in ("주택", "주택·업무시설"):
+                rows = [{"보호대상 명칭": housing_name, "보호대상 구분": "", "세부유형": hint}]
+                revised, classified, unresolved = f8.classify_rows(rows)
+                self.assertEqual(classified, 0)
+                self.assertEqual(revised[0]["보호대상 구분"], "")
+                self.assertTrue(any("분류 확인 필요" in item for item in unresolved))
+
     def test_name_based_classification_is_a_reviewable_suggestion(self):
         rows = [
             {"보호대상 명칭": "한빛초등학교", "보호대상 구분": "", "세부유형": ""},

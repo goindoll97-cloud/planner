@@ -197,6 +197,9 @@ def _ai_categories(names: list[str], client) -> dict[str, tuple[str, str]]:
         if not isinstance(item, dict):
             continue
         name, category, subtype = (str(item.get(k) or "").strip() for k in ("name", "category", "subtype"))
+        # A model cannot infer occupancy or floor area from a residential name.
+        if f8.requires_housing_review(name):
+            continue
         if name in names and category in f8.SUBTYPES and subtype in f8.SUBTYPES[category]:
             out[name] = (category, subtype)
     return out
@@ -223,7 +226,7 @@ def candidate_rows(project: Stage2Project, client=None) -> list[dict[str, Any]]:
     for row in sorted(best.values(), key=lambda r: r["_distance"]):
         category, subtype, _ = f8.classification_suggestion(row["name"])
         how = "이름 규칙 제안"
-        if not category and row["name"] in suggestions:
+        if not category and not f8.requires_housing_review(row["name"]) and row["name"] in suggestions:
             category, subtype = suggestions[row["name"]]
             how = "AI 제안"
         source = str(row.get("source") or "지도 조회").split(" · ")[0]

@@ -31,3 +31,11 @@ def test_protected_target_help_is_readable_html_with_three_sections():
         kw.arg == "unsafe_allow_html" and isinstance(kw.value, ast.Constant) and kw.value.value is True
         for kw in call.keywords
     )
+
+def test_apartment_help_states_statutory_thresholds_without_automatic_classification():
+    source = (Path(__file__).resolve().parents[1] / "ui" / "evidence_workspace_page.py").read_text(encoding="utf-8")
+    assert "300명 이상" in source
+    assert "1,000㎡ 이상" in source
+    assert "을종에서 제외" in source
+    assert "분류 확인 필요" in source
+    assert "아파트는 수용 규모에 따라 구분이 달라질 수 있습니다." not in source
