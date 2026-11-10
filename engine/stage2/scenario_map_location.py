@@ -42,7 +42,9 @@ def refresh_boundary_distances(project: Stage2Project) -> bool:
     Do not carry a distance computed for an old polygon into a new map.
     Existing company-provided liquid head, leak length and other facts survive.
     """
-    record = project.get_field(scenario_pipeline.INPUT_KEY)
+    record = project.get_field(scenario_pipeline.MAP_INPUT_KEY)
+    if record is None or not isinstance(record.value, list):
+        record = project.get_field(scenario_pipeline.INPUT_KEY)  # legacy maps
     if not record or not isinstance(record.value, list):
         return False
     rows = [dict(item) if isinstance(item, Mapping) else item for item in record.value]
@@ -66,8 +68,7 @@ def refresh_boundary_distances(project: Stage2Project) -> bool:
             changed = True
     if changed:
         project.set_field(
-            scenario_pipeline.INPUT_KEY, "설비별 시나리오 입력(회사 엑셀 및 지도)",
-            rows, "USER_CONFIRMED",
+            record.key, record.label, rows, "USER_CONFIRMED",
             evidence=list(record.evidence),
             note="사업장 경계 변경에 맞춰 사고원점의 경계 최단거리를 다시 계산했습니다. "
                  "경계 밖의 기존 사고원점은 거리 미확인으로 남습니다.",
@@ -83,7 +84,9 @@ def save_location(project: Stage2Project, tag: str, lat: float, lon: float) -> t
         raise ValueError("회사 엑셀의 설비목록에 없는 설비번호입니다.")
     origin, distance = location_fact(project, tag, lat, lon)
 
-    record = project.get_field(scenario_pipeline.INPUT_KEY)
+    # Keep explicit click-derived coordinates separate from the uploaded Excel
+    # to avoid losing them when an employee corrects/reuploads the workbook.
+    record = project.get_field(scenario_pipeline.MAP_INPUT_KEY)
     rows = [dict(row) for row in (record.value if record and isinstance(record.value, list) else [])
             if isinstance(row, Mapping)]
     by_tag = next((row for row in rows if str(row.get("설비번호") or "").strip() == tag), None)
@@ -97,8 +100,8 @@ def save_location(project: Stage2Project, tag: str, lat: float, lon: float) -> t
     by_tag["사고원점 좌표"] = origin
     by_tag["경계까지 거리(m)"] = distance
     project.set_field(
-        scenario_pipeline.INPUT_KEY,
-        "설비별 시나리오 입력(회사 엑셀 및 지도)",
+        scenario_pipeline.MAP_INPUT_KEY,
+        "설비별 지도 지정 사고원점 및 경계 최단거리",
         rows,
         "USER_CONFIRMED",
         evidence=list(record.evidence) if record else None,
