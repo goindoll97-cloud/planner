@@ -1,7 +1,7 @@
 """사고시나리오 결과: 회사 파일로 프로그램이 정하고 계산한 시나리오를 확인하는 화면.
 
 화면에서 사람이 직접 하는 일은 지도에서 사업장 경계를 정하는 것 하나입니다(주소를 찾으면 필지 경계가 표시되고, 필지를 눌러
-더하거나 빼거나 직접 고친 뒤 ‘이 경계로 확인’을 누르면 주변 조회·거리 계산·시나리오 계산이 이어서 됩니다).
+더하거나 빼거나 직접 고치면 자동으로 저장되고 주변 조회·시나리오 계산이 이어서 됩니다).
 - 시나리오 선정·피해반경·장외거리·보호대상 집계·시설빈도·위험도·공정안전보고서 별지 제19호의2는 프로그램이 계산합니다.
 - 사업장 업무 ③에서 경계를 확인하고 주변 보호대상 후보와 설비별 시나리오 확인값을 반영합니다.
 - 로컬 AI는 선정 근거 문장과 보호대상 분류 제안에만 씁니다(숫자는 계산 엔진에서만).
@@ -128,9 +128,40 @@ def _search(prefix: str, address: str) -> None:
     st.session_state[prefix + "center"], st.session_state[prefix + "zoom"] = (lat, lon), 17
     parcels, note = ss.toggle_parcel([], lat, lon)
     st.session_state[prefix + "parcels"] = parcels
+    if parcels:
+        st.session_state[prefix + "boundary_changed"] = True
     st.session_state[prefix + "origin"] = "브이월드 연속지적도 필지를 고른 경계"
     st.session_state[prefix + "note"] = (("success", f"{where}에서 주소를 찾았습니다. {note} 공장이 여러 필지면 옆 필지를 눌러 더하세요.")
                                          if parcels else ("info", f"{where}에서 주소를 찾았습니다. {note}"))
+
+
+
+def _persist_selected_boundary(project, *, mode, parcels, drawings, origin):
+    """Auto-save a committed parcel/drawing event, without reprocessing reruns.
+
+    Do not treat a mere display-mode switch or a folium initialization event
+    as a boundary edit. Call only when actual geometry selection changed.
+    """
+    if mode == PICK and not parcels or mode == DRAW and not drawings:
+        if survey.boundary(project) is not None:
+            survey.clear_boundary(project)
+            from engine.stage2 import scenario_map_location
+            scenario_map_location.refresh_boundary_distances(project)
+            sp.refresh(project)
+            save_project(project)
+            return "사업장 경계를 지웠습니다. 새 경계를 선택하거나 그려 주세요."
+        return "사업장 경계가 선택되지 않았습니다."
+
+    geometry = ss.parcels_geometry(parcels) if mode == PICK else survey.boundary_from_drawings(drawings)
+    previous = survey.boundary(project)
+    if previous is not None and previous.equals(survey.checked_geometry(geometry, polygon_only=True)):
+        return ""  # same geometry: do not repeat map queries or invalidate review
+
+    summary = ss.confirm(project, geometry, origin or "화면 지도에서 그린 경계")
+    save_project(project)
+    return (f"경계가 자동 저장되었습니다. 주변 지도 객체 {summary['objects']}개, "
+            f"경계 밖 500m 안 시설 후보 {summary['candidates']}곳."
+            + "".join(" " + notice for notice in summary["notices"]))
 
 
 def _boundary(project) -> None:
@@ -141,9 +172,10 @@ def _boundary(project) -> None:
     saved = survey.boundary(project)
     address = f8.address(project)
     if saved is not None:
-        st.success(f"확인한 사업장 경계: {record.get('source', '')}. 바꾸려면 아래에서 다시 고르고 ‘이 경계로 확인’을 누르세요.")
-    st.caption("주소를 찾으면 그 자리의 필지 경계가 표시됩니다. 공장이 여러 필지면 옆 필지를 눌러 더하고, 잘못 고른 필지는 다시 눌러 빼세요. "
-               "실제 담장과 다르면 ‘직접 그리기·고치기’로 꼭짓점을 고칩니다. ‘이 경계로 확인’을 누르면 주변 조회·거리 계산·시나리오 계산이 이어서 됩니다.")
+        st.success(f"자동 저장된 사업장 경계: {record.get('source', '')}. 실제 담장·도면과 일치하는지 확인해 주세요.")
+    st.caption("주소로 필지를 찾거나 필지를 클릭해서 추가·제외하면 경계를 자동 저장합니다. "
+               "실제 담장과 다르면 ‘직접 그리기·고치기’에서 꼭짓점을 수정하세요. "
+               "유효한 경계가 달라질 때만 주변 조사와 시나리오 계산을 다시 수행합니다. 별도 확정 버튼은 없습니다.")
     left, right = st.columns([4, 1])
     query = left.text_input("주소로 찾기", value=address, key=prefix + "address",
                             help="지도를 옮기는 데만 씁니다. 사업장 주소(서식에 들어가는 값)는 회사 파일의 값입니다.")
@@ -194,6 +226,7 @@ def _boundary(project) -> None:
             with st.spinner("누른 자리의 필지를 찾습니다."):
                 parcels, message = ss.toggle_parcel(parcels, click["lat"], click["lng"])
             st.session_state[prefix + "parcels"] = parcels
+            st.session_state[prefix + "boundary_changed"] = True
             st.session_state[prefix + "center"] = (click["lat"], click["lng"])
             st.session_state[prefix + "zoom"] = result.get("zoom") or zoom
             st.session_state[prefix + "drawn_from_parcels"] = False
@@ -202,33 +235,37 @@ def _boundary(project) -> None:
             st.rerun()
         if parcels:
             st.write("고른 필지: " + ", ".join(p.get("label", "") for p in parcels))
-    elif result.get("all_drawings") is not None and result["all_drawings"] != drawings:
-        drawings = result["all_drawings"]
-        st.session_state[prefix + "drawings"] = drawings
-        if st.session_state.get(prefix + "origin", "").startswith("브이월드"):
-            st.session_state[prefix + "origin"] = "브이월드 연속지적도 필지를 고쳐 그린 경계"
+    elif mode == DRAW and result.get("all_drawings") is not None:
+        observed = result["all_drawings"]
+        last_seen = st.session_state.get(prefix + "last_draw_output")
+        st.session_state[prefix + "last_draw_output"] = observed
+        # A fresh Folium widget may report [] for a loaded polygon that is
+        # displayed but was not created by the Draw plugin. Do not erase it.
+        real_edit = observed != drawings and (
+            bool(observed) or last_seen is not None
+        )
+        if real_edit:
+            drawings = observed
+            st.session_state[prefix + "drawings"] = drawings
+            st.session_state[prefix + "boundary_changed"] = True
+            if st.session_state.get(prefix + "origin", "").startswith("브이월드"):
+                st.session_state[prefix + "origin"] = "브이월드 연속지적도 필지를 고쳐 그린 경계"
 
-    chosen = parcels if mode == PICK else drawings
-    if st.button("이 경계로 확인", type="primary", disabled=not chosen, key=prefix + "confirm", width="stretch"):
+    if st.session_state.pop(prefix + "boundary_changed", False):
         try:
-            geometry = ss.parcels_geometry(parcels) if mode == PICK else survey.boundary_from_drawings(drawings)
             origin = st.session_state.get(prefix + "origin") or "화면 지도에서 그린 경계"
-            if mode == DRAW and not origin.startswith(("브이월드", "경계 파일")):
-                origin = "화면 지도에서 그린 경계"
-            with st.spinner("경계를 저장하고 주변 지도 조회·거리 계산·사고시나리오 계산을 합니다."):
-                summary = ss.confirm(project, geometry, origin)
-            save_project(project)
-            text = (f"사업장 경계를 확인했습니다. 주변 지도 객체 {summary['objects']}개를 조회했고, 경계 밖 500m 안의 이름 있는 시설 "
-                    f"{summary['candidates']}곳을 확인 전 후보로 기록했습니다.")
-            st.session_state[prefix + "note"] = ("success", text + "".join(" " + n for n in summary["notices"]))
-            for name in ("parcels", "drawings", "drawn_from_parcels", "clicked"):
-                st.session_state.pop(prefix + name, None)
-            st.rerun()
-        except ValueError as exc:
-            st.error(str(exc))
+            with st.spinner("변경한 경계를 자동 저장하고 주변 지도를 분석합니다."):
+                message = _persist_selected_boundary(
+                    project, mode=mode, parcels=parcels, drawings=drawings, origin=origin
+                )
+            if message:
+                st.session_state[prefix + "note"] = ("success", message)
+                st.rerun()
+        except (ValueError, TypeError, KeyError) as exc:
+            st.error(f"사업장 경계를 자동 저장하지 못했습니다: {exc}")
     with st.expander("도면에서 뽑은 경계 파일 올리기 (GeoJSON 또는 꼭짓점 좌표 CSV)"):
         st.caption("CSV는 ‘경도, 위도’ 머리글 아래에 꼭짓점을 순서대로 적습니다(EPSG:4326). 불러온 경계는 ‘직접 그리기·고치기’에 그려지고, "
-                   "‘이 경계로 확인’으로 확정합니다.")
+                   "유효한 경계를 불러오면 자동으로 저장됩니다.")
         upload = st.file_uploader("경계 파일", type=["json", "geojson", "csv"], key=prefix + "file")
         if upload is not None and st.button("지도에 불러오기", key=prefix + "load"):
             try:
@@ -243,13 +280,21 @@ def _boundary(project) -> None:
                 st.session_state[prefix + "center"], st.session_state[prefix + "zoom"] = (point.y, point.x), 17
                 st.session_state[prefix + "origin"] = f"경계 파일 {upload.name}"
                 st.session_state[prefix + "mode_next"] = DRAW
+                st.session_state[prefix + "boundary_changed"] = True
                 st.rerun()
             except (ValueError, TypeError, AttributeError, KeyError) as exc:
                 st.error(f"경계를 읽지 못했습니다: {exc}")
     if saved is not None:
         if st.button("확인한 경계 지우기", key=prefix + "clear"):
             survey.clear_boundary(project)
+            from engine.stage2 import scenario_map_location
+            scenario_map_location.refresh_boundary_distances(project)
+            sp.refresh(project)
             save_project(project)
+            # Do not implicitly restore the previous parcel/drawing on rerun.
+            st.session_state[prefix + "parcels"] = []
+            st.session_state[prefix + "drawings"] = []
+            st.session_state.pop(prefix + "boundary_changed", None)
             st.rerun()
         if survey.survey(project):
             st.caption(survey.coverage_warning(project))
