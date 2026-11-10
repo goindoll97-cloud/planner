@@ -389,7 +389,7 @@ class PageTests(unittest.TestCase):
         self.assertTrue(any("고른 필지: 연습동 1-1" in m.value for m in at.markdown))
         self.assertTrue(any("브이월드에서 주소를 찾았습니다" in m.value for m in at.success))
         self.assertFalse(any(b.label == "이 경계로 확인" for b in at.button))
-        self.assertIsNotNone(survey.boundary(p))  # address parcel auto-persisted
+        self.assertIsNone(survey.boundary(p))  # address suggestion alone is NOT a certified boundary
 
 
 if __name__ == "__main__":
