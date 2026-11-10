@@ -79,6 +79,6 @@ def test_form12_uses_one_header_per_scenario_and_does_not_invent_missing_populat
     ]
     assert "(TK-01 가상 톨루엔 독성 누출) 사고시나리오" in names
     assert "(CY-01 가상 암모니아 화재·폭발) 사고시나리오" in names
-    second = next(table for table in doc.tables if table.cell(0, 0).text == names[-1])
+    second = next(table for table in doc.tables if table.cell(0, 0).text == "(CY-01 가상 암모니아 화재·폭발) 사고시나리오")
     assert "반경 (60.5)m, 장외 (51.5)m" in second.cell(1, 1).text
     assert "거주민(   )명" in second.cell(3, 2).text
