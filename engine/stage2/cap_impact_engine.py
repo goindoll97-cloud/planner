@@ -171,6 +171,14 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
         facility = _clean(_row_value(row, "대상 설비번호", "설비번호", "구분기호"))
         accident_type = _clean(_row_value(row, "사고유형", "사고 유형"))
         distance = _num(_row_value(row, "장외거리(m)", "장외거리", "사고시나리오 거리(장외)"))
+        # '반경' and '장외거리' are different statutory fields. Keep the former
+        # optional rather than repeating the offsite number as a radius.
+        radius = _num(_row_value(row, "영향반경(m)", "영향범위 반경(m)", "취급시설 중심 반경(m)", "끝점도달거리(m)"))
+        population_subgroups = {
+            key: (_int_nonnegative(_row_value(row, key)) if _row_value(row, key) not in (None, "") else "")
+            for key in ("산업단지 내 거주민수", "산업단지 내 근로자수",
+                        "산업단지 외 거주민수", "산업단지 외 근로자수")
+        }
         residents = _int_nonnegative(_row_value(row, "거주민수", "거주민 수"))
         workers = _int_nonnegative(_row_value(row, "근로자수", "근로자 수"))
         a_count = _int_nonnegative(_row_value(row, "갑종 보호대상 수", "갑종수"))
@@ -215,6 +223,8 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
             "대상 설비번호": facility,
             "사고유형": accident_type,
             "장외거리(m)": "" if distance is None else distance,
+            "영향반경(m)": "" if radius is None else radius,
+            **population_subgroups,
             "거주민수": "" if residents is None else residents,
             "근로자수": "" if workers is None else workers,
             "갑종 보호대상 수": "" if a_count is None else a_count,
