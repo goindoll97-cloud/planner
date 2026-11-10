@@ -10,7 +10,7 @@ import re
 
 import streamlit as st
 
-from engine.stage2 import demo_company_workbook, scenario_triage
+from engine.stage2 import demo_company_workbook, scenario_triage, cap_target_review
 from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
 from engine.stage2 import company_workbook_intake as company_intake
@@ -480,6 +480,7 @@ def _equipment_location_map(project, tags: list[str]) -> None:
     from streamlit_folium import st_folium
     from shapely.geometry import mapping
     import folium
+    from folium.plugins import Fullscreen
 
     boundary = surroundings.boundary(project)
     if boundary is None:
@@ -494,6 +495,7 @@ def _equipment_location_map(project, tags: list[str]) -> None:
     folium.GeoJson(mapping(boundary), name="사업장 경계",
                    style_function=lambda _: {"color": "#16a34a", "weight": 3,
                                              "fillColor": "#16a34a", "fillOpacity": 0.08}).add_to(canvas)
+    Fullscreen(position="topright").add_to(canvas)
     previous = str(selected.get("사고원점 좌표") or "").strip()
     try:
         pair = [float(part.strip()) for part in previous.split(",")]
@@ -504,7 +506,7 @@ def _equipment_location_map(project, tags: list[str]) -> None:
         pass
     st.caption(f"{tag}의 실제 설비 위치를 지도에서 클릭하세요. 좌표와 사업장 경계까지 최단거리는 자동 기록됩니다. "
                "실제 설비 위치를 확인할 수 없다면 지도의 임의 지점을 선택하지 마세요.")
-    reply = st_folium(canvas, height=370, use_container_width=True,
+    reply = st_folium(canvas, height=660, use_container_width=True,
                       key="equipment_location_map_" + project.project_id + "_" + tag,
                       returned_objects=["last_clicked"]) or {}
     clicked = reply.get("last_clicked")
@@ -560,9 +562,95 @@ def _step_scenarios(project, found, triage) -> None:
     _boundary(project)
     candidates = scenario_survey.candidate_rows(project)
     if candidates:
+        from engine.stage2 import scenario_pipeline
+
         st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
-        st.dataframe(candidates, hide_index=True, width="stretch")
-        st.caption("지도에서 찾은 값은 확인 전 후보입니다. 아래 엑셀을 내려받아 법정 분류·거리·인원을 확인한 후 ①에 다시 올릴 수 있습니다.")
+        st.caption(
+            "‘보호대상 구분’과 ‘세부유형’ 셀을 누르면 법정 선택지가 열립니다. "
+            "실제 용도·수용 인원·건물 규모를 확인하고 선택하세요. "
+            "비어 있는 칸은 미확인 상태이며 이름으로 추정한 갑종·을종도 확정값이 아닙니다. "
+            "수정 내용은 자동 저장하지만 법정 검토 완료로 처리하지 않습니다."
+        )
+        import pandas as pd
+
+        review_rows = cap_target_review.candidate_review_rows(project, candidates)
+        frame = pd.DataFrame(review_rows)
+        for col in ("거주민수", "근로자수"):
+            # Numeric editor must distinguish an unverified blank from 0 persons.
+            frame[col] = pd.to_numeric(frame[col], errors="coerce")
+        edited = st.data_editor(
+            frame, hide_index=True, width="stretch", height=590,
+            num_rows="fixed", key="protected_target_editor_" + pid,
+            disabled=[
+                "보호대상 명칭", "주소·위치", "사업장 경계와 거리(m)"
+            ],
+            column_config={
+                "보호대상 명칭": st.column_config.TextColumn("보호대상 명칭", width="medium"),
+                "보호대상 구분": st.column_config.SelectboxColumn(
+                    "보호대상 구분", options=list(cap_target_review.LEGAL_CATEGORIES),
+                    required=False, width="medium",
+                    help="갑종 / 을종 / 환경수용체 중 실제 시설의 용도와 규모를 확인해 선택합니다. 미확인은 빈칸으로 둡니다."
+                ),
+                "세부유형": st.column_config.SelectboxColumn(
+                    "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
+                    required=False, width="medium",
+                    help="법정 세부유형 선택지입니다. 보호대상 구분에 속하는 유형을 선택하세요."
+                ),
+                "거주민수": st.column_config.NumberColumn(
+                    "거주민수", min_value=0, step=1, width="small",
+                    help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요(0명과 다릅니다)."
+                ),
+                "근로자수": st.column_config.NumberColumn(
+                    "근로자수", min_value=0, step=1, width="small",
+                    help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요."
+                ),
+                "GIS/현장 근거": st.column_config.TextColumn("GIS/현장 근거", width="large"),
+            },
+        )
+        try:
+            changed, warnings = cap_target_review.apply_candidate_edits(
+                project, edited.to_dict("records"), candidates
+            )
+            if changed:
+                try:
+                    scenario_pipeline.refresh(project)
+                except (ValueError, TypeError, RuntimeError) as exc:
+                    st.session_state["protected_target_refresh_notice_" + pid] = (
+                        "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
+                    )
+                save_project(project)
+                st.session_state["protected_target_editor_warnings_" + pid] = warnings
+                st.rerun()
+        except (ValueError, TypeError) as exc:
+            st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
+
+        for warning in st.session_state.pop("protected_target_editor_warnings_" + pid, []):
+            st.warning(warning)
+        if st.session_state.pop("protected_target_refresh_notice_" + pid, ""):
+            st.warning("보호대상은 저장되었으나 사고시나리오 재계산은 다음 단계에서 다시 확인해야 합니다.")
+
+        st.markdown("**보호대상 구분은 어떻게 선택하나요?**")
+        st.markdown(
+            "- **갑종 보호대상:** 학교·병원·어린이집·노인복지시설·숙박시설·"
+            "일정 규모 이상의 집회·판매시설처럼 많은 사람이나 보호가 필요한 사람이 이용하는 시설입니다. "
+            "예를 들어 대학교는 ‘교육·연구시설’에 해당할 수 있습니다.\\n"
+            "- **을종 보호대상:** 단독주택·일반 규모의 공동주택, 관공서·업무시설, "
+            "근린생활시설(상가 등), 주유소·가스 충전소 등입니다. "
+            "아파트는 수용 규모에 따라 구분이 달라질 수 있습니다.\\n"
+            "- **환경수용체:** 하천, 자연공원, 산림·유적지, 습지보호지역, "
+            "상수원·취수원, 농경지, 생태·경관보호지역 등 사고로 영향을 받을 수 있는 자연환경입니다."
+        )
+        st.caption(
+            "※ 위 예시는 이해를 돕기 위한 요약입니다. 실제 구분은 시설의 사용 용도·"
+            "면적·수용 인원·법정 지정 여부에 따라 달라집니다. 시설명만으로 확정하거나 "
+            "미확인 인원수를 0명으로 가정하면 안 됩니다. "
+            "적용 기준: 「화학사고예방관리계획서 작성 등에 관한 규정」 별표 4(보호대상)."
+        )
+        st.markdown(
+            "[국가법령정보센터에서 현행 작성규정 확인]"
+            "(https://www.law.go.kr/admRulLsInfoP.do?admRulSeq=2100000285508)"
+        )
+        st.caption("지도로 조사한 후보를 엑셀에 담아 보관할 수도 있습니다. 화면에서 선택한 구분은 저장되지만 검토 완료는 별개입니다.")
         try:
             original, _ = _current_workbook(project)
             enriched = scenario_survey.company_workbook(project, original=original)

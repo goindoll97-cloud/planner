@@ -336,19 +336,68 @@ def company_workbook(project: Stage2Project, original: bytes | None = None, clie
     if sheet is not None:
         headers = {str(c.value).strip(): c.column for c in sheet[1] if c.value}
         name_col = headers.get("보호대상 명칭", 1)
-        names = {f8._norm(sheet.cell(row=r, column=name_col).value) for r in range(2, sheet.max_row + 1)
-                 if sheet.cell(row=r, column=name_col).value}
+        from . import cap_target_review
+        from openpyxl.worksheet.datavalidation import DataValidation
+
+        existing = {
+            f8._norm(sheet.cell(row=r, column=name_col).value): r
+            for r in range(2, sheet.max_row + 1)
+            if sheet.cell(row=r, column=name_col).value
+        }
         row = 2
-        for candidate in candidate_rows(project, client):
-            if f8._norm(candidate["보호대상 명칭"]) in names:
+        # A category selected on screen is also included in the optional
+        # exported workbook. Do not overwrite nonblank original company facts.
+        for candidate in cap_target_review.candidate_review_rows(project, candidate_rows(project, client)):
+            key = f8._norm(candidate["보호대상 명칭"])
+            if key in existing:
+                for column in cap_target_review.EDITABLE_COLUMNS:
+                    if column not in headers:
+                        continue
+                    cell = sheet.cell(row=existing[key], column=headers[column])
+                    selected = candidate.get(column)
+                    if cell.value in (None, "") and selected not in (None, ""):
+                        cell.value = selected
                 continue
             while sheet.cell(row=row, column=name_col).value not in (None, ""):
                 row += 1
             for column, value in candidate.items():
                 if column in headers and value not in (None, ""):
                     sheet.cell(row=row, column=headers[column]).value = value
-            names.add(f8._norm(candidate["보호대상 명칭"]))
+            existing[key] = row
             added += 1
+
+        last = max(sheet.max_row + 20, 40)
+        if "보호대상 구분" in headers:
+            from openpyxl.utils import get_column_letter
+            col = get_column_letter(headers["보호대상 구분"])
+            # The full-schema template already contains a category list;
+            # adding another validation for the same cells can confuse Excel.
+            already_listed = any(
+                item.type == "list" and f"{col}2" in item.sqref
+                for item in sheet.data_validations.dataValidation
+            )
+            if not already_listed:
+                category = DataValidation(
+                    type="list", formula1='"갑종,을종,환경수용체"',
+                    allow_blank=True, showErrorMessage=True,
+                    error="갑종, 을종, 환경수용체 중 선택해 주세요.",
+                )
+                sheet.add_data_validation(category)
+                category.add(f"{col}2:{col}{last}")
+        if "세부유형" in headers:
+            from openpyxl.utils import get_column_letter
+            col = get_column_letter(headers["세부유형"])
+            subtype = DataValidation(
+                type="list", formula1='"' + ",".join(cap_target_review.LEGAL_SUBTYPES[1:]) + '"',
+                allow_blank=True,
+                showErrorMessage=False,
+            )
+            # XLSX inline list validation is capped at 255 characters. The
+            # subtype list can exceed that, so use explicit sheet guidance
+            # rather than producing an invalid inline validation formula.
+            if len(subtype.formula1) <= 255:
+                sheet.add_data_validation(subtype)
+                subtype.add(f"{col}2:{col}{last}")
         total = sum(1 for r in range(2, sheet.max_row + 1) if sheet.cell(row=r, column=name_col).value)
     else:
         total = 0

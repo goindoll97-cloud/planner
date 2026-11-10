@@ -223,7 +223,7 @@ def _boundary(project) -> None:
     center, zoom = st.session_state[prefix + "center"], st.session_state[prefix + "zoom"]
     key = prefix + "map_" + mode
     result = st_folium(_map(project, center=center, zoom=zoom, parcels=parcels, drawings=drawings, mode=mode),
-                       height=540, use_container_width=True, key=key,
+                       height=780, use_container_width=True, key=key,
                        returned_objects=["last_clicked", "zoom"] if mode == PICK else ["all_drawings"]) or {}
     if mode == PICK:
         click = result.get("last_clicked")
@@ -340,9 +340,27 @@ def _target_editor(project, rows) -> None:
     st.markdown("**지도에서 위치를 확인하고, 아래 표의 구분·거주민수·근로자수를 확인해 적어 주세요.**")
     editable = ("보호대상 구분", "세부유형", "거주민수", "근로자수", "GIS/현장 근거")
     frame = pd.DataFrame([{c: r.get(c, "") for c in ss.TARGET_COLUMNS} for r in rows])
-    config = {c: st.column_config.NumberColumn(c, min_value=0, step=1) for c in ("거주민수", "근로자수")}
+    from engine.stage2 import cap_target_review
+    config = {
+        "보호대상 구분": st.column_config.SelectboxColumn(
+            "보호대상 구분", options=list(cap_target_review.LEGAL_CATEGORIES),
+            required=False, help="갑종/을종/환경수용체 중 용도·규모를 확인해 선택하세요."
+        ),
+        "세부유형": st.column_config.SelectboxColumn(
+            "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
+            required=False, help="보호대상 구분과 맞는 법정 세부유형만 선택합니다."
+        ),
+        **{col: st.column_config.NumberColumn(col, min_value=0, step=1)
+           for col in ("거주민수", "근로자수")},
+    }
     edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"scn_targets_{project.project_id}",
                             disabled=[c for c in ss.TARGET_COLUMNS if c not in editable], column_config=config)
+    st.caption(
+        "갑종: 학교·병원·복지시설·대규모 집회·숙박시설 등. "
+        "을종: 일반 주택·업무시설·근린생활시설·주유소 등. "
+        "환경수용체: 하천·자연공원·산림·보호지역 등. "
+        "실제 구분은 해당 시설의 용도·수용 인원·면적·법적 지정 여부를 확인하세요(작성규정 별표 4)."
+    )
     prior = f8.review(project)
     survey_data = survey.survey(project) if survey.is_current(project) else {}
     boundary = survey.boundary_record(project) if survey.boundary(project) is not None else {}
