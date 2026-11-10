@@ -466,6 +466,87 @@ def _step_questions(project, found) -> None:
 
 # ---------------------------------------------------------------- ③ 시나리오 후보
 
+def _equipment_location_map(project, tags: list[str]) -> None:
+    """Only the physical location is supplied by a person, via a map click.
+
+    The map then derives and records WGS84 coordinates and shortest metric
+    distance to the confirmed boundary; never infer an accident origin from a
+    site address, facility tag, or site centroid.
+    """
+    if not tags:
+        return
+    from engine.stage2 import cap_surroundings as surroundings, scenario_pipeline
+    from engine.stage2 import scenario_map_location
+    from streamlit_folium import st_folium
+    from shapely.geometry import mapping
+    import folium
+
+    boundary = surroundings.boundary(project)
+    if boundary is None:
+        st.info("사고원점 지도를 사용하려면 위에서 실제 사업장 경계를 먼저 그려 주세요.")
+        return
+
+    tag = st.selectbox("지도에서 위치를 지정할 설비", tags, key="equipment_tag_" + project.project_id)
+    selected = scenario_pipeline.file_inputs(project).get(tag, {})
+    center = boundary.representative_point()
+    canvas = folium.Map(location=[center.y, center.x], zoom_start=17,
+                        tiles="OpenStreetMap", control_scale=True)
+    folium.GeoJson(mapping(boundary), name="사업장 경계",
+                   style_function=lambda _: {"color": "#16a34a", "weight": 3,
+                                             "fillColor": "#16a34a", "fillOpacity": 0.08}).add_to(canvas)
+    previous = str(selected.get("사고원점 좌표") or "").strip()
+    try:
+        pair = [float(part.strip()) for part in previous.split(",")]
+        if len(pair) == 2:
+            lat, lon = (pair if abs(pair[0]) <= 90 else pair[::-1])
+            folium.Marker([lat, lon], tooltip=f"{tag} 실제 설비 위치").add_to(canvas)
+    except (ValueError, TypeError):
+        pass
+    st.caption(f"{tag}의 실제 설비 위치를 지도에서 클릭하세요. 좌표와 사업장 경계까지 최단거리는 자동 기록됩니다. "
+               "실제 설비 위치를 확인할 수 없다면 지도의 임의 지점을 선택하지 마세요.")
+    reply = st_folium(canvas, height=370, use_container_width=True,
+                      key="equipment_location_map_" + project.project_id + "_" + tag,
+                      returned_objects=["last_clicked"]) or {}
+    clicked = reply.get("last_clicked")
+    if clicked:
+        lat, lon = clicked.get("lat"), clicked.get("lng")
+        signature = (tag, lat, lon)
+        state_key = "equipment_location_click_" + project.project_id
+        if signature != st.session_state.get(state_key):
+            st.session_state[state_key] = signature
+            try:
+                origin, metres = scenario_map_location.save_location(project, tag, float(lat), float(lon))
+                save_project(project)
+                st.success(f"{tag} 실제 설비 위치 {origin} / 경계까지 최단거리 {metres:g} m 자동 기록")
+                st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(str(exc))
+
+
+def _scenario_display_rows(project, tags: list[str]) -> list[dict]:
+    """Read-only review data; do not rewrite company Excel facts from UI."""
+    from engine.stage2 import scenario_pipeline
+    stored = scenario_pipeline.file_inputs(project)
+    proposals: dict[str, list[str]] = {}
+    for scenario in scenario_pipeline.plan(project).scenarios:
+        tag = str(scenario.get("대상 설비번호") or "")
+        kind = str(scenario.get("사고유형") or "")
+        if tag and kind and kind not in proposals.setdefault(tag, []):
+            proposals[tag].append(kind)
+    def value_or(value, missing):
+        # 0 m is a legitimate measured head/boundary distance.
+        return missing if value is None or value == "" else value
+
+    return [
+        {"설비번호": tag,
+         "사고유형(프로그램 결과)": " / ".join(proposals.get(tag, [])) or "자동판정 대기",
+         "경계까지 거리(m)": value_or(stored.get(tag, {}).get("경계까지 거리(m)"), "지도 지정 필요"),
+         "사고원점 좌표": value_or(stored.get(tag, {}).get("사고원점 좌표"), "지도 지정 필요"),
+         "액위(m) · 엑셀값": value_or(stored.get(tag, {}).get("액위(m)"), "미입력(필요할 때만 확인)")}
+        for tag in tags
+    ]
+
+
 def _step_scenarios(project, found, triage) -> None:
     from engine.stage2 import scenario_survey, scenario_pipeline
     from ui.scenario_results_page import _boundary, _current_workbook
@@ -494,23 +575,16 @@ def _step_scenarios(project, found, triage) -> None:
         except Exception:
             st.warning("지도 후보가 포함된 엑셀을 만들지 못했습니다. 기본 회사 작성용 엑셀을 사용하세요.")
     linked = [r for r in triage["rows"] if r["linked"]]
-    existing = scenario_pipeline.file_inputs(project)
-    tags = list(dict.fromkeys(r['facility'].split(':', 1)[-1] for r in linked))
+    tags = list(dict.fromkeys(r["facility"].split(":", 1)[-1] for r in linked))
     if tags:
-        st.caption("설비별 사고유형은 비워 두면 규칙으로 제안합니다. 경계까지 거리와 사고원점 위치는 설비 도면·지도에서 확인해 적어 주세요. 사고원점 좌표는 WGS84 숫자 두 개(위도,경도 또는 경도,위도)로 입력합니다. 주소를 좌표로 대체하지 않습니다.")
-        review = st.data_editor([
-            {'설비번호': tag, '선정할 사고유형': existing.get(tag, {}).get('선정할 사고유형', ''),
-             '경계까지 거리(m)': existing.get(tag, {}).get('경계까지 거리(m)', ''),
-             '사고원점 좌표': existing.get(tag, {}).get('사고원점 좌표', ''),
-             '액위(m)': existing.get(tag, {}).get('액위(m)', '')}
-            for tag in tags], hide_index=True, num_rows='fixed', disabled=['설비번호'],
-            key='scenario_review_' + pid)
-        if st.button('시나리오 확인값 반영', key='scenario_review_save_' + pid):
-            values = review.to_dict('records') if hasattr(review, 'to_dict') else review
-            project.set_field(scenario_pipeline.INPUT_KEY, '설비별 시나리오 확인값', values, 'USER_CONFIRMED')
-            scenario_pipeline.refresh(project)
-            save_project(project)
-            st.rerun()
+        st.markdown("**설비별 사고시나리오 자동 분석·확인**")
+        st.caption(
+            "설비번호와 액위는 회사 엑셀에서 가져오고 사고유형은 프로그램이 선정합니다. "
+            "사고원점 좌표와 경계까지 거리는 아래 지도에서 실제 설비 위치를 클릭하면 자동 계산됩니다. "
+            "이 표는 읽기 전용이며 값을 다시 적거나 확정할 필요가 없습니다."
+        )
+        st.dataframe(_scenario_display_rows(project, tags), hide_index=True, width="stretch")
+        _equipment_location_map(project, tags)
     st.dataframe([{"순서": r["rank"], "설비": names(r["facility"]), "물질": names(r["material"]),
                    "인식한 파일": " / ".join(dict.fromkeys(source["document"] for source in r["sources"].values() if source)),
                    "비교 점수": round(r["score"], 1)} for r in linked], hide_index=True, width="stretch")

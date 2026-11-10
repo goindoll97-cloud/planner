@@ -25,6 +25,7 @@ from . import psm_form19_2_workspace as f19
 from .project import CONFIRMED_STATUSES, EvidenceRef, Stage2Project
 
 INPUT_KEY = ew.SCENARIO_INPUT_KEY
+MAP_INPUT_KEY = "cap.workspace.scenario_map_positions"  # only facts derived from explicit GIS clicks
 FREQUENCY_INPUT_KEY = ew.FREQUENCY_INPUT_KEY
 WEATHER_INPUT_KEY = "psm.risk.weather_inputs"
 REASON_DRAFT_KEY = "cap.workspace.scenario_reason_drafts"
@@ -74,8 +75,27 @@ def _rows(project: Stage2Project, key: str) -> dict[str, dict[str, Any]]:
 
 
 def file_inputs(project: Stage2Project) -> dict[str, dict[str, Any]]:
-    """설비번호 → 사고시나리오 검토자료에서 읽은 값."""
-    return _rows(project, INPUT_KEY)
+    """Excel facts plus independently persisted verified map-click locations.
+
+    Re-uploading the workbook can replace INPUT_KEY, but must never erase
+    the person's separately marked incident origins/distance calculations.
+    Missing factual Excel fields (e.g. liquid level) remain missing.
+    """
+    inputs = _rows(project, INPUT_KEY)
+    from . import cap_surroundings as surroundings
+    # GIS clicks are site-specific. Never attach a previous site's accident
+    # origins to a new address or a different facility polygon on reupload.
+    if surroundings.boundary(project) is not None:
+        fingerprint = surroundings.boundary_record(project).get("fingerprint")
+        for tag, position in _rows(project, MAP_INPUT_KEY).items():
+            if position.get("_boundary_fingerprint") != fingerprint:
+                continue
+            inputs.setdefault(tag, {"설비번호": tag}).update({
+                column: position[column]
+                for column in ("사고원점 좌표", "경계까지 거리(m)")
+                if column in position
+            })
+    return inputs
 
 
 def frequency_inputs(project: Stage2Project) -> dict[str, dict[str, Any]]:

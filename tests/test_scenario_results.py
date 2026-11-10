@@ -382,12 +382,14 @@ class PageTests(unittest.TestCase):
         parcel = {"id": "P1", "label": "연습동 1-1", "geometry": _box(-60, -40, 60, 40)}
         with patch.object(vworld, "api_key", return_value="key"), patch.object(vworld, "geocode", return_value=CENTER), \
                 patch.object(vworld, "parcel_feature", return_value=(parcel, "브이월드 연속지적도 필지 연습동 1-1")), \
-                patch("engine.stage2.cap_site_lookup.api_key", return_value=""):
+                patch("engine.stage2.cap_site_lookup.api_key", return_value=""), \
+                patch.object(survey, "collect", return_value={}):
             at = self._run(p)
         self.assertFalse(at.exception, at.exception)
         self.assertTrue(any("고른 필지: 연습동 1-1" in m.value for m in at.markdown))
         self.assertTrue(any("브이월드에서 주소를 찾았습니다" in m.value for m in at.success))
-        self.assertTrue(any(b.label == "이 경계로 확인" and not b.disabled for b in at.button))
+        self.assertFalse(any(b.label == "이 경계로 확인" for b in at.button))
+        self.assertIsNone(survey.boundary(p))  # address suggestion alone is NOT a certified boundary
 
 
 if __name__ == "__main__":
