@@ -107,11 +107,13 @@ def parcel_draft(project: Stage2Project, *, geocode=None, parcel=None) -> tuple[
 
 
 def confirm(project: Stage2Project, geometry: dict, origin: str, *, collect=None, refresh=None) -> dict[str, Any]:
-    """‘이 경계로 확인’: 경계를 저장하고, 경계 기준으로 주변 지도를 조회하고, 조사표 후보 거리를 재고, 시나리오를 다시 계산합니다.
+    """지도 클릭·그리기 직후 경계를 자동 저장하고, 주변 지도 조회·사고시나리오를 재계산합니다.
     지도 조회가 안 되어도(키 없음 등) 경계 저장은 그대로 두고 이유를 알려 줍니다."""
     from . import scenario_pipeline as sp
 
     payload = survey.save_boundary(project, geometry, f"{origin or '화면 지도에서 그린 경계'}, {_today()}", confirmed=True)
+    from . import scenario_map_location
+    scenario_map_location.refresh_boundary_distances(project)
     notices: list[str] = []
     try:
         (collect or survey.collect)(project, expand_to_boundary=True)
