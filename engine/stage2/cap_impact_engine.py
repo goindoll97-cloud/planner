@@ -137,7 +137,7 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
     if not rows:
         return CAPForm12Data(
             (),
-            ("KORA/GIS에서 확정된 사고시나리오별 영향평가 자료가 없습니다.",),
+            ("사고시나리오별 영향평가 결과가 아직 없습니다. ③ 지도·시나리오 단계에서 사고원점과 경계를 확인한 뒤 프로그램 자체 분석 또는 검증된 외부 분석 결과를 반영해 주세요.",),
             (),
         )
 
@@ -193,7 +193,7 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
         if not accident_type:
             blockers.append(f"{label}: 사고유형이 비어 있습니다.")
         if distance is None or distance < 0:
-            blockers.append(f"{label}: 장외거리(m)를 0 이상의 KORA 확정 숫자로 입력해 주세요.")
+            blockers.append(f"{label}: 장외거리(m)는 0 이상의 검증된 영향범위 계산값이어야 합니다(프로그램 자체 분석 또는 외부 결과).")
         for name, value in (
             ("거주민수", residents),
             ("근로자수", workers),
@@ -206,7 +206,7 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
         if not origin:
             blockers.append(f"{label}: 실제 사고원점 좌표(위도,경도 또는 경도,위도)를 확인해 주세요. 주소는 좌표가 아닙니다.")
         if not evidence:
-            blockers.append(f"{label}: KORA/GIS 결과 근거 식별자가 비어 있습니다.")
+            blockers.append(f"{label}: 사고영향범위 산정 근거 식별자가 없습니다(프로그램 자체 분석 근거서 또는 외부 결과).")
 
         out.append({
             "연번": len(out) + 1,
