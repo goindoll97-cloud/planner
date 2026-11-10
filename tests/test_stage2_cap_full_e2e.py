@@ -517,8 +517,8 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
             self.assertEqual(rendered, expected)
 
         internal = Document(BytesIO(build_report_draft(project, "CAP")))
-        self.assertGreaterEqual(len(internal.tables), 44)
-        for table_index in (13, 14):
+        self.assertGreaterEqual(len(internal.tables), 38)
+        for table_index in (7, 8):
             rows = _facility_chemical_data_rows(internal.tables[table_index])
             self.assertEqual(len(rows), 12)
             text = "\n".join(
