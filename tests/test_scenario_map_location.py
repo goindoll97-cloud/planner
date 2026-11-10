@@ -45,9 +45,17 @@ def test_map_click_saves_only_coordinates_and_calculated_distance_preserving_exc
         assert rows["TK-01"]["비열비"] == "1.3"
         assert rows["TK-01"]["사고원점 좌표"] == origin
         assert rows["TK-01"]["경계까지 거리(m)"] == distance
+        assert p.get_field(scenario_pipeline.INPUT_KEY).value[0].get("사고원점 좌표") is None
+        assert p.get_field(scenario_pipeline.MAP_INPUT_KEY) is not None
         refresh.assert_called_once()
         location.save_location(p, "TK-01", 37.001, 127.001)
         refresh.assert_called_once()  # duplicate click must not repeat computation
+        # Simulate a new Excel upload changing only the factual liquid head.
+        p.set_field(scenario_pipeline.INPUT_KEY, "새 엑셀 자료",
+                    [{"설비번호": "TK-01", "액위(m)": "3.1"}], "USER_CONFIRMED")
+        assert scenario_pipeline.file_inputs(p)["TK-01"]["액위(m)"] == "3.1"
+        assert scenario_pipeline.file_inputs(p)["TK-01"]["사고원점 좌표"] == origin
+        assert scenario_pipeline.file_inputs(p)["TK-01"]["경계까지 거리(m)"] == distance
 
 
 def test_boundary_change_recomputes_distance_and_does_not_invent_new_origin():
