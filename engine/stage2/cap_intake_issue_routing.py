@@ -47,7 +47,7 @@ def route_issue(issue: Any) -> str:
     if any(word in content for word in (
         "고유번호", "유해화학물질 물질구분", "물질구분을 확정",
         "규정수량", "별표 1", "별표 2", "별표 3",
-        "Stage 1 판정", "작성수준 구분",
+        "Stage 1 판정",
     )):
         return LEGAL
 
