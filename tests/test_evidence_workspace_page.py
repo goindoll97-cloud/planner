@@ -175,10 +175,10 @@ class EvidencePageTests(unittest.TestCase):
         at = self.run_page(3)
         self.assertFalse(at.exception)
         self.assertTrue(any("설비" in table.value.columns for table in at.dataframe))
-        self.assertTrue(any(button.key == "scn_map_" + self.pid + "_confirm" for button in at.button))
-        at.button(key="scenario_review_save_" + self.pid).click().run()
+        self.assertFalse(any(button.key == "scn_map_" + self.pid + "_confirm" for button in at.button))
+        self.assertFalse(any(button.key == "scenario_review_save_" + self.pid for button in at.button))
+        self.assertFalse(any("선정할 사고유형" in t.value.columns for t in at.get("data_editor")))
         self.assertFalse(at.exception)
-        self.assertIsNotNone(load_project(self.pid).get_field("cap.workspace.scenario_inputs"))
         self.assertFalse(any(e.label in ("순서는 어떻게 매기나요?", "조합별로 어떤 값을 썼는지 보기") for e in at.expander))
         self.assertFalse(any(x.key == "combo_" + self.pid for x in at.selectbox))
 
