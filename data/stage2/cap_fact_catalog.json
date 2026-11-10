@@ -2031,6 +2031,23 @@
    "required": true
   },
   {
+   "id": "material.ambient_liquid",
+   "name": "상온·상압 액체 여부",
+   "kind": "material",
+   "source": "company",
+   "format": "choice",
+   "options": ["예","아니오"],
+   "field_key": "inventory.chemicals",
+   "column": "상온·상압 액체 여부(해당 시)",
+   "evidence_field": "ambient_liquid",
+   "headers": ["상온·상압 액체 여부(해당 시)","상온·상압 액체 여부"],
+   "file": "material_list",
+   "groups": ["1군","2군"],
+   "used_in": [{"form":1,"cell":"별표 3 제42·44호 상온·상압 액체 조건 확인"}],
+   "required": false,
+   "note": "별표 3의 액체 조건을 확인해야 하는 경우에만 선택합니다. 제품 SDS 제9항(상온·상압 물성)이나 확인된 물성자료가 근거이며, 저장설비 안에서 액화되어 있다는 사실만으로 '예'를 고르지 않습니다. 자료가 없으면 빈칸으로 둡니다."
+  },
+  {
    "id": "material.density",
    "name": "비중",
    "kind": "material",

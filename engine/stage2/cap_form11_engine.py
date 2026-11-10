@@ -103,6 +103,16 @@ def _yes_no(value: object) -> bool | None:
     return None
 
 
+# Gas sensors detect a chemical species, not necessarily the trade name or
+# liquid mixture under which the company records its stock. Match documented
+# CAS synonyms only. Never infer an arbitrary name equivalence.
+SENSOR_CAS_SYNONYMS = {
+    "108-88-3": ("톨루엔", "toluene"),
+    "7647-01-0": ("염화수소", "염산", "hydrogen chloride"),
+    "7664-41-7": ("암모니아", "ammonia"),
+}
+
+
 def _chemical_names(project: Stage2Project) -> set[str]:
     rows = _confirmed_rows(project, "inventory.chemicals", "cap.chemical.details")
     names: set[str] = set()
@@ -110,6 +120,8 @@ def _chemical_names(project: Stage2Project) -> set[str]:
         value = _row_value(row, "물질명", "유해화학물질명", "제품명")
         if _clean(value):
             names.add(_norm(value))
+        cas = _clean(_row_value(row, "CAS 번호", "CAS No.", "화학물질식별번호"))
+        names.update(_norm(alias) for alias in SENSOR_CAS_SYNONYMS.get(cas, ()))
     return names
 
 

@@ -282,7 +282,12 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
             "취급시설": _row_value(facility, "설비명", "취급시설", "장치·설비명"),
             "설계용량(m3)": design_capacity,
             "취급량(ton)": _fmt_num(ton),
-            "산정근거": "Stage2 회사 확정 설비별 최대보유량을 ton으로 정규화",
+            "산정근거": (
+                "회사 확인 최대보유량을 ton으로 환산"
+                if explicit_ton is not None else
+                (computed_holding.basis or "확인된 설비조건으로 프로그램 산정"
+                 if ton is not None else "추가 사실 확인 필요")
+            ),
         })
 
     hits_by_row: dict[int, list[dict[str, Any]]] = {}

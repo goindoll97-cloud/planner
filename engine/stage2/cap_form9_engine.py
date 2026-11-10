@@ -198,11 +198,16 @@ def build_cap_form9_data(project: Stage2Project) -> CAPForm9Data:
         return CAPForm9Data((), ("장치·설비 목록이 없어 별지 제9호를 작성할 수 없습니다.",), ())
 
     by_name, by_cas = _chemical_index(project)
+    # Maximum holding is an output of the approved facility-quantity rules,
+    # not an extra number a novice should type. Reuse the same calculations
+    # as Annex 1 and the scenario engine before requesting more company facts.
+    from . import cap_workspace
+    calculated_holdings = cap_workspace.compute_holdings(project, facilities)
     blockers: list[str] = []
     messages: list[str] = []
     out: list[dict[str, Any]] = []
 
-    for index, facility in enumerate(facilities, start=1):
+    for index, (facility, calculated) in enumerate(zip(facilities, calculated_holdings), start=1):
         tag = _clean(_row_value(facility, "설비번호", "구분기호", "장치번호"))
         equipment_name = _clean(_row_value(facility, "설비명", "장치·설비명", "장치명"))
         material = _clean(_row_value(facility, "취급물질", "물질명"))
@@ -235,6 +240,14 @@ def build_cap_form9_data(project: Stage2Project) -> CAPForm9Data:
         connection, connection_error = _connection_mm(facility)
         capacity, capacity_error = _capacity_m3(facility)
         holding, holding_error = _holding_ton(facility)
+        if holding_error and calculated.excluded:
+            holding, holding_error = "-", None
+        elif holding_error and calculated.ton is not None:
+            holding, holding_error = _fmt(calculated.ton), None
+        elif holding_error and calculated.problem:
+            holding_error = (
+                "최대보유량 자동 산정에 추가 사실이 필요합니다: " + calculated.problem
+            )
         for error in (connection_error, capacity_error, holding_error):
             if error:
                 blockers.append(f"{label}: {error}")
