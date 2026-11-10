@@ -56,6 +56,10 @@ def test_map_click_saves_only_coordinates_and_calculated_distance_preserving_exc
         assert scenario_pipeline.file_inputs(p)["TK-01"]["액위(m)"] == "3.1"
         assert scenario_pipeline.file_inputs(p)["TK-01"]["사고원점 좌표"] == origin
         assert scenario_pipeline.file_inputs(p)["TK-01"]["경계까지 거리(m)"] == distance
+        # Replacing the business address invalidates old GIS-specific facts.
+        p.set_field("business.address", "사업장 주소", "다른 시·군의 사업장", "USER_CONFIRMED")
+        assert "사고원점 좌표" not in scenario_pipeline.file_inputs(p)["TK-01"]
+        assert scenario_pipeline.file_inputs(p)["TK-01"]["액위(m)"] == "3.1"
 
 
 def test_boundary_change_recomputes_distance_and_does_not_invent_new_origin():
