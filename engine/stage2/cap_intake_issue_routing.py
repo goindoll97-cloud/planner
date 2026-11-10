@@ -36,7 +36,7 @@ def route_issue(issue: Any) -> str:
         return MAP
 
     if any(word in content for word in (
-        "KORA/GIS", "GIS/KORA", "사고시나리오별 영향평가 자료",
+        "KORA/GIS", "GIS/KORA", "사고시나리오별 영향평가",
         "사고영향범위", "총괄영향범위", "총괄영향 범위",
         "주변 보호대상", "보호대상 확인", "장외 영향거리",
     )):
