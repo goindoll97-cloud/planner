@@ -201,9 +201,13 @@ class EvidencePageTests(unittest.TestCase):
         ):
             at = self.run_page(3)
         self.assertFalse(at.exception)
-        editors = [e for e in at.get("data_editor")
+        # Installed Streamlit exposes editable tables through at.dataframe.
+        # Recent versions additionally expose a dedicated at.data_editor.
+        editors = [e for e in at.dataframe
                    if "보호대상 구분" in e.value.columns]
-        self.assertEqual(len(editors), 1)
+        self.assertEqual(len(editors), 1,
+                         f"tables={ [list(e.value.columns) for e in at.dataframe] } "
+                         f"screen={ _texts(at) }")
         self.assertEqual(len(editors[0].value), 2)
         texts = " ".join(_texts(at))
         for expected in ("갑종 보호대상", "을종 보호대상", "환경수용체", "법정 선택지",
