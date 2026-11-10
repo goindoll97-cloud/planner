@@ -82,12 +82,19 @@ def file_inputs(project: Stage2Project) -> dict[str, dict[str, Any]]:
     Missing factual Excel fields (e.g. liquid level) remain missing.
     """
     inputs = _rows(project, INPUT_KEY)
-    for tag, position in _rows(project, MAP_INPUT_KEY).items():
-        inputs.setdefault(tag, {"설비번호": tag}).update({
-            column: position[column]
-            for column in ("사고원점 좌표", "경계까지 거리(m)")
-            if column in position
-        })
+    from . import cap_surroundings as surroundings
+    # GIS clicks are site-specific. Never attach a previous site's accident
+    # origins to a new address or a different facility polygon on reupload.
+    if surroundings.boundary(project) is not None:
+        fingerprint = surroundings.boundary_record(project).get("fingerprint")
+        for tag, position in _rows(project, MAP_INPUT_KEY).items():
+            if position.get("_boundary_fingerprint") != fingerprint:
+                continue
+            inputs.setdefault(tag, {"설비번호": tag}).update({
+                column: position[column]
+                for column in ("사고원점 좌표", "경계까지 거리(m)")
+                if column in position
+            })
     return inputs
 
 
