@@ -149,7 +149,7 @@ class CAPWorkspaceTests(unittest.TestCase):
         self.assertEqual(form.facility_rows[0]["설계용량(m3)"], "4")
         self.assertEqual(form.facility_rows[0]["취급량(ton)"], "6")
         text = "\n".join(
-            cell.text for row in Document(BytesIO(docx)).tables[6].rows for cell in row.cells
+            cell.text for row in Document(BytesIO(docx)).tables[0].rows for cell in row.cells
         )
         self.assertIn("수정된 염소탱크", text)
 
