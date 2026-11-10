@@ -53,6 +53,16 @@ class CAPBaselineDocxTests(unittest.TestCase):
         # The separate reference tables (previous indexes 0..5) were deleted.
         self.assertIn("단위공장", doc.tables[0].rows[0].cells[0].text)
 
+    def test_missing_new_source_never_falls_back_to_deleted_baseline(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        from engine.stage2 import cap_baseline_docx as renderer
+
+        with TemporaryDirectory() as temp:
+            with patch.object(renderer, "NEW_TEMPLATE_DIRECT", Path(temp) / "missing_260409.docx"):
+                with self.assertRaisesRegex(FileNotFoundError, "이전 서식으로 대체하지 않습니다"):
+                    renderer.load_cap_baseline_bytes()
+
     def test_confirmed_business_and_chemical_values_are_written_into_existing_forms(self):
         project = _project()
         _set(project, "cap.business.representative", "홍길동")
