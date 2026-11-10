@@ -355,6 +355,12 @@ def _target_editor(project, rows) -> None:
     }
     edited = st.data_editor(frame, hide_index=True, width="stretch", key=f"scn_targets_{project.project_id}",
                             disabled=[c for c in ss.TARGET_COLUMNS if c not in editable], column_config=config)
+    st.caption(
+        "갑종: 학교·병원·복지시설·대규모 집회·숙박시설 등. "
+        "을종: 일반 주택·업무시설·근린생활시설·주유소 등. "
+        "환경수용체: 하천·자연공원·산림·보호지역 등. "
+        "실제 구분은 해당 시설의 용도·수용 인원·면적·법적 지정 여부를 확인하세요(작성규정 별표 4)."
+    )
     prior = f8.review(project)
     survey_data = survey.survey(project) if survey.is_current(project) else {}
     boundary = survey.boundary_record(project) if survey.boundary(project) is not None else {}
