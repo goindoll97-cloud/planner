@@ -128,8 +128,9 @@ def _search(prefix: str, address: str) -> None:
     st.session_state[prefix + "center"], st.session_state[prefix + "zoom"] = (lat, lon), 17
     parcels, note = ss.toggle_parcel([], lat, lon)
     st.session_state[prefix + "parcels"] = parcels
-    if parcels:
-        st.session_state[prefix + "boundary_changed"] = True
+    # Address geocoding alone is not a verified facility footprint.
+    # Require a real parcel click or a drawn boundary before auto-persisting.
+    st.session_state[prefix + "suggested_parcel"] = bool(parcels)
     st.session_state[prefix + "origin"] = "브이월드 연속지적도 필지를 고른 경계"
     st.session_state[prefix + "note"] = (("success", f"{where}에서 주소를 찾았습니다. {note} 공장이 여러 필지면 옆 필지를 눌러 더하세요.")
                                          if parcels else ("info", f"{where}에서 주소를 찾았습니다. {note}"))
@@ -173,9 +174,9 @@ def _boundary(project) -> None:
     address = f8.address(project)
     if saved is not None:
         st.success(f"자동 저장된 사업장 경계: {record.get('source', '')}. 실제 담장·도면과 일치하는지 확인해 주세요.")
-    st.caption("주소로 필지를 찾거나 필지를 클릭해서 추가·제외하면 경계를 자동 저장합니다. "
-               "실제 담장과 다르면 ‘직접 그리기·고치기’에서 꼭짓점을 수정하세요. "
-               "유효한 경계가 달라질 때만 주변 조사와 시나리오 계산을 다시 수행합니다. 별도 확정 버튼은 없습니다.")
+    st.caption("주소 검색은 필지 후보만 보여 줍니다. 실제 사업장 필지를 클릭하거나 경계를 직접 그리면 자동 저장됩니다. "
+               "공장이 여러 필지면 클릭해 추가·제외하고 실제 담장과 다르면 ‘직접 그리기·고치기’로 고치세요. "
+               "유효한 경계가 달라질 때만 주변 조사와 시나리오를 다시 계산하며 별도 확정 버튼은 없습니다.")
     left, right = st.columns([4, 1])
     query = left.text_input("주소로 찾기", value=address, key=prefix + "address",
                             help="지도를 옮기는 데만 씁니다. 사업장 주소(서식에 들어가는 값)는 회사 파일의 값입니다.")
@@ -228,8 +229,19 @@ def _boundary(project) -> None:
         click = result.get("last_clicked")
         if click and (click["lat"], click["lng"]) != st.session_state.get(prefix + "clicked"):
             st.session_state[prefix + "clicked"] = (click["lat"], click["lng"])
-            with st.spinner("누른 자리의 필지를 찾습니다."):
-                parcels, message = ss.toggle_parcel(parcels, click["lat"], click["lng"])
+            from shapely.geometry import Point
+            suggested = st.session_state.pop(prefix + "suggested_parcel", False)
+            accepted_suggestion = suggested and any(
+                survey.checked_geometry(parcel["geometry"]).covers(Point(click["lng"], click["lat"]))
+                for parcel in parcels
+            )
+            if accepted_suggestion:
+                # The first user click confirms the address-located candidate,
+                # rather than silently unselecting the same highlighted parcel.
+                message = "주소로 표시된 필지를 실제 지도에서 선택하여 자동 저장합니다."
+            else:
+                with st.spinner("누른 자리의 필지를 찾습니다."):
+                    parcels, message = ss.toggle_parcel(parcels, click["lat"], click["lng"])
             st.session_state[prefix + "parcels"] = parcels
             st.session_state[prefix + "boundary_changed"] = True
             st.session_state[prefix + "center"] = (click["lat"], click["lng"])
