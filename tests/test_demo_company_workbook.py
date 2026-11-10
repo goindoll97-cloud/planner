@@ -75,6 +75,51 @@ def test_training_excel_dropdowns_only_apply_to_company_input_rows():
                if f"{tox_col}3" in v.sqref)
 
 
+
+
+def test_demo_csv_fixes_ambient_conditions_representatives_and_derived_holdings(tmp_path, monkeypatch):
+    from engine.stage2.cap_form9_engine import build_cap_form9_data
+    from engine.stage2.cap_form11_engine import build_cap_form11_data
+    from engine.stage2.project import Stage2Project
+
+    monkeypatch.chdir(tmp_path)
+    raw = demo.build()
+    book = load_workbook(BytesIO(raw))
+    ws = book["물질"]
+    header = {str(c.value): c.column for c in ws[1]}
+    facts = {
+        str(ws.cell(row, header["CAS 번호"]).value or ""): ws
+        for row in range(3, ws.max_row + 1)
+        if ws.cell(row, header["CAS 번호"]).value
+    }
+    assert "상온·상압 액체 여부(해당 시)" in header
+    for cas, expected in (("7647-01-0", "예"), ("7664-41-7", "아니오")):
+        rows = [row for row in range(3, ws.max_row + 1)
+                if ws.cell(row, header["CAS 번호"]).value == cas]
+        assert len(rows) == 1
+        assert ws.cell(rows[0], header["상온·상압 액체 여부(해당 시)"]).value == expected
+    representatives = [
+        row for row in range(3, ws.max_row + 1)
+        if ws.cell(row, header["선정 사유"]).value not in (None, "")
+    ]
+    assert len(representatives) == 2
+    assert "최대보유량(kg)" not in [c.value for c in book["설비"][1]]
+
+    converted, issues = intake.inspect(raw, demo.FILENAME, "1군")
+    assert not issues
+    p = intake.project_for_upload(Stage2Project(project_id="DEMOCSV", company_name=""),
+                                  demo.FILENAME, raw)
+    p.cap_group = "1군"
+    assert intake.apply(p, demo.FILENAME, raw)
+    form9 = build_cap_form9_data(p)
+    assert not any("취급량/최대보유량이 비어" in error for error in form9.blockers)
+    assert any(str(row.get("취급량(ton)") or "").strip() not in ("", "-")
+               for row in form9.rows)
+    form11 = build_cap_form11_data(p)
+    assert not any("물질명과 직접 연결하지 못했습니다" in error
+                   for error in form11.blockers)
+
+
 def test_training_workbook_errors_point_at_the_training_file_cells():
     book = load_workbook(BytesIO(demo.build()))
     book['설비']['E5'] = '반응시설'          # RX-01 행(3행부터 입력)
