@@ -118,7 +118,12 @@ def _from_training_layout(content):
         for row, (src_row, src_cols, values) in enumerate(_training_rows(src[ws.title], with_row=True, layout=layout), 2):
             for col, header in enumerate(inputs, 1):
                 name = TRAINING_RENAMED.get(header, header)
-                src_col = src_cols.get(name, src_cols.get(header, col))
+                src_col = src_cols.get(name, src_cols.get(header))
+                # A newly introduced optional fact column may be absent from
+                # old workbooks. NEVER fall back to the same column index:
+                # doing so silently assigns the next field's unrelated value.
+                if src_col is None:
+                    continue
                 where[(ws.title, f'{col_letter(col)}{row}')] = f'{col_letter(src_col)}{src_row}'
                 value = values.get(name, values.get(header))
                 if value not in (None, ''):
