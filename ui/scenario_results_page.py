@@ -258,9 +258,11 @@ def _boundary(project) -> None:
         st.session_state[prefix + "last_draw_output"] = observed
         # A fresh Folium widget may report [] for a loaded polygon that is
         # displayed but was not created by the Draw plugin. Do not erase it.
-        real_edit = observed != drawings and (
-            bool(observed) or last_seen is not None
-        )
+        # Changes to the Folium output are genuine drawing events. A
+        # repeated empty output on ordinary Streamlit rerenders is NOT a
+        # request to clear the already-loaded site polygon.
+        new_event = (observed != last_seen) if last_seen is not None else bool(observed)
+        real_edit = new_event and observed != drawings
         if real_edit:
             drawings = observed
             st.session_state[prefix + "drawings"] = drawings
