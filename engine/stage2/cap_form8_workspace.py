@@ -133,9 +133,22 @@ def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mappin
     return imported, notices
 
 
+def requires_housing_review(name: str) -> bool:
+    """Housing names do not establish legally relevant occupancy or floor area."""
+    label = str(name or "").replace(" ", "")
+    return any(token in label for token in (
+        "아파트", "공동주택", "주상복합", "단독주택", "다세대", "연립주택", "빌라", "주택",
+    ))
+
+
 def classification_suggestion(name: str) -> tuple[str, str, str]:
     """Suggest only recognisable facility types; a name never proves legal eligibility."""
     label = str(name or "").strip().replace(" ", "")
+    if requires_housing_review(label):
+        return "", "", (
+            "주택은 법정 수용인원 300명 및 바닥면적 합계 1,000㎡ 기준과 "
+            "적용 대상 건축물 범위를 확인해야 합니다. 확인 전에는 분류 확인 필요로 남겨 두세요."
+        )
     if label.startswith(("국가하천", "지방하천")):
         return "환경수용체", "하천", "법정 하천 지정 여부를 확인하세요."
     if "생태·경관보호지역" in label:
@@ -192,6 +205,11 @@ def classify_rows(rows: list[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], 
             continue
         possible = [cat for cat, options in SUBTYPES.items() if subtype in options] if subtype else []
         if subtype and not category:
+            if requires_housing_review(name) and subtype in {"주택", "주택·업무시설"}:
+                unresolved.append(
+                    f"{index}행 {name}: 수용인원·바닥면적·적용 건축물 범위가 확인되지 않아 분류 확인 필요"
+                )
+                continue
             if len(possible) == 1 and (possible[0] != "환경수용체" or
                                        (subtype == "하천" and name.startswith(("국가하천", "지방하천"))) or
                                        (subtype == "생태·경관보호지역" and "생태·경관보호지역" in name)):
