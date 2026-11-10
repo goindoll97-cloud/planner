@@ -562,7 +562,6 @@ def _step_scenarios(project, found, triage) -> None:
     _boundary(project)
     candidates = scenario_survey.candidate_rows(project)
     if candidates:
-        from engine.stage2 import cap_form8_workspace as form8
         from engine.stage2 import scenario_pipeline
 
         st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
@@ -572,9 +571,15 @@ def _step_scenarios(project, found, triage) -> None:
             "비어 있는 칸은 미확인 상태이며 이름으로 추정한 갑종·을종도 확정값이 아닙니다. "
             "수정 내용은 자동 저장하지만 법정 검토 완료로 처리하지 않습니다."
         )
+        import pandas as pd
+
         review_rows = cap_target_review.candidate_review_rows(project, candidates)
+        frame = pd.DataFrame(review_rows)
+        for col in ("거주민수", "근로자수"):
+            # Numeric editor must distinguish an unverified blank from 0 persons.
+            frame[col] = pd.to_numeric(frame[col], errors="coerce")
         edited = st.data_editor(
-            review_rows, hide_index=True, width="stretch", height=590,
+            frame, hide_index=True, width="stretch", height=590,
             num_rows="fixed", key="protected_target_editor_" + pid,
             disabled=[
                 "보호대상 명칭", "주소·위치", "사업장 경계와 거리(m)"
