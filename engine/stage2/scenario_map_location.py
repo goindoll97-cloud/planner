@@ -35,6 +35,43 @@ def location_fact(project: Stage2Project, tag: str, lat: float, lon: float) -> t
     return f"{lat:.7f},{lon:.7f}", round(float(metres), 2)
 
 
+
+def refresh_boundary_distances(project: Stage2Project) -> bool:
+    """Recalculate map-origin distances if the site boundary changes/clears.
+
+    Do not carry a distance computed for an old polygon into a new map.
+    Existing company-provided liquid head, leak length and other facts survive.
+    """
+    record = project.get_field(scenario_pipeline.INPUT_KEY)
+    if not record or not isinstance(record.value, list):
+        return False
+    rows = [dict(item) if isinstance(item, Mapping) else item for item in record.value]
+    changed = False
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        origin = str(row.get("사고원점 좌표") or "").strip()
+        if not origin:
+            continue
+        try:
+            lat, lon = (float(x.strip()) for x in origin.split(","))
+            _, distance = location_fact(project, str(row.get("설비번호") or ""), lat, lon)
+        except (ValueError, TypeError):
+            # Coordinates are preserved for review; a stale distance is not.
+            distance = ""
+        if str(row.get("경계까지 거리(m)") or "").strip() != str(distance):
+            row["경계까지 거리(m)"] = distance
+            changed = True
+    if changed:
+        project.set_field(
+            scenario_pipeline.INPUT_KEY, "설비별 시나리오 입력(회사 엑셀 및 지도)",
+            rows, "USER_CONFIRMED",
+            evidence=list(record.evidence),
+            note="사업장 경계 변경에 맞춰 사고원점의 경계 최단거리를 다시 계산했습니다. "
+                 "경계 밖의 기존 사고원점은 거리 미확인으로 남습니다.",
+        )
+    return changed
+
 def save_location(project: Stage2Project, tag: str, lat: float, lon: float) -> tuple[str, float]:
     known_tags = {
         str(row.get("설비번호") or "").strip()
