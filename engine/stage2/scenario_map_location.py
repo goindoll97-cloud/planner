@@ -63,7 +63,7 @@ def refresh_boundary_distances(project: Stage2Project) -> bool:
         except (ValueError, TypeError):
             # Coordinates are preserved for review; a stale distance is not.
             distance = ""
-        if str(row.get("경계까지 거리(m)") or "").strip() != str(distance):
+        if str(row.get("경계까지 거리(m)") if row.get("경계까지 거리(m)") is not None else "").strip() != str(distance):
             row["경계까지 거리(m)"] = distance
             changed = True
     if changed:
@@ -94,7 +94,7 @@ def save_location(project: Stage2Project, tag: str, lat: float, lon: float) -> t
         by_tag = {"설비번호": tag}
         rows.append(by_tag)
     if (str(by_tag.get("사고원점 좌표") or "").strip() == origin and
-            str(by_tag.get("경계까지 거리(m)") or "").strip() == str(distance)):
+            str(by_tag.get("경계까지 거리(m)") if by_tag.get("경계까지 거리(m)") is not None else "").strip() == str(distance)):
         return origin, distance
 
     by_tag["사고원점 좌표"] = origin
