@@ -370,13 +370,20 @@ def company_workbook(project: Stage2Project, original: bytes | None = None, clie
         if "보호대상 구분" in headers:
             from openpyxl.utils import get_column_letter
             col = get_column_letter(headers["보호대상 구분"])
-            category = DataValidation(
-                type="list", formula1='"갑종,을종,환경수용체"',
-                allow_blank=True, showErrorMessage=True,
-                error="갑종, 을종, 환경수용체 중 선택해 주세요.",
+            # The full-schema template already contains a category list;
+            # adding another validation for the same cells can confuse Excel.
+            already_listed = any(
+                item.type == "list" and f"{col}2" in item.sqref
+                for item in sheet.data_validations.dataValidation
             )
-            sheet.add_data_validation(category)
-            category.add(f"{col}2:{col}{last}")
+            if not already_listed:
+                category = DataValidation(
+                    type="list", formula1='"갑종,을종,환경수용체"',
+                    allow_blank=True, showErrorMessage=True,
+                    error="갑종, 을종, 환경수용체 중 선택해 주세요.",
+                )
+                sheet.add_data_validation(category)
+                category.add(f"{col}2:{col}{last}")
         if "세부유형" in headers:
             from openpyxl.utils import get_column_letter
             col = get_column_letter(headers["세부유형"])
