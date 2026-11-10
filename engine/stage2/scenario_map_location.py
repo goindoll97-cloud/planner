@@ -54,7 +54,9 @@ def refresh_boundary_distances(project: Stage2Project) -> bool:
         if not origin:
             continue
         try:
-            lat, lon = (float(x.strip()) for x in origin.split(","))
+            first, second = (float(x.strip()) for x in origin.split(","))
+            # Legacy input accepted either lat,lon or lon,lat.
+            lat, lon = (first, second) if abs(first) <= 90 else (second, first)
             _, distance = location_fact(project, str(row.get("설비번호") or ""), lat, lon)
         except (ValueError, TypeError):
             # Coordinates are preserved for review; a stale distance is not.
