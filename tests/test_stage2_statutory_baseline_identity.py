@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from hashlib import sha256
 from pathlib import Path
 import tempfile
 import unittest
@@ -26,13 +27,12 @@ class StatutoryBaselineIdentityTests(unittest.TestCase):
     def test_registered_cap_baseline_identity_matches_metadata(self):
         identity = statutory_baseline_identity("CAP")
 
-        self.assertEqual(identity.schema_version, "cap-statutory-form-layout-baseline-v1")
+        self.assertEqual(identity.schema_version, "cap-statutory-form-layout-baseline-v2")
         self.assertEqual(identity.role, "LAYOUT_BASELINE")
-        self.assertEqual(
-            identity.sha256,
-            "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4",
-        )
-        self.assertTrue(identity.schema_version.startswith("cap-"))
+        folder = Path(__file__).resolve().parents[1] / "data" / "templates" / "cap"
+        self.assertEqual(identity.sha256, sha256((folder / "cap_statutory_forms_260409.docx").read_bytes()).hexdigest())
+        self.assertFalse((folder / "cap_statutory_forms_baseline.json").exists())
+        self.assertIn("260409", identity.source_description)
         self.assertIn("법적 최신성", identity.authority_note)
 
     def test_tampered_baseline_fails_closed(self):

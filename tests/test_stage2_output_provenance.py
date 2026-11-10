@@ -10,6 +10,7 @@ from engine.stage2.output_provenance import (
     output_provenance_filename,
     output_provenance_json_bytes,
 )
+from engine.stage2.statutory_baseline_identity import statutory_baseline_identity
 from engine.stage2.project import Stage2Project
 from engine.stage2.workflow import (
     mark_validation_confirmed,
@@ -126,11 +127,8 @@ class OutputProvenanceTests(unittest.TestCase):
         self.assertEqual(payload["sha256"], sha256(b"cap-docx").hexdigest())
         self.assertEqual(payload["state"], "REVIEW_ONLY")
         self.assertEqual(payload["system"], "CAP")
-        self.assertEqual(
-            payload["baseline_sha256"],
-            "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4",
-        )
-        self.assertEqual(payload["baseline_schema_version"], "cap-statutory-form-layout-baseline-v1")
+        self.assertEqual(payload["baseline_sha256"], statutory_baseline_identity("CAP").sha256)
+        self.assertEqual(payload["baseline_schema_version"], "cap-statutory-form-layout-baseline-v2")
         self.assertIn("generated_at_utc", payload)
 
     def test_authoring_ready_requires_current_stage4_validation(self):

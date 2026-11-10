@@ -59,49 +59,38 @@ _CAS_ALIASES = ("CAS 번호", "CAS No.", "CAS No", "CAS", "화학물질식별번
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_DIR = PROJECT_ROOT / "data" / "templates" / "cap"
-METADATA_PATH = TEMPLATE_DIR / "cap_statutory_forms_baseline.json"
-BASE64_GLOB = "cap_statutory_forms_baseline.docx.b64.*"
+METADATA_PATH = TEMPLATE_DIR / "cap_statutory_forms_260409.json"
 MISSING = base.MISSING
 
 
-# Position of each form's table(s) in doc.tables, after the 6 static 별표 1~4
-# reference tables (indexes 0-5). Several forms span more than one table.
+# Exactly the 38 statutory-form tables in the 260409 별지-only DOCX.
+# The previous 44-table template (including six 별표 reference tables) is retired.
 FORM_TABLE_INDEX = {
-    "1": (6, 7, 8),
-    "2": (9, 10),  # table 11 is the worked example; never touched
-    "3": (12,),
-    "4": (13,),
-    "5": (14,),
-    "6": (15,),
-    "7": (16,),
-    "8": (17, 18),
-    "9": (19,),
-    "10": (20,),
-    "11": (21,),
-    "12": (22, 23),
-    "13": (24, 25, 26, 27, 28),
-    "15": (29, 30, 31),
-    "16": tuple(range(32, 44)),
+    "1": (0, 1, 2),
+    "2": (3, 4),  # index 5 is an untouched worked example.
+    "3": (6,),
+    "4": (7,),
+    "5": (8,),
+    "6": (9,),
+    "7": (10,),
+    "8": (11, 12),
+    "9": (13,),
+    "10": (14,),
+    "11": (15,),
+    "12": (16, 17),
+    "13": (18, 19, 20, 21, 22),
+    "15": (23, 24, 25),
+    "16": tuple(range(26, 38)),
 }
 
-
-# This source is the 2026-04-09 annex-only DOCX supplied for the current CAP draft.
-# Keep the legacy snapshot as a fallback until the new template is installed.
-NEW_TEMPLATE_SHA256 = "6491a1648b37f96b482f4a529ee8dd0b7be93951324556fcdbce9e58d5c42aa8"
 NEW_TEMPLATE_DIRECT = TEMPLATE_DIR / "cap_statutory_forms_260409.docx"
-NEW_TEMPLATE_PARTS_GLOB = "cap_statutory_forms_260409.docx.b64.*"
-FORM_TABLE_INDEX_260409 = {key: tuple(index - 6 for index in indexes)
-                           for key, indexes in FORM_TABLE_INDEX.items()}
 
 
 def form_table_index_for(doc) -> dict[str, tuple[int, ...]]:
-    """Choose the old 44-table layout or the supplied 38-table annex-only layout."""
-    count = len(doc.tables)
-    if count == 38:
-        return FORM_TABLE_INDEX_260409
-    if count == 44:
-        return FORM_TABLE_INDEX
-    raise ValueError(f"인식할 수 없는 CAP 규정서식 표 구조: {count}개")
+    """Only the replacement 260409 statutory form may be filled."""
+    if len(doc.tables) != 38:
+        raise ValueError(f"260409 규정서식 구조가 아닙니다: 표 {len(doc.tables)}개 / 예상 38개")
+    return FORM_TABLE_INDEX
 
 
 def _metadata() -> dict[str, Any]:
@@ -109,47 +98,15 @@ def _metadata() -> dict[str, Any]:
         return json.load(handle)
 
 
-def _decode_template_parts(parts: Sequence[Path]) -> bytes:
-    chunks: list[bytes] = []
-    for part in parts:
-        encoded = "".join(part.read_text(encoding="ascii").split())
-        try:
-            chunks.append(base64.b64decode(encoded, validate=True))
-        except Exception as exc:
-            raise ValueError("CAP 규정서식 baseline 인코딩을 읽지 못했습니다.") from exc
-    return b"".join(chunks)
-
-
 def load_cap_baseline_bytes() -> bytes:
-    """Use the exact newer user-provided annex template when installed.
-
-    The pinned SHA protects the official layout from accidentally selecting an
-    unrelated file. The old embedded template remains backwards compatible.
-    """
-    if NEW_TEMPLATE_DIRECT.exists():
-        data = NEW_TEMPLATE_DIRECT.read_bytes()
-        if sha256(data).hexdigest() != NEW_TEMPLATE_SHA256:
-            raise ValueError("260409 규정서식의 SHA-256이 업로드 원본과 일치하지 않습니다.")
-        validate_cap_baseline(data, required_table_count=38)
-        return data
-    new_parts = sorted(TEMPLATE_DIR.glob(NEW_TEMPLATE_PARTS_GLOB))
-    if new_parts:
-        data = _decode_template_parts(new_parts)
-        if sha256(data).hexdigest() != NEW_TEMPLATE_SHA256:
-            raise ValueError("260409 규정서식 base64 조각이 원본과 다르거나 누락되었습니다.")
-        validate_cap_baseline(data, required_table_count=38)
-        return data
-
-    meta = _metadata()
-    parts = sorted(TEMPLATE_DIR.glob(BASE64_GLOB))
-    if not parts:
-        raise FileNotFoundError("CAP 규정서식 baseline 파일이 준비되지 않았습니다.")
-    data = _decode_template_parts(parts)
-    expected = str(meta.get("sha256") or "").lower()
-    actual = sha256(data).hexdigest()
-    if expected and actual != expected:
-        raise ValueError("CAP 규정서식 baseline 해시가 등록값과 일치하지 않습니다.")
-    validate_cap_baseline(data, required_table_count=int(meta.get("required_table_count") or 0))
+    """Load only the new 260409 statutory-form DOCX; no legacy fallback."""
+    if not NEW_TEMPLATE_DIRECT.exists():
+        raise FileNotFoundError("260409 규정서식 원본이 설치되지 않았습니다. 이전 서식으로 대체하지 않습니다.")
+    data = NEW_TEMPLATE_DIRECT.read_bytes()
+    registered = str(_metadata().get("sha256") or "").lower()
+    if not registered or sha256(data).hexdigest() != registered:
+        raise ValueError("260409 규정서식의 해시가 등록된 값과 일치하지 않습니다.")
+    validate_cap_baseline(data, required_table_count=38)
     return data
 
 

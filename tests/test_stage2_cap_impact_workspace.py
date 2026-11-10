@@ -80,7 +80,7 @@ class ImpactWorkspaceTests(unittest.TestCase):
         sc.save_scenarios(project, cases + [copy])
         iw.apply_to_forms(project, iw.evaluate(project))
         doc = Document(BytesIO(build_cap_baseline_draft(project)))
-        self.assertGreater(len(doc.tables), 44)
+        self.assertGreater(len(doc.tables), 38)
         all_text = "\\n".join(c.text for table in doc.tables for row in table.rows for c in row.cells)
         self.assertIn("E-1 염소 독성 누출 2", all_text)
         self.assertIn("잠정:", all_text)

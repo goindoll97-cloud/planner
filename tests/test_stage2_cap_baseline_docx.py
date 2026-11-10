@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import base64
+import json
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -10,8 +10,6 @@ from docx import Document
 
 from engine.stage2.project import Stage2Project
 from engine.stage2.cap_baseline_docx import (
-    FORM_TABLE_INDEX,
-    NEW_TEMPLATE_SHA256,
     form_table_index_for,
     build_cap_baseline_draft,
     cap_baseline_filename,
@@ -20,7 +18,6 @@ from engine.stage2.cap_baseline_docx import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_SHA256 = "706d6d78da8c77b8f5d2ece9286503c1b4b1272353ab488b1b4a2303361172b4"
 
 
 def _project() -> Stage2Project:
@@ -40,26 +37,31 @@ def _set(project: Stage2Project, key: str, value, label: str | None = None) -> N
 
 
 class CAPBaselineDocxTests(unittest.TestCase):
-    def test_baseline_bytes_match_uploaded_layout_snapshot(self):
+    def test_only_replacement_260409_template_is_installed(self):
         template_dir = PROJECT_ROOT / "data" / "templates" / "cap"
-        parts = sorted(template_dir.glob("cap_statutory_forms_baseline.docx.b64.*"))
-        raw = b"".join(
-            base64.b64decode("".join(path.read_text(encoding="ascii").split()), validate=True)
-            for path in parts
-        )
-        self.assertEqual(
-            sha256(raw).hexdigest(),
-            EXPECTED_SHA256,
-            msg=f"stored_parts={len(parts)} decoded_bytes={len(raw)}",
-        )
-
+        self.assertFalse(list(template_dir.glob("cap_statutory_forms_baseline.docx.b64.*")))
+        self.assertFalse((template_dir / "cap_statutory_forms_baseline.json").exists())
+        meta = json.loads((template_dir / "cap_statutory_forms_260409.json").read_text(encoding="utf-8"))
         data = load_cap_baseline_bytes()
-        self.assertIn(sha256(data).hexdigest(), {EXPECTED_SHA256, NEW_TEMPLATE_SHA256})
+        self.assertEqual(sha256(data).hexdigest(), meta["sha256"])
+        self.assertEqual(meta["required_table_count"], 38)
         doc = Document(BytesIO(data))
-        self.assertIn(len(doc.tables), {38, 44})
+        self.assertEqual(len(doc.tables), 38)
         text = "\n".join(p.text for p in doc.paragraphs)
         for marker in ("별지 제1호서식", "별지 제6호서식", "별지 제9호서식", "별지 제16호서식"):
             self.assertIn(marker, text)
+        # The separate reference tables (previous indexes 0..5) were deleted.
+        self.assertIn("단위공장", doc.tables[0].rows[0].cells[0].text)
+
+    def test_missing_new_source_never_falls_back_to_deleted_baseline(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        from engine.stage2 import cap_baseline_docx as renderer
+
+        with TemporaryDirectory() as temp:
+            with patch.object(renderer, "NEW_TEMPLATE_DIRECT", Path(temp) / "missing_260409.docx"):
+                with self.assertRaisesRegex(FileNotFoundError, "이전 서식으로 대체하지 않습니다"):
+                    renderer.load_cap_baseline_bytes()
 
     def test_confirmed_business_and_chemical_values_are_written_into_existing_forms(self):
         project = _project()
@@ -87,7 +89,7 @@ class CAPBaselineDocxTests(unittest.TestCase):
 
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        self.assertGreaterEqual(len(doc.tables), 38)
+        self.assertEqual(len(doc.tables), 38)
         text = "\n".join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
 
         self.assertIn("홍길동", text)
@@ -106,17 +108,12 @@ class CAPBaselineDocxTests(unittest.TestCase):
         self.assertNotIn("[확인 필요]", text)
         self.assertIn("사업장명", text)
 
-        # 별표 1~4 (indexes 0-5) are the static regulation-threshold reference
-        # tables, never company data. Confirm the very first one is untouched.
+        # First table is now Annex Form 1. No old static reference tables remain.
         first_table = doc.tables[0]
-        if len(Document(BytesIO(load_cap_baseline_bytes())).tables) == 44:
-            self.assertIn("예비시나리오 규정 수량", first_table.rows[0].cells[0].text)
-        else:
-            self.assertIn("단위공장", first_table.rows[0].cells[0].text)
+        self.assertIn("단위공장", first_table.rows[0].cells[0].text)
 
-        # 별지 제2호서식's worked example table (index 11) must stay exactly
-        # as the government supplied it, never overwritten with live data.
-        example_table = doc.tables[11 if len(Document(BytesIO(load_cap_baseline_bytes())).tables) == 44 else 5]
+        # Annex Form 2's worked example (index 5) remains untouched.
+        example_table = doc.tables[5]
         example_text = "\n".join(cell.text for row in example_table.rows for cell in row.cells)
         self.assertIn("홍길동", example_text)
         self.assertIn("장치 설비 목록 및 명세", example_text)

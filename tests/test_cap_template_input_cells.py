@@ -36,14 +36,14 @@ class TemplateInputTests(unittest.TestCase):
 
     def test_colored_cell_write_fails_without_modifying_the_template(self):
         doc = Document(BytesIO(renderer.load_cap_baseline_bytes()))
-        cell = doc.tables[16].cell(6, 0)
+        cell = doc.tables[renderer.FORM_TABLE_INDEX['7'][0]].cell(6, 0)
         before = cell._tc.xml
         with self.assertRaises(ValueError):
             renderer._write_cell(cell, '흡인 유해성 구분 1')
         self.assertEqual(before, cell._tc.xml)
 
     def test_form7_examples_are_cleared_and_values_go_below_titles(self):
-        blank = Document(BytesIO(renderer.load_cap_baseline_bytes())).tables[16]
+        blank = Document(BytesIO(renderer.load_cap_baseline_bytes())).tables[renderer.FORM_TABLE_INDEX['7'][0]]
         self.assertEqual(blank.cell(1, 0).text, '가.')
         self.assertEqual(blank.cell(3, 0).text, '다.')
         self.assertEqual(blank.cell(7, 0).text, '')
@@ -62,7 +62,7 @@ class TemplateInputTests(unittest.TestCase):
         original = Document(BytesIO(renderer.load_cap_baseline_bytes()))
         doc = Document(BytesIO(catalog_renderer.build_cap_catalog_draft(project())))
         checklist = next(t for t in doc.tables if t.cell(0, 0).text.startswith('갑종 보호대상'))
-        self.assertEqual(checklist.cell(0, 0).text, original.tables[24].cell(0, 0).text)
+        self.assertEqual(checklist.cell(0, 0).text, original.tables[renderer.FORM_TABLE_INDEX['13'][0]].cell(0, 0).text)
         self.assertIn('☒ 공업시설', ' '.join(c.text for r in checklist.rows for c in r.cells))
         self.assertEqual(checklist.rows[11].cells[0].text, '')  # 지도 칸에 요약문을 써넣지 않음
         frequency = [t for t in doc.tables if len(t.rows) == 13 and len(t.columns) == 5 and

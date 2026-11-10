@@ -347,9 +347,9 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
 
         out = build_cap_baseline_draft(p)
         doc = Document(BytesIO(out))
-        self.assertEqual(len(doc.tables), 44)
+        self.assertEqual(len(doc.tables), 38)
 
-        form1 = self._table_text(doc, 6, 7, 8)
+        form1 = self._table_text(doc, 0, 1, 2)
         self.assertIn("염소", form1)
         self.assertIn("0.8", form1)
         self.assertIn("0.1", form1)
@@ -357,7 +357,7 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
         self.assertIn("1군", form1)
         self.assertIn("사고대비물질", form1)
 
-        form3 = self._table_text(doc, 12)
+        form3 = self._table_text(doc, 6)
         self.assertIn("☒ 신규제출", form3)
         self.assertIn("☒ 최초", form3)
         self.assertIn("☒ 1군", form3)
@@ -368,7 +368,7 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
         self.assertEqual(form3.count("☒ 신규제출"), 1)
         self.assertEqual(form3.count("☒ 최초"), 1)
 
-        for index in (13, 14):
+        for index in (7, 8):
             overview = self._table_text(doc, index)
             row_debug = []
             for row_no, row in enumerate(doc.tables[index].rows):
@@ -389,7 +389,7 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
             )
             self.assertNotIn("반응기 1기 / 저장탱크", overview)
 
-        form6 = self._table_text(doc, 15)
+        form6 = self._table_text(doc, 9)
         self.assertIn("인체급성유해성물질", form6)
         self.assertIn("사고대비물질", form6)
         self.assertIn("97-1-1", form6)
@@ -397,53 +397,53 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
         self.assertIn("TWA 0.5 ppm", form6)
         self.assertIn("2.49 (공기=1)", form6)
 
-        form7 = self._table_text(doc, 16)
+        form7 = self._table_text(doc, 10)
         self.assertIn("97-1-1", form7)
         self.assertIn("0.8 ton", form7)
         self.assertIn("흡입 시 급성 독성", form7)
         self.assertIn("chlorine_company_SDS.pdf", form7)
         self.assertIn("사고시나리오의 독성영향", form7)
 
-        form8 = self._table_text(doc, 17, 18)
+        form8 = self._table_text(doc, 11, 12)
         self.assertIn("○○초등학교", form8)
         self.assertIn("교육·연구시설", form8)
         self.assertIn("420", form8)
 
-        form9 = self._table_text(doc, 19)
+        form9 = self._table_text(doc, 13)
         self.assertIn("TK-301", form9)
         self.assertIn("25", form9)
         self.assertIn("1.2", form9)
         self.assertIn("0.8", form9)
 
-        form10 = self._table_text(doc, 20)
+        form10 = self._table_text(doc, 14)
         self.assertIn("TK-301", form10)
         self.assertIn("1.4", form10)
         self.assertIn("적정", form10)
 
-        form11 = self._table_text(doc, 21)
+        form11 = self._table_text(doc, 15)
         self.assertIn("GD-301", form11)
         self.assertIn("0.5 ppm", form11)
         self.assertIn("전기화학식", form11)
 
-        form12 = self._table_text(doc, 22, 23)
+        form12 = self._table_text(doc, 16, 17)
         self.assertIn("염소 독성누출-1", form12)
         self.assertIn("독성누출", form12)
         self.assertIn("180", form12)
         self.assertIn("35.0000,129.0000", form12)
 
-        form13_14 = self._table_text(doc, 24, 25, 26, 27, 28)
-        self.assertNotIn("KORA-ALL-01", self._table_text(doc, 24))
+        form13_14 = self._table_text(doc, 18, 19, 20, 21, 22)
+        self.assertNotIn("KORA-ALL-01", self._table_text(doc, 18))
         self.assertIn("KORA-ALL-01", "\n".join(p.text for p in doc.paragraphs))
         self.assertIn("○○초등학교", form13_14)
         self.assertIn("배관누출", form13_14)
         self.assertIn("2", form13_14)
 
-        form15 = self._table_text(doc, 29, 30, 31)
+        form15 = self._table_text(doc, 23, 24, 25)
         self.assertIn("염소 독성누출-1", form15)
         self.assertIn("180", form15)
         self.assertIn("35", form15)
 
-        form16 = self._table_text(doc, *range(32, 44))
+        form16 = self._table_text(doc, *range(26, 38))
         self.assertIn("2026-09-18", form16)
         self.assertIn("환경안전팀 최유진", form16)
         self.assertIn("독성누출", form16)
@@ -497,9 +497,9 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
         project = self._project()
 
         official = Document(BytesIO(build_cap_baseline_draft(project)))
-        self.assertEqual(len(official.tables), 44)
+        self.assertEqual(len(official.tables), 38)
 
-        for table_index in (13, 14):
+        for table_index in (7, 8):
             rows = _facility_chemical_data_rows(official.tables[table_index])
             self.assertEqual(len(rows), 12)
             rendered = []
@@ -517,8 +517,8 @@ class CAPFullStatutoryFormE2ETests(unittest.TestCase):
             self.assertEqual(rendered, expected)
 
         internal = Document(BytesIO(build_report_draft(project, "CAP")))
-        self.assertGreaterEqual(len(internal.tables), 44)
-        for table_index in (13, 14):
+        self.assertGreaterEqual(len(internal.tables), 38)
+        for table_index in (7, 8):
             rows = _facility_chemical_data_rows(internal.tables[table_index])
             self.assertEqual(len(rows), 12)
             text = "\n".join(

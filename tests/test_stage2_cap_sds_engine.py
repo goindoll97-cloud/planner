@@ -220,8 +220,8 @@ class CAPCompanySDSTests(unittest.TestCase):
 
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        form6_text = "\n".join(cell.text for row in doc.tables[15].rows for cell in row.cells)
-        form7_text = "\n".join(cell.text for row in doc.tables[16].rows for cell in row.cells)
+        form6_text = "\n".join(cell.text for row in doc.tables[9].rows for cell in row.cells)
+        form7_text = "\n".join(cell.text for row in doc.tables[10].rows for cell in row.cells)
 
         self.assertIn("ERPG-2 3 ppm", form6_text)
         self.assertIn("TWA 0.5 ppm", form6_text)
