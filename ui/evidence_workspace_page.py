@@ -533,12 +533,16 @@ def _scenario_display_rows(project, tags: list[str]) -> list[dict]:
         kind = str(scenario.get("사고유형") or "")
         if tag and kind and kind not in proposals.setdefault(tag, []):
             proposals[tag].append(kind)
+    def value_or(value, missing):
+        # 0 m is a legitimate measured head/boundary distance.
+        return missing if value is None or value == "" else value
+
     return [
         {"설비번호": tag,
-         "선정할 사고유형(프로그램)": " / ".join(proposals.get(tag, [])) or "자동판정 대기",
-         "경계까지 거리(m)": stored.get(tag, {}).get("경계까지 거리(m)", "") or "지도 지정 필요",
-         "사고원점 좌표": stored.get(tag, {}).get("사고원점 좌표", "") or "지도 지정 필요",
-         "액위(m) · 엑셀값": stored.get(tag, {}).get("액위(m)", "") or "엑셀 확인 필요"}
+         "사고유형(프로그램 결과)": " / ".join(proposals.get(tag, [])) or "자동판정 대기",
+         "경계까지 거리(m)": value_or(stored.get(tag, {}).get("경계까지 거리(m)"), "지도 지정 필요"),
+         "사고원점 좌표": value_or(stored.get(tag, {}).get("사고원점 좌표"), "지도 지정 필요"),
+         "액위(m) · 엑셀값": value_or(stored.get(tag, {}).get("액위(m)"), "미입력(필요할 때만 확인)")}
         for tag in tags
     ]
 
