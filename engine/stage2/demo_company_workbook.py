@@ -96,6 +96,53 @@ SCENARIO_VALUES = {
 ASSET = Path(__file__).resolve().parents[2] / 'data' / 'templates' / 'cap' / 'cap_demo_company_workbook.xlsx.b64'
 
 
+# Values only for the fictional training company. Do not mistake these
+# physical-state examples for official legal designation results.
+DEMO_AMBIENT_LIQUID_BY_CAS = {
+    "7647-01-0": "예",      # 35% aqueous hydrochloric acid
+    "7664-41-7": "아니오",  # ammonia (normal boiling point near -33.3 C)
+}
+DEMO_NON_REPRESENTATIVE_CAS = "7664-41-7"
+
+
+def _repair_demo_facts(book, tpl) -> None:
+    """Patch factual examples without inventing legal numbers or GIS outcomes."""
+    ws = book["물질"]
+    headers = {str(cell.value or ""): cell.column for cell in ws[1]}
+    name = "상온·상압 액체 여부(해당 시)"
+    if name not in headers:
+        # The original demonstration asset predates this optional fact.
+        position = ws.max_column
+        ws.insert_cols(position)
+        ws.cell(1, position, name)
+        ws.cell(2, position, "예 / 아니오: 제품 SDS 제9항에서 상온·상압 물성 확인")
+        headers = {str(cell.value or ""): cell.column for cell in ws[1]}
+    cas_column = headers["CAS 번호"]
+    state_column = headers[name]
+    representative_column = headers.get("선정 사유")
+    for row in range(3, ws.max_row + 1):
+        cas = str(ws.cell(row, cas_column).value or "").strip()
+        if cas in DEMO_AMBIENT_LIQUID_BY_CAS:
+            ws.cell(row, state_column, DEMO_AMBIENT_LIQUID_BY_CAS[cas])
+        if representative_column and cas == DEMO_NON_REPRESENTATIVE_CAS:
+            # Do not delete the chemical: SDS and facility facts still apply.
+            ws.cell(row, representative_column).value = None
+
+    if tpl.HELP_SHEET in book.sheetnames:
+        help_sheet = book[tpl.HELP_SHEET]
+        if not any(
+            help_sheet.cell(i, 1).value == "물질" and help_sheet.cell(i, 2).value == name
+            for i in range(2, help_sheet.max_row + 1)
+        ):
+            help_sheet.append([
+                "물질", name, "예 / 아니오",
+                "상온·상압에서의 제품 물성은 제품 SDS 제9항을 확인합니다. "
+                "가압해 액체로 보관 중인 가스는 상온·상압 액체와 구별합니다. "
+                "예시 판단은 실제 사업장 물성 확인을 대체하지 않습니다.",
+                "제품 SDS 제9항(물리·화학적 특성)",
+            ])
+
+
 @lru_cache(maxsize=1)
 def build():
     """신입사원용 가상 회사 작성완료 파일(최소 사실 입력형: 1행 머리글·2행 작성 예시·3행부터 입력).
@@ -110,6 +157,8 @@ def build():
     original = base64.b64decode(ASSET.read_text(encoding='ascii'), validate=False)
     book = load_workbook(BytesIO(original))
     tpl.minimize_company_workbook(book)
+    _repair_demo_facts(book, tpl)
+    tpl.apply_training_dropdowns(book)
     out = BytesIO()
     book.save(out)
     return out.getvalue()
