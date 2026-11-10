@@ -194,6 +194,11 @@ def _boundary(project) -> None:
         st.session_state[prefix + "mode"] = st.session_state.pop(prefix + "mode_next")
     mode = st.radio("경계 정하는 방법", [PICK, DRAW], index=0 if has_parcels else 1, horizontal=True, key=prefix + "mode",
                     help="필지 고르기는 브이월드 키가 있어야 합니다.")
+    if st.session_state.get(prefix + "last_mode") != mode:
+        # Folium's first 'all_drawings=[]' after switching modes is NOT a
+        # user request to delete the loaded boundary polygon.
+        st.session_state.pop(prefix + "last_draw_output", None)
+        st.session_state[prefix + "last_mode"] = mode
     parcels = st.session_state.get(prefix + "parcels", [])
     if prefix + "center" not in st.session_state:
         center, zoom = KOREA, 7
