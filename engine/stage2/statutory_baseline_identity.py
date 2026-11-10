@@ -16,8 +16,8 @@ _CONFIG = {
     ),
     "CAP": (
         PROJECT_ROOT / "data" / "templates" / "cap",
-        "cap_statutory_forms_baseline.json",
-        "cap_statutory_forms_baseline.docx.b64.*",
+        "cap_statutory_forms_260409.json",
+        "cap_statutory_forms_260409.docx",
     ),
 }
 
@@ -54,6 +54,9 @@ def statutory_baseline_identity(system: str) -> StatutoryBaselineIdentity:
         raise FileNotFoundError(f"{system} 규정서식 baseline 파일이 준비되지 않았습니다.")
     decoded_parts: list[bytes] = []
     for part in parts:
+        if part.suffix.lower() == ".docx":
+            decoded_parts.append(part.read_bytes())
+            continue
         encoded = "".join(part.read_text(encoding="ascii").split())
         try:
             decoded_parts.append(base64.b64decode(encoded, validate=True))
