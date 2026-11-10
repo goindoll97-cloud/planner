@@ -274,14 +274,14 @@ class _Cache(dict):
 def fill(doc, project: Stage2Project) -> list[int]:
     """열린 규정서식 문서를 채웁니다. 예전 렌더러가 채운 별지 번호 목록을 돌려줍니다."""
     tables = doc.tables
-    total = sum(len(v) for v in old.FORM_TABLE_INDEX.values())
-    if len(tables) < 6 + total:
+    indexes = old.form_table_index_for(doc)
+    if max(index for group in indexes.values() for index in group) >= len(tables):
         raise ValueError("CAP 규정서식 baseline 구조가 예상과 달라 자동작성을 중단했습니다.")
     cache = _Cache(project)
     delegated = []
     for form in load_cells()["forms"]:
         number = int(form["form"])
-        form_tables = [tables[i] for i in old.FORM_TABLE_INDEX[str(number)]]
+        form_tables = [tables[i] for i in indexes[str(number)]]
         empty = form.get("fallback_when_empty") and not cache[form["fallback_when_empty"]]
         if form.get("delegate") or empty:
             _OLD_FILLERS[number](form_tables, project)

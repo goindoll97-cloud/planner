@@ -11,6 +11,8 @@ from docx import Document
 from engine.stage2.project import Stage2Project
 from engine.stage2.cap_baseline_docx import (
     FORM_TABLE_INDEX,
+    NEW_TEMPLATE_SHA256,
+    form_table_index_for,
     build_cap_baseline_draft,
     cap_baseline_filename,
     load_cap_baseline_bytes,
@@ -52,9 +54,9 @@ class CAPBaselineDocxTests(unittest.TestCase):
         )
 
         data = load_cap_baseline_bytes()
-        self.assertEqual(sha256(data).hexdigest(), EXPECTED_SHA256)
+        self.assertIn(sha256(data).hexdigest(), {EXPECTED_SHA256, NEW_TEMPLATE_SHA256})
         doc = Document(BytesIO(data))
-        self.assertEqual(len(doc.tables), 44)
+        self.assertIn(len(doc.tables), {38, 44})
         text = "\n".join(p.text for p in doc.paragraphs)
         for marker in ("별지 제1호서식", "별지 제6호서식", "별지 제9호서식", "별지 제16호서식"):
             self.assertIn(marker, text)
@@ -85,7 +87,7 @@ class CAPBaselineDocxTests(unittest.TestCase):
 
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        self.assertEqual(len(doc.tables), 44)
+        self.assertGreaterEqual(len(doc.tables), 38)
         text = "\n".join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
 
         self.assertIn("홍길동", text)
@@ -107,11 +109,14 @@ class CAPBaselineDocxTests(unittest.TestCase):
         # 별표 1~4 (indexes 0-5) are the static regulation-threshold reference
         # tables, never company data. Confirm the very first one is untouched.
         first_table = doc.tables[0]
-        self.assertIn("예비시나리오 규정 수량", first_table.rows[0].cells[0].text)
+        if len(Document(BytesIO(load_cap_baseline_bytes())).tables) == 44:
+            self.assertIn("예비시나리오 규정 수량", first_table.rows[0].cells[0].text)
+        else:
+            self.assertIn("단위공장", first_table.rows[0].cells[0].text)
 
         # 별지 제2호서식's worked example table (index 11) must stay exactly
         # as the government supplied it, never overwritten with live data.
-        example_table = doc.tables[11]
+        example_table = doc.tables[11 if len(Document(BytesIO(load_cap_baseline_bytes())).tables) == 44 else 5]
         example_text = "\n".join(cell.text for row in example_table.rows for cell in row.cells)
         self.assertIn("홍길동", example_text)
         self.assertIn("장치 설비 목록 및 명세", example_text)
@@ -131,7 +136,7 @@ class CAPBaselineDocxTests(unittest.TestCase):
 
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        log_table = doc.tables[FORM_TABLE_INDEX["2"][1]]
+        log_table = doc.tables[form_table_index_for(Document(BytesIO(load_cap_baseline_bytes())))["2"][1]]
         text = "\n".join(cell.text for row in log_table.rows for cell in row.cells)
 
         self.assertNotIn("테스트 변경항목", text)
@@ -151,7 +156,7 @@ class CAPBaselineDocxTests(unittest.TestCase):
 
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        log_table = doc.tables[FORM_TABLE_INDEX["2"][1]]
+        log_table = doc.tables[form_table_index_for(Document(BytesIO(load_cap_baseline_bytes())))["2"][1]]
         text = "\n".join(cell.text for row in log_table.rows for cell in row.cells)
 
         self.assertIn("장치 설비 목록 및 명세", text)
@@ -162,7 +167,7 @@ class CAPBaselineDocxTests(unittest.TestCase):
         project = _project()
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        context_table = doc.tables[FORM_TABLE_INDEX["2"][0]]
+        context_table = doc.tables[form_table_index_for(Document(BytesIO(load_cap_baseline_bytes())))["2"][0]]
         site_name_cells = context_table.rows[0].cells[:2]
         runs = [run for cell in site_name_cells for paragraph in cell.paragraphs for run in paragraph.runs]
 
@@ -196,7 +201,8 @@ class CAPBaselineDocxTests(unittest.TestCase):
 
         out = build_cap_baseline_draft(project)
         doc = Document(BytesIO(out))
-        form6_text = "\n".join(cell.text for row in doc.tables[15].rows for cell in row.cells)
+        form6_idx = form_table_index_for(Document(BytesIO(load_cap_baseline_bytes())))["6"][0]
+        form6_text = "\n".join(cell.text for row in doc.tables[form6_idx].rows for cell in row.cells)
 
         self.assertIn("0.87 (회사 확인값)", form6_text)
         self.assertNotIn("KOSHA 참고값", form6_text)
