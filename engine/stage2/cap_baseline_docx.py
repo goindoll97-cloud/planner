@@ -85,39 +85,82 @@ FORM_TABLE_INDEX = {
 }
 
 
+# This source is the 2026-04-09 annex-only DOCX supplied for the current CAP draft.
+# Keep the legacy snapshot as a fallback until the new template is installed.
+NEW_TEMPLATE_SHA256 = "6491a1648b37f96b482f4a529ee8dd0b7be93951324556fcdbce9e58d5c42aa8"
+NEW_TEMPLATE_DIRECT = TEMPLATE_DIR / "cap_statutory_forms_260409.docx"
+NEW_TEMPLATE_PARTS_GLOB = "cap_statutory_forms_260409.docx.b64.*"
+FORM_TABLE_INDEX_260409 = {key: tuple(index - 6 for index in indexes)
+                           for key, indexes in FORM_TABLE_INDEX.items()}
+
+
+def form_table_index_for(doc) -> dict[str, tuple[int, ...]]:
+    """Choose the old 44-table layout or the supplied 38-table annex-only layout."""
+    count = len(doc.tables)
+    if count == 38:
+        return FORM_TABLE_INDEX_260409
+    if count == 44:
+        return FORM_TABLE_INDEX
+    raise ValueError(f"인식할 수 없는 CAP 규정서식 표 구조: {count}개")
+
+
 def _metadata() -> dict[str, Any]:
     with METADATA_PATH.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
+def _decode_template_parts(parts: Sequence[Path]) -> bytes:
+    chunks: list[bytes] = []
+    for part in parts:
+        encoded = "".join(part.read_text(encoding="ascii").split())
+        try:
+            chunks.append(base64.b64decode(encoded, validate=True))
+        except Exception as exc:
+            raise ValueError("CAP 규정서식 baseline 인코딩을 읽지 못했습니다.") from exc
+    return b"".join(chunks)
+
+
 def load_cap_baseline_bytes() -> bytes:
+    """Use the exact newer user-provided annex template when installed.
+
+    The pinned SHA protects the official layout from accidentally selecting an
+    unrelated file. The old embedded template remains backwards compatible.
+    """
+    if NEW_TEMPLATE_DIRECT.exists():
+        data = NEW_TEMPLATE_DIRECT.read_bytes()
+        if sha256(data).hexdigest() != NEW_TEMPLATE_SHA256:
+            raise ValueError("260409 규정서식의 SHA-256이 업로드 원본과 일치하지 않습니다.")
+        validate_cap_baseline(data, required_table_count=38)
+        return data
+    new_parts = sorted(TEMPLATE_DIR.glob(NEW_TEMPLATE_PARTS_GLOB))
+    if new_parts:
+        data = _decode_template_parts(new_parts)
+        if sha256(data).hexdigest() != NEW_TEMPLATE_SHA256:
+            raise ValueError("260409 규정서식 base64 조각이 원본과 다르거나 누락되었습니다.")
+        validate_cap_baseline(data, required_table_count=38)
+        return data
+
     meta = _metadata()
     parts = sorted(TEMPLATE_DIR.glob(BASE64_GLOB))
     if not parts:
         raise FileNotFoundError("CAP 규정서식 baseline 파일이 준비되지 않았습니다.")
-    decoded_parts: list[bytes] = []
-    for part in parts:
-        encoded = "".join(part.read_text(encoding="ascii").split())
-        try:
-            decoded_parts.append(base64.b64decode(encoded, validate=True))
-        except Exception as exc:
-            raise ValueError("CAP 규정서식 baseline 인코딩을 읽지 못했습니다.") from exc
-    data = b"".join(decoded_parts)
+    data = _decode_template_parts(parts)
     expected = str(meta.get("sha256") or "").lower()
     actual = sha256(data).hexdigest()
     if expected and actual != expected:
         raise ValueError("CAP 규정서식 baseline 해시가 등록값과 일치하지 않습니다.")
-    validate_cap_baseline(data)
+    validate_cap_baseline(data, required_table_count=int(meta.get("required_table_count") or 0))
     return data
 
 
-def validate_cap_baseline(data: bytes) -> None:
+def validate_cap_baseline(data: bytes, *, required_table_count: int | None = None) -> None:
     meta = _metadata()
     try:
         doc = Document(BytesIO(data))
     except Exception as exc:
         raise ValueError("CAP 규정서식 baseline DOCX를 열 수 없습니다.") from exc
-    required_count = int(meta.get("required_table_count") or 0)
+    required_count = int(required_table_count if required_table_count is not None
+                         else meta.get("required_table_count") or 0)
     if required_count and len(doc.tables) != required_count:
         raise ValueError(
             f"CAP 규정서식 baseline의 표 수가 예상과 다릅니다: {len(doc.tables)}개 / 예상 {required_count}개"
@@ -958,52 +1001,50 @@ def _fill_form12(tables, project: Stage2Project) -> None:
     prepared = build_cap_form12_data(project)
 
     if prepared.rows:
-        # One copy of the statutory scenario detail table for every scenario.
-        # Clone the untouched template BEFORE writing values so later tables
-        # cannot accidentally inherit the previous scenario's facts.
+        # Repeat the untouched statutory form for each distinct scenario.
         scenario_tables = [scenario_table]
         for _ in prepared.rows[1:]:
             scenario_tables.append(_clone_table_after(scenario_tables[-1]))
         for record, target_table in zip(prepared.rows, scenario_tables):
-            _fill_label_rows(
-                target_table,
-                {
-                    "사고시나리오명": record.get("사고시나리오명", ""),
-                    "사고시나리오 명": record.get("사고시나리오명", ""),
-                    "유해화학물질명": record.get("유해화학물질명", ""),
-                    "대상 설비번호": record.get("대상 설비번호", ""),
-                    "사고유형": record.get("사고유형", ""),
-                    "장외거리": record.get("장외거리(m)", ""),
-                    "장외거리(m)": record.get("장외거리(m)", ""),
-                    "거주민수": record.get("거주민수", ""),
-                    "근로자수": record.get("근로자수", ""),
-                    "사고원점의 좌표": record.get("사고원점 좌표", ""),
-                    "사고원점 좌표": record.get("사고원점 좌표", ""),
-                },
-                start=1,
-            )
-            # Keep the evidence trail near its OWN scenario, not in the
-            # first scenario's cells as a misleading combined narrative.
-            if len(target_table.rows) > 1:
-                cells = _unique_cells(target_table.rows[1])
-                if cells:
-                    detail = " / ".join(
-                        part for part in (
-                            f"시나리오: {_clean(record.get('사고시나리오명'))}",
-                            f"물질: {_clean(record.get('유해화학물질명'))}",
-                            f"설비: {_clean(record.get('대상 설비번호'))}",
-                            f"사고유형: {_clean(record.get('사고유형'))}",
-                            f"장외거리: {_clean(record.get('장외거리(m)'))} m",
-                            f"거주민: {_clean(record.get('거주민수'))}명",
-                            f"근로자: {_clean(record.get('근로자수'))}명",
-                            f"사고원점: {_clean(record.get('사고원점 좌표'))}",
-                            f"근거: {_clean(record.get('KORA/GIS 근거'))}",
-                        ) if part and not part.endswith(": ")
-                    )
-                    _append_value(cells[-1], detail)
+            name = _clean(record.get("사고시나리오명"))
+            offsite = _clean(record.get("장외거리(m)"))
+            radius = _clean(record.get("영향반경(m)"))
+            origin = _clean(record.get("사고원점 좌표"))
 
-    # Form 12 needs scenario-linked targets. Confirmed per-scenario GIS rows
-    # take precedence over the conservative boundary-distance candidates.
+            # The title is a full-width first row; never append a descriptor to
+            # the first '영향범위' value cell (which used to swallow all data).
+            first = _unique_cells(target_table.rows[0])
+            impact = _unique_cells(target_table.rows[1])
+            if len(first) != 1 or len(impact) != 2 or impact[0].text.strip() != "영향범위":
+                raise ValueError("별지 제12호서식 시나리오 제목/영향범위 칸 위치가 변경되었습니다.")
+            _write_cell(first[0], f"({name}) 사고시나리오")
+            _write_cell(
+                impact[1],
+                f"취급시설을 중심으로 반경 ({radius or '          '})m, 장외 ({offsite or '      '})m",
+            )
+            if len(target_table.rows) < 18:
+                raise ValueError("별지 제12호서식 사고원점 좌표 입력 행이 없습니다.")
+            coordinate = _unique_cells(target_table.rows[17])
+            if len(coordinate) != 1 or "사고원점" not in coordinate[0].text:
+                raise ValueError("별지 제12호서식 사고원점 좌표 칸을 식별하지 못했습니다.")
+            if origin:
+                _write_cell(coordinate[0], f"사고원점의 좌표 : {origin}")
+            # Do not place total population in industrial-complex-specific cells
+            # without confirmed within/outside population counts. The precise
+            # subcategories remain blank instead of being invented.
+            for row_index, resident_key, worker_key in (
+                (3, "산업단지 내 거주민수", "산업단지 내 근로자수"),
+                (4, "산업단지 외 거주민수", "산업단지 외 근로자수"),
+            ):
+                values = (record.get(resident_key, ""), record.get(worker_key, ""))
+                if all(value not in (None, "") for value in values):
+                    destination = _unique_cells(target_table.rows[row_index])
+                    if len(destination) < 3:
+                        raise ValueError("별지 제12호서식 주민수 입력 칸을 식별하지 못했습니다.")
+                    _write_cell(destination[2], f"거주민({values[0]})명, 근로자({values[1]})명")
+
+    # Append scenario-linked individual target rows to the designated 4-column
+    # list, not to the influence-distance box or to a header cell.
     confirmed_targets = base._rows(project, "cap.offsite.population_and_protected_targets")
     scenario_names = {_clean(row.get("사고시나리오명")) for row in prepared.rows}
     linked = [row for row in confirmed_targets
@@ -1384,25 +1425,25 @@ def build_cap_baseline_draft(project: Stage2Project) -> bytes:
         raise ValueError("화학사고예방관리계획서는 현재 작성범위에 포함되어 있지 않습니다.")
     doc = Document(BytesIO(load_cap_baseline_bytes()))
     tables = doc.tables
-    total_forms = sum(len(v) for v in FORM_TABLE_INDEX.values())
-    if len(tables) < 6 + total_forms:
+    indexes = form_table_index_for(doc)
+    if max(index for group in indexes.values() for index in group) >= len(tables):
         raise ValueError("CAP 규정서식 baseline 구조가 예상과 달라 자동작성을 중단했습니다.")
 
-    _fill_form1([tables[i] for i in FORM_TABLE_INDEX["1"]], project)
-    _fill_form2([tables[i] for i in FORM_TABLE_INDEX["2"]], project)
-    _fill_form3(tables[FORM_TABLE_INDEX["3"][0]], project)
-    _fill_facility_overview(tables[FORM_TABLE_INDEX["4"][0]], project, detailed=False)
-    _fill_facility_overview(tables[FORM_TABLE_INDEX["5"][0]], project, detailed=True)
-    _fill_form6(tables[FORM_TABLE_INDEX["6"][0]], project)
-    _fill_form7(tables[FORM_TABLE_INDEX["7"][0]], project)
-    _fill_form8([tables[i] for i in FORM_TABLE_INDEX["8"]], project)
-    _fill_form9(tables[FORM_TABLE_INDEX["9"][0]], project)
-    _fill_form10(tables[FORM_TABLE_INDEX["10"][0]], project)
-    _fill_form11(tables[FORM_TABLE_INDEX["11"][0]], project)
-    _fill_form12([tables[i] for i in FORM_TABLE_INDEX["12"]], project)
-    _fill_form13([tables[i] for i in FORM_TABLE_INDEX["13"]], project)
-    _fill_form15([tables[i] for i in FORM_TABLE_INDEX["15"]], project)
-    _fill_form16([tables[i] for i in FORM_TABLE_INDEX["16"]], project)
+    _fill_form1([tables[i] for i in indexes["1"]], project)
+    _fill_form2([tables[i] for i in indexes["2"]], project)
+    _fill_form3(tables[indexes["3"][0]], project)
+    _fill_facility_overview(tables[indexes["4"][0]], project, detailed=False)
+    _fill_facility_overview(tables[indexes["5"][0]], project, detailed=True)
+    _fill_form6(tables[indexes["6"][0]], project)
+    _fill_form7(tables[indexes["7"][0]], project)
+    _fill_form8([tables[i] for i in indexes["8"]], project)
+    _fill_form9(tables[indexes["9"][0]], project)
+    _fill_form10(tables[indexes["10"][0]], project)
+    _fill_form11(tables[indexes["11"][0]], project)
+    _fill_form12([tables[i] for i in indexes["12"]], project)
+    _fill_form13([tables[i] for i in indexes["13"]], project)
+    _fill_form15([tables[i] for i in indexes["15"]], project)
+    _fill_form16([tables[i] for i in indexes["16"]], project)
 
     out = BytesIO()
     doc.save(out)
