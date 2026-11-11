@@ -7,6 +7,9 @@ from pathlib import Path
 import unittest
 
 from docx import Document
+from docx.oxml.ns import qn
+from zipfile import ZipFile
+from collections import Counter
 
 from engine.stage2.project import Stage2Project
 from engine.stage2.cap_baseline_docx import (
@@ -52,6 +55,28 @@ class CAPBaselineDocxTests(unittest.TestCase):
             self.assertIn(marker, text)
         # The separate reference tables (previous indexes 0..5) were deleted.
         self.assertIn("단위공장", doc.tables[0].rows[0].cells[0].text)
+
+    def test_template_is_byte_exact_and_keeps_original_260409_font_metadata(self):
+        from engine.stage2 import cap_baseline_docx as renderer
+
+        data = load_cap_baseline_bytes()
+        self.assertEqual(
+            sha256(data).hexdigest(),
+            "6491a1648b37f96b482f4a529ee8dd0b7be93951324556fcdbce9e58d5c42aa8",
+        )
+        with ZipFile(BytesIO(data)) as docx:
+            xml = docx.read("word/document.xml").decode("utf-8")
+            self.assertGreater(xml.count("돋움체"), 1000)
+            self.assertIn("HY견고딕", xml)
+
+        # Blank cells must not fall back to the '바탕글' default when filled.
+        doc = Document(BytesIO(data))
+        cell = doc.tables[0].rows[1].cells[0]
+        self.assertFalse(cell.text.strip())
+        renderer._write_cell(cell, "실제 입력값")
+        run = cell.paragraphs[0].runs[0]
+        self.assertEqual(run.font.name, "돋움체")
+        self.assertEqual(run._element.rPr.rFonts.get(qn("w:eastAsia")), "돋움체")
 
     def test_missing_new_source_never_falls_back_to_deleted_baseline(self):
         from tempfile import TemporaryDirectory

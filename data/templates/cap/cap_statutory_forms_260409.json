@@ -3,8 +3,8 @@
   "role": "LAYOUT_BASELINE",
   "template_file": "cap_statutory_forms_260409.docx",
   "encoding": "binary",
-  "sha256": "5c6cd9e72c96c31c040e8f088b72bbfa6c379841a20f8d21c871051ae275c495",
-  "source_description": "260409 법정 별지 전용 작성서식. 260409로 등록된 이전 원본에서 별표 1~4 본문만 제외하여 별지 본문 표·셀 서식을 유지함. 사용자가 제공한 별지 전용 DOCX와 바이트가 동일한 것은 아님.",
+  "sha256": "6491a1648b37f96b482f4a529ee8dd0b7be93951324556fcdbce9e58d5c42aa8",
+  "source_description": "사용자가 제공한 260409 「화학사고예방관리계획서 작성 등에 관한 규정」 별표·별지 서식 중 별지 작성 전용 DOCX 원본을 바이트 단위로 그대로 등록. 본문·표·병합·폰트·스타일을 보존함.",
   "authority_note": "이 파일은 표·병합셀·폰트·페이지 배치의 작성 baseline이다. 법적 최신성·효력의 권위는 기존 law.go.kr 규정 업데이트 및 승인 상태가 담당한다.",
   "required_table_count": 38,
   "required_markers": [
@@ -23,7 +23,7 @@
     "별지 제15호서식",
     "별지 제16호서식"
   ],
-  "source_document_name": "「화학사고예방관리계획서 작성 등에 관한 규정」 일부 개정_별표, 별지 서식만_260409.docx",
+  "source_document_name": "「화학사고예방관리계획서 작성 등에 관한 규정」 일부 개정_별표, 별지 서식만_260409(1).docx",
   "source_document_sha256": "6491a1648b37f96b482f4a529ee8dd0b7be93951324556fcdbce9e58d5c42aa8",
   "input_rule": "색이 있는 셀은 명칭·머리글로 보존한다. 값은 지정된 흰색 입력 칸에만 기재한다."
 }
