@@ -20,6 +20,9 @@ jobs:
           file=Path('data/templates/cap/cap_statutory_forms_260409.docx')
           print('TEMPLATE_SIZE',file.stat().st_size)
           print('TEMPLATE_SHA256',sha256(file.read_bytes()).hexdigest())
+          with ZipFile(file) as z:
+              for entry in z.infolist():
+                  print('ZIP_ENTRY',entry.filename,entry.file_size,entry.compress_size,hex(entry.CRC))
           W='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
           with ZipFile(file) as z:
               for name in ('word/document.xml','word/styles.xml'):
