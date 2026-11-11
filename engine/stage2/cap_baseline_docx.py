@@ -210,7 +210,12 @@ def _write_cell(cell, value: object) -> None:
             run.text = ""
         return
     paragraph = cell.paragraphs[0] if cell.paragraphs else cell.add_paragraph()
-    paragraph.add_run(text)
+    # A blank official input cell often has no w:r and inherits '바탕글'.
+    # Its text must use the uploaded 260409 form's body/input font rather
+    # than the previous template's implicit default.
+    run = paragraph.add_run(text)
+    run.font.name = "돋움체"
+    run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "돋움체")
 
 
 def _append_value(cell, value: object) -> None:
