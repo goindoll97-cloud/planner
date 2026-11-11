@@ -1,0 +1,33 @@
+name: Audit registered CAP DOCX fonts
+on:
+  push:
+    branches:
+      - audit/compare-cap-fonts-20261111
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect DOCX source SHA and run fonts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from zipfile import ZipFile
+          from collections import Counter
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          from hashlib import sha256
+          file=Path('data/templates/cap/cap_statutory_forms_260409.docx')
+          print('TEMPLATE_SIZE',file.stat().st_size)
+          print('TEMPLATE_SHA256',sha256(file.read_bytes()).hexdigest())
+          W='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+          with ZipFile(file) as z:
+              for name in ('word/document.xml','word/styles.xml'):
+                  root=ET.fromstring(z.read(name))
+                  fonts=Counter()
+                  for elem in root.iter(W+'rFonts'):
+                      for attr in ('ascii','eastAsia','hAnsi'):
+                          val=elem.attrib.get(W+attr)
+                          if val:fonts[(attr,val)]+=1
+                  print(name, fonts.most_common(20))
+          PY
