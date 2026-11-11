@@ -44,15 +44,15 @@ class TemplateInputTests(unittest.TestCase):
 
     def test_form7_examples_are_cleared_and_values_go_below_titles(self):
         blank = Document(BytesIO(renderer.load_cap_baseline_bytes())).tables[renderer.FORM_TABLE_INDEX['7'][0]]
-        self.assertEqual(blank.cell(1, 0).text, '가.')
-        self.assertEqual(blank.cell(3, 0).text, '다.')
+        self.assertEqual(blank.cell(1, 0).text, '가. 물질명')
+        self.assertEqual(blank.cell(3, 0).text, '다. 유해화학물질 고유번호')
         self.assertEqual(blank.cell(7, 0).text, '')
         doc = Document(BytesIO(catalog_renderer.build_cap_catalog_draft(project())))
         tables = [t for t in doc.tables if t.cell(0, 0).text == '취급물질의 일반정보']
         self.assertEqual(len(tables), 2)
-        self.assertTrue(tables[0].cell(1, 0).text.startswith('가. 가상 톨루엔'))
-        self.assertNotIn('물질명', tables[0].cell(1, 0).text)
-        self.assertEqual(tables[0].cell(4, 0).text, '라. 99.5 %')
+        self.assertTrue(tables[0].cell(1, 0).text.startswith('가. 물질명: 가상 톨루엔'))
+        self.assertIn('물질명', tables[0].cell(1, 0).text)
+        self.assertEqual(tables[0].cell(4, 0).text, '라. 농도(또는 함량 %): 99.5 %')
         self.assertEqual(tables[0].cell(6, 0).text, blank.cell(6, 0).text)
         self.assertEqual(tables[0].cell(7, 0).text, '흡인 유해성 구분 1, 생식독성 구분 2')
         self.assertFalse(renderer._is_label_cell(tables[0].cell(7, 0)))
