@@ -771,7 +771,22 @@ def _fill_form7_table(table, row) -> None:
         value = _clean(mapping[key])
         if key == "농도(또는 함량 %)" and value and not re.search(r"%|ppm|mg|g/", value, re.I):
             value += " %"
-        _write_cell(table.cell(index, 0), (prefix + " " + value).strip())
+        if not value:
+            # Preserve every preprinted heading in the exact 260409 source.
+            continue
+        cell = table.cell(index, 0)
+        if prefix:
+            # The uploaded source prints the full label, e.g. '가. 물질명'.
+            # The previous template printed only '가.'. Never replace the
+            # source label with the answer or delete it when the value is absent.
+            label = cell.text.strip()
+            if not label.startswith(prefix) or key not in label:
+                raise ValueError(
+                    f"별지 제7호서식 원본 항목명과 기재 위치가 다릅니다: {index}행 / {label}"
+                )
+            _write_cell(cell, f"{label}: {value}")
+        else:
+            _write_cell(cell, value)
 
 
 def _fill_form8(tables, project: Stage2Project) -> None:
