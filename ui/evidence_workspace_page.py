@@ -715,7 +715,7 @@ def _step_export(project, found) -> None:
     if st.button("작성하기", type="primary", key="write_" + project.project_id):
         _auto_publish(project)
         if project.cap_in_scope:
-            from engine.stage2 import sgis_population, cap_impact_workspace
+            from engine.stage2 import sgis_population
             if sgis_population.configured():
                 try:
                     # The only network-triggered census call is the explicit
@@ -738,7 +738,10 @@ def _step_export(project, found) -> None:
     if project.cap_in_scope:
         from engine.stage2 import sgis_population
         pop = project.get_field(sgis_population.RESULT_KEY)
-        if pop and pop.status == "CALCULATED" and isinstance(pop.value, dict):
+        from engine.stage2 import cap_impact_workspace
+        impact_fact = project.get_field(cap_impact_workspace.IMPACT_TABLE_KEY)
+        if (pop and pop.status == "CALCULATED" and isinstance(pop.value, dict)
+                and impact_fact and impact_fact.note == sgis_population.METHOD):
             value = pop.value
             overall = value.get("overall") or {}
             st.caption(
