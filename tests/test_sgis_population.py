@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from io import BytesIO
+from docx import Document
 import pytest
 from pyproj import Transformer
 from shapely.geometry import Point, box, mapping
@@ -102,6 +104,25 @@ def test_auto_calculated_values_populate_form12_and_13_project_facts():
     assert audit.status == "CALCULATED"
     assert audit.value["source_urls"][0].endswith("userarea.geojson")
     assert "추정" in audit.value["status"]
+
+
+def test_impact_report_discloses_estimates_and_source_year():
+    p = project()
+    imps = impacts()
+    p.set_field(iw.IMPACT_TABLE_KEY, "시험", [
+        {"사고시나리오명": item.name, "거주민수": "", "근로자수": ""}
+        for item in imps
+    ], "CALCULATED")
+    p.set_field(iw.SUMMARY_KEY, "시험", [{}], "CALCULATED")
+    with patch.object(sgis, "census_year", return_value="2024"):
+        result = sgis.refresh_for_draft(p, imps, client=FakeClient())
+    doc = Document(BytesIO(iw.report_docx(p, imps)))
+    text = "\n".join([par.text for par in doc.paragraphs] +
+                     [cell.text for table in doc.tables for row in table.rows for cell in row.cells])
+    assert "SGIS 2024" in text or "2024" in text
+    assert "면적 비율" in text
+    assert "SGIS 추정" in text
+    assert str(result["overall"]["거주민수"]) in text
 
 
 def test_input_change_cannot_reuse_old_sgis_numbers():
