@@ -569,7 +569,8 @@ def _step_scenarios(project, found, triage) -> None:
             "‘보호대상 구분’과 ‘세부유형’ 셀을 누르면 법정 선택지가 열립니다. "
             "실제 용도·수용 인원·건물 규모를 확인하고 선택하세요. "
             "비어 있는 칸은 미확인 상태이며 이름으로 추정한 갑종·을종도 확정값이 아닙니다. "
-            "수정 내용은 자동 저장하지만 법정 검토 완료로 처리하지 않습니다."
+            "20곳을 모두 수정한 뒤 아래 ‘선택값 한 번에 저장’ 버튼을 누르세요. "
+            "저장한 선택값도 법정 검토 완료로 처리하지 않습니다."
         )
         import pandas as pd
 
@@ -578,51 +579,57 @@ def _step_scenarios(project, found, triage) -> None:
         for col in ("거주민수", "근로자수"):
             # Numeric editor must distinguish an unverified blank from 0 persons.
             frame[col] = pd.to_numeric(frame[col], errors="coerce")
-        edited = st.data_editor(
-            frame, hide_index=True, width="stretch", height=590,
-            num_rows="fixed", key="protected_target_editor_" + pid,
-            disabled=[
-                "보호대상 명칭", "주소·위치", "사업장 경계와 거리(m)"
-            ],
-            column_config={
-                "보호대상 명칭": st.column_config.TextColumn("보호대상 명칭", width="medium"),
-                "보호대상 구분": st.column_config.SelectboxColumn(
-                    "보호대상 구분", options=list(cap_target_review.LEGAL_CATEGORIES),
-                    required=False, width="medium",
-                    help="갑종 / 을종 / 환경수용체 중 실제 시설의 용도와 규모를 확인해 선택합니다. 미확인은 빈칸으로 둡니다."
-                ),
-                "세부유형": st.column_config.SelectboxColumn(
-                    "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
-                    required=False, width="medium",
-                    help="법정 세부유형 선택지입니다. 보호대상 구분에 속하는 유형을 선택하세요."
-                ),
-                "거주민수": st.column_config.NumberColumn(
-                    "거주민수", min_value=0, step=1, width="small",
-                    help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요(0명과 다릅니다)."
-                ),
-                "근로자수": st.column_config.NumberColumn(
-                    "근로자수", min_value=0, step=1, width="small",
-                    help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요."
-                ),
-                "GIS/현장 근거": st.column_config.TextColumn("GIS/현장 근거", width="large"),
-            },
-        )
-        try:
-            changed, warnings = cap_target_review.apply_candidate_edits(
-                project, edited.to_dict("records"), candidates
+        with st.form(key="protected_target_batch_form_" + pid):
+            edited = st.data_editor(
+                frame, hide_index=True, width="stretch", height=590,
+                num_rows="fixed", key="protected_target_editor_" + pid,
+                disabled=[
+                    "보호대상 명칭", "주소·위치", "사업장 경계와 거리(m)"
+                ],
+                column_config={
+                    "보호대상 명칭": st.column_config.TextColumn("보호대상 명칭", width="medium"),
+                    "보호대상 구분": st.column_config.SelectboxColumn(
+                        "보호대상 구분", options=list(cap_target_review.LEGAL_CATEGORIES),
+                        required=False, width="medium",
+                        help="갑종 / 을종 / 환경수용체 중 실제 시설의 용도와 규모를 확인해 선택합니다. 미확인은 빈칸으로 둡니다."
+                    ),
+                    "세부유형": st.column_config.SelectboxColumn(
+                        "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
+                        required=False, width="medium",
+                        help="법정 세부유형 선택지입니다. 보호대상 구분에 속하는 유형을 선택하세요."
+                    ),
+                    "거주민수": st.column_config.NumberColumn(
+                        "거주민수", min_value=0, step=1, width="small",
+                        help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요(0명과 다릅니다)."
+                    ),
+                    "근로자수": st.column_config.NumberColumn(
+                        "근로자수", min_value=0, step=1, width="small",
+                        help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요."
+                    ),
+                    "GIS/현장 근거": st.column_config.TextColumn("GIS/현장 근거", width="large"),
+                },
             )
-            if changed:
-                try:
-                    scenario_pipeline.refresh(project)
-                except (ValueError, TypeError, RuntimeError) as exc:
-                    st.session_state["protected_target_refresh_notice_" + pid] = (
-                        "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
-                    )
-                save_project(project)
-                st.session_state["protected_target_editor_warnings_" + pid] = warnings
-                st.rerun()
-        except (ValueError, TypeError) as exc:
-            st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
+            submitted = st.form_submit_button(
+                "선택값 한 번에 저장", type="primary", use_container_width=True
+            )
+        if submitted:
+            try:
+                changed, warnings = cap_target_review.apply_candidate_edits(
+                    project, edited.to_dict("records"), candidates
+                )
+                if changed:
+                    try:
+                        scenario_pipeline.refresh(project)
+                    except (ValueError, TypeError, RuntimeError) as exc:
+                        st.session_state["protected_target_refresh_notice_" + pid] = (
+                            "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
+                        )
+                    save_project(project)
+                    st.session_state["protected_target_editor_warnings_" + pid] = warnings
+                    st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
+
 
         for warning in st.session_state.pop("protected_target_editor_warnings_" + pid, []):
             st.warning(warning)
