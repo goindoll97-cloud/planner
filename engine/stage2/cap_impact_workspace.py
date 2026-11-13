@@ -145,6 +145,7 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
         rows.append({
             "사고시나리오명": impact.name, "유해화학물질명": impact.material, "대상 설비번호": impact.tag,
             "사고유형": impact.kind, "장외거리(m)": round(impact.off_site_m, 1),
+            "영향반경(m)": round(impact.radius_m, 1) if impact.radius_m is not None else "",
             "거주민수": impact.people("거주민수") if survey_confirmed else "",
             "근로자수": impact.people("근로자수") if survey_confirmed else "",
             "갑종 보호대상 수": impact.count("갑종") if survey_confirmed else "",
