@@ -216,6 +216,43 @@ class EvidencePageTests(unittest.TestCase):
         self.assertFalse(any(e.key == "protected_targets_confirm_" + self.pid
                              for e in at.button))
 
+    def test_20_protected_target_dropdowns_save_only_after_batch_submit(self):
+        """Editing twenty candidate dropdowns must not persist on widget reruns."""
+        candidates = [
+            {
+                "보호대상 명칭": f"후보 시설 {i:02d}",
+                "보호대상 구분": "",
+                "세부유형": "",
+                "주소·위치": "광주광역시",
+                "사업장 경계와 거리(m)": i + 1,
+                "거주민수": "",
+                "근로자수": "",
+                "GIS/현장 근거": "지도 검색 후보",
+            }
+            for i in range(20)
+        ]
+        with (
+            patch("engine.stage2.scenario_survey.candidate_rows", return_value=candidates),
+            patch("engine.stage2.scenario_survey.company_workbook", return_value=b"excel"),
+            patch("engine.stage2.cap_target_review.apply_candidate_edits", return_value=(False, [])) as apply,
+        ):
+            at = self.run_page(3)
+            button_key = "protected_target_batch_save_" + self.pid
+            self.assertEqual(len([b for b in at.button if b.key == button_key]), 1)
+            self.assertEqual(len(next(t.value for t in at.dataframe if "보호대상 구분" in t.value.columns)), 20)
+            apply.assert_not_called()
+
+            # An ordinary rerun must not persist dropdown selections.
+            at.run()
+            self.assertFalse(at.exception)
+            apply.assert_not_called()
+
+            at.button(key=button_key).click().run()
+            self.assertFalse(at.exception)
+            apply.assert_called_once()
+            self.assertEqual(len(apply.call_args.args[1]), 20)
+            self.assertIn("선택값 확정·한 번에 저장", " ".join(b.label for b in at.button))
+
     def test_write_uses_uploaded_facts_without_confirmation_gate(self):
         at = self.run_page(4)
         at.button(key="write_" + self.pid).click().run()
