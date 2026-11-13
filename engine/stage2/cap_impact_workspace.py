@@ -145,6 +145,7 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
         rows.append({
             "사고시나리오명": impact.name, "유해화학물질명": impact.material, "대상 설비번호": impact.tag,
             "사고유형": impact.kind, "장외거리(m)": round(impact.off_site_m, 1),
+            "영향반경(m)": round(impact.radius_m, 1) if impact.radius_m is not None else "",
             "거주민수": impact.people("거주민수") if survey_confirmed else "",
             "근로자수": impact.people("근로자수") if survey_confirmed else "",
             "갑종 보호대상 수": impact.count("갑종") if survey_confirmed else "",
@@ -158,7 +159,11 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
 
     listed = []
     for target in union.values():
-        people = int(_number(target.get("거주민수")) or 0) + int(_number(target.get("근로자수")) or 0)
+        resident = _number(target.get("거주민수"))
+        worker = _number(target.get("근로자수"))
+        # A missing headcount is NOT a real zero. Preserve that distinction
+        # when exporting individual protected-target facts to Form 13.
+        people = int(resident + worker) if resident is not None and worker is not None else ""
         listed.append({
             "보호대상 명칭": target.get("보호대상 명칭"), "보호대상 구분": target.get("보호대상 구분"),
             "세부유형": target.get("세부유형"), "주소·위치": target.get("주소·위치"),
@@ -190,6 +195,16 @@ def report_docx(project: Stage2Project, impacts: list[ScenarioImpact], *, worst_
     from docx import Document
 
     weather = rw.default_weather(project, worst_case)
+    from . import sgis_population
+
+    audit = project.get_field(sgis_population.RESULT_KEY)
+    current = project.get_field(IMPACT_TABLE_KEY)
+    census = (
+        audit.value if audit and audit.status == "CALCULATED"
+        and isinstance(audit.value, dict) and current and current.note == sgis_population.METHOD
+        else {}
+    )
+    census_rows = census.get("scenario") or {}
     doc = Document()
     doc.add_heading("사고시나리오 영향범위 분석 근거서", level=1)
     doc.add_paragraph(f"{project.company_name} · 작성일 {date.today().isoformat()} · 프로그램 자체 계산(제안값)")
@@ -215,13 +230,30 @@ def report_docx(project: Stage2Project, impacts: list[ScenarioImpact], *, worst_
         cells[2].text = "" if impact.radius_m is None else f"{impact.radius_m:.0f}"
         cells[3].text = "" if impact.off_site_m is None else f"{impact.off_site_m:.0f}"
         cells[4].text = f"{impact.count('갑종')}/{impact.count('을종')}/{impact.count('환경수용체')}"
-        cells[5].text = f"{impact.people('거주민수')}/{impact.people('근로자수')}"
+        population = census_rows.get(impact.name)
+        if population:
+            cells[5].text = f"{population['거주민수']}/{population['근로자수']} (SGIS 추정)"
+        elif any(t.get("거주민수") not in (None, "") and t.get("근로자수") not in (None, "") for t in impact.targets):
+            cells[5].text = f"{impact.people('거주민수')}/{impact.people('근로자수')}"
+        else:
+            cells[5].text = "미확인/미확인"
         cells[6].text = "; ".join(impact.problems) or impact.basis
     doc.add_paragraph(summary_text(impacts))
+    if census:
+        doc.add_heading("SGIS 자동 인원 산정 근거", level=2)
+        overall = census.get("overall") or {}
+        doc.add_paragraph(
+            f"자료 기준연도: {census.get('year')} / 총괄영향범위 합집합 주민 추정: "
+            f"{overall.get('거주민수')}명 / 산업시설 근로자(제조업 대리값): "
+            f"{overall.get('근로자수')}명 / 경계 포괄률: {overall.get('공간자료_포괄률')}"
+        )
+        doc.add_paragraph(str(census.get("method") or ""))
+        for url in census.get("source_urls", []):
+            doc.add_paragraph(str(url))
     doc.add_heading("가정과 한계", level=2)
     for line in (
         "영향범위는 사업장 경계 기준 원형 범위로 집계했으며 풍향·지형은 반영하지 않았다(보수적).",
-        "보호대상·인구는 별지 제8호 목록(경계 500m 이내)에 적은 값만 집계했다.",
+        "보호대상 후보는 별지 제8호 목록을 기준으로 한다. 인원은 SGIS 근거가 있으면 통계로 산정하며, 없으면 건물별 미확인 인원은 0명으로 단정하지 않는다.",
         "누출시간은 API 581 감지·차단 등급표 참고값이며 수동 차단은 인정하지 않았다(기술지침 3-3 ②).",
         "결과는 제안값이며 KORA 등 동등 프로그램 결과와 대조해 확정한다(작성 규정 제23조 ⑤).",
     ):
