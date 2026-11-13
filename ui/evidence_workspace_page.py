@@ -714,7 +714,39 @@ def _step_export(project, found) -> None:
     st.caption("읽은 자료로 초안을 작성합니다. 부족한 자료는 ②에서 확인하세요.")
     if st.button("작성하기", type="primary", key="write_" + project.project_id):
         _auto_publish(project)
+        if project.cap_in_scope:
+            from engine.stage2 import sgis_population, cap_impact_workspace
+            if sgis_population.configured():
+                try:
+                    # The only network-triggered census call is the explicit
+                    # draft authoring action, not every editor widget rerun.
+                    result = sgis_population.refresh_for_draft(project)
+                    save_project(project)
+                    st.success(
+                        f"SGIS {result['year']}년 통계를 사고시나리오 영향범위에 자동 반영했습니다. "
+                        "거주민·근로자 수는 면적가중 추정이며 법정 검증 전 초안값입니다."
+                    )
+                except (sgis_population.SGISPopulationError, ValueError) as exc:
+                    st.warning(f"SGIS 인원 자동산정을 완료하지 못했습니다: {exc}")
+                except Exception as exc:
+                    st.warning("SGIS 인원 조회에 실패했습니다. 인증키·통계 데이터·사고원점을 확인하세요. "
+                               f"(오류 유형: {type(exc).__name__})")
+            else:
+                st.info("SGIS 인원 자동산정을 사용하려면 .env에 SGIS_CONSUMER_KEY와 "
+                        "SGIS_CONSUMER_SECRET을 설정하세요. 미확인 인원은 0명으로 입력하지 않습니다.")
         st.success("초안을 작성했어요. 아래에서 내려받으세요.")
+    if project.cap_in_scope:
+        from engine.stage2 import sgis_population
+        pop = project.get_field(sgis_population.RESULT_KEY)
+        if pop and pop.status == "CALCULATED" and isinstance(pop.value, dict):
+            value = pop.value
+            overall = value.get("overall") or {}
+            st.caption(
+                f"SGIS {value.get('year', '')}년 통계 자동 산정 | "
+                f"거주민 추정 {overall.get('거주민수', '미확인')}명, "
+                f"산업시설 근로자(제조업 기준) 추정 {overall.get('근로자수', '미확인')}명. "
+                "출처·계산방법은 프로젝트 근거에 보관됩니다. 현장 확정인원은 아닙니다."
+            )
     st.caption("서술형 " + str(sum(bool(i.company_text or i.draft) for system in cap_fact_drafting.systems(project) for i in cap_fact_drafting.items(project, system))) + "개 작성됨")
     _narrative_drafts(project)
     from ui.report_export_panel import render_workspace_download
