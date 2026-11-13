@@ -261,7 +261,7 @@ def estimate(project: Stage2Project, impacts, *, client: SGISClient | None = Non
         "scenario": estimates,
         "overall": {"거주민수": combined[0], "근로자수": combined[1],
                     "SGIS_주거인구": combined[2], "공간자료_포괄률": round(combined[3], 5)},
-        "status": "통계기반 자동 산정(법정서식 초안 기재; 후속 검증 필요)",
+        "status": "통계기반 자동 추정·산정(법정서식 초안 기재; 후속 검증 필요)",
     }
 
 
