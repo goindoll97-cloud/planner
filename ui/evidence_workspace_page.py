@@ -723,7 +723,8 @@ def _step_export(project, found) -> None:
                     result = sgis_population.refresh_for_draft(project)
                     save_project(project)
                     st.success(
-                        f"SGIS {result['year']}년 통계를 사고시나리오 영향범위에 자동 반영했습니다. "
+                        f"SGIS {result['year']}년 통계를 사고시나리오 영향범위에 자동 반영했습니다 "
+                        f"({result.get('year_selection', '조회 가능한 기준연도')}). "
                         "거주민·근로자 수는 면적가중 추정이며 법정 검증 전 초안값입니다."
                     )
                 except (sgis_population.SGISPopulationError, ValueError) as exc:
@@ -745,7 +746,8 @@ def _step_export(project, found) -> None:
             value = pop.value
             overall = value.get("overall") or {}
             st.caption(
-                f"SGIS {value.get('year', '')}년 통계 자동 산정 | "
+                f"SGIS {value.get('year', '')}년 통계 자동 산정 "
+                f"({value.get('year_selection', '조회 가능한 기준연도')}) | "
                 f"거주민 추정 {overall.get('거주민수', '미확인')}명, "
                 f"산업시설 근로자(제조업 기준) 추정 {overall.get('근로자수', '미확인')}명. "
                 "출처·계산방법은 프로젝트 근거에 보관됩니다. 현장 확정인원은 아닙니다."

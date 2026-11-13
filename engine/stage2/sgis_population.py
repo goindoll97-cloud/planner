@@ -1,7 +1,7 @@
 """SGIS-derived population figures for CAP statutory *drafts*.
 
 Uses the official SGIS Data API: token, userarea.geojson (UTM-K),
-2024 population and company statistics. Figures are computed from overlap of
+latest mutually available population and company statistics. Figures are computed from overlap of
 an accident-origin circle with administrative-dong polygons. These are
 area-weighted census *estimates*, not surveyed individual building occupants.
 The calculated draft facts carry a source/year/method and remain auditable.
@@ -28,7 +28,6 @@ from .project import EvidenceRef, Stage2Project
 
 BASE = "https://sgisapi.mods.go.kr/OpenAPI3"
 RESULT_KEY = "cap.offsite.sgis_population_assessment"
-DEFAULT_YEAR = "2024"
 MAX_RADIUS_M = 10000.0
 METHOD = (
     "SGIS 행정동별 인구·전국사업체 종사자(제조업 C 별도)를 사고원점 원형 영향범위와 "
@@ -40,6 +39,14 @@ METHOD = (
 
 class SGISPopulationError(ValueError):
     """A failed or incomplete SGIS estimate must never become a verified zero."""
+
+
+class SGISPopulationYearUnavailable(SGISPopulationError):
+    """A reported census year has missing/suppressed area statistics.
+
+    Only this condition permits trying an older published common year;
+    authentication, network, geometry and other errors must stop immediately.
+    """
 
 
 def _setting(key: str) -> str:
@@ -59,13 +66,6 @@ def _setting(key: str) -> str:
 
 def configured() -> bool:
     return bool(_setting("SGIS_CONSUMER_KEY") and _setting("SGIS_CONSUMER_SECRET"))
-
-
-def census_year() -> str:
-    value = _setting("SGIS_CENSUS_YEAR") or DEFAULT_YEAR
-    if not value.isdigit() or not 2015 <= int(value) <= 2024:
-        raise SGISPopulationError("SGIS_CENSUS_YEAR는 공식 제공 연도(2015~2024)로 설정해 주세요.")
-    return value
 
 
 class SGISClient:
@@ -111,6 +111,45 @@ class SGISClient:
             self._cached[cache_key] = records
         return self._cached[cache_key]
 
+    def available_years(self) -> list[str]:
+        """Latest-to-oldest years common to *both* datasets, per official SGIS API.
+
+        SGIS /year/data.json reports full lists tin_yr/tcorp_yr and latest
+        lin_yr/lcorp_yr. Never infer availability from the server clock or a
+        static upper bound such as 2024.
+        """
+        payload = self._request("/year/data.json", accessToken=self.token())
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise SGISPopulationError("SGIS 최신 통계연도 조회 응답에 연도 목록이 없습니다.")
+
+        def valid_years(values: object) -> set[str]:
+            if not isinstance(values, list):
+                return set()
+            current_year = datetime.now(timezone.utc).year
+            found: set[str] = set()
+            for value in values:
+                year = str(value).strip()
+                if len(year) == 4 and year.isdigit() and 2015 <= int(year) <= current_year:
+                    found.add(year)
+            return found
+
+        populations = valid_years(result.get("tin_yr"))
+        companies = valid_years(result.get("tcorp_yr"))
+        # Older SGIS responses may provide only latest-year scalars.
+        # A scalar is used only if that dataset has no full list.
+        if not populations:
+            populations = valid_years([result.get("lin_yr")])
+        if not companies:
+            companies = valid_years([result.get("lcorp_yr")])
+        common = sorted(populations & companies, reverse=True)
+        if not common:
+            raise SGISPopulationError(
+                "SGIS 인구·사업체 통계에 공통으로 제공되는 기준연도가 없습니다. "
+                "통계연도 조회 결과를 확인해 주세요."
+            )
+        return common
+
     def administrative_areas(self, extent) -> list[dict]:
         minx, miny, maxx, maxy = extent.bounds
         payload = self._request(
@@ -126,14 +165,14 @@ class SGISClient:
         records = self.records(endpoint, year=year, adm_cd=adm_cd, low_search=0, **options)
         match = next((r for r in records if str(r.get("adm_cd", "")) == adm_cd), None)
         if match is None:
-            raise SGISPopulationError(f"{adm_cd}의 {year}년 통계가 없어 추정값을 확정할 수 없습니다.")
+            raise SGISPopulationYearUnavailable(f"{adm_cd}의 {year}년 통계가 없습니다.")
         value = match.get(field)
         try:
             numeric = float(str(value).replace(",", ""))
         except (TypeError, ValueError):
-            raise SGISPopulationError(f"{adm_cd}의 {field} 자료가 누락·비공개되어 있습니다.") from None
+            raise SGISPopulationYearUnavailable(f"{adm_cd}의 {year}년 {field} 자료가 누락·비공개되어 있습니다.") from None
         if not math.isfinite(numeric) or numeric < 0 or not numeric.is_integer():
-            raise SGISPopulationError(f"{adm_cd}의 {field} 값이 유효하지 않습니다.")
+            raise SGISPopulationYearUnavailable(f"{adm_cd}의 {year}년 {field} 값이 유효하지 않습니다.")
         return int(numeric)
 
     def counts(self, adm_cd: str, year: str) -> tuple[int, int, int]:
@@ -141,7 +180,7 @@ class SGISClient:
         all_workers = self._stat("/stats/company.json", adm_cd, year, "tot_worker")
         manufacture = self._stat("/stats/company.json", adm_cd, year, "tot_worker", class_code="C")
         if manufacture > all_workers:
-            raise SGISPopulationError(f"{adm_cd}의 제조업 종사자수가 전체 종사자수보다 큽니다.")
+            raise SGISPopulationYearUnavailable(f"{adm_cd}의 {year}년 제조업 종사자수가 전체 종사자수보다 큽니다.")
         return residents, all_workers, manufacture
 
 
@@ -215,12 +254,14 @@ def estimate(project: Stage2Project, impacts, *, client: SGISClient | None = Non
     circles = circles_for(project, impacts)
     if not circles:
         raise SGISPopulationError("장외 영향범위와 실제 사고원점이 확인된 시나리오가 없습니다.")
-    year = census_year()
     client = client or SGISClient()
+    # The published SGIS year catalogue is authoritative: do not require a
+    # calendar-year setting in .env, and do not assume the latest population
+    # and establishment surveys necessarily share the same year.
+    years = client.available_years()
     overall_shape = unary_union([circle.geometry for circle in circles])
     features = client.administrative_areas(overall_shape)
-    areas = []
-    statistics_audit: list[dict[str, Any]] = []
+    geometry_rows: list[tuple[str, Any]] = []
     seen: set[str] = set()
     for feature in features:
         props = feature.get("properties") or {}
@@ -236,43 +277,65 @@ def estimate(project: Stage2Project, impacts, *, client: SGISClient | None = Non
         minx, miny, maxx, maxy = geo.bounds
         if not (500000 < minx < 1700000 and 900000 < miny < 2700000):
             raise SGISPopulationError("행정동 경계 좌표가 미터 단위 UTM-K가 아닙니다.")
-        population, workers, factory = client.counts(code, year)
-        areas.append((geo, population, workers, factory))
-        statistics_audit.append({
-            "행정동코드": code,
-            "SGIS_총인구": population,
-            "SGIS_전체사업체종사자": workers,
-            "SGIS_제조업종사자": factory,
-            "총괄영향범위_행정동면적포함비율": round(geo.intersection(overall_shape).area / geo.area, 6),
-        })
-    if not areas:
+        geometry_rows.append((code, geo))
+    if not geometry_rows:
         raise SGISPopulationError("통계를 연결할 수 있는 행정동이 없습니다.")
-    estimates = {}
-    for circle in circles:
-        residents, workers, direct_population, coverage = _estimate_geometry(circle.geometry, areas)
-        estimates[circle.name] = {
-            "거주민수": residents, "근로자수": workers,
-            "SGIS_주거인구": direct_population,
-            "공간자료_포괄률": round(coverage, 5),
-            "영향반경(m)": round(circle.radius, 1),
-        }
-    combined = _estimate_geometry(overall_shape, areas)
-    return {
-        "fingerprint": _fingerprint(circles, year), "source": "SGIS", "year": year,
-        "method": METHOD, "source_urls": [
-            BASE + "/boundary/userarea.geojson",
-            BASE + "/stats/population.json",
-            BASE + "/stats/company.json",
-        ],
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "administrative_dongs": sorted(seen),
-        "administrative_statistics": statistics_audit,
-        "scenario": estimates,
-        "overall": {"거주민수": combined[0], "근로자수": combined[1],
-                    "SGIS_주거인구": combined[2], "공간자료_포괄률": round(combined[3], 5)},
-        "status": "통계기반 자동 추정·산정(법정서식 초안 기재; 후속 검증 필요)",
-    }
 
+    failures: list[str] = []
+    for year in years:
+        areas: list[tuple[Any, int, int, int]] = []
+        statistics_audit: list[dict[str, Any]] = []
+        try:
+            for code, geo in geometry_rows:
+                population, workers, factory = client.counts(code, year)
+                areas.append((geo, population, workers, factory))
+                statistics_audit.append({
+                    "행정동코드": code,
+                    "SGIS_총인구": population,
+                    "SGIS_전체사업체종사자": workers,
+                    "SGIS_제조업종사자": factory,
+                    "총괄영향범위_행정동면적포함비율": round(
+                        geo.intersection(overall_shape).area / geo.area, 6
+                    ),
+                })
+            estimates = {}
+            for circle in circles:
+                residents, workers, direct_population, coverage = _estimate_geometry(circle.geometry, areas)
+                estimates[circle.name] = {
+                    "거주민수": residents, "근로자수": workers,
+                    "SGIS_주거인구": direct_population,
+                    "공간자료_포괄률": round(coverage, 5),
+                    "영향반경(m)": round(circle.radius, 1),
+                }
+            combined = _estimate_geometry(overall_shape, areas)
+        except SGISPopulationYearUnavailable as exc:
+            # A year with incomplete or suppressed area statistics cannot
+            # produce a usable estimate. Try the next *advertised* common year.
+            failures.append(str(exc))
+            continue
+        return {
+            "fingerprint": _fingerprint(circles, year), "source": "SGIS", "year": year,
+            "latest_common_year": years[0],
+            "year_selection": "최신 공통연도" if year == years[0] else "이전 공통연도(최신연도 지역자료 누락)",
+            "year_fallback_reasons": failures,
+            "method": METHOD, "source_urls": [
+                BASE + "/year/data.json",
+                BASE + "/boundary/userarea.geojson",
+                BASE + "/stats/population.json",
+                BASE + "/stats/company.json",
+            ],
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "administrative_dongs": sorted(code for code, _ in geometry_rows),
+            "administrative_statistics": statistics_audit,
+            "scenario": estimates,
+            "overall": {"거주민수": combined[0], "근로자수": combined[1],
+                        "SGIS_주거인구": combined[2], "공간자료_포괄률": round(combined[3], 5)},
+            "status": "통계기반 자동 추정·산정(법정서식 초안 기재; 후속 검증 필요)",
+        }
+    raise SGISPopulationError(
+        "SGIS 최신 공통연도부터 이전 연도까지 해당 지역의 완전한 통계를 찾지 못했습니다. "
+        "자동으로 0명을 입력하지 않습니다. " + " / ".join(failures[:3])
+    )
 
 def apply_estimate(project: Stage2Project, impacts, result: Mapping[str, Any]) -> bool:
     """Populate draft-capable numerical fields; never assert external legal approval."""
@@ -307,7 +370,7 @@ def refresh_for_draft(project: Stage2Project, impacts=None, *, client: SGISClien
     result = estimate(project, impacts, client=client)
     apply_estimate(project, impacts, result)
     project.set_field(RESULT_KEY, "SGIS 공식통계 기반 인원 자동산정 근거", result, "CALCULATED",
-                      note="최신 통계가 아닌 기준연도 값이며 면적가중·근로자 분류 추정. 법적 검증 전 초안.")
+                      note="SGIS 최신 공통연도 자동 선택(누락 시 이전 연도), 면적가중·근로자 분류 추정. 법적 검증 전 초안.")
     # The program's downloadable supporting report now includes SGIS numbers,
     # so re-hash its evidence instead of retaining the pre-SGIS report digest.
     previous_report = project.get_field(impact_workspace.DOCUMENT_KEY)
