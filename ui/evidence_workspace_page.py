@@ -569,7 +569,7 @@ def _step_scenarios(project, found, triage) -> None:
             "‘보호대상 구분’과 ‘세부유형’ 셀을 누르면 법정 선택지가 열립니다. "
             "실제 용도·수용 인원·건물 규모를 확인하고 선택하세요. "
             "비어 있는 칸은 미확인 상태이며 이름으로 추정한 갑종·을종도 확정값이 아닙니다. "
-            "20곳을 모두 수정한 뒤 아래 ‘선택값 한 번에 저장’ 버튼을 누르세요. "
+            "20곳을 모두 수정한 뒤 아래 ‘선택값 확정·한 번에 저장’ 버튼을 누르세요. "
             "저장한 선택값도 법정 검토 완료로 처리하지 않습니다."
         )
         import pandas as pd
@@ -610,7 +610,7 @@ def _step_scenarios(project, found, triage) -> None:
                 },
             )
             submitted = st.form_submit_button(
-                "선택값 한 번에 저장", type="primary", use_container_width=True
+                "선택값 확정·한 번에 저장", type="primary", use_container_width=True
             )
         if submitted:
             try:
@@ -626,11 +626,14 @@ def _step_scenarios(project, found, triage) -> None:
                         )
                     save_project(project)
                     st.session_state["protected_target_editor_warnings_" + pid] = warnings
+                    st.session_state["protected_target_saved_notice_" + pid] = True
                     st.rerun()
             except (ValueError, TypeError) as exc:
                 st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
 
 
+        if st.session_state.pop("protected_target_saved_notice_" + pid, False):
+            st.success("보호대상 후보 선택값을 한 번에 저장했습니다. 법정 검토 완료와는 별개입니다.")
         for warning in st.session_state.pop("protected_target_editor_warnings_" + pid, []):
             st.warning(warning)
         if st.session_state.pop("protected_target_refresh_notice_" + pid, ""):
