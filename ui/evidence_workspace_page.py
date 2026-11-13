@@ -567,63 +567,68 @@ def _step_scenarios(project, found, triage) -> None:
         st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
         st.caption(
             "‘보호대상 구분’과 ‘세부유형’ 셀을 누르면 법정 선택지가 열립니다. "
-            "실제 용도·수용 인원·건물 규모를 확인하고 선택하세요. "
-            "비어 있는 칸은 미확인 상태이며 이름으로 추정한 갑종·을종도 확정값이 아닙니다. "
-            "수정 내용은 자동 저장하지만 법정 검토 완료로 처리하지 않습니다."
+            "실제 용도를 확인해 구분·세부유형만 선택하세요. 규모 확인이 필요한 시설은 "
+            "근거가 없으면 빈칸으로 두세요. 주민·근로자 수는 입력하지 않아도 됩니다. "
+            "모든 후보를 수정한 뒤 ‘선택값 확정·한 번에 저장’을 한 번 누르세요. "
+            "저장된 선택값은 법정 검토 완료와는 별개입니다."
         )
         import pandas as pd
 
         review_rows = cap_target_review.candidate_review_rows(project, candidates)
-        frame = pd.DataFrame(review_rows)
-        for col in ("거주민수", "근로자수"):
-            # Numeric editor must distinguish an unverified blank from 0 persons.
-            frame[col] = pd.to_numeric(frame[col], errors="coerce")
-        edited = st.data_editor(
-            frame, hide_index=True, width="stretch", height=590,
-            num_rows="fixed", key="protected_target_editor_" + pid,
-            disabled=[
-                "보호대상 명칭", "주소·위치", "사업장 경계와 거리(m)"
-            ],
-            column_config={
-                "보호대상 명칭": st.column_config.TextColumn("보호대상 명칭", width="medium"),
-                "보호대상 구분": st.column_config.SelectboxColumn(
-                    "보호대상 구분", options=list(cap_target_review.LEGAL_CATEGORIES),
-                    required=False, width="medium",
-                    help="갑종 / 을종 / 환경수용체 중 실제 시설의 용도와 규모를 확인해 선택합니다. 미확인은 빈칸으로 둡니다."
-                ),
-                "세부유형": st.column_config.SelectboxColumn(
-                    "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
-                    required=False, width="medium",
-                    help="법정 세부유형 선택지입니다. 보호대상 구분에 속하는 유형을 선택하세요."
-                ),
-                "거주민수": st.column_config.NumberColumn(
-                    "거주민수", min_value=0, step=1, width="small",
-                    help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요(0명과 다릅니다)."
-                ),
-                "근로자수": st.column_config.NumberColumn(
-                    "근로자수", min_value=0, step=1, width="small",
-                    help="자료로 확인한 인원만 입력하세요. 모르는 값은 비워 두세요."
-                ),
-                "GIS/현장 근거": st.column_config.TextColumn("GIS/현장 근거", width="large"),
-            },
+        # Display only the information needed for a staff member's decision.
+        # Address, GIS provenance and unverified populations remain stored in
+        # the source facts, never discarded or assumed to be zero.
+        visible_columns = (
+            "보호대상 명칭", "보호대상 구분", "세부유형", "사업장 경계와 거리(m)"
         )
-        try:
-            changed, warnings = cap_target_review.apply_candidate_edits(
-                project, edited.to_dict("records"), candidates
+        frame = pd.DataFrame(review_rows).loc[:, visible_columns]
+        with st.form(key="protected_target_batch_form_" + pid):
+            edited = st.data_editor(
+                frame, hide_index=True, width="stretch", height=590,
+                num_rows="fixed", key="protected_target_editor_" + pid,
+                disabled=[
+                    "보호대상 명칭", "사업장 경계와 거리(m)"
+                ],
+                column_config={
+                    "보호대상 명칭": st.column_config.TextColumn("보호대상 명칭", width="medium"),
+                    "보호대상 구분": st.column_config.SelectboxColumn(
+                        "보호대상 구분", options=list(cap_target_review.LEGAL_CATEGORIES),
+                        required=False, width="medium",
+                        help="갑종 / 을종 / 환경수용체 중 실제 시설의 용도와 규모를 확인해 선택합니다. 미확인은 빈칸으로 둡니다."
+                    ),
+                    "세부유형": st.column_config.SelectboxColumn(
+                        "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
+                        required=False, width="medium",
+                        help="법정 세부유형 선택지입니다. 보호대상 구분에 속하는 유형을 선택하세요."
+                    ),
+                },
             )
-            if changed:
-                try:
-                    scenario_pipeline.refresh(project)
-                except (ValueError, TypeError, RuntimeError) as exc:
-                    st.session_state["protected_target_refresh_notice_" + pid] = (
-                        "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
-                    )
-                save_project(project)
-                st.session_state["protected_target_editor_warnings_" + pid] = warnings
-                st.rerun()
-        except (ValueError, TypeError) as exc:
-            st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
+            submitted = st.form_submit_button(
+                "선택값 확정·한 번에 저장", key="protected_target_batch_save_" + pid,
+                type="primary", use_container_width=True
+            )
+        if submitted:
+            try:
+                changed, warnings = cap_target_review.apply_candidate_edits(
+                    project, edited.to_dict("records"), candidates
+                )
+                if changed:
+                    try:
+                        scenario_pipeline.refresh(project)
+                    except (ValueError, TypeError, RuntimeError) as exc:
+                        st.session_state["protected_target_refresh_notice_" + pid] = (
+                            "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
+                        )
+                    save_project(project)
+                    st.session_state["protected_target_editor_warnings_" + pid] = warnings
+                    st.session_state["protected_target_saved_notice_" + pid] = True
+                    st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
 
+
+        if st.session_state.pop("protected_target_saved_notice_" + pid, False):
+            st.success("보호대상 후보 선택값을 한 번에 저장했습니다. 법정 검토 완료와는 별개입니다.")
         for warning in st.session_state.pop("protected_target_editor_warnings_" + pid, []):
             st.warning(warning)
         if st.session_state.pop("protected_target_refresh_notice_" + pid, ""):
