@@ -295,6 +295,7 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
     if no_targets is True and targets:
         blockers.append("보호대상 없음으로 확인했지만 보호대상 명세 행이 함께 존재합니다.")
 
+    unknown_target_people: list[str] = []
     allowed_classes = {"갑종", "을종", "환경수용체"}
     if no_targets is not True:
         seen: set[tuple[str, str]] = set()
@@ -320,7 +321,10 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
             if distance is None or distance < 0:
                 blockers.append(f"{label}: 사업장 경계와 거리(m)를 0 이상의 GIS 확정값으로 입력해 주세요.")
             if people is None:
-                blockers.append(f"{label}: 인원수는 0 이상의 정수로 확인해 주세요.")
+                # Form 13's target *list* is still useful without a building-
+                # specific headcount; blank is not zero. The separate scenario/
+                # overall population totals are validated independently.
+                unknown_target_people.append(label)
             if not row_evidence:
                 blockers.append(f"{label}: GIS 근거 식별자가 비어 있습니다.")
 
@@ -352,7 +356,9 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
     messages = (
         "총괄영향범위 형상은 개별 장외거리의 최대값으로 대체하지 않고 확인된 GIS/KORA 결과를 사용합니다.",
         "보호대상 목록은 총괄영향범위와 공간적으로 중첩된 대상을 회사/GIS가 확정한 경우에만 작성합니다.",
-    )
+    ) + ((f"개별 보호대상 {len(unknown_target_people)}건의 인원은 미확인입니다. "
+           "0명으로 단정하지 않으며 제출 전 근거자료로 검증해야 합니다.",)
+         if unknown_target_people else ())
     return CAPForm13Data(
         summary=summary,
         protected_targets=tuple(out_targets),
