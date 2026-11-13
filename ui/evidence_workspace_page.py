@@ -610,7 +610,8 @@ def _step_scenarios(project, found, triage) -> None:
                 },
             )
             submitted = st.form_submit_button(
-                "선택값 확정·한 번에 저장", type="primary", use_container_width=True
+                "선택값 확정·한 번에 저장", key="protected_target_batch_save_" + pid,
+                type="primary", use_container_width=True
             )
         if submitted:
             try:
