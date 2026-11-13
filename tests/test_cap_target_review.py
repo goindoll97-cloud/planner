@@ -64,6 +64,31 @@ def test_changed_selection_is_saved_as_hold_not_falsely_legally_confirmed():
     )[0]
 
 
+def test_batch_four_column_review_preserves_hidden_gis_provenance_and_unknown_counts():
+    p = _project()
+    candidates = _candidates()
+    # Some separately verified people counts may already exist in the project.
+    candidates[1]["거주민수"] = 78
+    candidates[1]["근로자수"] = ""
+    form8.save(p, candidates, no_target=False, status="HOLD")
+    visible = ("보호대상 명칭", "보호대상 구분", "세부유형", "사업장 경계와 거리(m)")
+    edited = [{key: row[key] for key in visible} for row in cap_target_review.candidate_review_rows(p, candidates)]
+    edited[1]["보호대상 구분"] = "을종"
+    edited[1]["세부유형"] = "주택·업무시설"
+    changed, warnings = cap_target_review.apply_candidate_edits(p, edited, candidates)
+    assert changed and not warnings
+    saved = {r["보호대상 명칭"]: r for r in form8.saved_rows(p)}
+    assert saved["북구청"]["보호대상 구분"] == "을종"
+    assert saved["북구청"]["세부유형"] == "주택·업무시설"
+    assert saved["북구청"]["주소·위치"] == "광주광역시 북구"
+    assert saved["북구청"]["GIS/현장 근거"] == "지도 위치 후보"
+    assert saved["북구청"]["사업장 경계와 거리(m)"] == 2
+    assert saved["북구청"]["거주민수"] == 78
+    assert saved["북구청"]["근로자수"] == ""
+    assert saved["용봉동 대신아파트"]["거주민수"] == ""
+    assert p.get_field(form8.SITE_KEY).status == "HOLD"
+
+
 def test_category_change_clears_incompatible_subtype_and_warns():
     p = _project()
     candidates = _candidates()
