@@ -209,6 +209,9 @@ class EvidencePageTests(unittest.TestCase):
                          f"tables={ [list(e.value.columns) for e in at.dataframe] } "
                          f"screen={ _texts(at) }")
         self.assertEqual(len(editors[0].value), 2)
+        self.assertEqual(list(editors[0].value.columns), [
+            "보호대상 명칭", "보호대상 구분", "세부유형", "사업장 경계와 거리(m)"
+        ])
         texts = " ".join(_texts(at))
         for expected in ("갑종 보호대상", "을종 보호대상", "환경수용체", "법정 선택지",
                          "별표 4", "학교", "주택"):
@@ -239,7 +242,11 @@ class EvidencePageTests(unittest.TestCase):
             at = self.run_page(3)
             button_key = "protected_target_batch_save_" + self.pid
             self.assertEqual(len([b for b in at.button if b.key == button_key]), 1)
-            self.assertEqual(len(next(t.value for t in at.dataframe if "보호대상 구분" in t.value.columns)), 20)
+            visible = next(t.value for t in at.dataframe if "보호대상 구분" in t.value.columns)
+            self.assertEqual(len(visible), 20)
+            self.assertEqual(list(visible.columns), [
+                "보호대상 명칭", "보호대상 구분", "세부유형", "사업장 경계와 거리(m)"
+            ])
             apply.assert_not_called()
 
             # An ordinary rerun must not persist dropdown selections.
