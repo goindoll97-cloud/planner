@@ -24,7 +24,7 @@ from shapely.ops import unary_union
 
 from . import cap_impact_workspace as impact_workspace
 from . import cap_scenario_workspace as scenario_workspace
-from .project import Stage2Project
+from .project import EvidenceRef, Stage2Project
 
 BASE = "https://sgisapi.mods.go.kr/OpenAPI3"
 RESULT_KEY = "cap.offsite.sgis_population_assessment"
@@ -299,4 +299,19 @@ def refresh_for_draft(project: Stage2Project, impacts=None, *, client: SGISClien
     apply_estimate(project, impacts, result)
     project.set_field(RESULT_KEY, "SGIS 공식통계 기반 인원 자동산정 근거", result, "CALCULATED",
                       note="최신 통계가 아닌 기준연도 값이며 면적가중·근로자 분류 추정. 법적 검증 전 초안.")
+    # The program's downloadable supporting report now includes SGIS numbers,
+    # so re-hash its evidence instead of retaining the pre-SGIS report digest.
+    previous_report = project.get_field(impact_workspace.DOCUMENT_KEY)
+    if previous_report and previous_report.status == "CALCULATED":
+        report = impact_workspace.report_docx(project, impacts)
+        project.set_field(
+            impact_workspace.DOCUMENT_KEY, "영향범위 분석 근거서",
+            previous_report.value, "CALCULATED",
+            evidence=[EvidenceRef(
+                source_type="PROGRAM_OUTPUT", source_name="영향범위_분석_근거서.docx",
+                sha256=sha256(report).hexdigest(),
+                location="사고시나리오 결과 화면에서 내려받기",
+            )],
+            note="SGIS 인원 추정 및 출처를 포함한 최신 영향범위 분석 근거서",
+        )
     return result
