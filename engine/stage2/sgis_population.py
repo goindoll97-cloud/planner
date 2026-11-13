@@ -220,6 +220,7 @@ def estimate(project: Stage2Project, impacts, *, client: SGISClient | None = Non
     overall_shape = unary_union([circle.geometry for circle in circles])
     features = client.administrative_areas(overall_shape)
     areas = []
+    statistics_audit: list[dict[str, Any]] = []
     seen: set[str] = set()
     for feature in features:
         props = feature.get("properties") or {}
@@ -237,6 +238,13 @@ def estimate(project: Stage2Project, impacts, *, client: SGISClient | None = Non
             raise SGISPopulationError("행정동 경계 좌표가 미터 단위 UTM-K가 아닙니다.")
         population, workers, factory = client.counts(code, year)
         areas.append((geo, population, workers, factory))
+        statistics_audit.append({
+            "행정동코드": code,
+            "SGIS_총인구": population,
+            "SGIS_전체사업체종사자": workers,
+            "SGIS_제조업종사자": factory,
+            "총괄영향범위_행정동면적포함비율": round(geo.intersection(overall_shape).area / geo.area, 6),
+        })
     if not areas:
         raise SGISPopulationError("통계를 연결할 수 있는 행정동이 없습니다.")
     estimates = {}
@@ -258,6 +266,7 @@ def estimate(project: Stage2Project, impacts, *, client: SGISClient | None = Non
         ],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "administrative_dongs": sorted(seen),
+        "administrative_statistics": statistics_audit,
         "scenario": estimates,
         "overall": {"거주민수": combined[0], "근로자수": combined[1],
                     "SGIS_주거인구": combined[2], "공간자료_포괄률": round(combined[3], 5)},
