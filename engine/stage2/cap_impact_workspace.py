@@ -159,7 +159,11 @@ def apply_to_forms(project: Stage2Project, impacts: list[ScenarioImpact], *, wor
 
     listed = []
     for target in union.values():
-        people = int(_number(target.get("거주민수")) or 0) + int(_number(target.get("근로자수")) or 0)
+        resident = _number(target.get("거주민수"))
+        worker = _number(target.get("근로자수"))
+        # A missing headcount is NOT a real zero. Preserve that distinction
+        # when exporting individual protected-target facts to Form 13.
+        people = int(resident + worker) if resident is not None and worker is not None else ""
         listed.append({
             "보호대상 명칭": target.get("보호대상 명칭"), "보호대상 구분": target.get("보호대상 구분"),
             "세부유형": target.get("세부유형"), "주소·위치": target.get("주소·위치"),
