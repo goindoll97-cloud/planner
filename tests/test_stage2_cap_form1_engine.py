@@ -143,8 +143,8 @@ class CAPForm1EngineTests(unittest.TestCase):
         selected.assert_called_once_with([("급성독성(흡입)", 2), ("인화성 액체", 2)])
         self.assertEqual(unresolved["사업장 내 최대보유량(ton)"], "5")
         self.assertEqual(unresolved["하위규정수량(ton)"], "")
-        self.assertEqual(unresolved["하위규정수량 표시"], "[확인 필요]")
-        self.assertEqual(unresolved["상위규정수량 표시"], "[확인 필요]")
+        self.assertEqual(unresolved["하위규정수량 표시"], "[확인 필요: 규정수량]")
+        self.assertEqual(unresolved["상위규정수량 표시"], "[확인 필요: 규정수량]")
         self.assertTrue(any("가상 염산 35%" in b and "구분 근거" in b for b in result.blockers))
 
     def test_unresolved_direct_variant_never_gets_appendix1_as_a_backdoor(self):
@@ -213,8 +213,8 @@ class CAPForm1EngineTests(unittest.TestCase):
                 {"물질명": "가상 염산", "CAS No.": "7647-01-0",
                  "사업장 내 최대보유량(ton)": "5",
                  "하위규정수량(ton)": "", "상위규정수량(ton)": "",
-                 "하위규정수량 표시": "[확인 필요]",
-                 "상위규정수량 표시": "[확인 필요]"},
+                 "하위규정수량 표시": "[확인 필요: 규정수량]",
+                 "상위규정수량 표시": "[확인 필요: 규정수량]"},
             ),
             blockers=("가상 염산: 법령분류 확인 필요",),
             messages=(), legal_lookup_ready=True,
@@ -228,8 +228,8 @@ class CAPForm1EngineTests(unittest.TestCase):
                 self.assertEqual(table.cell(2, 6).text, "100")
                 self.assertEqual(table.cell(3, 0).text, "가상 염산")
                 self.assertEqual(table.cell(3, 3).text, "5")
-                self.assertEqual(table.cell(3, 5).text, "[확인 필요]")
-                self.assertEqual(table.cell(3, 6).text, "[확인 필요]")
+                self.assertEqual(table.cell(3, 5).text, "[확인 필요: 규정수량]")
+                self.assertEqual(table.cell(3, 6).text, "[확인 필요: 규정수량]")
                 self.assertEqual(table.cell(0, 5).text, "구분 근거")
 
     def test_unresolved_legal_match_keeps_thresholds_blank(self):
