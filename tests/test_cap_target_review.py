@@ -89,6 +89,30 @@ def test_batch_four_column_review_preserves_hidden_gis_provenance_and_unknown_co
     assert p.get_field(form8.SITE_KEY).status == "PROPOSED"
 
 
+def test_save_adds_new_gis_candidates_even_without_dropdown_changes():
+    p = _project()
+    initial = _candidates()[:1]
+    form8.save(p, initial, no_target=False, status="PROPOSED")
+    current = _candidates()
+    edited = cap_target_review.candidate_review_rows(p, current)
+    changed, issues = cap_target_review.apply_candidate_edits(p, edited, current)
+    assert changed and not issues
+    assert {r["보호대상 명칭"] for r in form8.saved_rows(p)} == {
+        "전남대학교", "북구청", "용봉동 대신아파트"
+    }
+    assert p.get_field(form8.SITE_KEY).status == "PROPOSED"
+
+    # GIS facts can change without the user touching a dropdown. The draft
+    # must use the latest boundary-based distance, not a stale previous one.
+    newer = [dict(row) for row in current]
+    newer[0]["사업장 경계와 거리(m)"] = 12
+    changed, _ = cap_target_review.apply_candidate_edits(
+        p, cap_target_review.candidate_review_rows(p, newer), newer
+    )
+    assert changed
+    assert form8.saved_rows(p)[0]["사업장 경계와 거리(m)"] == 12
+
+
 def test_category_change_clears_incompatible_subtype_and_warns():
     p = _project()
     candidates = _candidates()
