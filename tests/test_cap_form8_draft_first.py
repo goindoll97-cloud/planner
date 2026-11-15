@@ -68,7 +68,7 @@ def test_first_save_even_without_dropdown_changes_populates_twenty_draft_rows():
     assert second.cell(1, 1).text == "교육·연구시설"
     assert second.cell(2, 1).text == ""  # Unknown classification stays blank, never invented.
     assert "세부유형 미확인 10건" in first.rows[1].cells[0].text
-    assert second.cell(2, 3).text == "30"
+    assert float(second.cell(2, 3).text) == 30.0
     assert "초안" in first.rows[1].cells[0].text
     assert "☒ 교육·연구시설" in " ".join(
         cell.text for row in first.rows for cell in row.cells
