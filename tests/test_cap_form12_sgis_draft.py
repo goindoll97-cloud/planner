@@ -175,12 +175,21 @@ def test_form12_impact_map_uses_only_receptor_candidates_for_its_scenario():
 
 
 def _receptor_boxes(table):
-    """The official Annex-12 specimen has subtype choices on rows 5-14."""
-    return {
-        "school": table.cell(6, 3).text,
-        "factory": table.cell(11, 1).text,
-        "river": table.cell(12, 2).text,
-    }
+    """Find the original subtype choice by text, not logical grid position.
+
+    Annex 12 merges its category label across multiple rows and some choice
+    cells across columns, so table.cell(row, col) can address a neighbor.
+    """
+    options = {"school": "교육·연구시설", "factory": "공업시설", "river": "하천"}
+    found = {}
+    for key, label in options.items():
+        matches = [
+            cell.text for row in table.rows[5:15] for cell in cap._unique_cells(row)
+            if cap.base._norm(cell.text.lstrip("□☐☒ ").strip()) == cap.base._norm(label)
+        ]
+        assert len(matches) == 1, (label, matches)
+        found[key] = matches[0]
+    return found
 
 
 def test_form12_checks_each_scenario_only_for_actual_gis_overlap_not_500m_candidates():
