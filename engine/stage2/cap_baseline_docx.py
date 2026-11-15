@@ -790,13 +790,13 @@ def _fill_form7_table(table, row) -> None:
 
 
 def _fill_form8_site_map(cell, project: Stage2Project, reviewed_rows: Sequence[Mapping[str, object]],
-                         summary: str) -> None:
+                         summary: str, *, draft: bool = False) -> None:
     """Use the original 260409 map space for an actual GIS figure, not a text summary."""
     from .cap_form8_map import render_site_map
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Inches, Pt
 
-    result = render_site_map(project, list(reviewed_rows))
+    result = render_site_map(project, list(reviewed_rows), draft=draft)
     if result is None:
         # Do not turn a mailing-address search point into an invented site
         # boundary. Explain why the map section cannot be drawn yet.
@@ -837,39 +837,57 @@ def _fill_form8_site_map(cell, project: Stage2Project, reviewed_rows: Sequence[M
     if result.missing:
         detail(f"위치도형이 없는 보호대상 {result.missing}건은 지도번호를 표시하지 않았습니다.")
     if result.provisional:
-        detail(f"테두리 점 {result.provisional}곳은 검토 전 후보이며 법정 보호대상 확정값이 아닙니다.")
+        detail(f"윤곽선 번호 {result.provisional}곳은 초안 후보입니다. 초안 작성 후 보호대상 분류·위치를 검토하세요.")
 
 
 def _fill_form8(tables, project: Stage2Project) -> None:
     context_table, list_table = tables
-    prepared = build_cap_form8_data(project)
+    # Drafts must reflect the saved working list, including PROPOSED and
+    # legacy HOLD records. The strict readiness check remains separate and
+    # can report discrepancies *after* a first draft has been produced.
+    prepared = build_cap_form8_data(project, for_draft=True)
+    from .cap_form8_workspace import SITE_KEY, scope_reviewed
+    site_record = project.get_field(SITE_KEY)
+    draft_choices = (site_record is None or site_record.status not in CONFIRMED_STATUSES
+                     or not scope_reviewed(project))
 
     if prepared.no_protected_targets:
-        summary = "사업장 경계 500m 내 보호대상 없음 (회사/GIS 확인)"
+        summary = ("사업장 경계 500m 내 보호대상 없음 (초안 입력, 검증 필요)"
+                   if draft_choices else "사업장 경계 500m 내 보호대상 없음 (회사/GIS 확인)")
     elif prepared.rows:
         counts = {"갑종": 0, "을종": 0, "환경수용체": 0}
         for row in prepared.rows:
             category = _clean(row.get("보호대상 구분"))
             if category in counts:
                 counts[category] += 1
+        title = "사업장 경계 500m 내 보호대상 후보" if draft_choices else "사업장 경계 500m 내 보호대상"
         summary = (
-            f"사업장 경계 500m 내 보호대상 {len(prepared.rows)}건"
+            f"{title} {len(prepared.rows)}건"
             f" (갑종 {counts['갑종']}건 / 을종 {counts['을종']}건 / "
             f"환경수용체 {counts['환경수용체']}건)"
         )
+        if draft_choices:
+            missing_types = sum(not row.get("보호대상 종류") for row in prepared.rows)
+            missing_distances = sum(row.get("사업장 경계와 거리(m)") in ("", None)
+                                    for row in prepared.rows)
+            summary += (
+                f" / 초안 작성 후 확인: 세부유형 미확인 {missing_types}건, "
+                f"거리 미확인 {missing_distances}건"
+            )
     else:
         summary = ""
 
     if len(context_table.rows) < 2 or len(_unique_cells(context_table.rows[1])) != 1:
         raise ValueError("별지 제8호서식 원본의 입지현황 지도 공간을 식별하지 못했습니다.")
     _fill_form8_site_map(
-        _unique_cells(context_table.rows[1])[0], project, prepared.rows, summary
+        _unique_cells(context_table.rows[1])[0], project, prepared.rows, summary,
+        draft=draft_choices,
     )
 
     if prepared.rows or prepared.no_protected_targets:
         from .cap_form8_workspace import SUBTYPES, selected_options
 
-        chosen = selected_options(project)
+        chosen = selected_options(project, for_draft=True)
         printed = {
             base._norm(option): f"{'☒' if option in chosen[category] else '☐'} {option}"
             for category, options in SUBTYPES.items()
@@ -884,7 +902,7 @@ def _fill_form8(tables, project: Stage2Project) -> None:
     rows = [
         [
             row.get("일련번호", ""),
-            row.get("보호대상 종류", ""),
+            row.get("보호대상 종류") or "",
             row.get("보호대상 명칭", ""),
             row.get("사업장 경계와 거리(m)", ""),
         ]

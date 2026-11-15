@@ -555,9 +555,9 @@ def _step_scenarios(project, found, triage) -> None:
 
     pid, names = project.project_id, found["names"]
     st.caption(
-        "지도에서 사업장 경계를 확인하면 주변 보호대상 후보를 검색하고 사고시나리오를 검토합니다. "
+        "지도에서 사업장 경계를 확인하면 주변 보호대상 후보를 검색하고 사고시나리오 초안을 만듭니다. "
         "검색 결과는 확인 전 후보입니다. 별지 제12·13호의 실제 영향범위·주민 수까지 "
-        "확정하려면 사고원점, 영향거리, 보호대상 위치의 공간중첩과 근거자료를 별도로 확인해야 합니다."
+        "작성 전 승인이나 검토 완료는 요구하지 않습니다. 공간중첩·근거자료 검증은 초안을 만든 다음 진행합니다."
     )
     _boundary(project)
     candidates = scenario_survey.candidate_rows(project)
@@ -567,10 +567,11 @@ def _step_scenarios(project, found, triage) -> None:
         st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
         st.caption(
             "‘보호대상 구분’과 ‘세부유형’ 셀을 누르면 법정 선택지가 열립니다. "
-            "실제 용도를 확인해 구분·세부유형만 선택하세요. 규모 확인이 필요한 시설은 "
+            "아는 범위에서 구분·세부유형만 선택하세요. 규모 확인이 필요한 시설은 "
             "근거가 없으면 빈칸으로 두세요. 주민·근로자 수는 입력하지 않아도 됩니다. "
-            "모든 후보를 수정한 뒤 ‘선택값 확정·한 번에 저장’을 한 번 누르세요. "
-            "저장된 선택값은 법정 검토 완료와는 별개입니다."
+            "모든 후보를 수정한 뒤 ‘초안에 반영·한 번에 저장’을 누르세요. "
+            "입력값은 곧바로 별지 제8호서식 초안의 보호대상 목록·지도에 반영됩니다. "
+            "검토는 작성된 초안을 보고 나중에 진행합니다."
         )
         import pandas as pd
 
@@ -604,7 +605,7 @@ def _step_scenarios(project, found, triage) -> None:
                 },
             )
             submitted = st.form_submit_button(
-                "선택값 확정·한 번에 저장", key="protected_target_batch_save_" + pid,
+                "초안에 반영·한 번에 저장", key="protected_target_batch_save_" + pid,
                 type="primary", use_container_width=True
             )
         if submitted:
@@ -628,7 +629,7 @@ def _step_scenarios(project, found, triage) -> None:
 
 
         if st.session_state.pop("protected_target_saved_notice_" + pid, False):
-            st.success("보호대상 후보 선택값을 한 번에 저장했습니다. 법정 검토 완료와는 별개입니다.")
+            st.success("보호대상 후보를 초안 작성자료에 저장했습니다. ④에서 초안을 생성한 뒤 검토하면 됩니다.")
         for warning in st.session_state.pop("protected_target_editor_warnings_" + pid, []):
             st.warning(warning)
         if st.session_state.pop("protected_target_refresh_notice_" + pid, ""):
@@ -677,7 +678,7 @@ def _step_scenarios(project, found, triage) -> None:
             "[국가법령정보센터에서 현행 작성규정 확인]"
             "(https://www.law.go.kr/admRulLsInfoP.do?admRulSeq=2100000285508)"
         )
-        st.caption("지도로 조사한 후보를 엑셀에 담아 보관할 수도 있습니다. 화면에서 선택한 구분은 저장되지만 검토 완료는 별개입니다.")
+        st.caption("지도로 조사한 후보를 엑셀에 담아 보관할 수도 있습니다. 저장한 구분은 초안에 바로 반영되며, 작성된 초안의 적합성 검토는 이후에 합니다.")
         try:
             original, _ = _current_workbook(project)
             enriched = scenario_survey.company_workbook(project, original=original)

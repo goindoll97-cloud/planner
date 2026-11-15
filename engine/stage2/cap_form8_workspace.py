@@ -89,8 +89,11 @@ def review(project: Stage2Project) -> dict[str, Any]:
 
 
 def invalidate_review(project: Stage2Project) -> None:
-    """An edited candidate list must not inherit a previous completed review."""
-    project.set_field(REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {}, "HOLD")
+    """Drop stale evidence, without creating a mandatory pre-draft review state."""
+    project.set_field(
+        REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {}, "PROPOSED",
+        note="변경 전 확인기록은 재사용하지 않음. 초안을 먼저 생성하고 이후에 검토합니다.",
+    )
 
 
 def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mapping[str, Any]] | None = None
@@ -362,11 +365,15 @@ def candidate_row(candidate: Candidate, *, unclassified: bool = False) -> dict[s
     }
 
 
-def selected_options(project: Stage2Project) -> dict[str, set[str]]:
-    """Which printed checkbox options apply, derived from the receptor list."""
+def selected_options(project: Stage2Project, *, for_draft: bool = False) -> dict[str, set[str]]:
+    """Draft checkboxes reflect saved selections without requiring pre-review.
+
+    Strict evidence validation remains separate; a marked checkbox in an
+    explicitly labeled draft does not certify a legal target classification.
+    """
     chosen: dict[str, set[str]] = {c: set() for c in CATEGORIES}
     for row in saved_rows(project):
-        if _norm(row.get("500m 범위 전체 확인")) not in ("true", "예", "yes", "1"):
+        if not for_draft and _norm(row.get("500m 범위 전체 확인")) not in ("true", "예", "yes", "1"):
             continue
         category = str(row.get("보호대상 구분") or "")
         for option in SUBTYPES.get(category, ()):
@@ -376,4 +383,5 @@ def selected_options(project: Stage2Project) -> dict[str, set[str]]:
 
 
 def needs(project: Stage2Project) -> list[str]:
-    return list(build_cap_form8_data(project).blockers)
+    """Diagnose the actual saved draft after writing, not an empty 'HOLD' proxy."""
+    return list(build_cap_form8_data(project, for_draft=True).blockers)

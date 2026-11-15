@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""Fail-closed preparation for CAP Annex Form 8 site-surroundings data.
+"""CAP Annex Form 8 site-surroundings data: draft first, validate later.
 
-The program does not discover nearby receptors by itself. Form 8 is populated
-only from company/GIS/field-confirmed structured rows. Distances and receptor
-classification therefore remain auditable source facts rather than AI guesses.
+Draft rendering uses saved candidate rows even when not legally verified.
+The existing strict checks remain as post-draft diagnostics, not pre-draft
+approval. Unknown legal classifications are never inferred or fabricated.
 """
 
 from dataclasses import dataclass
@@ -74,19 +74,24 @@ def _yes_no(value: object) -> bool | None:
     return None
 
 
-def _confirmed_rows(project: Stage2Project) -> list[dict[str, Any]]:
+def _source_rows(project: Stage2Project, *, for_draft: bool = False) -> list[dict[str, Any]]:
     rec = project.get_field("cap.site.surrounding_environment")
-    if rec is None or rec.status not in CONFIRMED_STATUSES or not isinstance(rec.value, list):
+    if rec is None or not isinstance(rec.value, list):
+        return []
+    # File provenance/verification remains available to the final quality
+    # checks, but no status can prevent an already saved draft candidate
+    # from appearing in the *draft document*.
+    if not for_draft and rec.status not in CONFIRMED_STATUSES:
         return []
     return [dict(row) for row in rec.value if isinstance(row, Mapping)]
 
 
-def build_cap_form8_data(project: Stage2Project) -> CAPForm8Data:
-    source_rows = _confirmed_rows(project)
+def build_cap_form8_data(project: Stage2Project, *, for_draft: bool = False) -> CAPForm8Data:
+    source_rows = _source_rows(project, for_draft=for_draft)
     if not source_rows:
         return CAPForm8Data(
             (),
-            ("사업장 주변 보호대상 정보를 구조화된 GIS/현장 확인표로 제출해 주세요.",),
+            ("사업장 주변 보호대상 자료가 없습니다. 초안 작성 후 지도 또는 회사 자료에서 추가해 주세요.",),
             (),
             False,
         )

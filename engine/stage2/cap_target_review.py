@@ -1,8 +1,8 @@
-"""Stage-③ protection-target candidate edits, without legal auto-confirmation.
+"""Stage-③ protection-target candidate edits, prepared for immediate draft output.
 
-Only the legally enumerated category and subtype values can be selected in the
-new-employee UI. Names alone are suggestions, not final legal classifications.
-The user's edits remain HOLD until the full 500 m scope and sources are checked.
+The operator selects category/subtype once. The choices are saved as PROPOSED
+working facts, not final legal verification, and flow straight into Annex 8's
+draft before any post-draft review. Missing or invalid facts remain explicit.
 """
 from __future__ import annotations
 
@@ -51,11 +51,11 @@ def candidate_review_rows(project, candidates: list[dict] | None = None) -> list
 
 def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
                           candidates: list[dict] | None = None) -> tuple[bool, list[str]]:
-    """Persist only changed editable facts, not an unverified final approval.
+    """Save draft choices once, without a legal approval or review prerequisite.
 
     The geometry, GIS distance and addresses come only from the map survey.
     Existing targets absent from the current candidate list are preserved.
-    A category/subtype mismatch clears the invalid subtype and asks for review.
+    A category/subtype mismatch clears the invalid subtype for later correction.
     """
     original = candidate_review_rows(project, candidates)
     if len(original) != len(edited_rows):
@@ -95,7 +95,19 @@ def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
                 changed = True
                 break
         updated.append(row)
-    if not changed:
+    # Clicking the save button for the first time must stage ALL candidates,
+    # even when every proposed classification is unchanged. Otherwise 20
+    # searched facilities silently disappear from the draft until somebody
+    # edits at least one dropdown.
+    source_columns = ("주소·위치", "좌표", "사업장 경계와 거리(m)",
+                      "검색 출처·검색일", "GIS/현장 근거")
+    has_new_or_updated_gis = any(
+        (_key(row) not in previous_by_key)
+        or any(_clean(row.get(col)) != _clean(previous_by_key[_key(row)].get(col))
+               for col in source_columns)
+        for row in updated
+    )
+    if not changed and not has_new_or_updated_gis:
         return False, warnings
 
     # Do not erase independently entered targets outside the current map
@@ -109,6 +121,6 @@ def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
         else:
             merged.append(old)
     merged.extend(changed_by_key.values())
-    form8.save(project, merged, no_target=False, scope_reviewed=False, status="HOLD")
+    form8.save(project, merged, no_target=False, scope_reviewed=False, status="PROPOSED")
     form8.invalidate_review(project)
     return True, warnings

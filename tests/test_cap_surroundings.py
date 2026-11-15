@@ -84,7 +84,7 @@ class SurroundingsTests(unittest.TestCase):
         self.assertIn({"unnamed-b"}, groups)
         self.assertEqual(len(s.survey(p)["objects"]),7)
 
-    def test_confirmed_group_import_stays_hold_and_is_idempotent(self):
+    def test_confirmed_group_import_is_draft_only_and_idempotent(self):
         p = project()
         group = s.save_group(p,"확인할 외부 시설",["outside"],confirmed=True)
         self.assertTrue(s.import_group(p,group["group_id"]))
@@ -95,7 +95,9 @@ class SurroundingsTests(unittest.TestCase):
         self.assertEqual(row["사업장 경계와 거리(m)"],"")
         self.assertFalse(row["500m 범위 전체 확인"])
         self.assertEqual(p.get_field(f8.SITE_KEY).status,"HOLD")
-        self.assertEqual(p.get_field(f8.REVIEW_KEY).status,"HOLD")
+        # A raw group remains a GIS source candidate; its invalidated review
+        # marker is nonblocking PROPOSED, so no pre-draft approval is required.
+        self.assertEqual(p.get_field(f8.REVIEW_KEY).status,"PROPOSED")
 
     def test_internal_group_is_preserved_but_not_imported_as_surrounding(self):
         p=project([obj("inside",geometry=geo(-20,-20,20,20))])
