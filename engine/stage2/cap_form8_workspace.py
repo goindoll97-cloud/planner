@@ -362,11 +362,15 @@ def candidate_row(candidate: Candidate, *, unclassified: bool = False) -> dict[s
     }
 
 
-def selected_options(project: Stage2Project) -> dict[str, set[str]]:
-    """Which printed checkbox options apply, derived from the receptor list."""
+def selected_options(project: Stage2Project, *, for_draft: bool = False) -> dict[str, set[str]]:
+    """Draft checkboxes reflect saved selections without requiring pre-review.
+
+    Strict evidence validation remains separate; a marked checkbox in an
+    explicitly labeled draft does not certify a legal target classification.
+    """
     chosen: dict[str, set[str]] = {c: set() for c in CATEGORIES}
     for row in saved_rows(project):
-        if _norm(row.get("500m 범위 전체 확인")) not in ("true", "예", "yes", "1"):
+        if not for_draft and _norm(row.get("500m 범위 전체 확인")) not in ("true", "예", "yes", "1"):
             continue
         category = str(row.get("보호대상 구분") or "")
         for option in SUBTYPES.get(category, ()):
