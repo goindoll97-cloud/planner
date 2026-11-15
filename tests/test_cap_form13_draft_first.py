@@ -65,9 +65,9 @@ def test_form13_section3_displays_twenty_unreviewed_form8_targets_even_without_o
         assert "☒ 환경수용체" in text
         for index in range(20):
             assert f"가상 보호시설 {index:02d}" in text
-        assert "가상 보호시설 00" in detail.cell(3, 1).text
-        assert "12" in detail.cell(3, 2).text
-        assert detail.cell(3, 3).text.strip() == ""
+        assert "가상 보호시설 00" in detail.rows[3].cells[1].text
+        assert "12" in detail.rows[3].cells[2].text
+        assert detail.rows[3].cells[3].text.strip() == ""
         # Target candidates are not automatically counted as *confirmed*
         # accident-footprint receptors.
         assert all("0명" not in cell.text for row in detail.rows[3:23] for cell in row.cells)
@@ -89,7 +89,7 @@ def test_form13_section3_uses_overall_sgis_people_for_resident_worker_checkboxes
     assert "☒ 거주민" in _text(detail)
     assert "☒ 근로자" in _text(detail)
     assert "가상 보호시설 00" in _text(detail)
-    assert detail.cell(3, 3).text == ""
+    assert detail.rows[3].cells[3].text == ""
 
 
 def test_form13_draft_does_not_duplicate_preexisting_overall_receptor():
@@ -143,5 +143,5 @@ def test_form13_section3_does_not_invent_missing_distance_or_occupancy():
     form8.save(project, [record], no_target=False, scope_reviewed=False, status="PROPOSED")
     detail, _ = _draft_detail(project)
     assert "가상 보호시설 00" in _text(detail)
-    assert detail.cell(3, 2).text.strip() == ""
-    assert detail.cell(3, 3).text.strip() == ""
+    assert detail.rows[3].cells[2].text.strip() == ""
+    assert detail.rows[3].cells[3].text.strip() == ""
