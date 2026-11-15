@@ -244,10 +244,58 @@ def build_cap_form12_data(project: Stage2Project) -> CAPForm12Data:
     )
 
 
-def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
+def _form13_draft_targets(project: Stage2Project, source: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reuse Form 8 working candidates without claiming legal spatial verification.
+
+    A source-backed protected target already identified in the overall impact
+    result takes precedence. The Form 8 500 m list supplements missing names,
+    but it never silently becomes a *confirmed* overall impact intersection.
+    """
+    from .cap_form8_engine import build_cap_form8_data
+
+    record = project.get_field("cap.offsite.population_and_protected_targets")
+    from_boundary_only = bool(
+        record and record.status == "CALCULATED" and "별지 제8호" in record.note
+    )
+    rows = [dict(item) for item in source]
+    if from_boundary_only:
+        # The legacy auto-calculated overall list originated from Form 8
+        # boundary-distance filtering, NOT real per-origin GIS intersections.
+        # It must remain a clearly labeled candidate in the statutory draft.
+        for row in rows:
+            row.setdefault("공간중첩 상태", "제8호 경계거리 기반 후보 · 총괄영향범위 공간중첩 미확인")
+    keys = {
+        (_norm(_row_value(row, "보호대상 명칭", "명칭")),
+         _norm(_row_value(row, "보호대상 구분", "구분")))
+        for row in rows
+    }
+    for row in build_cap_form8_data(project, for_draft=True).rows:
+        name = _clean(row.get("보호대상 명칭"))
+        if not name:
+            continue
+        category = _clean(row.get("보호대상 구분"))
+        key = (_norm(name), _norm(category))
+        if key in keys:
+            continue
+        keys.add(key)
+        rows.append({
+            "보호대상 명칭": name,
+            "보호대상 구분": category,
+            "세부유형": row.get("보호대상 종류", ""),
+            "주소·위치": row.get("주소·위치", ""),
+            "좌표": row.get("좌표", ""),
+            "사업장 경계와 거리(m)": row.get("사업장 경계와 거리(m)", ""),
+            "인원수": row.get("인원수", ""),
+            "GIS 근거": row.get("GIS/현장 근거") or row.get("검색 출처·검색일", ""),
+            "공간중첩 상태": "제8호 500m 주변 후보 · 총괄영향범위 공간중첩 미확인",
+        })
+    return rows
+
+
+def build_cap_form13_data(project: Stage2Project, *, for_draft: bool = False) -> CAPForm13Data:
     summaries = _confirmed_rows(project, "cap.offsite.overall_impact_summary")
     targets = _confirmed_rows(project, "cap.offsite.population_and_protected_targets")
-    if not summaries:
+    if not summaries and not for_draft:
         return CAPForm13Data(
             {},
             (),
@@ -255,7 +303,7 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
             (),
             False,
         )
-    if len(summaries) != 1:
+    if len(summaries) != 1 and not for_draft:
         return CAPForm13Data(
             {},
             (),
@@ -264,16 +312,22 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
             False,
         )
 
-    raw = summaries[0]
+    raw = summaries[0] if summaries else {}
     method = _clean(_row_value(raw, "총괄영향범위 산출방법", "산출방법"))
     result_summary = _clean(_row_value(raw, "총괄영향범위 결과 요약", "결과요약"))
     evidence = _clean(_row_value(raw, "GIS/KORA 근거", "근거자료"))
     no_targets_raw = _row_value(raw, "보호대상 없음 여부", "총괄영향범위 내 보호대상 없음 여부")
     no_targets = _yes_no(no_targets_raw)
+    if for_draft and no_targets is not True:
+        targets = _form13_draft_targets(project, targets)
     residents = _int_nonnegative(_row_value(raw, "총괄영향범위 내 거주민수", "거주민수"))
     workers = _int_nonnegative(_row_value(raw, "총괄영향범위 내 근로자수", "근로자수"))
 
     blockers: list[str] = []
+    if for_draft and not summaries:
+        blockers.append("총괄영향범위 요약 미작성: 제8호 주변 보호대상은 초안 후보로만 표시합니다.")
+    if len(summaries) > 1:
+        blockers.append("총괄영향범위 요약이 여러 행입니다. 초안에는 첫 행만 반영했습니다.")
     if not method:
         blockers.append("총괄영향범위 산출방법이 비어 있습니다.")
     if not result_summary:
@@ -343,6 +397,7 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
                 "사업장 경계와 거리(m)": "" if distance is None else distance,
                 "인원수": "" if people is None else people,
                 "GIS 근거": row_evidence,
+                "공간중첩 상태": _clean(row.get("공간중첩 상태")),
             })
 
     summary = {
@@ -353,10 +408,13 @@ def build_cap_form13_data(project: Stage2Project) -> CAPForm13Data:
         "총괄영향범위 내 근로자수": "" if workers is None else workers,
         "보호대상 없음 여부": "예" if no_targets is True else ("아니오" if no_targets is False else ""),
     }
+    draft_candidates = sum(bool(row.get("공간중첩 상태")) for row in out_targets)
     messages = (
         "총괄영향범위 형상은 개별 장외거리의 최대값으로 대체하지 않고 확인된 GIS/KORA 결과를 사용합니다.",
         "보호대상 목록은 총괄영향범위와 공간적으로 중첩된 대상을 회사/GIS가 확정한 경우에만 작성합니다.",
-    ) + ((f"개별 보호대상 {len(unknown_target_people)}건의 인원은 미확인입니다. "
+    ) + ((f"제8호 500m 주변 보호대상 후보 {draft_candidates}건을 초안에 반영했습니다. "
+           "총괄영향범위 공간중첩 여부는 작성된 초안에서 확인해야 합니다.",)
+         if draft_candidates else ()) + ((f"개별 보호대상 {len(unknown_target_people)}건의 인원은 미확인입니다. "
            "0명으로 단정하지 않으며 제출 전 근거자료로 검증해야 합니다.",)
          if unknown_target_people else ())
     return CAPForm13Data(

@@ -1186,7 +1186,10 @@ def _fill_form12(tables, project: Stage2Project) -> None:
 
 def _fill_form13(tables, project: Stage2Project) -> None:
     overall_table, list_table, freq_table, safety_table, protected_summary_table = tables
-    form13 = build_cap_form13_data(project)
+    # The regulatory document is the first draft: render saved Form 8
+    # candidates even if they are PROPOSED/HOLD or the overall impact
+    # summary has not yet been calculated. Strict diagnostics remain separate.
+    form13 = build_cap_form13_data(project, for_draft=True)
     form14 = build_cap_form14_data(project)
     form15 = build_cap_form15_data(project)
 
@@ -1210,7 +1213,7 @@ def _fill_form13(tables, project: Stage2Project) -> None:
     if form13.no_protected_targets and not target_rows:
         target_rows = [["-", "해당 없음", "-"]]
     _fill_table_rows(list_table, _sanitize_rows(target_rows), header_rows=1)
-    if form13.summary:
+    if form13.summary and any(_clean(value) for value in form13.summary.values()):
         from docx.oxml import OxmlElement
         from docx.text.paragraph import Paragraph
         note = OxmlElement("w:p")
@@ -1249,8 +1252,20 @@ def _fill_form13(tables, project: Stage2Project) -> None:
 
     # 보호대상 명세: 체크 행과 머리글은 보존하고 흰색 데이터 행만 채웁니다.
     categories = {str(row.get("보호대상 구분", "")) for row in form13.protected_targets}
-    has_workers = any(float(row.get("근로자수", 0) or 0) > 0 for row in form15.scenario_rows)
-    has_residents = any(float(row.get("거주민수", 0) or 0) > 0 for row in form15.scenario_rows)
+    def positive_count(value: object) -> bool:
+        try:
+            return float(str(value).replace(",", "")) > 0
+        except (TypeError, ValueError):
+            return False
+
+    # SGIS's area-weighted overall population is a valid *draft* signal for
+    # resident/worker checkboxes; Form 15 risk analysis may not yet exist.
+    has_workers = positive_count(form13.summary.get("총괄영향범위 내 근로자수")) or any(
+        positive_count(row.get("근로자수")) for row in form15.scenario_rows
+    )
+    has_residents = positive_count(form13.summary.get("총괄영향범위 내 거주민수")) or any(
+        positive_count(row.get("거주민수")) for row in form15.scenario_rows
+    )
     choices = {"갑종 보호대상": "갑종" in categories, "을종 보호대상": "을종" in categories,
                "환경수용체": "환경수용체" in categories, "근로자": has_workers, "거주민": has_residents}
     cell = protected_summary_table.cell(1, 0)
@@ -1262,7 +1277,34 @@ def _fill_form13(tables, project: Stage2Project) -> None:
     values = [[row.get("보호대상 종류", ""), row.get("보호대상 명칭", ""),
                row.get("사업장 경계와 거리(m)", ""), row.get("인원수", "")]
               for row in form13.protected_targets]
+    if form13.no_protected_targets and not values:
+        values = [["-", "해당 없음", "", ""]]
     _fill_table_rows(protected_summary_table, _sanitize_rows(values), header_rows=3)
+
+    # The 500m site candidate list and the scenario union are not the same
+    # geospatial footprint. Name the distinction visibly in the *document*
+    # without preventing it from being drafted in the first place.
+    draft_candidates = sum(bool(row.get("공간중첩 상태")) for row in form13.protected_targets)
+    if draft_candidates:
+        from docx.oxml import OxmlElement
+        from docx.text.paragraph import Paragraph
+        note = OxmlElement("w:p")
+        protected_summary_table._tbl.addnext(note)
+        paragraph = Paragraph(note, protected_summary_table._parent)
+        paragraph.add_run(
+            f"초안 확인사항: 제8호서식 500m 주변 보호대상 후보 {draft_candidates}건을 "
+            "보호대상 명세에 반영했습니다. 사고시나리오별·총괄영향범위와의 "
+            "실제 공간중첩은 확인되지 않았으며, 작성된 초안에서 검토합니다."
+        ).font.size = base.Pt(9)
+    if not form13.summary.get("총괄영향범위 산출방법"):
+        from docx.oxml import OxmlElement
+        from docx.text.paragraph import Paragraph
+        note = OxmlElement("w:p")
+        protected_summary_table._tbl.addnext(note)
+        Paragraph(note, protected_summary_table._parent).add_run(
+            "총괄영향범위 요약이 없어 제8호 주변 후보만 기재했습니다. "
+            "총괄영향범위 및 개별 보호대상 포함 여부는 초안 작성 후 확인합니다."
+        ).font.size = base.Pt(9)
 
 def _fill_form15(tables, project: Stage2Project) -> None:
     list_table, total_table, score_table = tables
