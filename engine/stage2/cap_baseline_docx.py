@@ -1101,6 +1101,80 @@ def _fill_form12_impact_map(cell, project: Stage2Project, record: Mapping[str, A
             )
 
 
+def _form12_verified_target_subtypes(
+    project: Stage2Project, scenario_name: str
+) -> set[tuple[str, str]]:
+    """Accept explicit scenario-linked GIS confirmations, never boundary candidates.
+
+    Legacy CALCULATED target lists may come from Form 8's 500 m boundary
+    distance. Even when their subtype is valid they are NOT proof of overlap.
+    A company-verified per-scenario target and its GIS source can be trusted;
+    an explicitly provisional/missing-overlap row never qualifies.
+    """
+    from .cap_form8_workspace import SUBTYPES
+
+    rec = project.get_field("cap.offsite.population_and_protected_targets")
+    if rec is None or not isinstance(rec.value, list):
+        return set()
+    if rec.status not in {"VERIFIED", "USER_CONFIRMED", "FILE_READ"}:
+        return set()
+
+    selected: set[tuple[str, str]] = set()
+    for row in rec.value:
+        if not isinstance(row, Mapping):
+            continue
+        if _clean(base._row_value(row, "사고시나리오명", "시나리오명")) != scenario_name:
+            continue
+        proof = _clean(base._row_value(row, "GIS 근거", "GIS/현장 근거", "KORA/GIS 근거"))
+        spatial_state = base._norm(base._row_value(row, "공간중첩 상태", "중첩확인 여부"))
+        if not proof or any(token in spatial_state for token in (
+            "잠정", "후보", "미확인", "미검증", "미중첩", "미포함", "검토중"
+        )):
+            continue
+        # A file-read row requires a specific positive intersection review.
+        if rec.status == "FILE_READ" and spatial_state not in {
+            "확인", "확정", "중첩확인", "포함확인", "verified", "yes"
+        }:
+            continue
+        category = _clean(base._row_value(row, "보호대상 구분", "구분"))
+        subtype = base._row_value(row, "보호대상 종류", "세부유형", "종류")
+        if category not in SUBTYPES:
+            continue
+        matching = next(
+            (option for option in SUBTYPES[category]
+             if base._norm(option) == base._norm(subtype)), None
+        )
+        if matching:
+            selected.add((category, matching))
+    return selected
+
+
+def _fill_form12_protected_checkboxes(
+    table, selected: set[tuple[str, str]]
+) -> None:
+    """Mark only unshaded subtype cells in the unchanged statutory Annex 12."""
+    from .cap_form8_workspace import SUBTYPES
+
+    legal = {base._norm(subtype): (category, subtype)
+             for category, subtypes in SUBTYPES.items() for subtype in subtypes}
+    # The first five rows describe the scenario/radius/population. Rows 5-14
+    # are the three protected-target groups; their shaded headings are labels.
+    for row in table.rows[5:15]:
+        for cell in _unique_cells(row)[1:]:
+            if _is_label_cell(cell):
+                continue
+            original = cell.text
+            candidate = re.match(r"^\s*[□☐☒]\s*(.*?)\s*$", original)
+            if not candidate:
+                continue
+            entry = legal.get(base._norm(candidate.group(1)))
+            if entry in selected and not original.lstrip().startswith("☒"):
+                # Preserve all official wording and geometry; only the glyph
+                # changes. An unselected item keeps its original empty box.
+                marker = "□" if "□" in original[:3] else "☐"
+                _write_cell(cell, original.replace(marker, "☒", 1))
+
+
 def _fill_form12(tables, project: Stage2Project) -> None:
     scenario_table, list_table = tables
     prepared = build_cap_form12_data(project)
@@ -1118,6 +1192,12 @@ def _fill_form12(tables, project: Stage2Project) -> None:
             scenario_tables.append(_clone_table_after(scenario_tables[-1]))
         for record, target_table in zip(prepared.rows, scenario_tables):
             name = _clean(record.get("사고시나리오명"))
+            if isinstance(project, Stage2Project):
+                from .cap_form12_impact_map import intersecting_protected_target_subtypes
+
+                selections = intersecting_protected_target_subtypes(project, record)
+                selections.update(_form12_verified_target_subtypes(project, name))
+                _fill_form12_protected_checkboxes(target_table, selections)
             offsite = _clean(record.get("장외거리(m)"))
             radius = _clean(record.get("영향반경(m)"))
             origin = _clean(record.get("사고원점 좌표"))
