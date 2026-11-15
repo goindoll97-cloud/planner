@@ -38,7 +38,7 @@ def test_choice_options_match_declared_legal_categories_and_subtypes():
         assert set(subtypes) <= set(cap_target_review.LEGAL_SUBTYPES)
 
 
-def test_changed_selection_is_saved_as_hold_not_falsely_legally_confirmed():
+def test_changed_selection_is_saved_as_draft_fact_not_falsely_legally_confirmed():
     p = _project()
     candidates = _candidates()
     # Initial map results are candidates, never legally verified facts.
@@ -51,7 +51,7 @@ def test_changed_selection_is_saved_as_hold_not_falsely_legally_confirmed():
     changed, warnings = cap_target_review.apply_candidate_edits(p, edited, candidates)
     assert changed and not warnings
     record = p.get_field(form8.SITE_KEY)
-    assert record.status == "HOLD"
+    assert record.status == "PROPOSED"
     rows = {r["보호대상 명칭"]: r for r in form8.saved_rows(p)}
     assert rows["북구청"]["보호대상 구분"] == "을종"
     assert rows["북구청"]["세부유형"] == "주택·업무시설"
@@ -86,7 +86,7 @@ def test_batch_four_column_review_preserves_hidden_gis_provenance_and_unknown_co
     assert saved["북구청"]["거주민수"] == 78
     assert saved["북구청"]["근로자수"] == ""
     assert saved["용봉동 대신아파트"]["거주민수"] == ""
-    assert p.get_field(form8.SITE_KEY).status == "HOLD"
+    assert p.get_field(form8.SITE_KEY).status == "PROPOSED"
 
 
 def test_category_change_clears_incompatible_subtype_and_warns():
