@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urljoin, urlparse
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -98,6 +99,17 @@ def _date_key(value: Any) -> int:
         return 0
 
 
+def _effective_day(value: Any) -> date | None:
+    """Only a complete, valid official date can identify an operative version."""
+    digits = re.sub(r"\D", "", _clean(value))
+    if len(digits) != 8:
+        return None
+    try:
+        return datetime.strptime(digits, "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
 def _is_deleted_attachment(title: str) -> bool:
     """Return True for official placeholder appendices/forms whose content is deleted.
 
@@ -145,28 +157,25 @@ def search_current_source(title: str, target: str, timeout: int = 45) -> dict[st
         response.raise_for_status()
         payload = response.json()
 
-        candidates: list[dict[str, Any]] = []
-        wanted = _normalized_title(title)
-        for record in _recursive_dicts(payload):
-            if target == "law":
-                found_title = _clean(record.get("법령명한글") or record.get("법령명_한글"))
-                serial = _clean(record.get("법령일련번호"))
-                stable_id = _clean(record.get("법령ID"))
-                issue_date = _clean(record.get("공포일자"))
-                issue_number = _clean(record.get("공포번호"))
-            else:
-                found_title = _clean(record.get("행정규칙명") or record.get("행정규칙제목"))
-                serial = _clean(record.get("행정규칙일련번호") or record.get("행정규칙 일련번호"))
-                stable_id = _clean(record.get("행정규칙ID"))
-                issue_date = _clean(record.get("발령일자"))
-                issue_number = _clean(record.get("발령번호") or record.get("행정규칙발령번호"))
-
-            if not found_title or not serial:
-                continue
-            if _normalized_title(found_title) != wanted:
-                continue
-            candidates.append(
-                {
+        def matching_records(data: Any) -> list[dict[str, Any]]:
+            matches: list[dict[str, Any]] = []
+            wanted = _normalized_title(title)
+            for record in _recursive_dicts(data):
+                if target == "law":
+                    found_title = _clean(record.get("법령명한글") or record.get("법령명_한글"))
+                    serial = _clean(record.get("법령일련번호"))
+                    stable_id = _clean(record.get("법령ID"))
+                    issue_date = _clean(record.get("공포일자"))
+                    issue_number = _clean(record.get("공포번호"))
+                else:
+                    found_title = _clean(record.get("행정규칙명") or record.get("행정규칙제목"))
+                    serial = _clean(record.get("행정규칙일련번호") or record.get("행정규칙 일련번호"))
+                    stable_id = _clean(record.get("행정규칙ID"))
+                    issue_date = _clean(record.get("발령일자"))
+                    issue_number = _clean(record.get("발령번호") or record.get("행정규칙발령번호"))
+                if not found_title or not serial or _normalized_title(found_title) != wanted:
+                    continue
+                matches.append({
                     "title": found_title,
                     "serial": serial,
                     "stable_id": stable_id,
@@ -175,8 +184,10 @@ def search_current_source(title: str, target: str, timeout: int = 45) -> dict[st
                     "effective_date": _clean(record.get("시행일자")),
                     "revision_type": _clean(record.get("제개정구분명")),
                     "ministry": _clean(record.get("소관부처명")),
-                }
-            )
+                })
+            return matches
+
+        candidates = matching_records(payload)
 
         if not candidates:
             return {
@@ -186,8 +197,49 @@ def search_current_source(title: str, target: str, timeout: int = 45) -> dict[st
                 "message": f"공식 API 검색 결과에서 정확히 일치하는 현행 제목을 찾지 못했습니다: {title}",
             }
 
+        if any(_effective_day(row["effective_date"]) is None for row in candidates):
+            return {
+                "api_status": "INVALID_EFFECTIVE_DATE",
+                "checked_at_utc": checked_at,
+                "credential_source": source,
+                "message": f"{title} 검색 결과의 시행일을 확인할 수 없어 현행본을 선택하지 않았습니다.",
+            }
+
+        today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+        if target == "admrul" and all(_effective_day(row["effective_date"]) > today for row in candidates):
+            # The current-list API can contain only the announced future text.
+            # Ask its documented history list for the still-operative version.
+            history = requests.get(
+                SEARCH_URL,
+                params={"OC": credential, "target": target, "type": "JSON", "query": title,
+                        "display": 100, "nw": 2, "search": 1},
+                timeout=timeout,
+            )
+            history.raise_for_status()
+            candidates.extend(matching_records(history.json()))
+            if any(_effective_day(row["effective_date"]) is None for row in candidates):
+                return {
+                    "api_status": "INVALID_EFFECTIVE_DATE",
+                    "checked_at_utc": checked_at,
+                    "credential_source": source,
+                    "message": f"{title} 연혁 검색 결과의 시행일을 확인할 수 없어 현행본을 선택하지 않았습니다.",
+                }
+        operative = [row for row in candidates if (day := _effective_day(row["effective_date"])) and day <= today]
+        upcoming = sorted(
+            (row for row in candidates if (day := _effective_day(row["effective_date"])) and day > today),
+            key=lambda row: (_date_key(row["effective_date"]), _date_key(row["issue_date"])),
+        )
+        if not operative:
+            return {
+                "api_status": "NO_EFFECTIVE_MATCH",
+                "checked_at_utc": checked_at,
+                "credential_source": source,
+                "upcoming_versions": upcoming,
+                "message": f"{today.isoformat()} 기준 시행 중인 {title} 원본을 확인하지 못했습니다. 시행 예정본은 현행본으로 승인하지 않습니다.",
+            }
+
         best = sorted(
-            candidates,
+            operative,
             key=lambda row: (
                 _date_key(row.get("effective_date")),
                 _date_key(row.get("issue_date")),
@@ -199,6 +251,7 @@ def search_current_source(title: str, target: str, timeout: int = 45) -> dict[st
             "checked_at_utc": checked_at,
             "credential_source": source,
             "message": "국가법령정보 공동활용 API 현행본 확인 완료",
+            "upcoming_versions": upcoming,
             **best,
         }
     except Exception as exc:
