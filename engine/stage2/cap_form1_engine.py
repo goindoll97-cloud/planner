@@ -145,7 +145,7 @@ def _quantity_band(value: float | None, lower: float | None, upper: float | None
 
 _APP1_COMPLETE = "별표1 SDS 분류 전체 확인"
 _APP1_PAIRS = "별표1 SDS 분류(그룹|구분;...)"
-_DRAFT_CHECK = "[확인 필요]"
+_DRAFT_CHECK = "[확인 필요: 규정수량]"
 
 
 def _app1_sds_pairs(row: Mapping[str, Any]) -> tuple[list[tuple[str, int]], str]:
