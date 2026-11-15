@@ -328,9 +328,11 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
     # An unresolved Appendix-2 broad/compound/exception scope cannot safely
     # fall through to Appendix 1 just because its CAS lacks a direct hit.
     broad_rows: set[int] = set()
+    scope_ready = False
     if screen.ready:
-        scope_tables, _ = load_approved_scope_tables()
-        if scope_tables:
+        scope_tables, scope_missing = load_approved_scope_tables()
+        scope_ready = bool(scope_tables) and not scope_missing
+        if scope_ready:
             broad = screen_cap_scope_candidates_from_tables(intake, scope_tables)
             if not broad.empty:
                 broad_rows = {int(value) for value in broad["row_no"].tolist()}
@@ -365,6 +367,8 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
                 reason = "별표 3·2 승인 규정수량 DB가 준비되지 않았습니다."
             elif row_no in claimed_rows:
                 reason = "별표 3 또는 별표 2의 함량·용액·물리상태 등 적용조건이 미확정입니다."
+            elif not scope_ready:
+                reason = "별표 2의 포괄 규제범위 판정용 승인 DB가 유효하지 않습니다."
             elif row_no in broad_rows:
                 reason = "별표 2의 포괄·화합물 규제범위 포함 여부가 미확정입니다."
             elif not cas:
