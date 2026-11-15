@@ -383,4 +383,5 @@ def selected_options(project: Stage2Project, *, for_draft: bool = False) -> dict
 
 
 def needs(project: Stage2Project) -> list[str]:
-    return list(build_cap_form8_data(project).blockers)
+    """Diagnose the actual saved draft after writing, not an empty 'HOLD' proxy."""
+    return list(build_cap_form8_data(project, for_draft=True).blockers)
