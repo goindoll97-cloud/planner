@@ -99,7 +99,15 @@ def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
     # even when every proposed classification is unchanged. Otherwise 20
     # searched facilities silently disappear from the draft until somebody
     # edits at least one dropdown.
-    if not changed and previous:
+    source_columns = ("주소·위치", "좌표", "사업장 경계와 거리(m)",
+                      "검색 출처·검색일", "GIS/현장 근거")
+    has_new_or_updated_gis = any(
+        (_key(row) not in previous_by_key)
+        or any(_clean(row.get(col)) != _clean(previous_by_key[_key(row)].get(col))
+               for col in source_columns)
+        for row in updated
+    )
+    if not changed and not has_new_or_updated_gis:
         return False, warnings
 
     # Do not erase independently entered targets outside the current map
