@@ -848,21 +848,15 @@ def _fill_form8(tables, project: Stage2Project) -> None:
         summary = "사업장 경계 500m 내 보호대상 없음 (회사/GIS 확인)"
     elif prepared.rows:
         counts = {"갑종": 0, "을종": 0, "환경수용체": 0}
-        evidence: list[str] = []
         for row in prepared.rows:
             category = _clean(row.get("보호대상 구분"))
             if category in counts:
                 counts[category] += 1
-            basis = _clean(row.get("GIS/현장 근거"))
-            if basis and basis not in evidence:
-                evidence.append(basis)
         summary = (
             f"사업장 경계 500m 내 보호대상 {len(prepared.rows)}건"
             f" (갑종 {counts['갑종']}건 / 을종 {counts['을종']}건 / "
             f"환경수용체 {counts['환경수용체']}건)"
         )
-        if evidence:
-            summary += " / 근거: " + ", ".join(evidence)
     else:
         summary = ""
 
