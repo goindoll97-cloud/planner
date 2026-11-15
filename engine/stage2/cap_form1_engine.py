@@ -157,13 +157,15 @@ def _app1_sds_pairs(row: Mapping[str, Any]) -> tuple[list[tuple[str, int]], str]
     reviewed = _norm(_row_value(row, _APP1_COMPLETE))
     if reviewed not in {"예", "yes", "true", "1"}:
         return [], f"회사 엑셀의 '{_APP1_COMPLETE}'가 확인되지 않았습니다."
+    if not _row_value(row, "SDS 파일명", "MSDS 파일명") or not _row_value(row, "SDS 개정일", "MSDS 개정일"):
+        return [], "근거인 회사 SDS 파일명과 작성·개정일이 모두 필요합니다."
     raw = _clean(_row_value(row, _APP1_PAIRS))
     if not raw:
         return [], f"회사 엑셀의 '{_APP1_PAIRS}'를 입력해 주세요."
     groups: list[tuple[str, int]] = []
     for item in raw.split(";"):
         item = item.strip()
-        match = re.fullmatch(r"([^|;]+)\\|\\s*([1-9]\\d*)", item)
+        match = re.fullmatch(r"([^|;]+)\|\s*([1-9]\d*)", item)
         if not match:
             return [], f"'{_APP1_PAIRS}' 형식은 '유해성그룹|구분번호;...'입니다."
         groups.append((match.group(1).strip(), int(match.group(2))))
@@ -173,7 +175,9 @@ def _app1_sds_pairs(row: Mapping[str, Any]) -> tuple[list[tuple[str, int]], str]
 
 
 def _chemical_identity_rows(project: Stage2Project) -> list[dict[str, Any]]:
-    return _confirmed_rows(project, "inventory.chemicals", "cap.chemical.details")
+    # CAP detail rows include company-verified Section-2 SDS classifications.
+    # Reuse the same source priority as the Form-6 legal identity engine.
+    return _confirmed_rows(project, "cap.chemical.details", "inventory.chemicals")
 
 
 def _facility_source_rows(project: Stage2Project) -> list[dict[str, Any]]:
