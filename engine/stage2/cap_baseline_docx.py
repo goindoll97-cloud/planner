@@ -902,7 +902,11 @@ def _fill_form8(tables, project: Stage2Project) -> None:
     rows = [
         [
             row.get("일련번호", ""),
-            row.get("보호대상 종류") or "",
+            # The statutory field is the specific Annex-4 subtype, not the
+            # broad 갑종/을종/환경수용체 category. Never invent a subtype.
+            # In a draft, however, an explicit review marker is preferable
+            # to an unexplained blank next to an otherwise completed target.
+            row.get("보호대상 종류") or "[확인 필요: 세부유형]",
             row.get("보호대상 명칭", ""),
             row.get("사업장 경계와 거리(m)", ""),
         ]
