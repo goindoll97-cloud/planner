@@ -66,7 +66,8 @@ def test_first_save_even_without_dropdown_changes_populates_twenty_draft_rows():
     assert second.cell(1, 0).text == "1"
     assert second.cell(20, 0).text == "20"
     assert second.cell(1, 1).text == "교육·연구시설"
-    assert second.cell(2, 1).text == "[확인 필요]"
+    assert second.cell(2, 1).text == ""  # Unknown classification stays blank, never invented.
+    assert "세부유형 미확인 10건" in first.rows[1].cells[0].text
     assert second.cell(2, 3).text == "30"
     assert "초안" in first.rows[1].cells[0].text
     assert "☒ 교육·연구시설" in " ".join(
@@ -99,4 +100,4 @@ def test_missing_distance_is_not_invented_as_zero_for_draft():
     row["사업장 경계와 거리(m)"] = ""
     form8.save(p, [row], no_target=False, scope_reviewed=False, status="PROPOSED")
     _, _, listing = _form8_document(p)
-    assert listing.cell(1, 3).text == "[확인 필요]"
+    assert listing.cell(1, 3).text == ""  # Unknown distance is not a fabricated zero.
