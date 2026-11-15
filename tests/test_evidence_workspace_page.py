@@ -258,7 +258,7 @@ class EvidencePageTests(unittest.TestCase):
             self.assertFalse(at.exception)
             apply.assert_called_once()
             self.assertEqual(len(apply.call_args.args[1]), 20)
-            self.assertIn("선택값 확정·한 번에 저장", " ".join(b.label for b in at.button))
+            self.assertIn("초안에 반영·한 번에 저장", " ".join(b.label for b in at.button))
 
     def test_write_uses_uploaded_facts_without_confirmation_gate(self):
         at = self.run_page(4)
