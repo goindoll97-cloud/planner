@@ -365,6 +365,53 @@ def apply_estimate(project: Stage2Project, impacts, result: Mapping[str, Any]) -
     return True
 
 
+def current_draft_for_form12(project: Stage2Project) -> dict | None:
+    """Return current SGIS draft estimates without network calls or re-query.
+
+    An SGIS estimate is only reusable when its source-calculation inputs still
+    agree with the active scenarios and the Form 12 working facts. This prevents
+    previously computed people counts from following a changed accident origin
+    or radius into a newly generated statutory draft.
+    """
+    report = project.get_field(RESULT_KEY)
+    impacts_record = project.get_field(impact_workspace.IMPACT_TABLE_KEY)
+    if (report is None or report.status != "CALCULATED" or
+            not isinstance(report.value, dict) or
+            impacts_record is None or impacts_record.status != "CALCULATED" or
+            impacts_record.note != METHOD or not isinstance(impacts_record.value, list)):
+        return None
+    result = report.value
+    year = str(result.get("year") or "")
+    if not (year.isdigit() and len(year) == 4):
+        return None
+
+    try:
+        # Use the same deterministic physical impact engine as the SGIS
+        # calculation. If the origin/radius has changed, the fingerprint
+        # changes and *none* of the stale census data may be exported.
+        impacts = impact_workspace.evaluate(project)
+        circles = circles_for(project, impacts)
+        if not circles or _fingerprint(circles, year) != result.get("fingerprint"):
+            return None
+
+        recorded = {
+            str(row.get("사고시나리오명") or ""): row
+            for row in impacts_record.value if isinstance(row, Mapping)
+        }
+        expected = result.get("scenario")
+        if not isinstance(expected, dict) or set(expected) != {circle.name for circle in circles}:
+            return None
+        for name, counts in expected.items():
+            row = recorded.get(name)
+            if not isinstance(row, dict) or not isinstance(counts, dict):
+                return None
+            if any(row.get(key) != counts.get(key) for key in ("거주민수", "근로자수")):
+                return None
+    except (ValueError, TypeError, KeyError, ArithmeticError):
+        return None
+    return result
+
+
 def refresh_for_draft(project: Stage2Project, impacts=None, *, client: SGISClient | None = None) -> dict:
     impacts = impacts if impacts is not None else impact_workspace.evaluate(project)
     result = estimate(project, impacts, client=client)
