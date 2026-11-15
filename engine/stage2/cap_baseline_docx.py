@@ -1213,7 +1213,7 @@ def _fill_form13(tables, project: Stage2Project) -> None:
     if form13.no_protected_targets and not target_rows:
         target_rows = [["-", "해당 없음", "-"]]
     _fill_table_rows(list_table, _sanitize_rows(target_rows), header_rows=1)
-    if form13.summary:
+    if form13.summary and any(_clean(value) for value in form13.summary.values()):
         from docx.oxml import OxmlElement
         from docx.text.paragraph import Paragraph
         note = OxmlElement("w:p")
