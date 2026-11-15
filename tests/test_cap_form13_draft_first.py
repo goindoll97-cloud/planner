@@ -116,6 +116,24 @@ def test_form13_draft_does_not_duplicate_preexisting_overall_receptor():
     assert "가상 보호시설 01" in _text(detail)
 
 
+def test_legacy_calculated_boundary_candidates_are_not_mistaken_for_verified_overall_targets():
+    project = _project()
+    project.set_field("cap.offsite.population_and_protected_targets", "프로그램이 별지8에서 만든 목록", [{
+        "보호대상 명칭": "거리 기반 추정 대상",
+        "보호대상 구분": "갑종",
+        "세부유형": "교육·연구시설",
+        "사업장 경계와 거리(m)": 180,
+        "인원수": "",
+    }], "CALCULATED", note="별지 제8호 목록에서 집계")
+    result = impact.build_cap_form13_data(project, for_draft=True)
+    assert len(result.protected_targets) == 1
+    assert "공간중첩 미확인" in result.protected_targets[0]["공간중첩 상태"]
+    detail, _ = _draft_detail(project)
+    assert "거리 기반 추정 대상" in _text(detail)
+    # Draft disclosure is added after the table; an unchecked geographic
+    # overlap must never silently become a certified resident population.
+
+
 def test_form13_explicit_no_target_is_not_overridden_by_unreviewed_form8_candidates():
     project = _project()
     form8.save(project, _form8_targets(2), no_target=False, scope_reviewed=False, status="PROPOSED")
