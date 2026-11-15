@@ -5,6 +5,7 @@ from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -37,6 +38,25 @@ def _project() -> Stage2Project:
 
 def _set(project: Stage2Project, key: str, value, label: str | None = None) -> None:
     project.set_field(key, label or key, value, "USER_CONFIRMED")
+
+
+def _form15_project() -> Stage2Project:
+    project = _project()
+    _set(project, "cap.business.industrial_complex", "해당 없음")
+    _set(project, "cap.offsite.scenario_frequency", [{
+        "사고시나리오명": "염소 독성누출-1",
+        "고압용기파열": 1,
+        "배관누출": 2,
+        "개수 산정근거": "P&ID-201",
+    }])
+    _set(project, "cap.offsite.scenario_impact_table", [{
+        "사고시나리오명": "염소 독성누출-1",
+        "장외거리(m)": 180,
+        "거주민수": 25,
+        "근로자수": 10,
+        "KORA/GIS 근거": "KORA-01",
+    }])
+    return project
 
 
 class CAPBaselineDocxTests(unittest.TestCase):
@@ -229,6 +249,63 @@ class CAPBaselineDocxTests(unittest.TestCase):
         self.assertIn("0.87 (회사 확인값)", form6_text)
         self.assertNotIn("KOSHA 참고값", form6_text)
         self.assertNotIn("1.0 (KOSHA 값", form6_text)
+
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
+    def test_form15_statutory_totals_intervals_and_analysis_are_written_to_white_cells(self, _current):
+        project = _form15_project()
+        original = Document(BytesIO(load_cap_baseline_bytes()))
+        rendered = Document(BytesIO(build_cap_baseline_draft(project)))
+        indexes = form_table_index_for(original)["15"]
+        self.assertEqual(indexes, (23, 24, 25))
+        list_table, totals_table, analysis_table = (rendered.tables[i] for i in indexes)
+
+        self.assertIn("염소 독성누출-1", list_table.rows[1].cells[1].text)
+        self.assertEqual(
+            [cell.text for cell in totals_table.rows[0].cells],
+            [cell.text for cell in original.tables[24].rows[0].cells],
+        )
+        self.assertEqual(totals_table.rows[1].cells[0].text, "계")
+        self.assertEqual(totals_table.rows[2].cells[0].text, "구간 점수")
+        self.assertEqual(
+            [cell.text for cell in totals_table.rows[2].cells[1:]],
+            ["0", "0", "2", "1"],
+        )
+        self.assertEqual(
+            [cell.text for cell in analysis_table.rows[0].cells],
+            [cell.text for cell in original.tables[25].rows[0].cells],
+        )
+        self.assertEqual(
+            [cell.text for cell in analysis_table.rows[1].cells],
+            ["0", "3"],
+        )
+        self.assertEqual(totals_table.rows[1].cells[1].text, "1")
+        self.assertAlmostEqual(float(totals_table.rows[1].cells[2].text), 0.002001)
+        self.assertAlmostEqual(float(totals_table.rows[1].cells[3].text), 180)
+        self.assertEqual(totals_table.rows[1].cells[4].text, "35")
+
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
+    def test_form15_draft_preserves_partial_scores_without_fabricating_population(self, _current):
+        project = _form15_project()
+        frequency = dict(project.get_field("cap.offsite.scenario_frequency").value[0])
+        frequency.pop("개수 산정근거")
+        _set(project, "cap.offsite.scenario_frequency", [frequency])
+        impact = dict(project.get_field("cap.offsite.scenario_impact_table").value[0])
+        impact.pop("근로자수")
+        impact.pop("KORA/GIS 근거")
+        _set(project, "cap.offsite.scenario_impact_table", [impact])
+
+        rendered = Document(BytesIO(build_cap_baseline_draft(project)))
+        totals_table, analysis_table = rendered.tables[24], rendered.tables[25]
+        self.assertEqual(totals_table.rows[1].cells[4].text, "")
+        self.assertEqual(
+            [cell.text for cell in totals_table.rows[2].cells[1:]],
+            ["0", "0", "2", ""],
+        )
+        self.assertEqual(
+            [cell.text for cell in analysis_table.rows[1].cells],
+            ["0", ""],
+        )
+        self.assertEqual(totals_table.rows[2].cells[0].text, "구간 점수")
 
     def test_cap_regulation_filename_is_distinct_from_internal_review(self):
         name = cap_baseline_filename(_project())

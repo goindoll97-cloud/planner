@@ -1336,23 +1336,29 @@ def _fill_form15(tables, project: Stage2Project) -> None:
                 _write_cell(total_cells[offset], value)
 
     scores = prepared.scores or {}
+    # Annex Form 15 section 2 contains two distinct answer rows:
+    # '계' (row 1) and '구간 점수' (row 2).  Keep the labels and the
+    # shaded column headers untouched; only fill the four answer cells.
+    if len(total_table.rows) > 2:
+        interval_cells = _unique_cells(total_table.rows[2])
+        interval_values = (
+            scores.get("사고시나리오 개수 구간점수", ""),
+            scores.get("시설빈도 구간점수", ""),
+            scores.get("거리 구간점수", ""),
+            scores.get("주민수 구간점수", ""),
+        )
+        for offset, value in enumerate(interval_values, start=1):
+            if offset < len(interval_cells):
+                _write_cell(interval_cells[offset], value)
+
+    # Section 3 has exactly two statutory input cells.  The overall grade
+    # and authority-final decision are not fields in this DOCX table.
     if len(score_table.rows) > 1:
         score_cells = _unique_cells(score_table.rows[1])
         if score_cells:
             _write_cell(score_cells[0], scores.get("사고빈도점수(A+B)", ""))
         if len(score_cells) > 1:
             _write_cell(score_cells[1], scores.get("사고영향점수(C+D)", ""))
-    _fill_label_rows(
-        score_table,
-        {
-            "사고빈도점수(A+B)": scores.get("사고빈도점수(A+B)", ""),
-            "사고영향점수(C+D)": scores.get("사고영향점수(C+D)", ""),
-            "위험도 판정표 점수(증감 전)": scores.get("위험도 판정표 점수(증감 전)", ""),
-            "증감 전 위험도": scores.get("증감 전 위험도", ""),
-            "최종 위험도": scores.get("최종 위험도", ""),
-        },
-        start=0,
-    )
 
 def _fill_form16(tables, project: Stage2Project) -> None:
     (

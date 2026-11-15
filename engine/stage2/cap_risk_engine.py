@@ -316,8 +316,10 @@ def build_cap_form15_data(project: Stage2Project) -> CAPForm15Data:
             explicit_no_scenario = _clean(
                 _row_value(controls[0], "장외 사고시나리오 없음 여부", "사고시나리오 없음 여부")
             )
+    no_offsite_conflict = False
     if _norm(explicit_no_scenario) in {"예", "yes", "y", "true", "1", "없음", "해당"}:
         if impact_rows or form14.scenario_rows:
+            no_offsite_conflict = True
             blockers.append(
                 "장외 사고시나리오 없음으로 확인했지만 사고시나리오 영향/시설빈도 자료가 함께 존재합니다."
             )
@@ -367,6 +369,23 @@ def build_cap_form15_data(project: Stage2Project) -> CAPForm15Data:
         if _clean(row.get("사고시나리오명"))
     }
 
+    # Review/provenance blockers (for example a missing P&ID citation) must
+    # remain visible, but they must not erase scores supported by complete
+    # numeric inputs.  Missing/invalid event counts or unapproved reference
+    # frequencies, on the other hand, make the frequency total unsafe.
+    frequency_source_rows = _confirmed_rows(project, "cap.offsite.scenario_frequency")
+    frequency_numbers = [_num(row.get("시설빈도(/연)")) for row in form14.scenario_rows]
+    frequency_numeric_complete = (
+        not no_offsite_conflict
+        and bool(frequency_source_rows)
+        and len(form14.scenario_rows) == len(frequency_source_rows)
+        and len(form14.event_rows) == len(form14.scenario_rows) * len(INITIATING_EVENTS)
+        and all(_int_nonnegative(event.get("개수")) is not None for event in form14.event_rows)
+        and all(value is not None and value >= 0 for value in frequency_numbers)
+    )
+    distance_numeric_complete = not no_offsite_conflict
+    population_numeric_complete = park_state is not None and not no_offsite_conflict
+
     out: list[dict[str, Any]] = []
     distance_sum = 0.0
     population_sum = 0
@@ -377,9 +396,13 @@ def build_cap_form15_data(project: Stage2Project) -> CAPForm15Data:
         scenario = _scenario_key(row)
         if not scenario:
             blockers.append(f"영향평가 {index}행: 사고시나리오명이 비어 있습니다.")
+            distance_numeric_complete = False
+            population_numeric_complete = False
             continue
         if scenario in used_scenarios:
             blockers.append(f"{scenario}: 영향평가 자료가 중복되어 있습니다.")
+            distance_numeric_complete = False
+            population_numeric_complete = False
             continue
         used_scenarios.add(scenario)
 
@@ -390,14 +413,19 @@ def build_cap_form15_data(project: Stage2Project) -> CAPForm15Data:
         if distance is None or distance < 0:
             blockers.append(f"{scenario}: KORA 장외거리(m)를 0 이상의 숫자로 확인해 주세요.")
             distance = None
+            distance_numeric_complete = False
+            population_numeric_complete = False
         if residents is None:
             blockers.append(f"{scenario}: 영향범위 내 거주민수를 0 이상의 정수로 확인해 주세요.")
+            population_numeric_complete = False
         if workers is None:
             blockers.append(f"{scenario}: 영향범위 내 근로자수를 0 이상의 정수로 확인해 주세요.")
+            population_numeric_complete = False
 
         frequency = freq_by_scenario.get(scenario)
         if frequency is None:
             blockers.append(f"{scenario}: 별지 제14호에서 계산된 사고시나리오 시설빈도가 없습니다.")
+            frequency_numeric_complete = False
 
         risk_population: int | None = None
         if residents is not None and workers is not None and park_state is not None:
@@ -426,37 +454,52 @@ def build_cap_form15_data(project: Stage2Project) -> CAPForm15Data:
         if not out[-1]["KORA/GIS 근거"]:
             blockers.append(f"{scenario}: 장외거리·주민수의 KORA/GIS 근거자료 식별자가 비어 있습니다.")
 
-    frequency_values = [value for value in freq_by_scenario.values() if value is not None]
-    facility_frequency_sum = sum(frequency_values) if frequency_values else 0.0
+    facility_frequency_sum = sum(frequency_numbers) if frequency_numeric_complete else None
 
+    # Incomplete dimensions remain blank, never a misleading partial total or
+    # zero.  Independent dimensions can still populate the statutory draft.
     totals = {
-        "사고시나리오 총 개수(A)": scenario_count,
-        "사고시나리오 시설빈도의 합(B)": facility_frequency_sum,
-        "사고시나리오 거리의 합(C)": distance_sum,
-        "주민수 합(D)": population_sum,
+        "사고시나리오 총 개수(A)": scenario_count if distance_numeric_complete else "",
+        "사고시나리오 시설빈도의 합(B)": facility_frequency_sum if frequency_numeric_complete else "",
+        "사고시나리오 거리의 합(C)": distance_sum if distance_numeric_complete else "",
+        "주민수 합(D)": population_sum if distance_numeric_complete and population_numeric_complete else "",
     }
 
     scores: dict[str, Any] = {}
-    if not blockers:
-        a_score = _score(float(scenario_count), APPENDIX3_THRESHOLDS["scenario_count"])
-        b_score = _score(facility_frequency_sum, APPENDIX3_THRESHOLDS["facility_frequency"])
-        c_score = _score(distance_sum, APPENDIX3_THRESHOLDS["offsite_distance_m"])
-        d_score = _score(float(population_sum), APPENDIX3_THRESHOLDS["population"])
-        frequency_score = a_score + b_score
-        impact_score = c_score + d_score
-        base_score = frequency_score + impact_score
-        scores = {
-            "사고시나리오 개수 구간점수": a_score,
-            "시설빈도 구간점수": b_score,
-            "거리 구간점수": c_score,
-            "주민수 구간점수": d_score,
-            "사고빈도점수(A+B)": frequency_score,
-            "사고영향점수(C+D)": impact_score,
+    if distance_numeric_complete:
+        scores["사고시나리오 개수 구간점수"] = _score(
+            float(scenario_count), APPENDIX3_THRESHOLDS["scenario_count"]
+        )
+        scores["거리 구간점수"] = _score(
+            distance_sum, APPENDIX3_THRESHOLDS["offsite_distance_m"]
+        )
+    if frequency_numeric_complete and facility_frequency_sum is not None:
+        scores["시설빈도 구간점수"] = _score(
+            facility_frequency_sum, APPENDIX3_THRESHOLDS["facility_frequency"]
+        )
+    if distance_numeric_complete and population_numeric_complete:
+        scores["주민수 구간점수"] = _score(
+            float(population_sum), APPENDIX3_THRESHOLDS["population"]
+        )
+
+    # Compound scores are emitted only when *both* contributing dimensions
+    # are fully known; missing population/frequency must never count as 0.
+    if "사고시나리오 개수 구간점수" in scores and "시설빈도 구간점수" in scores:
+        scores["사고빈도점수(A+B)"] = (
+            scores["사고시나리오 개수 구간점수"] + scores["시설빈도 구간점수"]
+        )
+    if "거리 구간점수" in scores and "주민수 구간점수" in scores:
+        scores["사고영향점수(C+D)"] = (
+            scores["거리 구간점수"] + scores["주민수 구간점수"]
+        )
+    if "사고빈도점수(A+B)" in scores and "사고영향점수(C+D)" in scores:
+        base_score = scores["사고빈도점수(A+B)"] + scores["사고영향점수(C+D)"]
+        scores.update({
             "위험도 판정표 점수(증감 전)": base_score,
             "증감 전 위험도": _pre_adjustment_grade(base_score),
             "최종 위험도": "안전원 최종결정 전",
             "최종 위험도 근거": "현행 검토규정에 따른 위험도 증감요인 검토 후 안전원 결정",
-        }
+        })
         messages.append(
             "증감 전 위험도는 별표 3 구간점수의 산술결과이며, 안전성확보설비·갑종 보호대상·환경수용체 "
             "증감요인을 반영한 최종 위험도는 화학물질안전원 결정사항으로 확정하지 않습니다."
