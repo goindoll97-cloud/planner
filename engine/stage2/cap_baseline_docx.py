@@ -1037,9 +1037,75 @@ def _fill_form11(table, project: Stage2Project) -> None:
             ])
         _fill_table_rows(table, _sanitize_rows(fallback), header_rows=1)
 
+def _fill_form12_impact_map(cell, project: Stage2Project, record: Mapping[str, Any],
+                             estimate: Mapping[str, Any] | None, *,
+                             source_year: str = "", year_selection: str = "") -> None:
+    """Place an evidence-backed circle and optional SGIS totals in the map cell.
+
+    The statutory industrial-complex *inside/outside* fields are not suitable
+    for an unsplit SGIS total; they must be filled only from actual split data.
+    The existing '주요 보호대상 위치' map space can visibly disclose the
+    automatic overall estimate without changing a legal field's meaning.
+    """
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
+    from .cap_form12_impact_map import render_scenario_map
+
+    image = render_scenario_map(project, record)
+    if image is None and estimate is None:
+        return
+    if _is_label_cell(cell):
+        raise ValueError("제12호서식 주요 보호대상 위치도 영역이 항목명 셀로 바뀌었습니다.")
+    paragraphs = list(cell.paragraphs)
+    if not paragraphs:
+        paragraphs = [cell.add_paragraph()]
+    for paragraph in paragraphs[1:]:
+        cell._tc.remove(paragraph._p)
+    first = paragraphs[0]
+    first.clear()
+    first.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    first.paragraph_format.space_after = Pt(0)
+    if image is not None:
+        first.add_run().add_picture(BytesIO(image.png), width=Inches(6.10))
+
+    def note(message: str) -> None:
+        paragraph = cell.add_paragraph()
+        paragraph.paragraph_format.space_after = Pt(0)
+        run = paragraph.add_run(message)
+        run.font.name = "돋움체"
+        run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "돋움체")
+        run.font.size = Pt(8)
+
+    if image is not None:
+        if image.mapped_candidates:
+            note(f"위치도: 사고원점 기준 영향반경(원형 추정), 경계와 중첩된 GIS 후보 "
+                 f"{image.mapped_candidates}건(미검증) / 배경지도 미포함")
+        else:
+            note("위치도: 사고원점 기준 영향반경(원형 추정). "
+                 "보호대상 위치는 이 도면에서 확인되지 않음 / 배경지도 미포함")
+    if estimate:
+        residents = estimate.get("거주민수")
+        workers = estimate.get("근로자수")
+        if isinstance(residents, int) and isinstance(workers, int):
+            note(
+                f"SGIS {source_year}년 ({year_selection or '공식통계'}) 전체 영향범위 자동 추정: "
+                f"거주민 {residents:,}명, 근로자 {workers:,}명(제조업 대리값)."
+            )
+            note(
+                "행정동별 인구·사업체 종사자 면적가중 추정이며, 실제 상주인원·산업단지 "
+                "내외 구분값이 아닙니다. 법정 인원 칸의 내외 분리는 별도 공간자료로 검증."
+            )
+
+
 def _fill_form12(tables, project: Stage2Project) -> None:
     scenario_table, list_table = tables
     prepared = build_cap_form12_data(project)
+    # Read previously computed SGIS values only. DOCX generation never calls
+    # the external API or asks staff to re-enter the same headcounts.
+    from . import sgis_population
+    sgis = (sgis_population.current_draft_for_form12(project)
+            if isinstance(project, Stage2Project) else None)
+    estimates = (sgis.get("scenario", {}) if isinstance(sgis, Mapping) else {})
 
     if prepared.rows:
         # Repeat the untouched statutory form for each distinct scenario.
@@ -1070,6 +1136,15 @@ def _fill_form12(tables, project: Stage2Project) -> None:
                 raise ValueError("별지 제12호서식 사고원점 좌표 칸을 식별하지 못했습니다.")
             if origin:
                 _write_cell(coordinate[0], f"사고원점의 좌표 : {origin}")
+            if isinstance(project, Stage2Project):
+                if len(_unique_cells(target_table.rows[16])) != 1:
+                    raise ValueError("제12호서식 주요 보호대상 위치도 입력 영역을 식별하지 못했습니다.")
+                _fill_form12_impact_map(
+                    _unique_cells(target_table.rows[16])[0], project, record,
+                    estimates.get(name),
+                    source_year=str(sgis.get("year", "")) if sgis else "",
+                    year_selection=str(sgis.get("year_selection", "")) if sgis else "",
+                )
             # Do not place total population in industrial-complex-specific cells
             # without confirmed within/outside population counts. The precise
             # subcategories remain blank instead of being invented.
