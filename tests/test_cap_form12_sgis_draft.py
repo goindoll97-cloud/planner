@@ -12,6 +12,7 @@ from shapely.geometry import Point, box, mapping
 from engine.stage2 import cap_baseline_docx as cap
 from engine.stage2 import cap_catalog_docx as catalog
 from engine.stage2 import cap_form12_impact_map as impact_map
+from engine.stage2 import cap_form8_workspace as f8
 from engine.stage2 import cap_surroundings as surroundings
 from engine.stage2 import cap_impact_workspace as iw
 from engine.stage2 import cap_scenario_workspace as sc
@@ -171,3 +172,104 @@ def test_form12_impact_map_uses_only_receptor_candidates_for_its_scenario():
     other = impact_map.render_scenario_map(p, second)
     assert other is not None
     assert other.mapped_candidates == 0
+
+
+def _receptor_boxes(table):
+    """The official Annex-12 specimen has subtype choices on rows 5-14."""
+    return {
+        "school": table.cell(6, 3).text,
+        "factory": table.cell(11, 1).text,
+        "river": table.cell(12, 2).text,
+    }
+
+
+def test_form12_checks_each_scenario_only_for_actual_gis_overlap_not_500m_candidates():
+    p, _ = setup_project()
+    surroundings.save_survey(p, [
+        {"name": "지도 학교", "source": "공개 GIS",
+         "geometry": mapping(Point(126.9007, 35.18))},
+        {"name": "지도 공장", "source": "공개 GIS",
+         "geometry": mapping(Point(126.9017, 35.18))},
+        {"name": "지도 하천", "source": "공개 GIS",
+         "geometry": mapping(Point(126.9001, 35.18))},
+    ], center=(126.9, 35.18))
+    p.set_field(f8.SITE_KEY, "제8호 주변 보호대상", [
+        {"보호대상 명칭": "지도 학교", "보호대상 구분": "갑종",
+         "세부유형": "교육·연구시설", "사업장 경계와 거리(m)": 75,
+         "주소·위치": "지도 시험위치", "GIS/현장 근거": "GIS-학교"},
+        {"보호대상 명칭": "지도 공장", "보호대상 구분": "을종",
+         "세부유형": "공업시설", "사업장 경계와 거리(m)": 170,
+         "주소·위치": "지도 시험위치", "GIS/현장 근거": "GIS-공장"},
+        {"보호대상 명칭": "지도 하천", "보호대상 구분": "환경수용체",
+         "세부유형": "하천", "사업장 경계와 거리(m)": 15,
+         "주소·위치": "지도 시험위치", "GIS/현장 근거": "GIS-하천"},
+    ], "PROPOSED")
+
+    for builder in (cap.build_cap_baseline_draft, catalog.build_cap_draft):
+        doc = Document(BytesIO(builder(p)))
+        scenarios = _scenario_tables(doc)
+        assert len(scenarios) == 2
+        first, second = scenarios
+        # First scenario has a 20 m radius, second has 120 m.
+        assert _receptor_boxes(first)["river"].startswith("☒")
+        assert _receptor_boxes(first)["school"].startswith("□")
+        assert _receptor_boxes(second)["river"].startswith("☒")
+        assert _receptor_boxes(second)["school"].startswith("☒")
+        # A target listed within 500 m but outside either incident circle
+        # is not a confirmed Form 12 inclusion.
+        assert all(_receptor_boxes(t)["factory"].startswith("□") for t in scenarios)
+        assert first.cell(5, 0).text == "갑종 보호대상(적용되는 모든 것에 표시)"
+        assert first.cell(9, 0).text == "을종 보호대상(적용되는 모든 것에 표시)"
+        assert first.cell(12, 0).text == "환경수용체(적용되는 모든 것에 표시)"
+        assert len(first.rows) == 18 and len(second.rows) == 18
+
+
+def test_form12_checks_scenario_linked_user_verified_gis_targets_without_boundary_shortcuts():
+    p, _ = setup_project()
+    p.set_field(iw.TARGETS_KEY, "개별 영향범위 공간중첩 확인자료", [
+        {"사고시나리오명": "독성-1", "보호대상 명칭": "확인한 학교",
+         "보호대상 구분": "갑종", "세부유형": "교육·연구시설",
+         "GIS 근거": "현장/GIS 중첩 확인서"},
+        {"사고시나리오명": "독성-2", "보호대상 명칭": "확인한 공장",
+         "보호대상 구분": "을종", "세부유형": "공업시설",
+         "GIS 근거": "KORA GIS 중첩 확인서"},
+        {"사고시나리오명": "독성-2", "보호대상 명칭": "미확인 하천",
+         "보호대상 구분": "환경수용체", "세부유형": "하천",
+         "GIS 근거": "단순 경계거리", "공간중첩 상태": "미검증 후보"},
+    ], "USER_CONFIRMED")
+
+    doc = Document(BytesIO(cap.build_cap_baseline_draft(p)))
+    first, second = _scenario_tables(doc)
+    assert _receptor_boxes(first)["school"].startswith("☒")
+    assert _receptor_boxes(first)["factory"].startswith("□")
+    assert _receptor_boxes(second)["school"].startswith("□")
+    assert _receptor_boxes(second)["factory"].startswith("☒")
+    assert _receptor_boxes(second)["river"].startswith("□")
+
+
+def test_form12_does_not_check_calculated_boundary_only_or_stale_survey_targets():
+    p, _ = setup_project()
+    # The former automatic Form 8 500 m list was CALCULATED, not individually
+    # assessed for each scenario; even a matching scenario name is insufficient.
+    p.set_field(iw.TARGETS_KEY, "제8호 기준으로 자동 집계", [
+        {"사고시나리오명": "독성-1", "보호대상 명칭": "거리기준 학교",
+         "보호대상 구분": "갑종", "세부유형": "교육·연구시설",
+         "GIS 근거": "500m 경계거리"},
+    ], "CALCULATED", note="별지 제8호 목록에서 집계")
+    doc = Document(BytesIO(cap.build_cap_baseline_draft(p)))
+    assert all(_receptor_boxes(t)["school"].startswith("□") for t in _scenario_tables(doc))
+
+    surroundings.save_survey(p, [
+        {"name": "위치 하천", "source": "GIS",
+         "geometry": mapping(Point(126.9001, 35.18))}
+    ], center=(126.9, 35.18))
+    p.set_field(f8.SITE_KEY, "환경수용체 후보", [{
+        "보호대상 명칭": "위치 하천", "보호대상 구분": "환경수용체",
+        "세부유형": "하천", "주소·위치": "시험",
+        "사업장 경계와 거리(m)": 10, "GIS/현장 근거": "GIS",
+    }], "PROPOSED")
+    # Once the business address changes, the old survey geometry cannot be
+    # treated as a current per-scenario GIS intersection.
+    p.set_field("business.address", "사업장 주소", "바뀐 주소", "USER_CONFIRMED")
+    doc = Document(BytesIO(cap.build_cap_baseline_draft(p)))
+    assert all(_receptor_boxes(t)["river"].startswith("□") for t in _scenario_tables(doc))
