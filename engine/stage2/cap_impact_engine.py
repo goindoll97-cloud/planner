@@ -253,7 +253,17 @@ def _form13_draft_targets(project: Stage2Project, source: list[dict[str, Any]]) 
     """
     from .cap_form8_engine import build_cap_form8_data
 
+    record = project.get_field("cap.offsite.population_and_protected_targets")
+    from_boundary_only = bool(
+        record and record.status == "CALCULATED" and "별지 제8호" in record.note
+    )
     rows = [dict(item) for item in source]
+    if from_boundary_only:
+        # The legacy auto-calculated overall list originated from Form 8
+        # boundary-distance filtering, NOT real per-origin GIS intersections.
+        # It must remain a clearly labeled candidate in the statutory draft.
+        for row in rows:
+            row.setdefault("공간중첩 상태", "제8호 경계거리 기반 후보 · 총괄영향범위 공간중첩 미확인")
     keys = {
         (_norm(_row_value(row, "보호대상 명칭", "명칭")),
          _norm(_row_value(row, "보호대상 구분", "구분")))
