@@ -24,7 +24,7 @@ from . import cap_surroundings as surroundings
 from . import sgis_population
 from .project import Stage2Project
 
-WIDTH, HEIGHT = 1240, 650
+WIDTH, HEIGHT = 1240, 480
 MAX_DRAW_RADIUS_M = sgis_population.MAX_RADIUS_M
 
 
