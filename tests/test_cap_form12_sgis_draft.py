@@ -194,6 +194,12 @@ def _receptor_boxes(table):
 
 def test_form12_checks_each_scenario_only_for_actual_gis_overlap_not_500m_candidates():
     p, _ = setup_project()
+    # Set the *incident-origin influence radius*, not the distinct off-site
+    # distance. setup_project normally uses radii 100/200 and off-site 20/120.
+    records = [dict(item) for item in p.get_field(iw.IMPACT_TABLE_KEY).value]
+    records[0]["영향반경(m)"] = 20.0
+    records[1]["영향반경(m)"] = 120.0
+    p.set_field(iw.IMPACT_TABLE_KEY, "공간중첩 테스트 반경", records, "CALCULATED")
     surroundings.save_survey(p, [
         {"name": "지도 학교", "source": "공개 GIS",
          "geometry": mapping(Point(126.9007, 35.18))},
