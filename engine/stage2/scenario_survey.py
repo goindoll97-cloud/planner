@@ -205,6 +205,29 @@ def _ai_categories(names: list[str], client) -> dict[str, tuple[str, str]]:
     return out
 
 
+# Only the *source layer ID* is used here, never a name or address
+# substring. These are draft subtype suggestions from mapped GIS features,
+# not a legal determination of designation, scale or occupancy.
+_VWORLD_DRAFT_TYPES = {
+    "LT_C_WKMSTRM": ("환경수용체", "하천"),
+    "LT_C_UM901": ("환경수용체", "습지보호지역"),
+    "LT_C_WGISARWET": ("환경수용체", "습지보호지역"),
+    "LT_C_WGISNPGUG": ("환경수용체", "자연공원"),
+    "LT_C_UF151": ("환경수용체", "산림지 및 유적지"),
+    "LT_C_UM710": ("환경수용체", "상수원 및 취수원"),
+    "LT_C_WGISARECO": ("환경수용체", "생태·경관보호지역"),
+}
+
+
+def _vworld_draft_type(row: dict[str, Any]) -> tuple[str, str]:
+    source = str(row.get("source") or "")
+    identifier = str(row.get("object_id") or "")
+    if not source.startswith("브이월드 2D 데이터 API"):
+        return "", ""
+    return next((type_pair for layer, type_pair in _VWORLD_DRAFT_TYPES.items()
+                 if identifier.startswith(f"vworld:{layer}:")), ("", ""))
+
+
 def candidate_rows(project: Stage2Project, client=None) -> list[dict[str, Any]]:
     """지도 조회 객체 중 경계 밖 500m 안의 것(이름 있는 것) → 조사표 줄 초안. 경계를 저장하기 전에는 비어 있습니다."""
     if survey.boundary(project) is None or not survey.survey(project) or not survey.is_current(project):
@@ -226,9 +249,13 @@ def candidate_rows(project: Stage2Project, client=None) -> list[dict[str, Any]]:
     for row in sorted(best.values(), key=lambda r: r["_distance"]):
         category, subtype, _ = f8.classification_suggestion(row["name"])
         how = "이름 규칙 제안"
-        if not category and not f8.requires_housing_review(row["name"]) and row["name"] in suggestions:
-            category, subtype = suggestions[row["name"]]
-            how = "AI 제안"
+        if not category and not f8.requires_housing_review(row["name"]):
+            category, subtype = _vworld_draft_type(row)
+            if category:
+                how = "브이월드 GIS 레이어 유형 제안(법정 해당 여부 확인 필요)"
+            elif row["name"] in suggestions:
+                category, subtype = suggestions[row["name"]]
+                how = "AI 제안"
         source = str(row.get("source") or "지도 조회").split(" · ")[0]
         rows.append({"보호대상 명칭": row["name"], "보호대상 구분": category, "세부유형": subtype,
                      "주소·위치": str(row.get("address") or "").strip() or "지도 표시 위치",

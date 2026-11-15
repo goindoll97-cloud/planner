@@ -372,12 +372,25 @@ def selected_options(project: Stage2Project, *, for_draft: bool = False) -> dict
     explicitly labeled draft does not certify a legal target classification.
     """
     chosen: dict[str, set[str]] = {c: set() for c in CATEGORIES}
-    for row in saved_rows(project):
+    if for_draft:
+        # Use the *same normalized rows* as Annex 8's itemized table. Older
+        # company files may call '세부유형' '보호대상 종류' or '종류', and
+        # '보호대상 구분' '구분'. Reading only the raw canonical keys made
+        # their list entries appear while the corresponding boxes stayed
+        # unchecked. This remains a draft suggestion, not legal approval.
+        rows = build_cap_form8_data(project, for_draft=True).rows
+    else:
+        rows = saved_rows(project)
+    for row in rows:
         if not for_draft and _norm(row.get("500m 범위 전체 확인")) not in ("true", "예", "yes", "1"):
             continue
-        category = str(row.get("보호대상 구분") or "")
-        for option in SUBTYPES.get(category, ()):
-            if _norm(option) == _norm(row.get("세부유형")):
+        category = next((name for name in CATEGORIES
+                         if _norm(name) == _norm(row.get("보호대상 구분"))), "")
+        if not category:
+            continue
+        subtype = row.get("보호대상 종류" if for_draft else "세부유형")
+        for option in SUBTYPES[category]:
+            if _norm(option) == _norm(subtype):
                 chosen[category].add(option)
     return chosen
 
