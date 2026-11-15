@@ -7,10 +7,12 @@ from zipfile import ZipFile
 
 from docx import Document
 from pyproj import Transformer
-from shapely.geometry import box, mapping
+from shapely.geometry import Point, box, mapping
 
 from engine.stage2 import cap_baseline_docx as cap
 from engine.stage2 import cap_catalog_docx as catalog
+from engine.stage2 import cap_form12_impact_map as impact_map
+from engine.stage2 import cap_surroundings as surroundings
 from engine.stage2 import cap_impact_workspace as iw
 from engine.stage2 import cap_scenario_workspace as sc
 from engine.stage2 import sgis_population as sgis
@@ -148,3 +150,24 @@ def test_no_origin_or_radius_is_not_replaced_with_a_made_up_map():
     first = _scenario_tables(Document(BytesIO(data)))[0]
     assert not _map_cell(first)._tc.xpath(".//a:blip")
     assert "SGIS" not in _map_cell(first).text
+
+
+def test_form12_impact_map_uses_only_receptor_candidates_for_its_scenario():
+    p, _ = setup_project()
+    surroundings.save_survey(p, [
+        {"name": "가상 보호대상", "source": "GIS 원자료",
+         "geometry": mapping(Point(126.9002, 35.18))},
+        {"name": "보호대상 아닌 현장 설비", "source": "GIS 원자료",
+         "geometry": mapping(Point(126.9001, 35.18))},
+    ], center=(126.9, 35.18))
+    p.set_field(iw.SCENARIO_TARGETS_KEY, "사고시나리오 보호대상 후보", [
+        {"사고시나리오명": "독성-1", "보호대상 명칭": "가상 보호대상"},
+        {"사고시나리오명": "독성-2", "보호대상 명칭": "미확인 시설"},
+    ], "CALCULATED")
+    first, second = p.get_field(iw.IMPACT_TABLE_KEY).value
+    result = impact_map.render_scenario_map(p, first)
+    assert result is not None
+    assert result.mapped_candidates == 1
+    other = impact_map.render_scenario_map(p, second)
+    assert other is not None
+    assert other.mapped_candidates == 0
