@@ -109,23 +109,26 @@ def test_form8_first_section_inserts_real_map_inside_original_blank_cell():
     assert list_table.cell(2, 0).text == "2"
 
 
-def test_unconfirmed_candidates_display_only_hollow_unnumbered_map_markers():
+def test_unconfirmed_candidates_are_numbered_draft_rows_and_hollow_map_markers():
     project = _project()
     _with_site_boundary(project)
     geo.save_survey(project, _source_objects(), center=(129.3, 35.5))
-    f8.save(project, _rows(), no_target=False, scope_reviewed=False, status="HOLD")
+    f8.save(project, _rows(), no_target=False, scope_reviewed=False, status="PROPOSED")
 
-    result = map8.render_site_map(project, [])
+    rows = [{**row, "일련번호": i} for i, row in enumerate(_rows(), 1)]
+    result = map8.render_site_map(project, rows, draft=True)
     assert result is not None
-    assert result.placed == 0
+    assert result.placed == 2
     assert result.provisional == 2
     output = build_cap_baseline_draft(project)
     doc = Document(BytesIO(output))
     context, list_table = (doc.tables[i] for i in form_table_index_for(doc)["8"])
     assert len(_image_files(output)) == 1
-    assert "검토 전 후보" in context.rows[1].cells[0].text
-    assert "가상 학교" not in list_table.cell(1, 2).text
-    assert "가상 하천" not in list_table.cell(2, 2).text
+    assert "초안 후보" in context.rows[1].cells[0].text
+    assert "가상 학교" in list_table.cell(1, 2).text
+    assert "가상 하천" in list_table.cell(2, 2).text
+    assert list_table.cell(1, 0).text == "1"
+    assert list_table.cell(2, 0).text == "2"
 
 
 def test_no_confirmed_boundary_explains_empty_map_not_fake_geocode_point():
