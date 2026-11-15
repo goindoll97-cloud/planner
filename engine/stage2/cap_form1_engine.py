@@ -371,8 +371,8 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
                 reason = "별표 2의 포괄 규제범위 판정용 승인 DB가 유효하지 않습니다."
             elif row_no in broad_rows:
                 reason = "별표 2의 포괄·화합물 규제범위 포함 여부가 미확정입니다."
-            elif not cas:
-                reason = "CAS 번호가 확인되지 않아 별표 3·2를 배제할 수 없습니다."
+            elif not re.fullmatch(r"\d{2,7}-\d{2}-\d", cas):
+                reason = "CAS 번호가 없거나 유효한 형식이 아니므로 별표 3·2 적용 여부를 배제할 수 없습니다."
             else:
                 pairs, reason = _app1_sds_pairs(chem)
                 if pairs:
