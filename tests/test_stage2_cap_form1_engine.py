@@ -240,7 +240,7 @@ class CAPForm1EngineTests(unittest.TestCase):
         row = result.chemical_rows[0]
         self.assertEqual(row["하위규정수량(ton)"], "")
         self.assertEqual(row["상위규정수량(ton)"], "")
-        self.assertTrue(any("별지 제1호 구분 근거" in blocker and "SDS 분류 전체 확인" in blocker
+        self.assertTrue(any("별지 제1호 구분 근거" in blocker and "규정수량" in blocker
                             for blocker in result.blockers))
 
 
