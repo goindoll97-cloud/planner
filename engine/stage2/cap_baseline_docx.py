@@ -369,8 +369,8 @@ def _fill_form1(tables, project: Stage2Project) -> None:
             row.get("물질구분", ""),
             row.get("사업장 내 최대보유량(ton)", ""),
             row.get("작성수준", "") or project.cap_group,
-            row.get("하위규정수량(ton)", ""),
-            row.get("상위규정수량(ton)", ""),
+            row.get("하위규정수량 표시", row.get("하위규정수량(ton)", "")),
+            row.get("상위규정수량 표시", row.get("상위규정수량(ton)", "")),
         ]
         for row in prepared.chemical_rows
     ]

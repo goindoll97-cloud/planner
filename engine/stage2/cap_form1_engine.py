@@ -17,6 +17,8 @@ from typing import Any
 import pandas as pd
 
 from engine.cap_holding_screen import screen_facility_stage
+from engine.cap_scope_engine import load_approved_scope_tables, screen_cap_scope_candidates_from_tables
+from engine.cap_app1_engine import select_app1_quantities
 from engine.inventory import IntakeData
 
 from .project import CONFIRMED_STATUSES, Stage2Project
@@ -141,8 +143,41 @@ def _quantity_band(value: float | None, lower: float | None, upper: float | None
     return "하위 규정수량 미만"
 
 
+_APP1_COMPLETE = "별표1 SDS 분류 전체 확인"
+_APP1_PAIRS = "별표1 SDS 분류(그룹|구분;...)"
+_DRAFT_CHECK = "[확인 필요: 규정수량]"
+
+
+def _app1_sds_pairs(row: Mapping[str, Any]) -> tuple[list[tuple[str, int]], str]:
+    """Explicit, *complete* SDS Section-2 selections only; no name/CAS heuristics.
+
+    Example: '급성독성(흡입)|2;인화성 액체|2'. An unchecked full-review flag
+    must not convert one reported toxicity class into the whole legal assessment.
+    """
+    reviewed = _norm(_row_value(row, _APP1_COMPLETE))
+    if reviewed not in {"예", "yes", "true", "1"}:
+        return [], f"회사 엑셀의 '{_APP1_COMPLETE}'가 확인되지 않았습니다."
+    if not _row_value(row, "SDS 파일명", "MSDS 파일명") or not _row_value(row, "SDS 개정일", "MSDS 개정일"):
+        return [], "근거인 회사 SDS 파일명과 작성·개정일이 모두 필요합니다."
+    raw = _clean(_row_value(row, _APP1_PAIRS))
+    if not raw:
+        return [], f"회사 엑셀의 '{_APP1_PAIRS}'를 입력해 주세요."
+    groups: list[tuple[str, int]] = []
+    for item in raw.split(";"):
+        item = item.strip()
+        match = re.fullmatch(r"([^|;]+)\|\s*([1-9]\d*)", item)
+        if not match:
+            return [], f"'{_APP1_PAIRS}' 형식은 '유해성그룹|구분번호;...'입니다."
+        groups.append((match.group(1).strip(), int(match.group(2))))
+    if len(set(groups)) != len(groups):
+        return [], "별표 1 SDS 분류에 중복된 유해성그룹·구분번호가 있습니다."
+    return groups, ""
+
+
 def _chemical_identity_rows(project: Stage2Project) -> list[dict[str, Any]]:
-    return _confirmed_rows(project, "inventory.chemicals", "cap.chemical.details")
+    # CAP detail rows include company-verified Section-2 SDS classifications.
+    # Reuse the same source priority as the Form-6 legal identity engine.
+    return _confirmed_rows(project, "cap.chemical.details", "inventory.chemicals")
 
 
 def _facility_source_rows(project: Stage2Project) -> list[dict[str, Any]]:
@@ -290,6 +325,19 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
             ),
         })
 
+    # An unresolved Appendix-2 broad/compound/exception scope cannot safely
+    # fall through to Appendix 1 just because its CAS lacks a direct hit.
+    broad_rows: set[int] = set()
+    scope_ready = False
+    if screen.ready:
+        scope_tables, scope_missing = load_approved_scope_tables()
+        scope_ready = bool(scope_tables) and not scope_missing
+        if scope_ready:
+            broad = screen_cap_scope_candidates_from_tables(intake, scope_tables)
+            if not broad.empty:
+                broad_rows = {int(value) for value in broad["row_no"].tolist()}
+    claimed_rows = set(getattr(screen, "row_numbers", ()) or ())
+
     hits_by_row: dict[int, list[dict[str, Any]]] = {}
     for hit in screen.legal_hits:
         row_no = int(hit.get("row_no") or 0)
@@ -310,27 +358,75 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
 
         hits = hits_by_row.get(row_no, [])
         if not hits:
-            chemical_rows.append({
-                "물질명": name,
-                "CAS No.": cas,
-                "물질구분": "",
-                "사업장 내 최대보유량(ton)": _fmt_num(holding),
-                "작성수준": project.cap_group,
-                "하위규정수량(ton)": "",
-                "상위규정수량(ton)": "",
-                "규정수량 비교": "",
-                "산정근거": basis,
-            })
-            if screen.ready and cas:
+            # Stage 1's priority is Appendix 3 > Appendix 2 > Appendix 1.
+            # An unresolved APP3/APP2 condition is NOT evidence that APP1
+            # applies. Likewise, an Appendix-2 broad scope needs review.
+            fallback = None
+            reason = ""
+            if not screen.ready:
+                reason = "별표 3·2 승인 규정수량 DB가 준비되지 않았습니다."
+            elif row_no in claimed_rows:
+                reason = "별표 3 또는 별표 2의 함량·용액·물리상태 등 적용조건이 미확정입니다."
+            elif not scope_ready:
+                reason = "별표 2의 포괄 규제범위 판정용 승인 DB가 유효하지 않습니다."
+            elif row_no in broad_rows:
+                reason = "별표 2의 포괄·화합물 규제범위 포함 여부가 미확정입니다."
+            elif not re.fullmatch(r"\d{2,7}-\d{2}-\d", cas):
+                reason = "CAS 번호가 없거나 유효한 형식이 아니므로 별표 3·2 적용 여부를 배제할 수 없습니다."
+            else:
+                pairs, reason = _app1_sds_pairs(chem)
+                if pairs:
+                    result = select_app1_quantities(pairs)
+                    if not result.ready or not result.matched:
+                        reason = " / ".join(result.blockers) or "별표 1 적용 SDS 분류에 대응하는 승인 수량을 찾지 못했습니다."
+                    elif result.lower_quantity_ton is None or result.upper_quantity_ton is None:
+                        reason = "별표 1 승인 규정수량의 하위·상위 수량이 모두 확인되지 않았습니다."
+                    else:
+                        fallback = result
+
+            if fallback is not None:
+                lower = fallback.lower_quantity_ton
+                upper = fallback.upper_quantity_ton
+                chemical_rows.append({
+                    "물질명": name, "CAS No.": cas,
+                    "물질구분": "별표 1 유해성·위험성 분류",
+                    "사업장 내 최대보유량(ton)": _fmt_num(holding),
+                    "작성수준": project.cap_group,
+                    "하위규정수량(ton)": _fmt_num(lower),
+                    "상위규정수량(ton)": _fmt_num(upper),
+                    "하위규정수량 표시": _fmt_num(lower),
+                    "상위규정수량 표시": _fmt_num(upper),
+                    "규정수량 비교": _quantity_band(holding, lower, upper),
+                    "산정근거": basis,
+                    "법령DB": "CAP_QTY_APP1",
+                    "법령항목": _clean(_row_value(chem, _APP1_PAIRS)),
+                })
+                messages.append(f"{name or cas}: 회사가 전체 확인한 SDS 제2항 분류로 별표 1 규정수량을 산정했습니다.")
+            else:
+                chemical_rows.append({
+                    "물질명": name, "CAS No.": cas, "물질구분": "",
+                    "사업장 내 최대보유량(ton)": _fmt_num(holding),
+                    "작성수준": project.cap_group,
+                    "하위규정수량(ton)": "", "상위규정수량(ton)": "",
+                    "하위규정수량 표시": _DRAFT_CHECK,
+                    "상위규정수량 표시": _DRAFT_CHECK,
+                    "규정수량 비교": "", "산정근거": basis,
+                    "규정수량 확인사유": reason,
+                })
                 blockers.append(
-                    f"{name or cas}: 별표 3→별표 2 직접 규칙에서 규정수량을 확정하지 못했습니다. "
-                    "별표 1 유해·위험성 그룹 또는 포괄 규제범위 확인이 필요합니다."
+                    f"{name or cas or f'{row_no}행'}: 별지 제1호 구분 근거(하위·상위규정수량) 미확정. "
+                    + reason + " 별표 3, 별표 2, 별표 1 순서로 검토해 주세요."
                 )
             continue
 
         for hit in hits:
             lower = _num(hit.get("lower_quantity_ton"))
             upper = _num(hit.get("upper_quantity_ton"))
+            if lower is None or upper is None:
+                blockers.append(
+                    f"{name or cas}: {hit.get('source_key', '규정수량 DB')} "
+                    "적용행의 하위·상위규정수량 중 미확정 값이 있습니다."
+                )
             chemical_rows.append({
                 "물질명": name or _clean(hit.get("legal_substance")),
                 "CAS No.": cas or _clean(hit.get("cas")),
@@ -339,7 +435,9 @@ def build_cap_form1_data(project: Stage2Project) -> CAPForm1Data:
                 "작성수준": project.cap_group,
                 "하위규정수량(ton)": _fmt_num(lower),
                 "상위규정수량(ton)": _fmt_num(upper),
-                "규정수량 비교": _quantity_band(holding, lower, upper),
+                "하위규정수량 표시": _fmt_num(lower) if lower is not None else _DRAFT_CHECK,
+                "상위규정수량 표시": _fmt_num(upper) if upper is not None else _DRAFT_CHECK,
+                "규정수량 비교": _quantity_band(holding, lower, upper) if lower is not None and upper is not None else "",
                 "산정근거": basis,
                 "법령DB": _clean(hit.get("source_key")),
                 "법령항목": _clean(hit.get("item_no")),
