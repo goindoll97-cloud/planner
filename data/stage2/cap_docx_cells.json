@@ -19,8 +19,8 @@
     {"key": "물질구분", "fact": "legal.substance_category"},
     {"key": "사업장 내 최대보유량(ton)", "fact": "computed.material_max_holding_ton"},
     {"key": "작성수준", "fact": "legal.writing_level", "or": "cap_group"},
-    {"key": "하위규정수량(ton)", "fact": "legal.lower_threshold"},
-    {"key": "상위규정수량(ton)", "fact": "legal.upper_threshold"}]},
+    {"key": "하위규정수량 표시", "fact": "legal.lower_threshold"},
+    {"key": "상위규정수량 표시", "fact": "legal.upper_threshold"}]},
    {"table": 2, "type": "cell", "row": 0, "cell": 1, "value": "cap_group", "fact": "legal.writing_level"}
   ]},
   {"form": 2, "delegate": true},
