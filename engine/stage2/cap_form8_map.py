@@ -16,7 +16,7 @@ from typing import Any, Mapping
 from PIL import Image, ImageDraw, ImageFont
 from pyproj import Transformer
 from shapely.geometry import Point, mapping, shape
-from shapely.ops import transform
+from shapely.ops import nearest_points, transform
 
 from . import cap_form8_workspace as f8
 from . import cap_surroundings as surrounding
@@ -70,13 +70,17 @@ def _outline(draw: ImageDraw.ImageDraw, geom, screen, *, color, width: int, fill
             draw.line(inside, fill=color, width=max(width // 2, 2))
 
 
-def _location(geometry: Mapping, projector):
+def _location(geometry: Mapping, projector, site_m, extent):
     try:
         geo = surrounding.checked_geometry(dict(geometry))
         metric = transform(projector, geo)
-        if metric.is_empty:
+        if metric.is_empty or not metric.intersects(extent):
             return None
-        return metric.representative_point()
+        # A river or large building footprint may cross the 500m area while
+        # its representative point lies outside it. Plot the actual closest
+        # point on the GIS geometry to the site, not an arbitrary centroid.
+        point = nearest_points(site_m, metric)[1]
+        return point if extent.covers(point) else None
     except (ValueError, TypeError):
         return None
 
@@ -106,8 +110,8 @@ def render_site_map(project: Stage2Project, reviewed_rows: list[dict]) -> Form8M
         name = f8._norm(raw.get("name"))
         if not name or not isinstance(raw.get("geometry"), Mapping):
             continue
-        position = _location(raw["geometry"], forward)
-        if position is not None and extent.covers(position):
+        position = _location(raw["geometry"], forward, site_m, extent)
+        if position is not None:
             locations.setdefault(name, []).append(position)
 
     def located(row: Mapping) -> Any | None:
