@@ -132,6 +132,62 @@ class CAPRiskEngineTests(unittest.TestCase):
         self.assertTrue(result.no_offsite_scenario)
         self.assertEqual(result.scores["최종 위험도"], "다")
 
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
+    def test_form15_keeps_numeric_scores_when_only_review_evidence_is_missing(self, _current):
+        project = self._project()
+        frequency = dict(project.get_field("cap.offsite.scenario_frequency").value[0])
+        frequency.pop("개수 산정근거")
+        frequency.pop("안전성확보설비 증빙")
+        project.set_field("cap.offsite.scenario_frequency", "시설빈도", [frequency], "USER_CONFIRMED")
+        impact = dict(project.get_field("cap.offsite.scenario_impact_table").value[0])
+        impact.pop("KORA/GIS 근거")
+        project.set_field("cap.offsite.scenario_impact_table", "영향평가", [impact], "USER_CONFIRMED")
+
+        result = build_cap_form15_data(project)
+        self.assertTrue(result.blockers)  # Missing evidence must still be reported.
+        self.assertEqual(
+            [result.scores[key] for key in (
+                "사고시나리오 개수 구간점수", "시설빈도 구간점수",
+                "거리 구간점수", "주민수 구간점수",
+            )],
+            [0, 0, 2, 1],
+        )
+        self.assertEqual(result.scores["사고영향점수(C+D)"], 3)
+        self.assertEqual(result.scores["증감 전 위험도"], "다")
+
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
+    def test_form15_missing_population_does_not_become_zero_or_suppress_other_scores(self, _current):
+        project = self._project()
+        impact = dict(project.get_field("cap.offsite.scenario_impact_table").value[0])
+        impact.pop("근로자수")
+        project.set_field("cap.offsite.scenario_impact_table", "영향평가", [impact], "USER_CONFIRMED")
+
+        result = build_cap_form15_data(project)
+        self.assertTrue(result.blockers)
+        self.assertEqual(result.totals["주민수 합(D)"], "")
+        self.assertNotIn("주민수 구간점수", result.scores)
+        self.assertNotIn("사고영향점수(C+D)", result.scores)
+        self.assertNotIn("증감 전 위험도", result.scores)
+        self.assertEqual(result.scores["사고시나리오 개수 구간점수"], 0)
+        self.assertEqual(result.scores["거리 구간점수"], 2)
+        self.assertEqual(result.scores["시설빈도 구간점수"], 0)
+        self.assertEqual(result.scores["사고빈도점수(A+B)"], 0)
+
+    @patch("engine.stage2.cap_risk_engine.approved_source_is_current", return_value=True)
+    def test_form15_invalid_initiating_event_count_cannot_yield_frequency_score(self, _current):
+        project = self._project()
+        frequency = dict(project.get_field("cap.offsite.scenario_frequency").value[0])
+        frequency["배관누출"] = "잘못된 값"
+        project.set_field("cap.offsite.scenario_frequency", "시설빈도", [frequency], "USER_CONFIRMED")
+
+        result = build_cap_form15_data(project)
+        self.assertTrue(result.blockers)
+        self.assertEqual(result.totals["사고시나리오 시설빈도의 합(B)"], "")
+        self.assertNotIn("시설빈도 구간점수", result.scores)
+        self.assertNotIn("사고빈도점수(A+B)", result.scores)
+        self.assertEqual(result.scores["사고시나리오 개수 구간점수"], 0)
+        self.assertEqual(result.scores["거리 구간점수"], 2)
+
     def test_appendix3_thresholds_keep_statutory_boundaries(self):
         self.assertEqual(APPENDIX3_THRESHOLDS["scenario_count"], (4.0, 16.0, 64.0))
         self.assertEqual(APPENDIX3_THRESHOLDS["facility_frequency"], (0.1, 1.0, 10.0))
