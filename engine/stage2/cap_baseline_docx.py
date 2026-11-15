@@ -867,7 +867,13 @@ def _fill_form8(tables, project: Stage2Project) -> None:
             f"환경수용체 {counts['환경수용체']}건)"
         )
         if draft_choices:
-            summary += " / 초안 작성 후 분류·거리·위치를 검토"
+            missing_types = sum(not row.get("보호대상 종류") for row in prepared.rows)
+            missing_distances = sum(row.get("사업장 경계와 거리(m)") in ("", None)
+                                    for row in prepared.rows)
+            summary += (
+                f" / 초안 작성 후 확인: 세부유형 미확인 {missing_types}건, "
+                f"거리 미확인 {missing_distances}건"
+            )
     else:
         summary = ""
 
@@ -896,9 +902,9 @@ def _fill_form8(tables, project: Stage2Project) -> None:
     rows = [
         [
             row.get("일련번호", ""),
-            row.get("보호대상 종류") or "[확인 필요]",
+            row.get("보호대상 종류") or "",
             row.get("보호대상 명칭", ""),
-            row.get("사업장 경계와 거리(m)") if row.get("사업장 경계와 거리(m)") != "" else "[확인 필요]",
+            row.get("사업장 경계와 거리(m)", ""),
         ]
         for row in prepared.rows
     ]
