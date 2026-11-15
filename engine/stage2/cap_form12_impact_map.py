@@ -18,6 +18,8 @@ from shapely.geometry import Point, mapping
 from shapely.ops import nearest_points
 
 from . import cap_form8_map as common_map
+from . import cap_form8_workspace as form8
+from . import cap_impact_workspace as impact_workspace
 from . import cap_surroundings as surroundings
 from . import sgis_population
 from .project import Stage2Project
@@ -101,11 +103,25 @@ def render_scenario_map(project: Stage2Project, record: Mapping[str, Any]) -> Sc
                             fill=(209, 221, 231))
 
     plotted = 0
-    if surroundings.is_current(project):
+    targets = project.get_field(impact_workspace.SCENARIO_TARGETS_KEY)
+    valid_names = set()
+    if targets and targets.status == "CALCULATED" and isinstance(targets.value, list):
+        valid_names = {
+            form8._norm(row.get("보호대상 명칭"))
+            for row in targets.value if isinstance(row, Mapping)
+            and str(row.get("사고시나리오명") or "") == str(record.get("사고시나리오명") or "")
+            and form8._norm(row.get("보호대상 명칭"))
+        }
+    if valid_names and surroundings.is_current(project):
         survey = surroundings.survey(project)
         used = set()
         for item in survey.get("objects", []):
             if not isinstance(item, Mapping) or not isinstance(item.get("geometry"), Mapping):
+                continue
+            name = form8._norm(item.get("name"))
+            # Generic GIS objects and site-internal structures are not
+            # automatically protected targets, and must not appear as such.
+            if name not in valid_names:
                 continue
             ident = str(item.get("id") or item.get("name") or "")
             if ident in used:
