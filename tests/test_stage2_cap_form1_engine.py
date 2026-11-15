@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from io import BytesIO
+
+from docx import Document
 from unittest.mock import patch
 import unittest
 
@@ -169,6 +172,45 @@ class CAPForm1EngineTests(unittest.TestCase):
         self.assertTrue(_app1_sds_pairs({**sample, "별표1 SDS 분류 전체 확인": ""})[1])
         self.assertTrue(_app1_sds_pairs({**sample, "별표1 SDS 분류(그룹|구분;...)": "위험함"})[1])
         self.assertTrue(_app1_sds_pairs({**sample, "SDS 파일명": ""})[1])
+
+    def test_form1_statutory_docx_both_renderers_show_verified_and_pending_quantities(self):
+        from engine.stage2 import cap_baseline_docx as old
+        from engine.stage2 import cap_catalog_docx as catalog
+        from engine.stage2 import cap_form1_engine as form1
+        from engine.stage2.cap_form1_engine import CAPForm1Data
+
+        p = self._project()
+        data = CAPForm1Data(
+            facility_rows=({"단위공장": "제1공장", "유해화학물질": "톨루엔",
+                             "CAS No.": "108-88-3", "함량(%)": 99.5,
+                             "구분기호": "TK-01", "취급시설": "저장탱크",
+                             "설계용량(m3)": "20", "취급량(ton)": "15"},),
+            chemical_rows=(
+                {"물질명": "톨루엔", "CAS No.": "108-88-3",
+                 "물질구분": "사고대비물질", "사업장 내 최대보유량(ton)": "15",
+                 "하위규정수량(ton)": "10", "상위규정수량(ton)": "100",
+                 "하위규정수량 표시": "10", "상위규정수량 표시": "100"},
+                {"물질명": "가상 염산", "CAS No.": "7647-01-0",
+                 "사업장 내 최대보유량(ton)": "5",
+                 "하위규정수량(ton)": "", "상위규정수량(ton)": "",
+                 "하위규정수량 표시": "[확인 필요]",
+                 "상위규정수량 표시": "[확인 필요]"},
+            ),
+            blockers=("가상 염산: 법령분류 확인 필요",),
+            messages=(), legal_lookup_ready=True,
+        )
+        with patch.object(old, "build_cap_form1_data", return_value=data), \
+             patch.object(form1, "build_cap_form1_data", return_value=data):
+            for build in (old.build_cap_baseline_draft, catalog.build_cap_draft):
+                doc = Document(BytesIO(build(p)))
+                table = doc.tables[old.form_table_index_for(doc)["1"][1]]
+                self.assertEqual(table.cell(2, 5).text, "10")
+                self.assertEqual(table.cell(2, 6).text, "100")
+                self.assertEqual(table.cell(3, 0).text, "가상 염산")
+                self.assertEqual(table.cell(3, 3).text, "5")
+                self.assertEqual(table.cell(3, 5).text, "[확인 필요]")
+                self.assertEqual(table.cell(3, 6).text, "[확인 필요]")
+                self.assertEqual(table.cell(0, 5).text, "구분 근거")
 
     def test_unresolved_legal_match_keeps_thresholds_blank(self):
         screen = SimpleNamespace(ready=True, blockers=[], messages=[], legal_hits=[])
