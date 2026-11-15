@@ -233,9 +233,13 @@ def test_form12_checks_each_scenario_only_for_actual_gis_overlap_not_500m_candid
         # A target listed within 500 m but outside either incident circle
         # is not a confirmed Form 12 inclusion.
         assert all(_receptor_boxes(t)["factory"].startswith("□") for t in scenarios)
-        assert first.cell(5, 0).text == "갑종 보호대상(적용되는 모든 것에 표시)"
-        assert first.cell(9, 0).text == "을종 보호대상(적용되는 모든 것에 표시)"
-        assert first.cell(12, 0).text == "환경수용체(적용되는 모든 것에 표시)"
+        # Compare the exact official heading cells, including preserved
+        # manual line breaks. Neither heading nor shading may be rewritten.
+        official = Document(BytesIO(cap.load_cap_baseline_bytes()))
+        source_table = official.tables[cap.form_table_index_for(official)["12"][0]]
+        for row_no in (5, 9, 12):
+            assert first.cell(row_no, 0).text == source_table.cell(row_no, 0).text
+            assert second.cell(row_no, 0).text == source_table.cell(row_no, 0).text
         assert len(first.rows) == 18 and len(second.rows) == 18
 
 
