@@ -789,6 +789,57 @@ def _fill_form7_table(table, row) -> None:
             _write_cell(cell, value)
 
 
+def _fill_form8_site_map(cell, project: Stage2Project, reviewed_rows: Sequence[Mapping[str, object]],
+                         summary: str) -> None:
+    """Use the original 260409 map space for an actual GIS figure, not a text summary."""
+    from .cap_form8_map import render_site_map
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
+
+    result = render_site_map(project, list(reviewed_rows))
+    if result is None:
+        # Do not turn a mailing-address search point into an invented site
+        # boundary. Explain why the map section cannot be drawn yet.
+        if summary:
+            _write_cell(cell, summary + " / 사업장 경계 지도 미등록")
+        else:
+            _write_cell(cell, "사업장 경계 지도 미등록: ③ 지도에서 실제 부지 경계를 저장해야 입지현황을 표시할 수 있습니다.")
+        return
+
+    if _is_label_cell(cell):
+        raise ValueError("별지 제8호서식 지도 공간이 음영 항목명 칸으로 변경되었습니다.")
+    paragraphs = cell.paragraphs
+    if not paragraphs:
+        paragraphs = [cell.add_paragraph()]
+    # The statutory source contains six empty paragraphs reserved for the
+    # map. Clear those paragraphs so the picture is not followed by an
+    # artificial block of blank lines.
+    for paragraph in paragraphs[1:]:
+        cell._tc.remove(paragraph._p)
+    paragraph = paragraphs[0]
+    paragraph.clear()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.add_run().add_picture(BytesIO(result.png), width=Inches(6.25))
+
+    def detail(value: str) -> None:
+        note = cell.add_paragraph()
+        note.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        note.paragraph_format.space_after = Pt(0)
+        run = note.add_run(value)
+        run.font.name = "돋움체"
+        run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "돋움체")
+        run.font.size = Pt(8)
+
+    if summary:
+        detail(summary)
+    detail("지도자료: " + result.source + " / 사업장 경계 외측 500m / 도로·지적 배경지도 미포함")
+    if result.missing:
+        detail(f"위치도형이 없는 보호대상 {result.missing}건은 지도번호를 표시하지 않았습니다.")
+    if result.provisional:
+        detail(f"테두리 점 {result.provisional}곳은 검토 전 후보이며 법정 보호대상 확정값이 아닙니다.")
+
+
 def _fill_form8(tables, project: Stage2Project) -> None:
     context_table, list_table = tables
     prepared = build_cap_form8_data(project)
@@ -797,28 +848,23 @@ def _fill_form8(tables, project: Stage2Project) -> None:
         summary = "사업장 경계 500m 내 보호대상 없음 (회사/GIS 확인)"
     elif prepared.rows:
         counts = {"갑종": 0, "을종": 0, "환경수용체": 0}
-        evidence: list[str] = []
         for row in prepared.rows:
             category = _clean(row.get("보호대상 구분"))
             if category in counts:
                 counts[category] += 1
-            basis = _clean(row.get("GIS/현장 근거"))
-            if basis and basis not in evidence:
-                evidence.append(basis)
         summary = (
             f"사업장 경계 500m 내 보호대상 {len(prepared.rows)}건"
             f" (갑종 {counts['갑종']}건 / 을종 {counts['을종']}건 / "
             f"환경수용체 {counts['환경수용체']}건)"
         )
-        if evidence:
-            summary += " / 근거: " + ", ".join(evidence)
     else:
         summary = ""
 
-    if summary and len(context_table.rows) > 1:
-        cells = _unique_cells(context_table.rows[1])
-        if cells:
-            _write_cell(cells[-1], summary)
+    if len(context_table.rows) < 2 or len(_unique_cells(context_table.rows[1])) != 1:
+        raise ValueError("별지 제8호서식 원본의 입지현황 지도 공간을 식별하지 못했습니다.")
+    _fill_form8_site_map(
+        _unique_cells(context_table.rows[1])[0], project, prepared.rows, summary
+    )
 
     if prepared.rows or prepared.no_protected_targets:
         from .cap_form8_workspace import SUBTYPES, selected_options
