@@ -85,8 +85,9 @@ def _location(geometry: Mapping, projector, site_m, extent):
         return None
 
 
-def render_site_map(project: Stage2Project, reviewed_rows: list[dict]) -> Form8Map | None:
-    """Draw the confirmed boundary, 500 m buffer and source-backed target pins.
+def render_site_map(project: Stage2Project, reviewed_rows: list[dict], *,
+                    draft: bool = False) -> Form8Map | None:
+    """Draw the saved boundary, 500 m buffer and source-backed target pins.
 
     Returns None only when the user has not recorded a valid site polygon.
     """
@@ -176,14 +177,21 @@ def render_site_map(project: Stage2Project, reviewed_rows: list[dict]) -> Form8M
             continue
         placed += 1
         x, y = screen(point.x, point.y)
-        draw.ellipse((x - 17, y - 17, x + 17, y + 17), fill=(26, 65, 107), outline=(255, 255, 255), width=3)
+        # Numbered *outline* pins are candidates written to the first draft,
+        # not an assertion that a reviewer has legally confirmed them.
+        if draft:
+            draw.ellipse((x - 17, y - 17, x + 17, y + 17),
+                         fill=(255, 255, 255), outline=(26, 65, 107), width=4)
+        else:
+            draw.ellipse((x - 17, y - 17, x + 17, y + 17),
+                         fill=(26, 65, 107), outline=(255, 255, 255), width=3)
         label = str(row.get("일련번호") or placed)
         box = draw.textbbox((0, 0), label, font=_font(20))
         draw.text((x - (box[2] - box[0]) / 2, y - (box[3] - box[1]) / 2 - 3),
-                  label, font=_font(20), fill="white")
+                  label, font=_font(20), fill=(26, 65, 107) if draft else "white")
 
     # Unconfirmed GIS rows can be drawn for orientation only, never numbered.
-    provisional = 0
+    provisional = placed if draft else 0
     if not reviewed_rows:
         for row in f8.saved_rows(project):
             point = located(row)
@@ -206,7 +214,9 @@ def render_site_map(project: Stage2Project, reviewed_rows: list[dict]) -> Form8M
     draw.line((start_x + bar_px, bar_y - 8, start_x + bar_px, bar_y + 8), fill=(30, 47, 66), width=3)
     draw.text((start_x, bar_y + 13), f"{bar_m} m", font=_font(20), fill=(30, 47, 66))
     draw.text((340, HEIGHT - 82), "OUTLINE: 500 m  |  SHADED: SITE", font=_font(19), fill=(43, 60, 78))
-    draw.text((340, HEIGHT - 51), "NUMBER: REVIEWED  |  RING: UNREVIEWED", font=_font(17), fill=(92, 104, 118))
+    draw.text((340, HEIGHT - 51),
+              "NUMBER: DRAFT TARGET" if draft else "NUMBER: REVIEWED  |  RING: UNREVIEWED",
+              font=_font(17), fill=(92, 104, 118))
     draw.text((WIDTH - 295, HEIGHT - 44), "GIS DRAFT / NO BASEMAP", font=_font(16), fill=(113, 122, 134))
     buffer = BytesIO()
     image.save(buffer, format="PNG", optimize=True)
