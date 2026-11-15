@@ -97,8 +97,8 @@ def test_sgis_reuses_one_existing_calculation_to_fill_each_scenario_map_note():
             assert "산업단지" in text
             assert "구분값이 아닙니다" in text
             values = p.get_field(sgis.RESULT_KEY).value["scenario"][impacts[idx].name]
-            assert str(values["거주민수"]) in text
-            assert str(values["근로자수"]) in text
+            assert f'{values["거주민수"]:,}' in text
+            assert f'{values["근로자수"]:,}' in text
             # Official in/out location remains unknown: do not invent split.
             assert "거주민(   )명" in table.cell(3, 2).text
             assert "근로자(   )명" in table.cell(4, 2).text
