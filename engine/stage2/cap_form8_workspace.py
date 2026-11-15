@@ -89,8 +89,11 @@ def review(project: Stage2Project) -> dict[str, Any]:
 
 
 def invalidate_review(project: Stage2Project) -> None:
-    """An edited candidate list must not inherit a previous completed review."""
-    project.set_field(REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {}, "HOLD")
+    """Drop stale evidence, without creating a mandatory pre-draft review state."""
+    project.set_field(
+        REVIEW_KEY, "별지 제8호 지도·목록 확인 기록", {}, "PROPOSED",
+        note="변경 전 확인기록은 재사용하지 않음. 초안을 먼저 생성하고 이후에 검토합니다.",
+    )
 
 
 def import_company_rows(raw_rows: list[Mapping[str, Any]], existing: list[Mapping[str, Any]] | None = None
