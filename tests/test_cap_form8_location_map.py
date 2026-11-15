@@ -5,7 +5,7 @@ from io import BytesIO
 from zipfile import ZipFile
 
 from docx import Document
-from shapely.geometry import Point, mapping
+from shapely.geometry import LineString, Point, mapping
 from PIL import Image
 
 from engine.stage2 import cap_form8_map as map8
@@ -159,6 +159,27 @@ def test_confirmed_target_with_unknown_coordinates_not_invented_as_map_pin():
     doc = Document(BytesIO(output))
     cell = doc.tables[form_table_index_for(doc)["8"][0]].rows[1].cells[0]
     assert "위치도형이 없는 보호대상 1건" in cell.text
+
+
+def test_long_river_line_crossing_buffer_gets_true_nearest_pin():
+    project = _project()
+    _with_site_boundary(project)
+    # The midpoint of this long river line lies far outside the 500m buffer,
+    # but its real river geometry starts inside the statutory vicinity.
+    geo.save_survey(project, [{
+        "name": "긴 하천", "source": "GIS 시험 선형",
+        "geometry": mapping(LineString([(129.302, 35.5), (129.45, 35.5)])),
+    }], center=(129.3, 35.5))
+    rows = [{
+        "보호대상 명칭": "긴 하천", "보호대상 구분": "환경수용체",
+        "세부유형": "하천", "주소·위치": "울산",
+        "사업장 경계와 거리(m)": 140, "GIS/현장 근거": "선형지리정보",
+        "일련번호": 1,
+    }]
+    output = map8.render_site_map(project, rows)
+    assert output is not None
+    assert output.placed == 1
+    assert output.missing == 0
 
 
 def test_original_statutory_template_remains_byte_exact_before_rendering():
