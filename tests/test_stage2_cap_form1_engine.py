@@ -125,8 +125,12 @@ class CAPForm1EngineTests(unittest.TestCase):
         )
         app1 = SimpleNamespace(ready=True, matched=True, blockers=[],
                                lower_quantity_ton=1.0, upper_quantity_ton=20.0)
+        import pandas as pd
+        scope = {"CAP_QTY_APP2": pd.DataFrame({
+            "scope_type": ["DIRECT_CAS"], "direct_cas": ["108-88-3"]
+        })}
         with patch("engine.stage2.cap_form1_engine.screen_facility_stage", return_value=screen), \
-             patch("engine.stage2.cap_form1_engine.load_approved_scope_tables", return_value=({}, [])), \
+             patch("engine.stage2.cap_form1_engine.load_approved_scope_tables", return_value=(scope, [])), \
              patch("engine.stage2.cap_form1_engine.select_app1_quantities", return_value=app1) as selected:
             result = build_cap_form1_data(project)
 
@@ -159,6 +163,22 @@ class CAPForm1EngineTests(unittest.TestCase):
         selected.assert_not_called()
         self.assertEqual(out.chemical_rows[0]["상위규정수량(ton)"], "")
         self.assertIn("적용조건", out.chemical_rows[0]["규정수량 확인사유"])
+
+    def test_missing_approved_appendix2_scope_never_allows_app1_fallback(self):
+        p = self._project()
+        row = p.get_field("inventory.chemicals").value[0].copy()
+        row.update({"별표1 SDS 분류(그룹|구분;...)": "급성독성(흡입)|2",
+                    "별표1 SDS 분류 전체 확인": "예",
+                    "SDS 파일명": "company_SDS.pdf", "SDS 개정일": "2026-01-01"})
+        p.set_field("inventory.chemicals", "시험자료", [row], "USER_CONFIRMED")
+        screen = SimpleNamespace(ready=True, blockers=[], messages=[], row_numbers=[], legal_hits=[])
+        with patch("engine.stage2.cap_form1_engine.screen_facility_stage", return_value=screen), \
+             patch("engine.stage2.cap_form1_engine.load_approved_scope_tables", return_value=({}, ["CAP_QTY_APP2"])), \
+             patch("engine.stage2.cap_form1_engine.select_app1_quantities") as selected:
+            result = build_cap_form1_data(p)
+        selected.assert_not_called()
+        self.assertIn("포괄 규제범위", result.chemical_rows[0]["규정수량 확인사유"])
+
 
     def test_appendix1_requires_full_sds_and_valid_pair_format(self):
         from engine.stage2.cap_form1_engine import _app1_sds_pairs
