@@ -145,7 +145,7 @@ class SurroundingsTests(unittest.TestCase):
              patch.object(vworld,"search",return_value=([obj("outside")],[])) as search:
             s.collect(p,expand_to_boundary=True)
         self.assertGreater(search.call_args.kwargs["radius_m"],1200)
-        self.assertIn("기하학적으로 포함",s.coverage_warning(p))
+        self.assertEqual("", s.coverage_warning(p))  # 정상 범위 안내 문구는 표시하지 않음
 
     def test_geojson_and_storage_keep_original_geometry_and_provenance(self):
         raw=obj("outside")

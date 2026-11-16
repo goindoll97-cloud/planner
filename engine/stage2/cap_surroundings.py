@@ -259,7 +259,7 @@ def coverage_warning(project) -> str:
         return "사업장 경계를 확인하기 전입니다. 내부·외부 구분과 경계 기준 범위를 아직 판단할 수 없습니다."
     if required_radius(project, data["center"]) > data["radius_m"]:
         return "현재 주소점 조사 원이 사업장 경계 주변 500m 전체를 포함하지 못합니다. ‘경계 기준으로 다시 조사’를 실행하세요."
-    return "조사 원이 입력한 경계 주변 500m를 기하학적으로 포함합니다. 자료 누락·레이어 실패·법정 분류 확인은 별도로 필요합니다."
+    return ""  # 조사 범위가 충분하면 안내를 띄우지 않음; 문제 있는 경우에만 경고
 
 
 def _normal_name(name):
