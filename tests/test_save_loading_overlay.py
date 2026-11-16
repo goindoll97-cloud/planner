@@ -108,3 +108,20 @@ def test_global_loading_placeholder_is_removed_when_navigation_fails():
             with loading.app_loading():
                 raise RuntimeError("페이지 오류")
         placeholder.empty.assert_called_once()
+
+
+def test_real_streamlit_navigation_keeps_loader_compatible_with_page_configuration():
+    """Run the actual multipage entrypoint, not only a mocked router.
+
+    In Streamlit 1.49 the shared overlay is inserted between st.navigation
+    and child-page execution. Verify it doesn't interfere with page config
+    or the default page / page switching.
+    """
+    from streamlit.testing.v1 import AppTest
+
+    root = Path(__file__).resolve().parents[1]
+    app = AppTest.from_file(root / "app.py", default_timeout=60).run()
+    assert not app.exception, [e.value for e in app.exception]
+
+    app.switch_page("ui/judgement_page.py").run()
+    assert not app.exception, [e.value for e in app.exception]
