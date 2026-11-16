@@ -265,6 +265,40 @@ class EvidencePageTests(unittest.TestCase):
             self.assertEqual(len(apply.call_args.args[1]), 20)
             self.assertIn("초안에 반영·한 번에 저장", " ".join(b.label for b in at.button))
 
+    def test_stage_three_editor_shows_saved_targets_missing_from_current_map(self):
+        """Old saved rows must be editable rather than silently appearing in DOCX."""
+        from engine.stage2 import cap_form8_workspace as f8
+        old = {
+            "보호대상 명칭": "이전 지도에서 저장한 시설",
+            "보호대상 구분": "을종",
+            "세부유형": "",
+            "주소·위치": "광주광역시",
+            "사업장 경계와 거리(m)": 90,
+            "GIS/현장 근거": "예전 지도 자료",
+        }
+        f8.save(self.project, [old], no_target=False, status="PROPOSED")
+        save_project(self.project)
+        current = [{
+            "보호대상 명칭": "전남대학교",
+            "보호대상 구분": "갑종",
+            "세부유형": "교육·연구시설",
+            "주소·위치": "광주광역시",
+            "사업장 경계와 거리(m)": 20,
+            "GIS/현장 근거": "현재 GIS",
+        }]
+        with (
+            patch("engine.stage2.scenario_survey.candidate_rows", return_value=current),
+            patch("engine.stage2.scenario_survey.company_workbook", return_value=b"excel"),
+        ):
+            at = self.run_page(3)
+        self.assertFalse(at.exception)
+        visible = next(t.value for t in at.dataframe
+                       if "보호대상 구분" in t.value.columns)
+        self.assertEqual(len(visible), 2)
+        self.assertEqual(visible.iloc[1]["보호대상 명칭"], old["보호대상 명칭"])
+        self.assertEqual(visible.iloc[1]["세부유형"], "")
+        self.assertTrue(any("이전에 저장된 보호대상 1곳" in t for t in _texts(at)))
+
     def test_write_uses_uploaded_facts_without_confirmation_gate(self):
         at = self.run_page(4)
         at.button(key="write_" + self.pid).click().run()
