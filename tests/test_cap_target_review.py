@@ -182,3 +182,49 @@ def test_exported_gis_workbook_retains_screen_dropdown_choices():
     assert sheet.cell(by_name["북구청"], columns["세부유형"]).value == "주택·업무시설"
     assert any(v.type == "list" and "갑종" in (v.formula1 or "")
                for v in sheet.data_validations.dataValidation)
+
+
+def test_old_saved_target_is_visible_and_editable_with_current_map_candidates():
+    """An invisible old row must not create an unexplained Form-8 placeholder."""
+    p = _project()
+    found = _candidates()
+    old = {
+        "보호대상 명칭": "예전에 저장한 사업장",
+        "보호대상 구분": "을종",
+        "세부유형": "",
+        "주소·위치": "광주광역시 북구",
+        "사업장 경계와 거리(m)": 120,
+        "GIS/현장 근거": "예전 자료",
+    }
+    form8.save(p, [old], no_target=False, status="PROPOSED")
+    edited = cap_target_review.candidate_review_rows(p, found)
+    assert len(edited) == len(found) + 1
+    assert edited[-1]["보호대상 명칭"] == "예전에 저장한 사업장"
+    assert edited[-1]["세부유형"] == ""
+    edited[-1]["세부유형"] = "공업시설"
+    changed, warnings = cap_target_review.apply_candidate_edits(p, edited, found)
+    assert changed and not warnings
+    rows = {row["보호대상 명칭"]: row for row in form8.saved_rows(p)}
+    assert rows["예전에 저장한 사업장"]["세부유형"] == "공업시설"
+    from engine.stage2.cap_form8_engine import build_cap_form8_data
+    rendered = build_cap_form8_data(p, for_draft=True).rows
+    assert next(r for r in rendered if r["보호대상 명칭"] == "예전에 저장한 사업장")["보호대상 종류"] == "공업시설"
+
+
+def test_unseen_manually_saved_rows_are_not_discarded_when_no_dropdown_is_changed():
+    p = _project()
+    found = _candidates()
+    old = {
+        "보호대상 명칭": "현장 직접 확인 대상",
+        "보호대상 구분": "을종",
+        "세부유형": "기타 건축물",
+        "주소·위치": "별도 위치",
+        "사업장 경계와 거리(m)": 140,
+    }
+    form8.save(p, [old], no_target=False, status="USER_CONFIRMED")
+    screen = cap_target_review.candidate_review_rows(p, found)
+    assert len(screen) == 4
+    cap_target_review.apply_candidate_edits(p, screen, found)
+    screen = cap_target_review.candidate_review_rows(p, found)
+    assert len(screen) == 4
+    assert screen[-1]["세부유형"] == "기타 건축물"
