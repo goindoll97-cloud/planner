@@ -214,9 +214,11 @@ class EvidencePageTests(unittest.TestCase):
             "보호대상 명칭", "보호대상 구분", "세부유형", "사업장 경계와 거리(m)"
         ])
         texts = " ".join(_texts(at))
-        for expected in ("갑종 보호대상", "을종 보호대상", "환경수용체", "법정 선택지",
+        for expected in ("갑종 보호대상", "을종 보호대상", "환경수용체",
                          "별표 4", "학교", "주택"):
             self.assertIn(expected, texts)
+        # The removed verbose caption must not return to the UI.
+        self.assertNotIn("‘보호대상 구분’과 ‘세부유형’ 셀을 누르면", texts)
         self.assertFalse(any(e.key == "protected_targets_confirm_" + self.pid
                              for e in at.button))
 
