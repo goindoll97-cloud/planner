@@ -35,17 +35,29 @@ def _key(row: Mapping[str, Any]) -> str:
 def candidate_review_rows(project, candidates: list[dict] | None = None) -> list[dict[str, Any]]:
     """Show saved choices over map suggestions without changing GIS facts."""
     candidate_rows = candidates if candidates is not None else scenario_survey.candidate_rows(project)
-    stored = {_key(row): row for row in form8.saved_rows(project)}
+    saved_rows = form8.saved_rows(project)
+    stored = {_key(row): row for row in saved_rows}
     reviewed = []
+    visible_keys = set()
     for candidate in candidate_rows:
         row = dict(candidate)
-        old = stored.get(_key(candidate))
+        key = _key(candidate)
+        visible_keys.add(key)
+        old = stored.get(key)
         if old is not None:
             for column in EDITABLE_COLUMNS:
                 # Explicitly cleared choices must NOT revert to name-only
                 # suggestions when the page reruns.
                 row[column] = _clean(old.get(column, ""))
         reviewed.append(row)
+    # The document renderer uses ALL saved Annex-8 rows. Previously the UI
+    # showed only *current* GIS candidates, so old/manual targets with empty
+    # subtypes were invisible in Stage ③ yet appeared in the DOCX as
+    # "[확인 필요: 세부유형]". Include them for the same edit/save workflow.
+    for row in saved_rows:
+        if _key(row) not in visible_keys:
+            reviewed.append(dict(row))
+            visible_keys.add(_key(row))
     return reviewed
 
 
