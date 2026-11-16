@@ -141,6 +141,30 @@ def render_workspace_download(project) -> None:
             )
         except Exception:
             st.warning("서식별 매핑 점검표를 만들지 못했습니다. 계산·지도 자료를 확인해 주세요.")
+    # Show exactly which saved Annex-8 subtypes feed this DOCX, so a user
+    # never learns about unresolved cells only after opening the document.
+    # This preview uses the same normalized source as the Form-8 renderer.
+    from engine.stage2.cap_form8_engine import build_cap_form8_data
+    form8_rows = build_cap_form8_data(project, for_draft=True).rows
+    missing_subtypes = [
+        str(row.get("보호대상 명칭") or "(명칭 없음)")
+        for row in form8_rows if not str(row.get("보호대상 종류") or "").strip()
+    ]
+    if missing_subtypes:
+        names = ", ".join(missing_subtypes[:10])
+        suffix = f" 외 {len(missing_subtypes) - 10}곳" if len(missing_subtypes) > 10 else ""
+        st.warning(
+            f"제8호 보호대상 명세 {len(form8_rows)}건 중 {len(missing_subtypes)}건의 "
+            "세부유형이 실제 저장자료에 없습니다. "
+            "이 상태로 내려받으면 '보호대상 종류'에 [확인 필요: 세부유형]이 표시됩니다. "
+            f"대상: {names}{suffix}. "
+            "③ 시나리오 후보 또는 사고시나리오 결과 화면에서 세부유형을 다시 저장해 주세요."
+        )
+    elif form8_rows:
+        st.caption(
+            f"제8호 보호대상 {len(form8_rows)}건의 세부유형이 모두 저장되어 "
+            "DOCX 초안에 반영됩니다(법정 적합성 검증과는 별개입니다)."
+        )
     # DOCX is the default output. Merely entering Step ④ or rerendering its
     # widgets must never initialize Hancom/Word or attempt an HWP conversion.
     st.download_button(
