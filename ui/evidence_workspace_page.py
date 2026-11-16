@@ -10,6 +10,7 @@ import re
 
 import streamlit as st
 
+from ui.save_loading_overlay import scenario_save_loading
 from engine.stage2 import demo_company_workbook, scenario_triage, cap_target_review
 from engine.stage2 import cap_evidence_links, cap_fact_drafting, cap_fact_status, cap_upload_template
 from engine.stage2.intake import build_intake_catalog
@@ -609,23 +610,27 @@ def _step_scenarios(project, found, triage) -> None:
                 type="primary", use_container_width=True
             )
         if submitted:
-            try:
-                changed, warnings = cap_target_review.apply_candidate_edits(
-                    project, edited.to_dict("records"), candidates
-                )
-                if changed:
-                    try:
-                        scenario_pipeline.refresh(project)
-                    except (ValueError, TypeError, RuntimeError) as exc:
-                        st.session_state["protected_target_refresh_notice_" + pid] = (
-                            "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
-                        )
-                    save_project(project)
-                    st.session_state["protected_target_editor_warnings_" + pid] = warnings
-                    st.session_state["protected_target_saved_notice_" + pid] = True
-                    st.rerun()
-            except (ValueError, TypeError) as exc:
-                st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
+            # Show a visible centered loading animation while the saved
+            # classifications are persisted and scenario outputs recomputed.
+            # The overlay is removed on success, validation error and rerun.
+            with scenario_save_loading():
+                try:
+                    changed, warnings = cap_target_review.apply_candidate_edits(
+                        project, edited.to_dict("records"), candidates
+                    )
+                    if changed:
+                        try:
+                            scenario_pipeline.refresh(project)
+                        except (ValueError, TypeError, RuntimeError) as exc:
+                            st.session_state["protected_target_refresh_notice_" + pid] = (
+                                "보호대상 선택은 저장했지만 시나리오 재계산은 확인이 필요합니다: " + type(exc).__name__
+                            )
+                        save_project(project)
+                        st.session_state["protected_target_editor_warnings_" + pid] = warnings
+                        st.session_state["protected_target_saved_notice_" + pid] = True
+                        st.rerun()
+                except (ValueError, TypeError) as exc:
+                    st.error(f"보호대상 선택값을 저장하지 못했습니다: {exc}")
 
 
         if st.session_state.pop("protected_target_saved_notice_" + pid, False):
