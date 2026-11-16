@@ -131,7 +131,9 @@ def render(project, *, persist=save_project, allow_query=True):
     c2.metric("부지 내부 도형", counts["INSIDE"])
     c3.metric("경계 걸침·접촉", counts["CROSSES"] + counts["TOUCHES"])
     c4.metric("위치 확인 필요", counts["NO_GEOMETRY"])
-    st.info(survey.coverage_warning(project))
+    coverage_notice = survey.coverage_warning(project)
+    if coverage_notice:
+        st.info(coverage_notice)
     with st.expander(f"조사 출처와 미완료 사항 ({len(data.get('notices', []))}개)"):
         st.write(f"조회 시각(UTC): {data['checked_at']} · 주소점 조사 반경: {data['radius_m']}m")
         for note in data.get("notices", []):
