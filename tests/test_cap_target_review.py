@@ -113,20 +113,32 @@ def test_save_adds_new_gis_candidates_even_without_dropdown_changes():
     assert form8.saved_rows(p)[0]["사업장 경계와 거리(m)"] == 12
 
 
-def test_category_change_clears_incompatible_subtype_and_warns():
+def test_category_change_rejects_incompatible_subtype_without_lying_about_save():
     p = _project()
     candidates = _candidates()
     form8.save(p, candidates, no_target=False, status="HOLD")
     edited = cap_target_review.candidate_review_rows(p, candidates)
     edited[0]["보호대상 구분"] = "을종"
+    # The school subtype still belongs to 갑종. The previous implementation
+    # silently cleared it, causing '[확인 필요]' in Form 8 after "success".
+    with pytest.raises(ValueError, match="구분과.*세부유형이 맞지 않습니다"):
+        cap_target_review.apply_candidate_edits(p, edited, candidates)
+    stored = {r["보호대상 명칭"]: r for r in form8.saved_rows(p)}
+    assert stored["전남대학교"]["보호대상 구분"] == "갑종"
+    assert stored["전남대학교"]["세부유형"] == "교육·연구시설"
+
+    edited[0]["세부유형"] = "공업시설"
     changed, warnings = cap_target_review.apply_candidate_edits(p, edited, candidates)
-    assert changed and warnings
+    assert changed and not warnings
     stored = {r["보호대상 명칭"]: r for r in form8.saved_rows(p)}
     assert stored["전남대학교"]["보호대상 구분"] == "을종"
-    assert stored["전남대학교"]["세부유형"] == ""
-    # An explicitly cleared category cannot revert to the name-only heuristic.
+    assert stored["전남대학교"]["세부유형"] == "공업시설"
+
+    # An explicitly cleared category/subtype stays cleared rather than
+    # reverting to a facility-name suggestion on rerun.
     edited = cap_target_review.candidate_review_rows(p, candidates)
     edited[0]["보호대상 구분"] = ""
+    edited[0]["세부유형"] = ""
     changed, _ = cap_target_review.apply_candidate_edits(p, edited, candidates)
     assert changed
     restored = cap_target_review.candidate_review_rows(p, candidates)

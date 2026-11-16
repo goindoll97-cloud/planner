@@ -488,6 +488,105 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
 
 
 
+    def test_hold_target_saved_in_scenario_results_survives_step4_and_fills_download_docx(self):
+        """A '확인한 보호대상 제출' with incomplete review must not lose the subtype.
+
+        The scenario-results editor saves an incomplete scope confirmation as
+        HOLD. Step ④'s automatic workbook publication previously replaced that
+        saved legal subtype with blank data from an older Excel document.
+        """
+        from engine.stage2 import evidence_workspace as ew
+        from engine.stage2.report_export import build_cap_workspace_draft
+        from engine.stage2.cap_catalog_docx import build_cap_draft
+
+        project = _project()
+        old = {
+            "보호대상 명칭": "회사 엑셀 기존 시설",
+            "보호대상 구분": "을종",
+            "세부유형": "",
+            "주소·위치": "울산광역시 산업로",
+            "사업장 경계와 거리(m)": 88,
+            "GIS/현장 근거": "기존 회사 엑셀",
+        }
+        f8.save(project, [old], no_target=False, status="FILE_READ")
+        chosen = {**old, "세부유형": "공업시설", "GIS/현장 근거": "사용자 지도 확인"}
+        # The same save method used by scenario_results_page._target_editor.
+        f8.save(project, [chosen], no_target=False,
+                scope_reviewed=False, status="HOLD")
+        self.assertEqual(project.get_field(f8.SITE_KEY).status, "HOLD")
+
+        # The catalog still sees the stale company workbook. Publish some
+        # other new facts to force the automatic Step ④ publish operation.
+        stale = {
+            ew.SURVEY_KEY: ([dict(old)], [], "회사 엑셀의 구 보호대상 자료"),
+            "cap.workspace.hold_export_probe": ("new input", [], "다른 신규 입력"),
+        }
+        with (
+            patch.object(ew, "_site_values", return_value={}),
+            patch.object(ew, "_table_values", return_value=stale),
+        ):
+            self.assertNotIn(ew.SURVEY_KEY, ew.catalog_preview(project))
+            self.assertTrue(ew.needs_publish(project))
+            ew.publish(project, replace_existing=True)
+
+        saved = f8.saved_rows(project)
+        self.assertEqual(saved[0]["세부유형"], "공업시설")
+        self.assertEqual(project.get_field(f8.SITE_KEY).status, "HOLD")
+        self.assertEqual(project.get_field("cap.workspace.hold_export_probe").value, "new input")
+
+        # Check the identical DOCX path used by the Step ④ download as well
+        # as both statutory document renderers, not just an engine field.
+        for builder in (build_cap_baseline_draft, build_cap_draft,
+                        lambda p: build_cap_workspace_draft(p).docx):
+            doc = Document(BytesIO(builder(project)))
+            context, listing = (doc.tables[i] for i in FORM_TABLE_INDEX["8"])
+            self.assertEqual(listing.cell(1, 1).text, "공업시설")
+            self.assertIn("☒ 공업시설",
+                          " ".join(c.text for row in context.rows for c in row.cells))
+            self.assertNotIn("[확인 필요: 세부유형]",
+                             " ".join(c.text for row in listing.rows for c in row.cells))
+
+
+
+    def test_new_survey_upload_explicitly_supersedes_hold_but_unrelated_file_does_not(self):
+        """Keep user edits across ordinary imports; use newly uploaded survey."""
+        from engine.stage2 import evidence_workspace as ew
+        project = _project()
+        old = {
+            "보호대상 명칭": "사업장 부근 건물",
+            "보호대상 구분": "을종",
+            "세부유형": "공업시설",
+            "주소·위치": "울산광역시",
+            "사업장 경계와 거리(m)": 60,
+        }
+        f8.save(project, [old], no_target=False, status="HOLD")
+        ew.ingest(
+            project, "새 물질자료.csv",
+            "제품코드,제품명,CAS 번호,함량(%)\nM01,물질 A,64-17-5,99\n".encode("utf-8-sig"),
+            "material",
+        )
+        self.assertTrue(
+            project.get_field(f8.SITE_KEY).note.startswith(
+                "CAP 작성대 별지 제8호에서 보호대상 목록을 확인·입력"
+            )
+        )
+        self.assertEqual(f8.saved_rows(project)[0]["세부유형"], "공업시설")
+
+        # Uploading a corrected protection-target workbook is an explicit
+        # new source, unlike rerendering Step ④. It should win over the
+        # previous user-edited values and require fresh statutory review.
+        ew.ingest(
+            project, "수정한 보호대상 조사.csv",
+            ("보호대상 명칭,보호대상 구분,세부유형,주소·위치,사업장 경계와 거리(m)\n"
+             "사업장 부근 건물,을종,근린 생활시설,울산광역시,60\n").encode("utf-8-sig"),
+            "target",
+        )
+        self.assertTrue(project.get_field(f8.SITE_KEY).note.startswith(
+            "새 보호대상 조사표 업로드"
+        ))
+        self.assertEqual(project.get_field(f8.SITE_KEY).status, "HOLD")
+
+
 
 if __name__ == "__main__":
     unittest.main()

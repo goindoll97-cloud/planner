@@ -79,6 +79,8 @@ class WorkspaceDownloadTests(unittest.TestCase):
             patch.object(panel.cap_template_gap_audit, "rows", return_value=[]),
             patch.object(panel.cap_template_gap_audit, "csv_bytes", return_value=b"test,csv"),
             patch.object(panel.cap_hwp_export, "build_workspace_hwp", return_value=converted) as converter,
+            patch("engine.stage2.cap_form8_engine.build_cap_form8_data",
+                  return_value=SimpleNamespace(rows=())) as form8_data,
         ):
             panel.render_workspace_download(project)
             converter.assert_not_called()
@@ -121,3 +123,18 @@ class WorkspaceDownloadTests(unittest.TestCase):
             self.assertEqual(converter.call_count, 2)
             self.assertEqual(converter.call_args.args, (project, draft.docx))
             self.assertIn(("규정서식 초안 HWP 내려받기", converted.data), ui.downloads)
+
+
+            # The source-of-truth preview points to exact unresolved target
+            # names before the user opens a DOCX containing a placeholder.
+            form8_data.return_value = SimpleNamespace(rows=(
+                {"보호대상 명칭": "서버에 저장된 구 대상", "보호대상 종류": ""},
+                {"보호대상 명칭": "저장된 공장", "보호대상 종류": "공업시설"},
+            ))
+            ui.convert_pressed = False
+            ui.warnings.clear()
+            panel.render_workspace_download(project)
+            self.assertTrue(any("서버에 저장된 구 대상" in w
+                                and "[확인 필요: 세부유형]" in w
+                                for w in ui.warnings), ui.warnings)
+            self.assertFalse(any("저장된 공장" in w for w in ui.warnings))

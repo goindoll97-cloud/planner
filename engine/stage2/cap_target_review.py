@@ -88,8 +88,14 @@ def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
         if subtype not in LEGAL_SUBTYPES:
             raise ValueError(f"{row['보호대상 명칭']}: 법정 세부유형 선택지에서 골라 주세요.")
         if subtype and subtype not in form8.SUBTYPES.get(category, ()):
-            subtype = ""
-            warnings.append(f"{row['보호대상 명칭']}: 선택한 구분에 해당하는 세부유형을 다시 골라 주세요.")
+            # Do not silently erase a user's selection and then report that
+            # the batch was saved. It would become '[확인 필요: 세부유형]'
+            # in the downloaded Annex 8 despite the user completing the UI.
+            raise ValueError(
+                f"{row['보호대상 명칭']}: 선택한 '{category or '미지정'}' 구분과 "
+                f"'{subtype}' 세부유형이 맞지 않습니다. "
+                "같은 구분에 속한 세부유형을 선택한 후 다시 저장해 주세요."
+            )
         row["보호대상 구분"], row["세부유형"] = category, subtype
         for col in EDITABLE_COLUMNS[2:]:
             value = _clean(edited.get(col, row.get(col, "")))
