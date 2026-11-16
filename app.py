@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from engine.stage2.cap_final_form_runtime import install_cap_final_form_runtime
+from ui.save_loading_overlay import app_loading
 
 
 # Stage 2 final output is DOCX-only. Keep only the CAP DOCX formatting runtime
@@ -32,4 +33,10 @@ sections["참고"] = [
     st.Page("ui/legal_evidence_page.py", title="법령·근거 라이브러리", icon="📚"),
 ]
 
-st.navigation(sections).run()
+# All production pages are executed through this single entrypoint.
+# Keep the same centered loader while each page navigates, saves, recalculates
+# or builds an output. The page-specific Stage ③ loader can still show its
+# own more informative text inside this shared full-screen design.
+page = st.navigation(sections)
+with app_loading():
+    page.run()
