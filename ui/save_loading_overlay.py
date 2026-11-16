@@ -1,13 +1,14 @@
-"""Centered accessible loading indicator for Stage ③ protected-target saves.
+"""Shared accessible full-screen loader for the entire multipage Streamlit app.
 
-A full-screen overlay makes a long-running save/recalculation visible in the
-page itself. It is shown only after the user submits the batch form, and is
-removed even if processing raises an exception or triggers Streamlit rerun.
+The app-level loader spans each navigation run. A more specific loader may
+replace the message for an individual save/recalculation. The placeholder is
+always cleared when work completes, on errors and during Streamlit reruns.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
 from collections.abc import Iterator
+from html import escape
 
 import streamlit as st
 
@@ -73,12 +74,37 @@ _OVERLAY = """
 """
 
 
+DEFAULT_TITLE = "작업을 처리하고 있습니다"
+DEFAULT_DESCRIPTION = "화면을 불러오거나 입력 내용을 저장·계산하고 있습니다."
+
+
 @contextmanager
-def scenario_save_loading() -> Iterator[None]:
-    """Render the full-screen spinner while Step ③ saves and recalculates."""
+def app_loading(
+    title: str = DEFAULT_TITLE,
+    description: str = DEFAULT_DESCRIPTION,
+) -> Iterator[None]:
+    """Show the same centered loader for every app page's script execution.
+
+    The incoming values are plain text; escape them before interpolating into
+    the HTML template. Streamlit's navigation and nested widget callbacks may
+    raise rerun/stop exceptions, so always clear the placeholder in finally.
+    """
+    html = (_OVERLAY
+            .replace("보호대상 정보를 저장하고 있습니다", escape(title))
+            .replace("저장된 내용을 확인하고 사고시나리오를 다시 계산합니다.", escape(description)))
     placeholder = st.empty()
-    placeholder.markdown(_OVERLAY, unsafe_allow_html=True)
+    placeholder.markdown(html, unsafe_allow_html=True)
     try:
         yield
     finally:
         placeholder.empty()
+
+
+@contextmanager
+def scenario_save_loading() -> Iterator[None]:
+    """Keep the existing Stage ③-specific wording within the shared design."""
+    with app_loading(
+        "보호대상 정보를 저장하고 있습니다",
+        "저장된 내용을 확인하고 사고시나리오를 다시 계산합니다.",
+    ):
+        yield
