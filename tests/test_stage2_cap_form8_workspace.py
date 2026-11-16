@@ -548,6 +548,45 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
 
 
 
+    def test_new_survey_upload_explicitly_supersedes_hold_but_unrelated_file_does_not(self):
+        """Keep user edits across ordinary imports; use newly uploaded survey."""
+        from engine.stage2 import evidence_workspace as ew
+        project = _project()
+        old = {
+            "보호대상 명칭": "사업장 부근 건물",
+            "보호대상 구분": "을종",
+            "세부유형": "공업시설",
+            "주소·위치": "울산광역시",
+            "사업장 경계와 거리(m)": 60,
+        }
+        f8.save(project, [old], no_target=False, status="HOLD")
+        ew.ingest(
+            project, "새 물질자료.csv",
+            "제품코드,제품명,CAS 번호,함량(%)\nM01,물질 A,64-17-5,99\n".encode("utf-8-sig"),
+            "material",
+        )
+        self.assertTrue(
+            project.get_field(f8.SITE_KEY).note.startswith(
+                "CAP 작성대 별지 제8호에서 보호대상 목록을 확인·입력"
+            )
+        )
+        self.assertEqual(f8.saved_rows(project)[0]["세부유형"], "공업시설")
+
+        # Uploading a corrected protection-target workbook is an explicit
+        # new source, unlike rerendering Step ④. It should win over the
+        # previous user-edited values and require fresh statutory review.
+        ew.ingest(
+            project, "수정한 보호대상 조사.csv",
+            ("보호대상 명칭,보호대상 구분,세부유형,주소·위치,사업장 경계와 거리(m)\n"
+             "사업장 부근 건물,을종,근린 생활시설,울산광역시,60\n").encode("utf-8-sig"),
+            "target",
+        )
+        self.assertTrue(project.get_field(f8.SITE_KEY).note.startswith(
+            "새 보호대상 조사표 업로드"
+        ))
+        self.assertEqual(project.get_field(f8.SITE_KEY).status, "HOLD")
+
+
 
 if __name__ == "__main__":
     unittest.main()
