@@ -932,6 +932,25 @@ def ingest(project, name, content, kind="facility", entity_hint=""):
     _store(project, data)
     _invalidate(project)
     auto_approve_safe(project)
+
+    # A freshly uploaded *survey* workbook explicitly supersedes the earlier
+    # user-edited Annex-8 list. Merely rerendering Step ④ must not do so.
+    # Mark only uploads carrying target/survey facts; unrelated MSDS,
+    # facility or chemical uploads must preserve the user's subtype choices.
+    is_new_survey = any(
+        fact["kind"] == "target"
+        or (fact["kind"] == "site" and fact["field"] in {"survey_no_target", "survey_scope"})
+        for fact in added
+    )
+    if is_new_survey:
+        site = project.get_field(SURVEY_KEY)
+        if (site is not None and
+                site.note.startswith("CAP 작성대 별지 제8호에서 보호대상 목록을 확인·입력")):
+            project.set_field(
+                SURVEY_KEY, site.label, site.value, "HOLD",
+                evidence=list(site.evidence),
+                note="새 보호대상 조사표 업로드: 파일의 최신 값을 자동 반영하고 기존 사용자 선택은 다시 확인",
+            )
     return len(added)
 
 
