@@ -141,17 +141,43 @@ def render_workspace_download(project) -> None:
             )
         except Exception:
             st.warning("서식별 매핑 점검표를 만들지 못했습니다. 계산·지도 자료를 확인해 주세요.")
+    # DOCX is the default output. Merely entering Step ④ or rerendering its
+    # widgets must never initialize Hancom/Word or attempt an HWP conversion.
+    st.download_button(
+        "규정서식 초안 DOCX 내려받기",
+        data=draft.docx, file_name=draft.name,
+        mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
+        width="stretch", type="primary",
+    )
+
+    st.caption(
+        "HWP 파일이 필요한 경우에만 아래에서 변환을 실행하세요. "
+        "Windows에 한컴오피스가 설치되어 있으면 별도 창을 띄우지 않고 변환을 시도합니다. "
+        "변환이 불가능하면 일부 항목만 작성된 HWP 초안이 제공될 수 있습니다."
+    )
     cache_key = "workspace_cap_hwp_" + project.project_id
+    filled_key = cache_key + "_filled"
     fingerprint = sha256(draft.docx).hexdigest()
-    saved = st.session_state.get(cache_key + "_filled")
-    if not saved or saved[0] != fingerprint:
+    saved = st.session_state.get(filled_key)
+    if not isinstance(saved, tuple) or len(saved) != 2 or saved[0] != fingerprint:
+        # A changed DOCX must not offer an HWP created for a previous draft.
+        st.session_state.pop(filled_key, None)
+        saved = None
+
+    if st.button(
+        "HWP 초안 만들기 (선택)",
+        key=cache_key + "_convert",
+        width="stretch",
+    ):
         try:
-            with st.spinner("현재 DOCX 내용을 한글 초안에 반영하고 있습니다."):
+            with st.spinner("HWP 초안을 생성하고 검증하고 있습니다."):
                 saved = (fingerprint, cap_hwp_export.build_workspace_hwp(project, draft.docx))
-            st.session_state[cache_key + "_filled"] = saved
+            st.session_state[filled_key] = saved
         except Exception:
             saved = None
-            st.warning("HWP 초안을 만들거나 검증하지 못했습니다. 작성된 DOCX 초안을 내려받아 주세요.")
+            st.session_state.pop(filled_key, None)
+            st.warning("HWP 초안을 생성하거나 검증하지 못했습니다. DOCX 초안을 내려받아 주세요.")
+
     hwp = saved[1] if saved else None
     if hwp:
         if hwp.mode == "docx_converted":
@@ -174,10 +200,11 @@ def render_workspace_download(project) -> None:
             st.caption("사업장 일반정보 일부만 작성된 HWP 시험 초안입니다.")
         if hwp.warnings:
             st.caption(hwp.warnings[0])
-    st.download_button("규정서식 초안 HWP 내려받기", data=hwp.data if hwp else b"",
-                       file_name=draft.name.removesuffix(".docx") + ".hwp",
-                       mime="application/x-hwp", key=cache_key + "_download",
-                       width="stretch", disabled=hwp is None, type="primary")
-    st.download_button("규정서식 초안 DOCX 내려받기", data=draft.docx, file_name=draft.name,
-                       mime=export.DOCX_MIME, key="workspace_cap_docx_" + project.project_id,
-                       width="stretch", type="primary")
+        st.download_button(
+            "규정서식 초안 HWP 내려받기",
+            data=hwp.data,
+            file_name=draft.name.removesuffix(".docx") + ".hwp",
+            mime="application/x-hwp",
+            key=cache_key + "_download",
+            width="stretch",
+        )

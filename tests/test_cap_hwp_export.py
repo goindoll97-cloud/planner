@@ -105,7 +105,8 @@ class CapHwpExportTests(unittest.TestCase):
         with patch.object(cap_hwp_export.platform, "system", return_value="Windows"), patch.dict(sys.modules, {"pyhwpx": fake}):
             result = cap_hwp_export.convert_docx_to_hwp(b"sample-docx")
         self.assertTrue(result.startswith(HWP5_MAGIC))
-        self.assertIn(("init", True, True), calls)
+        self.assertIn(("init", True, False), calls)
+        self.assertNotIn(("init", True, True), calls)
         self.assertIn(("open", "", b"sample-docx"), calls)
         self.assertIn(("save", "HWP"), calls)
         self.assertIn(("quit",), calls)
