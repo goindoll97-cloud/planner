@@ -577,6 +577,15 @@ def _step_scenarios(project, found, triage) -> None:
         import pandas as pd
 
         review_rows = cap_target_review.candidate_review_rows(project, candidates)
+        # Form 8 also renders older/manual saved rows that are absent from
+        # the latest map survey. Let users edit those records here as well.
+        extra_count = len(review_rows) - len(candidates)
+        if extra_count:
+            st.warning(
+                f"현재 지도 후보 {len(candidates)}곳 외에 이전에 저장된 보호대상 "
+                f"{extra_count}곳도 제8호서식에 들어갑니다. "
+                "아래 표에서 해당 대상의 세부유형도 확인해 주세요."
+            )
         # Display only the information needed for a staff member's decision.
         # Address, GIS provenance and unverified populations remain stored in
         # the source facts, never discarded or assumed to be zero.
@@ -627,6 +636,13 @@ def _step_scenarios(project, found, triage) -> None:
                             )
                         save_project(project)
                         st.session_state["protected_target_editor_warnings_" + pid] = warnings
+                        from engine.stage2 import cap_form8_workspace as f8
+                        saved = f8.saved_rows(project)
+                        st.session_state["protected_target_missing_notice_" + pid] = [
+                            str(row.get("보호대상 명칭", "")).strip() or "(명칭 없음)"
+                            for row in saved
+                            if not str(row.get("세부유형") or "").strip()
+                        ]
                         st.session_state["protected_target_saved_notice_" + pid] = True
                         st.rerun()
                 except (ValueError, TypeError) as exc:
@@ -637,6 +653,16 @@ def _step_scenarios(project, found, triage) -> None:
             st.success("보호대상 후보를 초안 작성자료에 저장했습니다. ④에서 초안을 생성한 뒤 검토하면 됩니다.")
         for warning in st.session_state.pop("protected_target_editor_warnings_" + pid, []):
             st.warning(warning)
+        missing = st.session_state.pop("protected_target_missing_notice_" + pid, None)
+        if missing:
+            shown = ", ".join(missing[:8])
+            suffix = f" 외 {len(missing) - 8}곳" if len(missing) > 8 else ""
+            st.warning(
+                f"저장했지만 보호대상 {len(missing)}곳의 세부유형이 비어 있어 "
+                "④ 제8호서식에 [확인 필요: 세부유형]으로 표시됩니다. "
+                f"해당 대상: {shown}{suffix}. "
+                "③ 표에서 구분에 맞는 세부유형을 선택하고 다시 저장해 주세요."
+            )
         if st.session_state.pop("protected_target_refresh_notice_" + pid, ""):
             st.warning("보호대상은 저장되었으나 사고시나리오 재계산은 다음 단계에서 다시 확인해야 합니다.")
 
