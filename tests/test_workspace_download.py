@@ -79,6 +79,8 @@ class WorkspaceDownloadTests(unittest.TestCase):
             patch.object(panel.cap_template_gap_audit, "rows", return_value=[]),
             patch.object(panel.cap_template_gap_audit, "csv_bytes", return_value=b"test,csv"),
             patch.object(panel.cap_hwp_export, "build_workspace_hwp", return_value=converted) as converter,
+            patch("engine.stage2.cap_form8_engine.build_cap_form8_data",
+                  return_value=SimpleNamespace(rows=())),
         ):
             panel.render_workspace_download(project)
             converter.assert_not_called()
