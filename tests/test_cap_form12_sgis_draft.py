@@ -292,3 +292,66 @@ def test_form12_does_not_check_calculated_boundary_only_or_stale_survey_targets(
     p.set_field("business.address", "사업장 주소", "바뀐 주소", "USER_CONFIRMED")
     doc = Document(BytesIO(cap.build_cap_baseline_draft(p)))
     assert all(_receptor_boxes(t)["river"].startswith("□") for t in _scenario_tables(doc))
+
+
+def test_stage3_saved_gis_targets_reach_form12_scenario_list_and_checkboxes():
+    """Step ③ PROPOSED rows can appear in the draft when GIS overlap exists."""
+    p, _ = setup_project()
+    records = [dict(item) for item in p.get_field(iw.IMPACT_TABLE_KEY).value]
+    records[0]["영향반경(m)"] = 20
+    records[1]["영향반경(m)"] = 120
+    p.set_field(iw.IMPACT_TABLE_KEY, "시나리오별 피해범위", records, "CALCULATED")
+    surroundings.save_survey(p, [
+        {"name": "초안 학교", "source": "검토용 GIS", "geometry": mapping(Point(126.9007, 35.18))},
+        {"name": "초안 하천", "source": "검토용 GIS", "geometry": mapping(Point(126.9001, 35.18))},
+    ], center=(126.9, 35.18))
+    f8.save(p, [
+        {"보호대상 명칭": "초안 학교", "보호대상 구분": "갑종",
+         "세부유형": "교육·연구시설", "주소·위치": "GIS 위치",
+         "사업장 경계와 거리(m)": 75, "GIS/현장 근거": "GIS 후보"},
+        {"보호대상 명칭": "초안 하천", "보호대상 구분": "환경수용체",
+         "세부유형": "하천", "주소·위치": "GIS 위치",
+         "사업장 경계와 거리(m)": 15, "GIS/현장 근거": "GIS 후보"},
+    ], no_target=False, status="PROPOSED")
+
+    for build in (cap.build_cap_baseline_draft, catalog.build_cap_draft):
+        doc = Document(BytesIO(build(p)))
+        scenarios = _scenario_tables(doc)
+        assert len(scenarios) == 2
+        assert _receptor_boxes(scenarios[0])["school"].startswith("□")
+        assert _receptor_boxes(scenarios[1])["school"].startswith("☒")
+        assert _receptor_boxes(scenarios[0])["river"].startswith("☒")
+        assert _receptor_boxes(scenarios[1])["river"].startswith("☒")
+
+        # Annex-12's individual target table is now populated by the same
+        # current GIS overlap, even though the site candidates remain PROPOSED.
+        all_tables = "\n".join(
+            cell.text for table in doc.tables
+            for row in table.rows for cell in cap._unique_cells(row)
+        )
+        assert "독성-1 / 초안 하천 [잠정: 사고원점" in all_tables
+        assert "독성-2 / 초안 하천 [잠정: 사고원점" in all_tables
+        assert "독성-2 / 초안 학교 [잠정: 사고원점" in all_tables
+        assert "독성-1 / 초안 학교" not in all_tables
+
+
+def test_form12_confirmed_target_in_one_scenario_does_not_hide_another_scenario_candidates():
+    p, _ = setup_project()
+    p.set_field(iw.TARGETS_KEY, "시나리오 1 확정 대상", [
+        {"사고시나리오명": "독성-1", "보호대상 명칭": "확정 학교",
+         "보호대상 구분": "갑종", "세부유형": "교육·연구시설",
+         "사업장 경계와 거리(m)": 20, "GIS 근거": "KORA/GIS 확인"},
+    ], "USER_CONFIRMED")
+    p.set_field(iw.SCENARIO_TARGETS_KEY, "시나리오 2 잠정 대상", [
+        {"사고시나리오명": "독성-2", "보호대상 명칭": "검토 하천",
+         "보호대상 구분": "환경수용체", "보호대상 종류": "하천",
+         "사업장 경계와 거리(m)": 60, "공간중첩 상태": "미검증 후보"},
+    ], "CALCULATED")
+
+    doc = Document(BytesIO(cap.build_cap_baseline_draft(p)))
+    all_tables = "\n".join(
+        cell.text for table in doc.tables
+        for row in table.rows for cell in cap._unique_cells(row)
+    )
+    assert "독성-1 / 확정 학교" in all_tables
+    assert "독성-2 / 검토 하천 [잠정: 경계거리 기반·공간중첩 미검증]" in all_tables

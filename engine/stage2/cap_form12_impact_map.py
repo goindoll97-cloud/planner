@@ -35,60 +35,81 @@ class ScenarioMap:
     mapped_candidates: int
 
 
-def intersecting_protected_target_subtypes(
+def scenario_intersecting_protected_targets(
     project: Stage2Project, record: Mapping[str, Any]
-) -> set[tuple[str, str]]:
-    """Draft Annex-12 checkboxes from actual current GIS/scenario-circle overlap.
+) -> list[dict[str, Any]]:
+    """Stage-③ protected targets whose GIS shapes overlap this scenario circle.
 
-    The Annex-8 boundary-distance candidate list alone is NOT evidence of
-    inclusion in a particular incident-origin influence circle. Only recognized
-    statutory subtypes with a current GIS geometry can be selected here.
-    Classification remains a draft proposal until the company's legal review.
+    A boundary-distance-only 500 m listing is not a scenario overlap. These
+    rows are GIS-backed *draft* candidates, never an assertion that the target
+    has passed every legal Annex-4 classification/scale requirement.
     """
     from .cap_form8_engine import build_cap_form8_data
 
     if not surroundings.is_current(project):
-        return set()
+        return []
     try:
         lon, lat = sgis_population._parse_origin(record.get("사고원점 좌표"))
         radius = float(record.get("영향반경(m)"))
         if not math.isfinite(radius) or not 0 < radius <= MAX_DRAW_RADIUS_M:
-            return set()
+            return []
         x, y = Transformer.from_crs(
             "EPSG:4326", "EPSG:5179", always_xy=True
         ).transform(lon, lat)
         influence = Point(x, y).buffer(radius, resolution=80)
     except (TypeError, ValueError):
-        return set()
+        return []
 
-    legal_by_name: dict[str, set[tuple[str, str]]] = {}
+    source = {}
     for target in build_cap_form8_data(project, for_draft=True).rows:
         name = form8._norm(target.get("보호대상 명칭"))
-        category = str(target.get("보호대상 구분") or "").strip()
-        subtype = str(target.get("보호대상 종류") or "").strip()
-        if not name or category not in form8.SUBTYPES:
-            continue
-        matching = next(
-            (option for option in form8.SUBTYPES[category]
-             if form8._norm(option) == form8._norm(subtype)), None
-        )
-        if matching:
-            legal_by_name.setdefault(name, set()).add((category, matching))
+        if name:
+            source.setdefault(name, []).append(target)
 
-    selected: set[tuple[str, str]] = set()
+    results: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
     for item in surroundings.survey(project).get("objects", []):
         if not isinstance(item, Mapping) or not isinstance(item.get("geometry"), Mapping):
             continue
-        subtypes = legal_by_name.get(form8._norm(item.get("name")), set())
-        if not subtypes:
+        name = form8._norm(item.get("name"))
+        if not name or name not in source:
             continue
         try:
             geometry = surroundings.metric_geometry(dict(item["geometry"]))
         except (ValueError, TypeError):
             continue
-        if influence.intersects(geometry):
-            selected.update(subtypes)
-    return selected
+        if not influence.intersects(geometry):
+            continue
+        for target in source[name]:
+            category = str(target.get("보호대상 구분") or "").strip()
+            subtype = str(target.get("보호대상 종류") or "").strip()
+            canonical = next(
+                (option for option in form8.SUBTYPES.get(category, ())
+                 if form8._norm(option) == form8._norm(subtype)), ""
+            )
+            identity = (name, category)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            results.append({
+                "보호대상 명칭": target.get("보호대상 명칭", ""),
+                "보호대상 구분": category,
+                "보호대상 종류": canonical or "[확인 필요: 세부유형]",
+                "사업장 경계와 거리(m)": target.get("사업장 경계와 거리(m)", ""),
+                "공간중첩 상태": "사고원점·영향반경 GIS 교차(법정 분류 검증 전 초안)",
+            })
+    return results
+
+
+def intersecting_protected_target_subtypes(
+    project: Stage2Project, record: Mapping[str, Any]
+) -> set[tuple[str, str]]:
+    """Checkbox subtypes derived from the same scenario-specific GIS rows."""
+    return {
+        (row["보호대상 구분"], row["보호대상 종류"])
+        for row in scenario_intersecting_protected_targets(project, record)
+        if row["보호대상 종류"] in form8.SUBTYPES.get(row["보호대상 구분"], ())
+    }
 
 
 def render_scenario_map(project: Stage2Project, record: Mapping[str, Any]) -> ScenarioMap | None:

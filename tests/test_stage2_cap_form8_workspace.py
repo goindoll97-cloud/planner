@@ -425,6 +425,69 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
         self.assertEqual(f8.needs(project), [])
 
 
+    def test_step3_edited_target_survives_step4_auto_publish_and_is_in_form8_docx(self):
+        """The ③ reviewer wins over older workbook facts on later UI reruns."""
+        from engine.stage2 import cap_target_review as reviewer
+        from engine.stage2 import evidence_workspace as ew
+        from engine.stage2.cap_catalog_docx import build_cap_draft
+
+        project = _project()
+        old = {
+            "보호대상 명칭": "가상 하천", "보호대상 구분": "갑종",
+            "세부유형": "교육·연구시설", "주소·위치": "산업로 10",
+            "사업장 경계와 거리(m)": 85,
+            "GIS/현장 근거": "예전 회사 엑셀",
+        }
+        f8.save(project, [old], no_target=False, status="FILE_READ")
+        candidates = [dict(old)]
+        selected = reviewer.candidate_review_rows(project, candidates)
+        selected[0].update({"보호대상 구분": "환경수용체", "세부유형": "하천"})
+        changed, warnings = reviewer.apply_candidate_edits(project, selected, candidates)
+        self.assertTrue(changed)
+        self.assertEqual(warnings, [])
+        self.assertEqual(project.get_field(f8.SITE_KEY).status, "PROPOSED")
+
+        # The graph still holds old Excel-derived values. On every rerun,
+        # auto-publish used to treat PROPOSED as missing and silently overwrite
+        # the user's new choice, so both ④'s checkboxes and target list regressed.
+        stale = {ew.SURVEY_KEY: ([dict(old)], [], "예전 회사 엑셀 보호대상")}
+        with (
+            patch.object(ew, "_site_values", return_value={}),
+            patch.object(ew, "_table_values", return_value=stale),
+        ):
+            self.assertNotIn(ew.SURVEY_KEY, ew.catalog_preview(project))
+            self.assertFalse(ew.needs_publish(project))
+            if ew.needs_publish(project):
+                ew.publish(project, replace_existing=True)
+
+        # Even when a *different* source fact legitimately needs automatic
+        # publication, the explicit Stage-③ selection must not be overwritten.
+        stale["cap.workspace.export_sync_probe"] = ("new source fact", [], "새 파일의 다른 항목")
+        with (
+            patch.object(ew, "_site_values", return_value={}),
+            patch.object(ew, "_table_values", return_value=stale),
+        ):
+            self.assertTrue(ew.needs_publish(project))
+            ew.publish(project, replace_existing=True)
+        self.assertEqual(project.get_field("cap.workspace.export_sync_probe").value,
+                         "new source fact")
+
+        saved = f8.saved_rows(project)
+        self.assertEqual(saved[0]["보호대상 구분"], "환경수용체")
+        self.assertEqual(saved[0]["세부유형"], "하천")
+        self.assertEqual(project.get_field(f8.SITE_KEY).status, "PROPOSED")
+
+        for builder in (build_cap_baseline_draft, build_cap_draft):
+            doc = Document(BytesIO(builder(project)))
+            context, listing = (doc.tables[i] for i in FORM_TABLE_INDEX["8"])
+            options = "\n".join(c.text for row in context.rows for c in row.cells)
+            target_text = "\n".join(c.text for row in listing.rows for c in row.cells)
+            self.assertIn("☒ 하천", options)
+            self.assertIn("☐ 교육·연구시설", options)
+            self.assertIn("가상 하천", target_text)
+
+
+
 
 if __name__ == "__main__":
     unittest.main()
