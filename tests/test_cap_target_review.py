@@ -146,6 +146,45 @@ def test_category_change_rejects_incompatible_subtype_without_lying_about_save()
     assert restored[0]["세부유형"] == ""
 
 
+def test_filling_blank_eul_subtypes_saves_every_row_even_if_one_belongs_to_gap():
+    """User flow: 을종 rows have empty subtypes; the user fills all of them.
+
+    Picking '노유자시설' for a daycare suggested as 을종 used to reject the
+    whole batch, so none of the filled 을종 subtypes reached the draft.
+    """
+    from engine.stage2.cap_form8_engine import build_cap_form8_data
+
+    p = _project()
+    candidates = _candidates() + [
+        {"보호대상 명칭": "태봉어린이집", "보호대상 구분": "을종", "세부유형": "",
+         "주소·위치": "광주광역시 북구", "사업장 경계와 거리(m)": 40,
+         "GIS/현장 근거": "지도 위치 후보", "거주민수": "", "근로자수": ""},
+        {"보호대상 명칭": "대양빌딩", "보호대상 구분": "을종", "세부유형": "",
+         "주소·위치": "광주광역시 북구", "사업장 경계와 거리(m)": 60,
+         "GIS/현장 근거": "지도 위치 후보", "거주민수": "", "근로자수": ""},
+    ]
+    form8.save(p, candidates, no_target=False, status="HOLD")
+    edited = cap_target_review.candidate_review_rows(p, candidates)
+    by_name = {row["보호대상 명칭"]: row for row in edited}
+    by_name["태봉어린이집"]["세부유형"] = "노유자시설"
+    by_name["대양빌딩"]["세부유형"] = "주택·업무시설"
+
+    changed, warnings = cap_target_review.apply_candidate_edits(p, edited, candidates)
+
+    assert changed
+    assert len(warnings) == 1 and "태봉어린이집" in warnings[0] and "갑종" in warnings[0]
+    saved = {r["보호대상 명칭"]: r for r in form8.saved_rows(p)}
+    assert (saved["태봉어린이집"]["보호대상 구분"], saved["태봉어린이집"]["세부유형"]) == ("갑종", "노유자시설")
+    assert (saved["대양빌딩"]["보호대상 구분"], saved["대양빌딩"]["세부유형"]) == ("을종", "주택·업무시설")
+    drafted = {r["보호대상 명칭"]: r for r in build_cap_form8_data(p, for_draft=True).rows}
+    assert drafted["태봉어린이집"]["보호대상 종류"] == "노유자시설"
+    assert drafted["대양빌딩"]["보호대상 종류"] == "주택·업무시설"
+    # The adjusted category is now stable; saving again changes nothing.
+    assert not cap_target_review.apply_candidate_edits(
+        p, cap_target_review.candidate_review_rows(p, candidates), candidates
+    )[0]
+
+
 def test_illegal_free_text_and_negative_counts_are_rejected():
     p = _project()
     candidates = _candidates()

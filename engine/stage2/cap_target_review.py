@@ -18,6 +18,11 @@ LEGAL_CATEGORIES = ("", *form8.CATEGORIES)
 LEGAL_SUBTYPES = ("", *dict.fromkeys(
     item for values in form8.SUBTYPES.values() for item in values
 ))
+# Every statutory subtype name is unique across 갑종/을종/환경수용체.
+SUBTYPE_CATEGORY = {
+    subtype: category for category, values in form8.SUBTYPES.items() for subtype in values
+}
+assert len(SUBTYPE_CATEGORY) == len(LEGAL_SUBTYPES) - 1
 
 
 def _clean(value: object) -> Any:
@@ -67,7 +72,8 @@ def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
 
     The geometry, GIS distance and addresses come only from the map survey.
     Existing targets absent from the current candidate list are preserved.
-    A category/subtype mismatch clears the invalid subtype for later correction.
+    A newly chosen subtype saves its own statutory category; a contradictory
+    category change is rejected without saving anything.
     """
     original = candidate_review_rows(project, candidates)
     if len(original) != len(edited_rows):
@@ -88,9 +94,23 @@ def apply_candidate_edits(project, edited_rows: list[Mapping[str, Any]],
         if subtype not in LEGAL_SUBTYPES:
             raise ValueError(f"{row['보호대상 명칭']}: 법정 세부유형 선택지에서 골라 주세요.")
         if subtype and subtype not in form8.SUBTYPES.get(category, ()):
-            # Do not silently erase a user's selection and then report that
-            # the batch was saved. It would become '[확인 필요: 세부유형]'
-            # in the downloaded Annex 8 despite the user completing the UI.
+            owner = SUBTYPE_CATEGORY[subtype]
+            if (subtype != str(_clean(original_row.get("세부유형", "")))
+                    and category == str(_clean(original_row.get("보호대상 구분", "")))):
+                # Only the subtype was chosen in this save, e.g. '노유자시설'
+                # for a daycare first suggested as 을종. Each statutory
+                # subtype belongs to exactly one category, so keep the
+                # user's choice and save the matching category. Rejecting
+                # the whole batch here discarded every other row's subtype.
+                warnings.append(
+                    f"{row['보호대상 명칭']}: 선택한 세부유형 '{subtype}'에 맞춰 "
+                    f"보호대상 구분을 '{category or '미지정'}'에서 '{owner}'(으)로 저장했습니다."
+                )
+                category = owner
+        if subtype and subtype not in form8.SUBTYPES.get(category, ()):
+            # The category itself was changed (or both were changed) to a
+            # contradictory pair. Do not silently erase a user's selection
+            # and then report that the batch was saved.
             raise ValueError(
                 f"{row['보호대상 명칭']}: 선택한 '{category or '미지정'}' 구분과 "
                 f"'{subtype}' 세부유형이 맞지 않습니다. "

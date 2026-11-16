@@ -602,7 +602,7 @@ def _step_scenarios(project, found, triage) -> None:
                     "세부유형": st.column_config.SelectboxColumn(
                         "세부유형", options=list(cap_target_review.LEGAL_SUBTYPES),
                         required=False, width="medium",
-                        help="법정 세부유형 선택지입니다. 보호대상 구분에 속하는 유형을 선택하세요."
+                        help="법정 세부유형 선택지입니다. 다른 구분의 세부유형을 고르면 저장할 때 그 세부유형의 구분으로 함께 저장됩니다."
                     ),
                 },
             )
