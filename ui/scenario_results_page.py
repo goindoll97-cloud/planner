@@ -26,6 +26,7 @@ from ui import cap_frames as frames
 INTAKE_PAGE = "ui/evidence_workspace_page.py"
 SCENARIO_SHEET = "사업장 업무 ③ 시나리오 후보 화면"
 KOREA = (36.4, 127.9)
+PARCEL_ZOOM = 17                 # 필지를 클릭해 고를 수 있는 확대 수준
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -224,7 +225,9 @@ def _boundary(project) -> None:
     key = prefix + "map_" + mode
     result = st_folium(_map(project, center=center, zoom=zoom, parcels=parcels, drawings=drawings, mode=mode),
                        height=780, use_container_width=True, key=key,
-                       returned_objects=["last_clicked", "zoom"] if mode == PICK else ["all_drawings"]) or {}
+                       # Report clicks/drawings only. Returning "zoom" made every
+                       # mouse-wheel zoom rerun the page and show the loader.
+                       returned_objects=["last_clicked"] if mode == PICK else ["all_drawings"]) or {}
     if mode == PICK:
         click = result.get("last_clicked")
         if click and (click["lat"], click["lng"]) != st.session_state.get(prefix + "clicked"):
@@ -245,7 +248,9 @@ def _boundary(project) -> None:
             st.session_state[prefix + "parcels"] = parcels
             st.session_state[prefix + "boundary_changed"] = True
             st.session_state[prefix + "center"] = (click["lat"], click["lng"])
-            st.session_state[prefix + "zoom"] = result.get("zoom") or zoom
+            # The map no longer reports wheel zooms; keep a parcel-level zoom
+            # around the clicked point after the highlighted parcels redraw.
+            st.session_state[prefix + "zoom"] = max(zoom, PARCEL_ZOOM)
             st.session_state[prefix + "drawn_from_parcels"] = False
             st.session_state[prefix + "origin"] = "브이월드 연속지적도 필지를 고른 경계"
             st.session_state[prefix + "note"] = ("info", message)
