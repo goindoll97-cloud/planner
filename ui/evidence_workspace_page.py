@@ -565,14 +565,6 @@ def _step_scenarios(project, found, triage) -> None:
         from engine.stage2 import scenario_pipeline
 
         st.write(f"경계 밖 500m 안에서 찾은 주변 보호대상 후보 {len(candidates)}곳")
-        st.caption(
-            "‘보호대상 구분’과 ‘세부유형’ 셀을 누르면 법정 선택지가 열립니다. "
-            "아는 범위에서 구분·세부유형만 선택하세요. 규모 확인이 필요한 시설은 "
-            "근거가 없으면 빈칸으로 두세요. 주민·근로자 수는 입력하지 않아도 됩니다. "
-            "모든 후보를 수정한 뒤 ‘초안에 반영·한 번에 저장’을 누르세요. "
-            "입력값은 곧바로 별지 제8호서식 초안의 보호대상 목록·지도에 반영됩니다. "
-            "검토는 작성된 초안을 보고 나중에 진행합니다."
-        )
         import pandas as pd
 
         review_rows = cap_target_review.candidate_review_rows(project, candidates)
