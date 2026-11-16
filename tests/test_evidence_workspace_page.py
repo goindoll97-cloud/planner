@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import tempfile
+from contextlib import nullcontext
 import unittest
 from unittest.mock import patch
 from io import BytesIO
@@ -238,8 +239,10 @@ class EvidencePageTests(unittest.TestCase):
             patch("engine.stage2.scenario_survey.candidate_rows", return_value=candidates),
             patch("engine.stage2.scenario_survey.company_workbook", return_value=b"excel"),
             patch("engine.stage2.cap_target_review.apply_candidate_edits", return_value=(False, [])) as apply,
+            patch("ui.save_loading_overlay.scenario_save_loading", return_value=nullcontext()) as loader,
         ):
             at = self.run_page(3)
+            loader.assert_not_called()
             button_key = "protected_target_batch_save_" + self.pid
             self.assertEqual(len([b for b in at.button if b.key == button_key]), 1)
             visible = next(t.value for t in at.dataframe if "보호대상 구분" in t.value.columns)
@@ -253,10 +256,12 @@ class EvidencePageTests(unittest.TestCase):
             at.run()
             self.assertFalse(at.exception)
             apply.assert_not_called()
+            loader.assert_not_called()  # no overlay during ordinary rerun
 
             at.button(key=button_key).click().run()
             self.assertFalse(at.exception)
             apply.assert_called_once()
+            loader.assert_called_once_with()  # overlay on actual submit only
             self.assertEqual(len(apply.call_args.args[1]), 20)
             self.assertIn("초안에 반영·한 번에 저장", " ".join(b.label for b in at.button))
 
