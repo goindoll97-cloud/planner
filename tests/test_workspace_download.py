@@ -27,3 +27,97 @@ class WorkspaceDownloadTests(unittest.TestCase):
         with patch.object(export, 'evaluate', side_effect=RuntimeError('validation unavailable')):
             with self.assertRaises(RuntimeError):
                 export.build_cap_workspace_draft(_project())
+
+
+    def test_hwp_converter_runs_only_after_explicit_click_and_cache_tracks_docx(self):
+        """Entering/rerendering Step ④ never starts Hancom or creates HWP."""
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from ui import report_export_panel as panel
+
+        class FakeUI:
+            def __init__(self):
+                self.session_state = {}
+                self.convert_pressed = False
+                self.downloads = []
+                self.warnings = []
+
+            def expander(self, *args, **kwargs):
+                return nullcontext()
+
+            def spinner(self, *args, **kwargs):
+                return nullcontext()
+
+            def caption(self, *args, **kwargs):
+                pass
+
+            def write(self, *args, **kwargs):
+                pass
+
+            def dataframe(self, *args, **kwargs):
+                pass
+
+            def warning(self, value):
+                self.warnings.append(value)
+
+            def error(self, value):
+                raise AssertionError(value)
+
+            def button(self, *args, **kwargs):
+                return self.convert_pressed
+
+            def download_button(self, label, **kwargs):
+                self.downloads.append((label, kwargs["data"]))
+
+        ui = FakeUI()
+        project = SimpleNamespace(cap_in_scope=True, project_id="CAP-TEST")
+        draft = SimpleNamespace(name="사업장_규정서식_초안.docx", docx=b"PK original draft")
+        converted = SimpleNamespace(data=b"HWP version 1", mode="docx_converted", warnings=())
+        with (
+            patch.object(panel, "st", ui),
+            patch.object(panel.export, "build_cap_workspace_draft", return_value=draft),
+            patch.object(panel.cap_template_gap_audit, "rows", return_value=[]),
+            patch.object(panel.cap_template_gap_audit, "csv_bytes", return_value=b"test,csv"),
+            patch.object(panel.cap_hwp_export, "build_workspace_hwp", return_value=converted) as converter,
+        ):
+            panel.render_workspace_download(project)
+            converter.assert_not_called()
+            self.assertIn(("규정서식 초안 DOCX 내려받기", draft.docx), ui.downloads)
+            self.assertFalse(any("HWP 내려받기" in label for label, _ in ui.downloads))
+
+            # Streamlit reruns for normal widgets/CSV/DOCX downloads must not
+            # open Hancom or create a new HWP.
+            ui.downloads.clear()
+            panel.render_workspace_download(project)
+            converter.assert_not_called()
+            self.assertFalse(any("HWP 내려받기" in label for label, _ in ui.downloads))
+
+            ui.convert_pressed = True
+            ui.downloads.clear()
+            panel.render_workspace_download(project)
+            converter.assert_called_once_with(project, draft.docx)
+            self.assertIn(("규정서식 초안 HWP 내려받기", converted.data), ui.downloads)
+
+            # An ordinary rerun reuses the explicit result without conversion.
+            ui.convert_pressed = False
+            ui.downloads.clear()
+            panel.render_workspace_download(project)
+            converter.assert_called_once()
+            self.assertIn(("규정서식 초안 HWP 내려받기", converted.data), ui.downloads)
+
+            # After the source DOCX changes, the old HWP is never downloadable
+            # until the user explicitly regenerates it.
+            draft.docx = b"PK updated draft"
+            ui.downloads.clear()
+            panel.render_workspace_download(project)
+            converter.assert_called_once()
+            self.assertNotIn("workspace_cap_hwp_CAP-TEST_filled", ui.session_state)
+            self.assertIn(("규정서식 초안 DOCX 내려받기", draft.docx), ui.downloads)
+            self.assertFalse(any("HWP 내려받기" in label for label, _ in ui.downloads))
+
+            ui.convert_pressed = True
+            ui.downloads.clear()
+            panel.render_workspace_download(project)
+            self.assertEqual(converter.call_count, 2)
+            self.assertEqual(converter.call_args.args, (project, draft.docx))
+            self.assertIn(("규정서식 초안 HWP 내려받기", converted.data), ui.downloads)
