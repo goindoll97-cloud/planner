@@ -1243,29 +1243,52 @@ def _fill_form12(tables, project: Stage2Project) -> None:
                         raise ValueError("별지 제12호서식 주민수 입력 칸을 식별하지 못했습니다.")
                     _write_cell(destination[2], f"거주민({values[0]})명, 근로자({values[1]})명")
 
-    # Append scenario-linked individual target rows to the designated 4-column
-    # list, not to the influence-distance box or to a header cell.
+    # Each scenario has a different accident origin and influence radius.
+    # Never let confirmed targets for scenario A suppress GIS draft candidates
+    # for scenario B (the old global "linked or candidates" selection did).
+    from .cap_form12_impact_map import scenario_intersecting_protected_targets
+
     confirmed_targets = base._rows(project, "cap.offsite.population_and_protected_targets")
-    scenario_names = {_clean(row.get("사고시나리오명")) for row in prepared.rows}
-    linked = [row for row in confirmed_targets
-              if _clean(base._row_value(row, "사고시나리오명", "시나리오명")) in scenario_names
-              and _clean(base._row_value(row, "사고시나리오명", "시나리오명"))]
-    provisional = not bool(linked)
-    source_targets = linked or base._rows(project, "cap.offsite.scenario_protected_target_candidates")
+    boundary_candidates = base._rows(project, "cap.offsite.scenario_protected_target_candidates")
     rows = []
-    for row in source_targets:
-        scenario = _clean(base._row_value(row, "사고시나리오명", "시나리오명"))
-        if not scenario or scenario not in scenario_names:
+    for record in prepared.rows:
+        scenario = _clean(record.get("사고시나리오명"))
+        if not scenario:
             continue
-        name = base._row_value(row, "보호대상 명칭", "명칭")
-        if provisional:
-            name = str(name) + " [잠정: 경계거리 기반·공간중첩 미검증]"
-        rows.append([
-            str(len(rows) + 1),
-            base._row_value(row, "보호대상 종류", "세부유형", "종류"),
-            f"{scenario} / {name}",
-            base._row_value(row, "장외거리(m)", "사업장 경계와 거리(m)", "거리(m)"),
-        ])
+        confirmed = [
+            row for row in confirmed_targets
+            if _clean(base._row_value(row, "사고시나리오명", "시나리오명")) == scenario
+        ]
+        if confirmed:
+            items, provisional = confirmed, False
+        else:
+            # The Stage-③ saved classification may have PROPOSED status.
+            # Actual GIS geometry must intersect the *specific* scenario
+            # circle before it enters this provisional Form-12 target list.
+            gis = (scenario_intersecting_protected_targets(project, record)
+                   if isinstance(project, Stage2Project) else [])
+            if gis:
+                items, provisional = gis, True
+            else:
+                items = [
+                    row for row in boundary_candidates
+                    if _clean(base._row_value(row, "사고시나리오명", "시나리오명")) == scenario
+                ]
+                provisional = True
+
+        for row in items:
+            name = str(base._row_value(row, "보호대상 명칭", "명칭"))
+            if provisional:
+                if _clean(base._row_value(row, "공간중첩 상태")).startswith("사고원점"):
+                    name += " [잠정: 사고원점·영향반경 GIS 교차·법정 분류 검증 전]"
+                else:
+                    name += " [잠정: 경계거리 기반·공간중첩 미검증]"
+            rows.append([
+                str(len(rows) + 1),
+                base._row_value(row, "보호대상 종류", "세부유형", "종류") or "[확인 필요: 세부유형]",
+                f"{scenario} / {name}",
+                base._row_value(row, "장외거리(m)", "사업장 경계와 거리(m)", "거리(m)"),
+            ])
     _fill_table_rows(list_table, _sanitize_rows(rows), header_rows=1)
 
 def _fill_form13(tables, project: Stage2Project) -> None:
