@@ -460,6 +460,18 @@ class CAPForm8WorkspaceTests(unittest.TestCase):
             if ew.needs_publish(project):
                 ew.publish(project, replace_existing=True)
 
+        # Even when a *different* source fact legitimately needs automatic
+        # publication, the explicit Stage-③ selection must not be overwritten.
+        stale["cap.workspace.export_sync_probe"] = ("new source fact", [], "새 파일의 다른 항목")
+        with (
+            patch.object(ew, "_site_values", return_value={}),
+            patch.object(ew, "_table_values", return_value=stale),
+        ):
+            self.assertTrue(ew.needs_publish(project))
+            ew.publish(project, replace_existing=True)
+        self.assertEqual(project.get_field("cap.workspace.export_sync_probe").value,
+                         "new source fact")
+
         saved = f8.saved_rows(project)
         self.assertEqual(saved[0]["보호대상 구분"], "환경수용체")
         self.assertEqual(saved[0]["세부유형"], "하천")
