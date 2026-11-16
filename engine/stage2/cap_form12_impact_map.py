@@ -35,6 +35,62 @@ class ScenarioMap:
     mapped_candidates: int
 
 
+def intersecting_protected_target_subtypes(
+    project: Stage2Project, record: Mapping[str, Any]
+) -> set[tuple[str, str]]:
+    """Draft Annex-12 checkboxes from actual current GIS/scenario-circle overlap.
+
+    The Annex-8 boundary-distance candidate list alone is NOT evidence of
+    inclusion in a particular incident-origin influence circle. Only recognized
+    statutory subtypes with a current GIS geometry can be selected here.
+    Classification remains a draft proposal until the company's legal review.
+    """
+    from .cap_form8_engine import build_cap_form8_data
+
+    if not surroundings.is_current(project):
+        return set()
+    try:
+        lon, lat = sgis_population._parse_origin(record.get("사고원점 좌표"))
+        radius = float(record.get("영향반경(m)"))
+        if not math.isfinite(radius) or not 0 < radius <= MAX_DRAW_RADIUS_M:
+            return set()
+        x, y = Transformer.from_crs(
+            "EPSG:4326", "EPSG:5179", always_xy=True
+        ).transform(lon, lat)
+        influence = Point(x, y).buffer(radius, resolution=80)
+    except (TypeError, ValueError):
+        return set()
+
+    legal_by_name: dict[str, set[tuple[str, str]]] = {}
+    for target in build_cap_form8_data(project, for_draft=True).rows:
+        name = form8._norm(target.get("보호대상 명칭"))
+        category = str(target.get("보호대상 구분") or "").strip()
+        subtype = str(target.get("보호대상 종류") or "").strip()
+        if not name or category not in form8.SUBTYPES:
+            continue
+        matching = next(
+            (option for option in form8.SUBTYPES[category]
+             if form8._norm(option) == form8._norm(subtype)), None
+        )
+        if matching:
+            legal_by_name.setdefault(name, set()).add((category, matching))
+
+    selected: set[tuple[str, str]] = set()
+    for item in surroundings.survey(project).get("objects", []):
+        if not isinstance(item, Mapping) or not isinstance(item.get("geometry"), Mapping):
+            continue
+        subtypes = legal_by_name.get(form8._norm(item.get("name")), set())
+        if not subtypes:
+            continue
+        try:
+            geometry = surroundings.metric_geometry(dict(item["geometry"]))
+        except (ValueError, TypeError):
+            continue
+        if influence.intersects(geometry):
+            selected.update(subtypes)
+    return selected
+
+
 def render_scenario_map(project: Stage2Project, record: Mapping[str, Any]) -> ScenarioMap | None:
     """Draw exactly the circle implied by one scenario's known origin and radius."""
     try:
