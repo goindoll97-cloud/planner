@@ -1914,14 +1914,15 @@ def catalog_preview(project):
     for key, (value, facts, label) in {**_site_values(project, chosen), **_table_values(project, chosen)}.items():
         record = project.get_field(key)
         if (key == SURVEY_KEY and record is not None
-                and record.status in {"PROPOSED", "USER_CONFIRMED", "VERIFIED"}
+                and record.status in {"PROPOSED", "HOLD", "USER_CONFIRMED", "VERIFIED"}
                 and record.note.startswith("CAP 작성대 별지 제8호에서 보호대상 목록을 확인·입력")):
-            # Stage ③ saved this edited list after the workbook was loaded.
-            # Rerunning the app (including Step ④) must not replace its
-            # category/subtype selections with older workbook/graph facts.
-            # The next workbook upload explicitly clears/rebuilds managed
-            # records; it remains the way to replace the current source data.
-            # PROPOSED remains a draft, not legal confirmation.
+            # Preserve the two editors' explicit subtype selections even
+            # before statutory review is complete. Stage ③ saves PROPOSED,
+            # and the scenario results editor saves HOLD if one of the 500m
+            # scope checks or supporting documents is still missing. Both
+            # formerly could be reset to empty by stale Excel data in Step ④.
+            # HOLD/PROPOSED remain unverified, not legally approved.
+            # A new workbook upload still resets the older working entries.
             continue
         single = not isinstance(value, list) or key in SINGLE_ROW_KEYS
         if record is not None and not file_linked(record) and record.value not in (None, "", [], {}) and single \
