@@ -51,6 +51,12 @@ _OVERLAY = """
     border-radius: 50%;
     animation: cap-stage3-save-spin 0.85s linear infinite;
 }
+.cap-stage3-save-title,
+.cap-stage3-save-description {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+    text-wrap: balance;
+}
 .cap-stage3-save-title {
     font-size: 1.12rem;
     font-weight: 700;
