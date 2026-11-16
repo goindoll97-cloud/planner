@@ -41,7 +41,10 @@ def convert_docx_to_hwp(docx: bytes) -> bytes:
             with redirect_stdout(console), redirect_stderr(console):
                 # pyhwpx otherwise attaches to an existing editor and quit()
                 # could close a document the user was editing.
-                hwp = Hwp(new=True, visible=True)
+                # The user explicitly requested HWP conversion. Keep the
+                # dedicated automation instance hidden while importing DOCX.
+                # Never attach to or close an existing user's Hancom editor.
+                hwp = Hwp(new=True, visible=False)
                 # Hancom's automatic format detection works on more installed
                 # versions; OOXML is the documented explicit DOCX format.
                 if hwp.open(str(source)) is False and hwp.open(str(source), format="OOXML") is False:
