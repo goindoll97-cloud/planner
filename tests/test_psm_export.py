@@ -107,5 +107,6 @@ class CapPanelRenderTests(unittest.TestCase):
         self.assertTrue(any("초안입니다" in i.value for i in at.caption))
         self.assertEqual([d.proto.label for d in at.get("download_button")],
                          ["서식별 입력·계산·GIS 누락 점검표 CSV 내려받기",
-                          "규정서식 초안 HWP 내려받기", "규정서식 초안 DOCX 내려받기"])
-        self.assertTrue(any("일부만 작성" in c.value for c in at.caption))
+                          "규정서식 초안 DOCX 내려받기"])
+        self.assertTrue(any(b.label == "HWP 초안 만들기 (선택)" for b in at.button))
+        self.assertFalse(any("HWP 원본서식 자동 기입" in c.value for c in at.caption))
